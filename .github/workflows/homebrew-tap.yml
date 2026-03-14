@@ -74,6 +74,7 @@ jobs:
         shell: bash
         run: |
           gh repo clone "$TAP_REPO" /tmp/homebrew-tap
+          git -C /tmp/homebrew-tap remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${TAP_REPO}.git"
 
       - name: Update cask file
         id: update
