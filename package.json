@@ -30,7 +30,7 @@
 		"build:win": "npm run build:icons && npm run build:wgc-capture && tsc && vite build && electron-builder --win",
 		"build:linux": "npm run build:icons && tsc && vite build && electron-builder --linux",
 		"release:setup-macos-signing": "zsh scripts/setup-github-macos-signing.zsh",
-		"release:dispatch": "zsh scripts/dispatch-release-build.zsh",
+		"release:dispatch": "node scripts/dispatch-release-build.mjs",
 		"i18n:check": "node scripts/i18n-check.mjs",
 		"test": "vitest --run",
 		"test:watch": "vitest"

@@ -160,7 +160,7 @@ npm run release:dispatch
 
 `release:setup-macos-signing` detects the local `Developer ID Application` identity, exports a `.p12`, and uploads the GitHub secrets.
 
-`release:dispatch` checks the current semantic version, asks whether you want a patch, minor, or major release, shows the calculated next tag, asks for confirmation, and then dispatches the `Release Builds` workflow.
+`release:dispatch` uses an interactive selector to choose patch, minor, or major, shows the calculated next tag, asks for confirmation, and then dispatches the `Release Builds` workflow.
 
 Make sure `gh auth login` succeeds before running the release dispatch flow.
 
