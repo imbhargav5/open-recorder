@@ -14,7 +14,7 @@ const execFileAsync = promisify(execFile)
 const nodeRequire = createRequire(import.meta.url)
 
 const PROJECT_FILE_EXTENSION = 'openrecorder'
-const LEGACY_PROJECT_FILE_EXTENSIONS = ['recordly', 'openscreen']
+const LEGACY_PROJECT_FILE_EXTENSIONS = ['openrecorder', 'openscreen']
 const SHORTCUTS_FILE = path.join(app.getPath('userData'), 'shortcuts.json')
 const RECORDINGS_SETTINGS_FILE = path.join(app.getPath('userData'), 'recordings-settings.json')
 const AUTO_RECORDING_PREFIX = 'recording-'

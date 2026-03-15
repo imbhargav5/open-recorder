@@ -16,7 +16,7 @@
 > This fork exists because the original maintainer does not wish implementing the architectural changes that make some of these features possible i.e. different recording pipeline.
 
 <p align="center">
-  <img src="./recordlydemo.gif" width="750" alt="Open Recorder demo video">
+  <img src="./open-recorder-demo.gif" width="750" alt="Open Recorder demo video">
 </p>
 
 ---
@@ -75,7 +75,7 @@ Linux currently use Electron's capture path, which means the OS cursor cannot al
 - Speed-up / slow-down regions
 - Annotations
 - Zoom spans
-- Project save + reopen (`.openrecorder` files, with `.recordly` and `.openscreen` backward compatibility)
+- Project save + reopen (`.openrecorder` files, with `.openscreen` backward compatibility)
 
 ### Frame Styling
 
@@ -292,6 +292,6 @@ Open Recorder is licensed under the **MIT License**.
 
 ## Acknowledgements
 
-Built on top of the excellent [OpenScreen](https://github.com/siddharthvaddem/openscreen) project, you should go check it out!
+Thanks to [Recordly](https://github.com/AdrianMPC/recordly) and [OpenScreen](https://github.com/siddharthvaddem/openscreen).
 
 ---
