@@ -150,7 +150,7 @@ print -- "Using repository: $repo"
 print -- "Using signing identity: $identity"
 print -- "Derived Apple team ID: $team_id"
 print -- "Exporting PKCS#12 bundle to: $cert_path"
-print -- "macOS exports identities from the login keychain as a bundle; CSC_NAME will make GitHub Actions use the Developer ID identity."
+print -- "macOS exports identities from the login keychain as a bundle; electron-builder will choose the correct Developer ID Application identity automatically in CI."
 
 security export \
 	-k "$HOME/Library/Keychains/login.keychain-db" \
@@ -161,14 +161,12 @@ security export \
 
 openssl base64 -in "$cert_path" -A > "$tmp_dir/CSC_LINK.txt"
 print -rn -- "$p12_password" > "$tmp_dir/CSC_KEY_PASSWORD.txt"
-print -rn -- "$identity" > "$tmp_dir/CSC_NAME.txt"
 print -rn -- "$apple_id" > "$tmp_dir/APPLE_ID.txt"
 print -rn -- "$apple_app_specific_password" > "$tmp_dir/APPLE_APP_SPECIFIC_PASSWORD.txt"
 print -rn -- "$team_id" > "$tmp_dir/APPLE_TEAM_ID.txt"
 
 gh secret set CSC_LINK --repo "$repo" < "$tmp_dir/CSC_LINK.txt"
 gh secret set CSC_KEY_PASSWORD --repo "$repo" < "$tmp_dir/CSC_KEY_PASSWORD.txt"
-gh secret set CSC_NAME --repo "$repo" < "$tmp_dir/CSC_NAME.txt"
 gh secret set APPLE_ID --repo "$repo" < "$tmp_dir/APPLE_ID.txt"
 gh secret set APPLE_APP_SPECIFIC_PASSWORD --repo "$repo" < "$tmp_dir/APPLE_APP_SPECIFIC_PASSWORD.txt"
 gh secret set APPLE_TEAM_ID --repo "$repo" < "$tmp_dir/APPLE_TEAM_ID.txt"

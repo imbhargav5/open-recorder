@@ -146,7 +146,6 @@ The manual release workflow at `.github/workflows/release.yml` can produce signe
 
 - `CSC_LINK`: base64-encoded `Developer ID Application` `.p12` certificate export
 - `CSC_KEY_PASSWORD`: password used when exporting the `.p12`
-- `CSC_NAME`: optional full signing identity name, for example `Developer ID Application: Your Name (TEAMID12345)`
 - `APPLE_ID`: Apple Developer account email
 - `APPLE_APP_SPECIFIC_PASSWORD`: app-specific password for notarization
 - `APPLE_TEAM_ID`: your Apple Developer team ID
