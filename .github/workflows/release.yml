@@ -67,11 +67,24 @@ jobs:
           done
 
       - name: Build macOS x64
+        env:
+          # Notarize the final DMG in a dedicated step below instead of the inner app bundle.
+          APPLE_ID: ""
+          APPLE_APP_SPECIFIC_PASSWORD: ""
+          APPLE_TEAM_ID: ""
         run: |
           npx tsc
           npx vite build
           npx electron-builder --mac dmg --x64 --publish never
           mv release/OpenRecorder.dmg release/OpenRecorder-x64.dmg
+
+      - name: Notarize macOS x64 DMG
+        run: |
+          xcrun notarytool submit release/OpenRecorder-x64.dmg \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
 
       - name: Staple and validate notarized macOS x64 artifact
         run: |
@@ -127,11 +140,24 @@ jobs:
           done
 
       - name: Build macOS arm64
+        env:
+          # Notarize the final DMG in a dedicated step below instead of the inner app bundle.
+          APPLE_ID: ""
+          APPLE_APP_SPECIFIC_PASSWORD: ""
+          APPLE_TEAM_ID: ""
         run: |
           npx tsc
           npx vite build
           npx electron-builder --mac dmg --arm64 --publish never
           mv release/OpenRecorder.dmg release/OpenRecorder-arm64.dmg
+
+      - name: Notarize macOS arm64 DMG
+        run: |
+          xcrun notarytool submit release/OpenRecorder-arm64.dmg \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
 
       - name: Staple and validate notarized macOS arm64 artifact
         run: |
