@@ -76,7 +76,6 @@ jobs:
           npx tsc
           npx vite build
           npx electron-builder --mac dmg --x64 --publish never
-          mv release/OpenRecorder.dmg release/OpenRecorder-x64.dmg
 
       - name: Notarize macOS x64 DMG
         run: |
@@ -149,7 +148,6 @@ jobs:
           npx tsc
           npx vite build
           npx electron-builder --mac dmg --arm64 --publish never
-          mv release/OpenRecorder.dmg release/OpenRecorder-arm64.dmg
 
       - name: Notarize macOS arm64 DMG
         run: |
