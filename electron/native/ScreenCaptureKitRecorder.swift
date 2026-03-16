@@ -16,6 +16,21 @@ struct CaptureConfig: Codable {
 
 let targetCaptureFPS = 60
 
+enum ScreenCaptureAccessStatus: String {
+	case granted
+	case denied
+}
+
+@discardableResult
+func preflightScreenCaptureAccess() -> ScreenCaptureAccessStatus {
+	CGPreflightScreenCaptureAccess() ? .granted : .denied
+}
+
+@discardableResult
+func requestScreenCaptureAccess() -> ScreenCaptureAccessStatus {
+	CGRequestScreenCaptureAccess() ? .granted : .denied
+}
+
 final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 	private let queue = DispatchQueue(label: "openscreen.screencapturekit.video")
 	private var assetWriter: AVAssetWriter?
@@ -58,6 +73,13 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		}
 
 		let config = try JSONDecoder().decode(CaptureConfig.self, from: data)
+		guard preflightScreenCaptureAccess() == .granted else {
+			throw NSError(
+				domain: "OpenRecorderCapture",
+				code: 16,
+				userInfo: [NSLocalizedDescriptionKey: "Screen Recording permission is not granted for the native capture helper"]
+			)
+		}
 		let availableContent = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
 		let streamConfig = SCStreamConfiguration()
 		capturesSystemAudio = config.capturesSystemAudio ?? false
@@ -462,19 +484,33 @@ final class RecorderService {
 	}
 }
 
-guard CommandLine.arguments.count >= 2 else {
-	fputs("Missing config JSON\n", stderr)
-	fflush(stderr)
-	exit(1)
-}
+let arguments = Array(CommandLine.arguments.dropFirst())
 
 // Force CoreGraphics Services initialization on the main thread.
 // Without this, SCContentFilter(desktopIndependentWindow:) crashes with
 // CGS_REQUIRE_INIT because CGS is never initialised in a CLI tool.
 let _ = CGMainDisplayID()
 
+if arguments.count == 1, arguments[0] == "--preflight-screen-capture-access" {
+	print(preflightScreenCaptureAccess().rawValue)
+	fflush(stdout)
+	exit(0)
+}
+
+if arguments.count == 1, arguments[0] == "--request-screen-capture-access" {
+	print(requestScreenCaptureAccess().rawValue)
+	fflush(stdout)
+	exit(0)
+}
+
+guard arguments.count >= 1 else {
+	fputs("Missing config JSON\n", stderr)
+	fflush(stderr)
+	exit(1)
+}
+
 let service = RecorderService()
-service.start(configJSON: CommandLine.arguments[1])
+service.start(configJSON: arguments[0])
 
 DispatchQueue.global(qos: .utility).async {
 	while let input = readLine(strippingNewline: true)?.lowercased() {
@@ -486,4 +522,3 @@ DispatchQueue.global(qos: .utility).async {
 }
 
 service.waitUntilFinished()
-

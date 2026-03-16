@@ -56,6 +56,13 @@ type WindowBounds = {
   height: number
 }
 
+type ScreenRecordingPermissionResult = {
+  success: boolean
+  status: string
+  error?: string
+  source?: 'native-helper' | 'electron'
+}
+
 let selectedSource: SelectedSource | null = null
 let currentProjectPath: string | null = null
 let nativeScreenRecordingActive = false
@@ -469,21 +476,27 @@ async function ensureSwiftHelperBinary(
   label: string,
   prebundledBinaryName?: string,
 ) {
+  let preferredBinaryPath = binaryPath
+
   if (prebundledBinaryName) {
     const prebundledPath = getPrebundledNativeHelperPath(prebundledBinaryName)
     try {
       await fs.access(prebundledPath, fsConstants.X_OK)
-      return prebundledPath
+      if (app.isPackaged) {
+        return prebundledPath
+      }
+      preferredBinaryPath = prebundledPath
     } catch {
       if (app.isPackaged) {
         throw new Error(
           `${label} is missing from this app build (${prebundledPath}). Reinstall or update the app.`
         )
       }
+      preferredBinaryPath = prebundledPath
     }
   }
 
-  const helperDir = path.dirname(binaryPath)
+  const helperDir = path.dirname(preferredBinaryPath)
 
   await fs.mkdir(helperDir, { recursive: true })
 
@@ -491,7 +504,7 @@ async function ensureSwiftHelperBinary(
   try {
     const [sourceStat, binaryStat] = await Promise.all([
       fs.stat(sourcePath),
-      fs.stat(binaryPath).catch(() => null),
+      fs.stat(preferredBinaryPath).catch(() => null),
     ])
     shouldCompile = !binaryStat || sourceStat.mtimeMs > binaryStat.mtimeMs
   } catch (error) {
@@ -499,10 +512,10 @@ async function ensureSwiftHelperBinary(
   }
 
   if (!shouldCompile) {
-    return binaryPath
+    return preferredBinaryPath
   }
 
-  const result = spawnSync('swiftc', ['-O', sourcePath, '-o', binaryPath], {
+  const result = spawnSync('swiftc', ['-O', sourcePath, '-o', preferredBinaryPath], {
     encoding: 'utf8',
     timeout: 120000,
   })
@@ -512,7 +525,7 @@ async function ensureSwiftHelperBinary(
     throw new Error(details || `Failed to compile ${label}`)
   }
 
-  return binaryPath
+  return preferredBinaryPath
 }
 
 async function ensureNativeCaptureHelperBinary() {
@@ -522,6 +535,50 @@ async function ensureNativeCaptureHelperBinary() {
     'native ScreenCaptureKit helper',
     'openscreen-screencapturekit-helper'
   )
+}
+
+async function runNativeScreenCapturePermissionCommand(
+  command: '--preflight-screen-capture-access' | '--request-screen-capture-access',
+): Promise<ScreenRecordingPermissionResult> {
+  try {
+    const helperPath = await ensureNativeCaptureHelperBinary()
+    const { stdout, stderr } = await execFileAsync(helperPath, [command], {
+      timeout: 30000,
+      maxBuffer: 1024 * 1024,
+    })
+    const status = stdout.trim().toLowerCase()
+
+    if (status === 'granted' || status === 'denied') {
+      return {
+        success: true,
+        status,
+        source: 'native-helper',
+      }
+    }
+
+    const details = [stderr, stdout].filter(Boolean).join('\n').trim()
+    return {
+      success: false,
+      status: 'unknown',
+      error: details || `Unexpected native screen capture permission status: ${status || 'empty output'}`,
+      source: 'native-helper',
+    }
+  } catch (error) {
+    return {
+      success: false,
+      status: 'unknown',
+      error: String(error),
+      source: 'native-helper',
+    }
+  }
+}
+
+async function getNativeScreenCapturePermissionStatus(): Promise<ScreenRecordingPermissionResult> {
+  return runNativeScreenCapturePermissionCommand('--preflight-screen-capture-access')
+}
+
+async function requestNativeScreenCapturePermission(): Promise<ScreenRecordingPermissionResult> {
+  return runNativeScreenCapturePermissionCommand('--request-screen-capture-access')
 }
 
 async function ensureNativeWindowListBinary() {
@@ -1959,6 +2016,14 @@ export function registerIpcHandlers(
         return { success: false, message: 'Cannot record Open Recorder windows. Please select another app window.' }
       }
 
+      const helperScreenPermission = await getNativeScreenCapturePermissionStatus()
+      if (!helperScreenPermission.success || helperScreenPermission.status !== 'granted') {
+        return {
+          success: false,
+          message: 'Screen Recording permission is not granted for the native capture helper. Open System Settings, allow Open Recorder, then quit and reopen the app.',
+          error: helperScreenPermission.error,
+        }
+      }
       const helperPath = await ensureNativeCaptureHelperBinary()
       const outputPath = path.join(recordingsDir, `recording-${Date.now()}.mp4`)
       const capturesSystemAudio = Boolean(options?.capturesSystemAudio)
@@ -2461,20 +2526,39 @@ export function registerIpcHandlers(
     }
   })
 
-  ipcMain.handle('get-screen-recording-permission-status', () => {
+  ipcMain.handle('get-screen-recording-permission-status', async () => {
     if (process.platform !== 'darwin') {
       return { success: true, status: 'granted' }
+    }
+
+    const nativeStatus = await getNativeScreenCapturePermissionStatus()
+    if (nativeStatus.success) {
+      return nativeStatus
     }
 
     try {
       return {
         success: true,
         status: systemPreferences.getMediaAccessStatus('screen'),
+        error: nativeStatus.error,
+        source: 'electron',
       }
     } catch (error) {
       console.error('Failed to get screen recording permission status:', error)
-      return { success: false, status: 'unknown', error: String(error) }
+      return {
+        success: false,
+        status: 'unknown',
+        error: nativeStatus.error ?? String(error),
+      }
     }
+  })
+
+  ipcMain.handle('request-screen-recording-permission', async () => {
+    if (process.platform !== 'darwin') {
+      return { success: true, status: 'granted' }
+    }
+
+    return requestNativeScreenCapturePermission()
   })
 
   ipcMain.handle('open-screen-recording-preferences', async () => {

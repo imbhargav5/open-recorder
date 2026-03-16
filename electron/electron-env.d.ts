@@ -152,6 +152,13 @@ declare global {
         success: boolean;
         status: string;
         error?: string;
+        source?: "native-helper" | "electron";
+      }>;
+      requestScreenRecordingPermission: () => Promise<{
+        success: boolean;
+        status: string;
+        error?: string;
+        source?: "native-helper" | "electron";
       }>;
       openScreenRecordingPreferences: () => Promise<{ success: boolean; error?: string }>;
       openAccessibilityPreferences: () => Promise<{ success: boolean; error?: string }>;

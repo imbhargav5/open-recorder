@@ -106,6 +106,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getScreenRecordingPermissionStatus: () => {
     return ipcRenderer.invoke('get-screen-recording-permission-status')
   },
+  requestScreenRecordingPermission: () => {
+    return ipcRenderer.invoke('request-screen-recording-permission')
+  },
   openScreenRecordingPreferences: () => {
     return ipcRenderer.invoke('open-screen-recording-preferences')
   },

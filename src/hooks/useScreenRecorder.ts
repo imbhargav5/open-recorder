@@ -31,11 +31,16 @@ const FACECAM_TARGET_WIDTH = 1280;
 const FACECAM_TARGET_HEIGHT = 720;
 const FACECAM_TARGET_FRAME_RATE = 30;
 const FACECAM_BITRATE = 8_000_000;
+const MAC_NATIVE_CAPTURE_START_FAILURE = "Failed to start native ScreenCaptureKit recording";
 
 type FacecamCaptureResult = {
   path: string;
   offsetMs: number;
 } | null;
+
+function shouldFallbackFromNativeMacCapture(result: { success: boolean; message?: string | null }) {
+  return !result.success && result.message === MAC_NATIVE_CAPTURE_START_FAILURE;
+}
 
 type UseScreenRecorderReturn = {
   recording: boolean;
@@ -91,6 +96,16 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
     const screenPermission = await window.electronAPI.getScreenRecordingPermissionStatus();
     if (!screenPermission.success || screenPermission.status !== "granted") {
+      const requestedScreenPermission = await window.electronAPI.requestScreenRecordingPermission();
+      if (requestedScreenPermission.success && requestedScreenPermission.status === "granted") {
+        return true;
+      }
+
+      const refreshedScreenPermission = await window.electronAPI.getScreenRecordingPermissionStatus();
+      if (refreshedScreenPermission.success && refreshedScreenPermission.status === "granted") {
+        return true;
+      }
+
       await window.electronAPI.openScreenRecordingPreferences();
       alert(
         options.startup
@@ -483,6 +498,11 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
         if (!nativeResult.success) {
           if (useWgcCapture) {
             console.warn("WGC capture failed, falling back to browser capture:", nativeResult.error ?? nativeResult.message);
+          } else if (shouldFallbackFromNativeMacCapture(nativeResult)) {
+            console.warn(
+              "Native macOS capture failed, falling back to browser capture:",
+              nativeResult.error ?? nativeResult.message,
+            );
           } else {
             throw new Error(
               nativeResult.error ?? nativeResult.message ?? "Failed to start native screen recording",
