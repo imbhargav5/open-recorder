@@ -1193,6 +1193,103 @@ export default function VideoEditor() {
     });
   }, []);
 
+  const restorePreviewAfterExport = useCallback(async (restoreTime: number, resumePlayback: boolean) => {
+    const playback = videoPlaybackRef.current;
+    const video = playback?.video;
+
+    if (!playback || !video || !videoPath) {
+      return;
+    }
+
+    const waitForVideoData = async (reloadSource?: () => void) => {
+      if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+        return;
+      }
+
+      await new Promise<void>((resolve, reject) => {
+        const cleanup = () => {
+          video.removeEventListener('loadeddata', handleLoadedData);
+          video.removeEventListener('error', handleError);
+        };
+
+        const handleLoadedData = () => {
+          cleanup();
+          resolve();
+        };
+
+        const handleError = () => {
+          cleanup();
+          reject(new Error('Failed to reload preview video'));
+        };
+
+        video.addEventListener('loadeddata', handleLoadedData, { once: true });
+        video.addEventListener('error', handleError, { once: true });
+        reloadSource?.();
+
+        if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+          cleanup();
+          resolve();
+        }
+      });
+    };
+
+    const seekToTime = async (targetTime: number) => {
+      const duration = Number.isFinite(video.duration) ? video.duration : 0;
+      const maxSeekTime = duration > 0 ? Math.max(duration - 0.001, 0) : targetTime;
+      const clampedTime = Math.max(0, Math.min(targetTime, maxSeekTime));
+
+      if (Math.abs(video.currentTime - clampedTime) <= 0.001) {
+        return;
+      }
+
+      await new Promise<void>((resolve, reject) => {
+        const cleanup = () => {
+          video.removeEventListener('seeked', handleSeeked);
+          video.removeEventListener('error', handleError);
+        };
+
+        const handleSeeked = () => {
+          cleanup();
+          resolve();
+        };
+
+        const handleError = () => {
+          cleanup();
+          reject(new Error('Failed to seek preview video after export'));
+        };
+
+        video.addEventListener('seeked', handleSeeked, { once: true });
+        video.addEventListener('error', handleError, { once: true });
+        video.currentTime = clampedTime;
+      });
+    };
+
+    playback.pause();
+
+    const shouldReloadSource =
+      video.getAttribute('src') !== videoPath || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA;
+
+    if (shouldReloadSource) {
+      video.src = videoPath;
+      await waitForVideoData(() => {
+        video.load();
+      });
+    }
+
+    await seekToTime(restoreTime);
+
+    if (resumePlayback) {
+      try {
+        await playback.play();
+        return;
+      } catch (error) {
+        console.error('Failed to resume preview playback after export:', error);
+      }
+    }
+
+    await playback.refreshFrame().catch(() => undefined);
+  }, [videoPath]);
+
   const handleExport = useCallback(async (settings: ExportSettings) => {
     if (!videoPath) {
       toast.error('No video loaded');
@@ -1212,10 +1309,10 @@ export default function VideoEditor() {
     setHasPendingExportSave(false);
 
     let keepExportDialogOpen = false;
+    const wasPlaying = isPlaying;
+    const restoreTime = video.currentTime;
 
     try {
-      const wasPlaying = isPlaying;
-      const restoreTime = video.currentTime;
       if (wasPlaying) {
         videoPlaybackRef.current?.pause();
       }
@@ -1436,28 +1533,23 @@ export default function VideoEditor() {
           toast.error(result.error || 'Export failed');
         }
       }
-
-      if (wasPlaying) {
-        videoPlaybackRef.current?.play();
-      } else {
-        video.currentTime = restoreTime;
-        await videoPlaybackRef.current?.refreshFrame();
-      }
     } catch (error) {
       console.error('Export error:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       setExportError(errorMessage);
       toast.error(`Export failed: ${errorMessage}`);
     } finally {
-      if (!isPlaying) {
-        await videoPlaybackRef.current?.refreshFrame().catch(() => undefined);
+      try {
+        await restorePreviewAfterExport(restoreTime, wasPlaying);
+      } catch (error) {
+        console.error('Failed to restore preview after export:', error);
       }
       setIsExporting(false);
       exporterRef.current = null;
       setShowExportDialog(keepExportDialogOpen);
       setExportProgress(null);
     }
-  }, [videoPath, wallpaper, zoomRegions, trimRegions, speedRegions, shadowIntensity, backgroundBlur, zoomMotionBlur, connectZooms, showCursor, effectiveCursorTelemetry, cursorSize, cursorSmoothing, cursorMotionBlur, cursorClickBounce, borderRadius, padding, cropRegion, annotationRegions, isPlaying, aspectRatio, exportQuality, showExportSuccessToast]);
+  }, [videoPath, wallpaper, trimRegions, speedRegions, shadowIntensity, backgroundBlur, zoomMotionBlur, connectZooms, showCursor, effectiveCursorTelemetry, effectiveZoomRegions, cursorSize, cursorSmoothing, cursorMotionBlur, cursorClickBounce, borderRadius, padding, cropRegion, annotationRegions, isPlaying, aspectRatio, exportQuality, showExportSuccessToast, restorePreviewAfterExport]);
 
   const handleOpenExportDialog = useCallback(() => {
     if (!videoPath) {
@@ -1807,4 +1899,3 @@ export default function VideoEditor() {
     </div>
   );
 }
-
