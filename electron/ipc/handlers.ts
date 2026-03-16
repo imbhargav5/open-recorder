@@ -204,6 +204,27 @@ function normalizeVideoSourcePath(videoPath?: string | null): string | null {
   return trimmed
 }
 
+function canonicalizeLocalPath(filePath?: string | null): string | null {
+  const normalizedPath = normalizeVideoSourcePath(filePath)
+  if (!normalizedPath) {
+    return null
+  }
+
+  const resolvedPath = path.normalize(path.resolve(normalizedPath))
+  return process.platform === 'win32' ? resolvedPath.toLowerCase() : resolvedPath
+}
+
+function isSameLocalFilePath(a?: string | null, b?: string | null): boolean {
+  const canonicalA = canonicalizeLocalPath(a)
+  const canonicalB = canonicalizeLocalPath(b)
+
+  if (!canonicalA || !canonicalB) {
+    return false
+  }
+
+  return canonicalA === canonicalB
+}
+
 async function hasSiblingProjectFile(videoPath: string) {
   const baseName = path.basename(videoPath, path.extname(videoPath))
   const candidateExtensions = [PROJECT_FILE_EXTENSION, ...LEGACY_PROJECT_FILE_EXTENSIONS]
@@ -2410,6 +2431,13 @@ export function registerIpcHandlers(
         };
       }
 
+      if (isSameLocalFilePath(result.filePath, currentVideoPath)) {
+        return {
+          success: false,
+          message: 'Cannot overwrite the source recording currently open in the editor. Choose a different export file name or location.',
+        }
+      }
+
       await fs.writeFile(result.filePath, Buffer.from(videoData));
 
       return {
@@ -2713,4 +2741,3 @@ export function registerIpcHandlers(
     }
   });
 }
-
