@@ -44,7 +44,7 @@
       }
     ],
     "icon": "icons/icons/mac/icon.icns",
-    "artifactName": "OpenRecorder.dmg",
+    "artifactName": "OpenRecorder-${arch}.${ext}",
     "extendInfo": {
       "NSAudioCaptureUsageDescription": "Open Recorder needs audio capture permission to record system audio.",
       "NSMicrophoneUsageDescription": "Open Recorder needs microphone access to record voice audio.",
