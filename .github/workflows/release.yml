@@ -73,8 +73,10 @@ jobs:
           npx electron-builder --mac dmg --x64 --publish never
           mv release/OpenRecorder.dmg release/OpenRecorder-x64.dmg
 
-      - name: Validate notarized macOS x64 artifact
-        run: xcrun stapler validate release/OpenRecorder-x64.dmg
+      - name: Staple and validate notarized macOS x64 artifact
+        run: |
+          xcrun stapler staple release/OpenRecorder-x64.dmg
+          xcrun stapler validate release/OpenRecorder-x64.dmg
 
       - name: Upload macOS x64 artifact
         uses: actions/upload-artifact@v4
@@ -131,8 +133,10 @@ jobs:
           npx electron-builder --mac dmg --arm64 --publish never
           mv release/OpenRecorder.dmg release/OpenRecorder-arm64.dmg
 
-      - name: Validate notarized macOS arm64 artifact
-        run: xcrun stapler validate release/OpenRecorder-arm64.dmg
+      - name: Staple and validate notarized macOS arm64 artifact
+        run: |
+          xcrun stapler staple release/OpenRecorder-arm64.dmg
+          xcrun stapler validate release/OpenRecorder-arm64.dmg
 
       - name: Upload macOS arm64 artifact
         uses: actions/upload-artifact@v4
