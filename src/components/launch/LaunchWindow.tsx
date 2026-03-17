@@ -19,6 +19,7 @@ export function LaunchWindow() {
   const {
     recording,
     toggleRecording,
+    preparePermissions,
     microphoneEnabled,
     setMicrophoneEnabled,
     microphoneDeviceId,
@@ -160,7 +161,24 @@ export function LaunchWindow() {
     return () => clearInterval(interval);
   }, []);
 
-  const openSourceSelector = () => {
+  const openSourceSelector = async () => {
+    const screenStatus = await backend.getScreenRecordingPermissionStatus().catch(() => "unknown");
+    if (screenStatus !== "granted") {
+      const granted = await backend.requestScreenRecordingPermission().catch(() => false);
+      if (!granted) {
+        await backend.openScreenRecordingPreferences().catch(() => {});
+        alert(
+          "Open Recorder needs Screen Recording permission to show live screen and window previews. System Settings has been opened. After enabling it, quit and reopen Open Recorder.",
+        );
+        return;
+      }
+    }
+
+    const permissionsReady = await preparePermissions();
+    if (!permissionsReady) {
+      return;
+    }
+
     backend.openSourceSelector().catch(() => {});
   };
 

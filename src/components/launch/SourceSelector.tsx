@@ -161,7 +161,7 @@ export function SourceSelector() {
                           <img
                             src={source.thumbnail}
                             alt={source.name}
-                            className="w-full aspect-video object-cover rounded border border-zinc-800"
+                            className="w-full aspect-video object-contain rounded border border-zinc-800 bg-zinc-950"
                           />
                         ) : (
                           <div className="w-full aspect-video rounded border border-zinc-800 bg-zinc-900/80 flex flex-col items-center justify-center text-zinc-400 gap-2">
@@ -202,7 +202,7 @@ export function SourceSelector() {
                           <img
                             src={source.thumbnail}
                             alt={source.name}
-                            className="w-full aspect-video object-cover rounded border border-gray-700"
+                            className="w-full aspect-video object-contain rounded border border-gray-700 bg-zinc-950"
                           />
                         ) : (
                           <div className="w-full aspect-video rounded border border-gray-700 bg-zinc-900/80 flex flex-col items-center justify-center text-zinc-400 gap-2">

@@ -115,8 +115,8 @@ export function getSelectedSource(): Promise<any | null> {
   return invoke('get_selected_source');
 }
 
-export function getSources(_opts?: any): Promise<any[]> {
-  return invoke('get_sources');
+export function getSources(opts?: any): Promise<any[]> {
+  return invoke('get_sources', { opts });
 }
 
 // ─── Recording ──────────────────────────────────────────────────────────────

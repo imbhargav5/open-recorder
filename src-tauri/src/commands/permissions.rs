@@ -25,12 +25,19 @@ pub async fn get_screen_recording_permission_status(
                 .await
                 .map_err(|e| e.to_string())?;
 
-            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-            if stdout.contains("granted") || output.status.success() {
+            let status = String::from_utf8_lossy(&output.stdout).trim().to_lowercase();
+            if status == "granted" {
                 return Ok("granted".to_string());
-            } else {
+            }
+            if status == "denied" {
                 return Ok("denied".to_string());
             }
+
+            if output.status.success() {
+                return Ok("unknown".to_string());
+            }
+
+            return Ok("denied".to_string());
         }
 
         // Fallback: assume we need to check
@@ -68,7 +75,8 @@ pub async fn request_screen_recording_permission(
                 .await
                 .map_err(|e| e.to_string())?;
 
-            return Ok(output.status.success());
+            let status = String::from_utf8_lossy(&output.stdout).trim().to_lowercase();
+            return Ok(status == "granted");
         }
 
         Ok(false)
