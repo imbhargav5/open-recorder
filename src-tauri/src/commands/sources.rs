@@ -75,6 +75,7 @@ pub async fn get_sources(
 ) -> Result<Vec<SelectedSource>, String> {
     #[cfg(target_os = "macos")]
     {
+        let (wants_screens, wants_windows) = requested_source_kinds(opts.as_ref());
         let thumbnail_width = opts
             .as_ref()
             .and_then(|options| options.thumbnail_size.as_ref())
@@ -88,64 +89,36 @@ pub async fn get_sources(
             .filter(|height| *height > 0)
             .unwrap_or(180);
 
-        let sidecar_path = crate::native::sidecar::get_sidecar_path("openscreen-window-list")?;
+        let mut sources = Vec::new();
 
-        match fetch_macos_sources_via_sidecar(
-            &sidecar_path,
-            thumbnail_width,
-            thumbnail_height,
-            false,
-            Duration::from_secs(6),
-        )
-        .await
-        {
-            Ok(mut sources) => {
-                cache_sources(&state, &sources)?;
-                apply_source_filters(&mut sources, opts.as_ref());
-                if !sources.is_empty() {
-                    return Ok(sources);
+        if wants_screens {
+            sources.extend(fallback_macos_sources()?);
+        }
+
+        if wants_windows {
+            let sidecar_path = crate::native::sidecar::get_sidecar_path("openscreen-window-list")?;
+            match fetch_macos_window_sources_via_sidecar(
+                &sidecar_path,
+                thumbnail_width,
+                thumbnail_height,
+                Duration::from_millis(1500),
+            )
+            .await
+            {
+                Ok(window_sources) => {
+                    cache_window_sources(&state, &window_sources)?;
+                    sources.extend(window_sources);
                 }
-            }
-            Err(error) => {
-                eprintln!(
-                    "Window list helper with thumbnails failed, retrying without thumbnails: {}",
-                    error
-                );
-            }
-        }
-
-        match fetch_macos_sources_via_sidecar(
-            &sidecar_path,
-            thumbnail_width,
-            thumbnail_height,
-            true,
-            Duration::from_secs(3),
-        )
-        .await
-        {
-            Ok(mut sources) => {
-                cache_sources(&state, &sources)?;
-                apply_source_filters(&mut sources, opts.as_ref());
-                if !sources.is_empty() {
-                    return Ok(sources);
+                Err(_) => {
+                    sources.extend(cached_window_sources(&state)?);
                 }
-            }
-            Err(error) => {
-                eprintln!(
-                    "Window list helper without thumbnails failed, using fallback sources: {}",
-                    error
-                );
-            }
+            };
         }
 
-        let mut cached_sources = cached_sources(&state)?;
-        apply_source_filters(&mut cached_sources, opts.as_ref());
-        if !cached_sources.is_empty() {
-            return Ok(cached_sources);
+        if sources.is_empty() {
+            sources = fallback_sources();
         }
 
-        let mut sources = fallback_macos_sources()?;
-        cache_sources(&state, &sources)?;
         apply_source_filters(&mut sources, opts.as_ref());
         Ok(sources)
     }
@@ -159,11 +132,10 @@ pub async fn get_sources(
 }
 
 #[cfg(target_os = "macos")]
-async fn fetch_macos_sources_via_sidecar(
+async fn fetch_macos_window_sources_via_sidecar(
     sidecar_path: &Path,
     thumbnail_width: u32,
     thumbnail_height: u32,
-    no_thumbnails: bool,
     timeout_duration: Duration,
 ) -> Result<Vec<SelectedSource>, String> {
     let mut command = tokio::process::Command::new(sidecar_path);
@@ -172,21 +144,12 @@ async fn fetch_macos_sources_via_sidecar(
         .arg("--thumbnail-width")
         .arg(thumbnail_width.to_string())
         .arg("--thumbnail-height")
-        .arg(thumbnail_height.to_string());
-
-    if no_thumbnails {
-        command.arg("--no-thumbnails");
-    }
+        .arg(thumbnail_height.to_string())
+        .arg("--no-thumbnails");
 
     let output = timeout(timeout_duration, command.output())
         .await
-        .map_err(|_| {
-            if no_thumbnails {
-                "Timed out waiting for macOS source helper without thumbnails".to_string()
-            } else {
-                "Timed out waiting for macOS source helper with thumbnails".to_string()
-            }
-        })?
+        .map_err(|_| "Timed out waiting for macOS window source helper".to_string())?
         .map_err(|e| e.to_string())?;
 
     if !output.status.success() {
@@ -203,8 +166,26 @@ async fn fetch_macos_sources_via_sidecar(
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let mut sources: Vec<SelectedSource> = serde_json::from_str(&stdout).map_err(|e| e.to_string())?;
+    sources.retain(|source| {
+        source.id.starts_with("window:")
+            || source.source_type.as_deref() == Some("window")
+    });
     sources.retain(|source| !source.id.trim().is_empty() && !source.name.trim().is_empty());
     Ok(sources)
+}
+
+fn requested_source_kinds(opts: Option<&SourceListOptions>) -> (bool, bool) {
+    let Some(types) = opts.and_then(|options| options.types.as_ref()) else {
+        return (true, true);
+    };
+
+    if types.is_empty() {
+        return (true, true);
+    }
+
+    let wants_screens = types.iter().any(|kind| kind == "screen");
+    let wants_windows = types.iter().any(|kind| kind == "window");
+    (wants_screens, wants_windows)
 }
 
 fn apply_source_filters(sources: &mut Vec<SelectedSource>, opts: Option<&SourceListOptions>) {
@@ -253,21 +234,21 @@ fn fallback_sources() -> Vec<SelectedSource> {
 }
 
 #[cfg(target_os = "macos")]
-fn cache_sources(
+fn cache_window_sources(
     state: &tauri::State<'_, Mutex<AppState>>,
     sources: &[SelectedSource],
 ) -> Result<(), String> {
     let mut app_state = state.lock().map_err(|e| e.to_string())?;
-    app_state.cached_sources = sources.to_vec();
+    app_state.cached_window_sources = sources.to_vec();
     Ok(())
 }
 
 #[cfg(target_os = "macos")]
-fn cached_sources(
+fn cached_window_sources(
     state: &tauri::State<'_, Mutex<AppState>>,
 ) -> Result<Vec<SelectedSource>, String> {
     let app_state = state.lock().map_err(|e| e.to_string())?;
-    Ok(app_state.cached_sources.clone())
+    Ok(app_state.cached_window_sources.clone())
 }
 
 #[cfg(target_os = "macos")]
