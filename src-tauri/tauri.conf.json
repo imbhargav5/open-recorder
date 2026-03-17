@@ -49,7 +49,8 @@
       "binaries/openscreen-screencapturekit-helper",
       "binaries/openscreen-window-list",
       "binaries/openscreen-system-cursors",
-      "binaries/openscreen-native-cursor-monitor"
+      "binaries/openscreen-native-cursor-monitor",
+      "binaries/openscreen-screen-selection-flash"
     ],
     "resources": [
       "../public/wallpapers/**/*",

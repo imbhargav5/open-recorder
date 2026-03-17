@@ -34,6 +34,11 @@ pub fn select_source(
 }
 
 #[tauri::command]
+pub fn flash_selected_screen(source: SelectedSource) -> Result<(), String> {
+    flash_selected_screen_impl(&source)
+}
+
+#[tauri::command]
 pub fn get_selected_source(
     state: tauri::State<'_, Mutex<AppState>>,
 ) -> Result<Option<SelectedSource>, String> {
@@ -60,13 +65,13 @@ pub async fn get_sources(opts: Option<SourceListOptions>) -> Result<Vec<Selected
 
         let sidecar_path = crate::native::sidecar::get_sidecar_path("openscreen-window-list")?;
         let output = tokio::process::Command::new(&sidecar_path)
-                .arg("--thumbnail-width")
-                .arg(thumbnail_width.to_string())
-                .arg("--thumbnail-height")
-                .arg(thumbnail_height.to_string())
-                .output()
-                .await
-                .map_err(|e| e.to_string())?;
+            .arg("--thumbnail-width")
+            .arg(thumbnail_width.to_string())
+            .arg("--thumbnail-height")
+            .arg(thumbnail_height.to_string())
+            .output()
+            .await
+            .map_err(|e| e.to_string())?;
 
         if output.status.success() {
             let stdout = String::from_utf8_lossy(&output.stdout);
@@ -107,18 +112,15 @@ fn apply_source_filters(sources: &mut Vec<SelectedSource>, opts: Option<&SourceL
     }
 
     sources.retain(|source| {
-        let source_type = source
-            .source_type
-            .as_deref()
-            .or_else(|| {
-                if source.id.starts_with("window:") {
-                    Some("window")
-                } else if source.id.starts_with("screen:") {
-                    Some("screen")
-                } else {
-                    None
-                }
-            });
+        let source_type = source.source_type.as_deref().or_else(|| {
+            if source.id.starts_with("window:") {
+                Some("window")
+            } else if source.id.starts_with("screen:") {
+                Some("screen")
+            } else {
+                None
+            }
+        });
 
         source_type
             .map(|kind| types.iter().any(|allowed| allowed == kind))
@@ -139,4 +141,50 @@ fn fallback_sources() -> Vec<SelectedSource> {
         window_title: None,
         window_id: None,
     }]
+}
+
+#[cfg(target_os = "macos")]
+fn flash_selected_screen_impl(source: &SelectedSource) -> Result<(), String> {
+    let source_type = source.source_type.as_deref().unwrap_or_else(|| {
+        if source.id.starts_with("screen:") {
+            "screen"
+        } else {
+            ""
+        }
+    });
+
+    if source_type != "screen" {
+        return Ok(());
+    }
+
+    let Some(display_id) = source
+        .display_id
+        .clone()
+        .or_else(|| parse_display_id_from_source_id(&source.id))
+    else {
+        return Ok(());
+    };
+
+    let sidecar_path =
+        crate::native::sidecar::get_sidecar_path("openscreen-screen-selection-flash")?;
+
+    std::process::Command::new(sidecar_path)
+        .arg("--display-id")
+        .arg(display_id)
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| format!("Failed to flash selected screen: {}", error))
+}
+
+#[cfg(not(target_os = "macos"))]
+fn flash_selected_screen_impl(_source: &SelectedSource) -> Result<(), String> {
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn parse_display_id_from_source_id(source_id: &str) -> Option<String> {
+    source_id
+        .strip_prefix("screen:")
+        .and_then(|value| value.split(':').next())
+        .map(ToOwned::to_owned)
 }

@@ -69,6 +69,7 @@ pub fn run() {
             commands::settings::save_shortcuts,
             // Sources
             commands::sources::select_source,
+            commands::sources::flash_selected_screen,
             commands::sources::get_selected_source,
             commands::sources::get_sources,
             // Recording

@@ -111,6 +111,10 @@ export function selectSource(source: any): Promise<void> {
   return invoke('select_source', { source });
 }
 
+export function flashSelectedScreen(source: any): Promise<void> {
+  return invoke('flash_selected_screen', { source });
+}
+
 export function getSelectedSource(): Promise<any | null> {
   return invoke('get_selected_source');
 }

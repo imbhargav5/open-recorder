@@ -4,7 +4,7 @@ import { MdCheck } from "react-icons/md";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
 import { Card } from "../ui/card";
 import styles from "./SourceSelector.module.css";
-import { getSources, selectSource } from "@/lib/backend";
+import { flashSelectedScreen, getSources, selectSource } from "@/lib/backend";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
 interface DesktopSource {
@@ -114,7 +114,17 @@ export function SourceSelector() {
     }
   }, [loading, screenSources.length, windowSources.length]);
 
-  const handleSourceSelect = (source: DesktopSource) => setSelectedSource(source);
+  const handleSourceSelect = (source: DesktopSource) => {
+    setSelectedSource(source);
+
+    if (source.sourceType !== 'screen') {
+      return;
+    }
+
+    void flashSelectedScreen(source).catch((error) => {
+      console.warn('Unable to flash selected screen border:', error);
+    });
+  };
   const handleShare = async () => {
     if (selectedSource) await selectSource(selectedSource);
   };

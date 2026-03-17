@@ -62,6 +62,10 @@ if (process.platform === 'darwin') {
       source: 'NativeCursorMonitor.swift',
       output: 'openscreen-native-cursor-monitor',
     },
+    {
+      source: 'ScreenSelectionFlash.swift',
+      output: 'openscreen-screen-selection-flash',
+    },
   ];
 
   for (const helper of helpers) {

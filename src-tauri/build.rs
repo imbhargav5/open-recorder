@@ -26,6 +26,7 @@ fn compile_sidecars() {
         ("ScreenCaptureKitWindowList.swift", "openscreen-window-list"),
         ("SystemCursorAssets.swift", "openscreen-system-cursors"),
         ("NativeCursorMonitor.swift", "openscreen-native-cursor-monitor"),
+        ("ScreenSelectionFlash.swift", "openscreen-screen-selection-flash"),
     ];
 
     println!("cargo:rerun-if-changed={}", native_dir.display());
