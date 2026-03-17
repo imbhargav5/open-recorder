@@ -9,7 +9,6 @@ lerna-debug.log*
 
 node_modules
 dist
-dist-electron
 dist-ssr
 *.local
 
@@ -23,11 +22,11 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-release/**
 *.kiro/
-# npx electron-builder --mac --win
 .tmp/
 .history/
 
-# WGC native capture build artifacts
-electron/native/wgc-capture/build/
+# Tauri
+src-tauri/target/
+src-tauri/binaries/
+src-tauri/gen/
