@@ -13,6 +13,7 @@ import { Button } from "../ui/button";
 import { AudioLevelMeter } from "../ui/audio-level-meter";
 import { ContentClamp } from "../ui/content-clamp";
 import styles from "./LaunchWindow.module.css";
+import * as backend from "@/lib/backend";
 
 export function LaunchWindow() {
   const {
@@ -140,8 +141,8 @@ export function LaunchWindow() {
 
   useEffect(() => {
     const checkSelectedSource = async () => {
-      if (window.electronAPI) {
-        const source = await window.electronAPI.getSelectedSource();
+      try {
+        const source = await backend.getSelectedSource();
         if (source) {
           setSelectedSource(source.name);
           setHasSelectedSource(true);
@@ -149,6 +150,8 @@ export function LaunchWindow() {
           setSelectedSource("Screen");
           setHasSelectedSource(false);
         }
+      } catch {
+        // ignore
       }
     };
 
@@ -158,52 +161,44 @@ export function LaunchWindow() {
   }, []);
 
   const openSourceSelector = () => {
-    window.electronAPI?.openSourceSelector();
+    backend.openSourceSelector().catch(() => {});
   };
 
   const openVideoFile = async () => {
-    const result = await window.electronAPI.openVideoFilePicker();
-    if (result.canceled) {
-      return;
-    }
-
-    if (result.success && result.path) {
-      await window.electronAPI.setCurrentVideoPath(result.path);
-      await window.electronAPI.switchToEditor();
-    }
+    const path = await backend.openVideoFilePicker();
+    if (!path) return;
+    await backend.setCurrentVideoPath(path);
+    await backend.switchToEditor();
   };
 
   const openProjectFile = async () => {
-    const result = await window.electronAPI.loadProjectFile();
-    if (result.canceled || !result.success) {
-      return;
-    }
-    await window.electronAPI.switchToEditor();
+    const result = await backend.loadProjectFile();
+    if (!result) return;
+    await backend.switchToEditor();
   };
 
   const sendHudOverlayHide = () => {
-    window.electronAPI?.hudOverlayHide?.();
+    backend.hudOverlayHide().catch(() => {});
   };
 
   const sendHudOverlayClose = () => {
-    window.electronAPI?.hudOverlayClose?.();
+    backend.hudOverlayClose().catch(() => {});
   };
 
-  const chooseRecordingsDirectory = async () => {
-    const result = await window.electronAPI.chooseRecordingsDirectory();
-    if (result.canceled) {
-      return;
-    }
-    if (result.success && result.path) {
-      setRecordingsDirectory(result.path);
+  const chooseRecordingsDir = async () => {
+    const path = await backend.chooseRecordingsDirectory();
+    if (path) {
+      setRecordingsDirectory(path);
     }
   };
 
   useEffect(() => {
     const loadRecordingsDirectory = async () => {
-      const result = await window.electronAPI.getRecordingsDirectory();
-      if (result.success) {
-        setRecordingsDirectory(result.path);
+      try {
+        const dir = await backend.getRecordingsDirectory();
+        setRecordingsDirectory(dir);
+      } catch {
+        // ignore
       }
     };
 
@@ -371,7 +366,7 @@ export function LaunchWindow() {
           <Button
             variant="link"
             size="sm"
-            onClick={chooseRecordingsDirectory}
+            onClick={chooseRecordingsDir}
             disabled={recording}
             title={recordingsDirectory ? `Recording folder: ${recordingsDirectory}` : "Choose recordings folder"}
             className={`text-white/75 hover:bg-transparent px-1 text-[11px] underline decoration-white/45 underline-offset-2 ${styles.electronNoDrag}`}

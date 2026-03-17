@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { toast } from "sonner";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { FolderOpen } from "lucide-react";
+import * as backend from "@/lib/backend";
 
 import VideoPlayback, { VideoPlaybackRef } from "./VideoPlayback";
 import PlaybackControls from "./PlaybackControls";
@@ -417,37 +418,37 @@ export default function VideoEditor() {
   useEffect(() => {
     async function loadInitialData() {
       try {
-        const currentProjectResult = await window.electronAPI.loadCurrentProjectFile();
-        if (currentProjectResult.success && currentProjectResult.project) {
+        const currentProjectResult = await backend.loadCurrentProjectFile();
+        if (currentProjectResult?.data) {
           const restored = await applyLoadedProject(
-            currentProjectResult.project,
-            currentProjectResult.path ?? null,
+            currentProjectResult.data,
+            currentProjectResult.filePath ?? null,
           );
           if (restored) {
             return;
           }
         }
 
-        const result = await window.electronAPI.getCurrentVideoPath();
-        const sessionResult = await window.electronAPI.getCurrentRecordingSession();
-        if (sessionResult.success && sessionResult.session?.screenVideoPath) {
-          const sourcePath = fromFileUrl(sessionResult.session.screenVideoPath);
-          const nextFacecamPath = sessionResult.session.facecamVideoPath
-            ? fromFileUrl(sessionResult.session.facecamVideoPath)
+        const videoPathResult = await backend.getCurrentVideoPath();
+        const session = await backend.getCurrentRecordingSession();
+        if (session?.screenVideoPath) {
+          const sourcePath = fromFileUrl(session.screenVideoPath);
+          const nextFacecamPath = session.facecamVideoPath
+            ? fromFileUrl(session.facecamVideoPath)
             : null;
           setVideoSourcePath(sourcePath);
           setVideoPath(toFileUrl(sourcePath));
           setFacecamVideoPath(nextFacecamPath);
-          setFacecamOffsetMs(sessionResult.session.facecamOffsetMs ?? 0);
+          setFacecamOffsetMs(session.facecamOffsetMs ?? 0);
           setFacecamSettings(
-            normalizeFacecamSettings(sessionResult.session.facecamSettings, {
+            normalizeFacecamSettings(session.facecamSettings, {
               defaultEnabled: Boolean(nextFacecamPath),
             }),
           );
           setCurrentProjectPath(null);
           setLastSavedSnapshot(null);
-        } else if (result.success && result.path) {
-          const sourcePath = fromFileUrl(result.path);
+        } else if (videoPathResult) {
+          const sourcePath = fromFileUrl(videoPathResult);
           setVideoSourcePath(sourcePath);
           setVideoPath(toFileUrl(sourcePath));
           setFacecamVideoPath(null);
@@ -513,28 +514,21 @@ export default function VideoEditor() {
 
     const fileNameBase = sourcePath.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, '') || `project-${Date.now()}`;
     const projectSnapshot = JSON.stringify(projectData);
-    const result = await window.electronAPI.saveProjectFile(
-      projectData,
-      fileNameBase,
+    const savedPath = await backend.saveProjectFile(
+      JSON.stringify(projectData),
+      `${fileNameBase}.openrecorder`,
       forceSaveAs ? undefined : currentProjectPath ?? undefined,
     );
 
-    if (result.canceled) {
+    if (!savedPath) {
       toast.info("Project save canceled");
       return;
     }
 
-    if (!result.success) {
-      toast.error(result.message || 'Failed to save project');
-      return;
-    }
-
-    if (result.path) {
-      setCurrentProjectPath(result.path);
-    }
+    setCurrentProjectPath(savedPath);
     setLastSavedSnapshot(projectSnapshot);
 
-    toast.success(`Project saved to ${result.path}`);
+    toast.success(`Project saved to ${savedPath}`);
   }, [
     videoPath,
     videoSourcePath,
@@ -583,15 +577,16 @@ export default function VideoEditor() {
   }, [hasUnsavedChanges]);
 
   useEffect(() => {
-    window.electronAPI.setHasUnsavedChanges(hasUnsavedChanges);
+    backend.setHasUnsavedChanges(hasUnsavedChanges).catch(() => {});
   }, [hasUnsavedChanges]);
 
   useEffect(() => {
-    const cleanup = window.electronAPI.onRequestSaveBeforeClose(async () => {
+    let unlisten: (() => void) | undefined;
+    backend.onRequestSaveBeforeClose(async () => {
       await saveProject(false);
-    });
+    }).then((fn) => { unlisten = fn; });
 
-    return () => cleanup?.();
+    return () => unlisten?.();
   }, [saveProject]);
 
   const handleSaveProject = useCallback(async () => {
@@ -603,35 +598,34 @@ export default function VideoEditor() {
   }, [saveProject]);
 
   const handleLoadProject = useCallback(async () => {
-    const result = await window.electronAPI.loadProjectFile();
+    const result = await backend.loadProjectFile();
 
-    if (result.canceled) {
+    if (!result) {
       return;
     }
 
-    if (!result.success) {
-      toast.error(result.message || 'Failed to load project');
-      return;
-    }
-
-    const restored = await applyLoadedProject(result.project, result.path ?? null);
+    const restored = await applyLoadedProject(result.data, result.filePath ?? null);
     if (!restored) {
       toast.error('Invalid project file format');
       return;
     }
 
-    toast.success(`Project loaded from ${result.path}`);
+    toast.success(`Project loaded from ${result.filePath}`);
   }, [applyLoadedProject]);
 
   useEffect(() => {
-    const removeLoadListener = window.electronAPI.onMenuLoadProject(handleLoadProject);
-    const removeSaveListener = window.electronAPI.onMenuSaveProject(handleSaveProject);
-    const removeSaveAsListener = window.electronAPI.onMenuSaveProjectAs(handleSaveProjectAs);
+    let unlistenLoad: (() => void) | undefined;
+    let unlistenSave: (() => void) | undefined;
+    let unlistenSaveAs: (() => void) | undefined;
+
+    backend.onMenuLoadProject(handleLoadProject).then((fn) => { unlistenLoad = fn; });
+    backend.onMenuSaveProject(handleSaveProject).then((fn) => { unlistenSave = fn; });
+    backend.onMenuSaveProjectAs(handleSaveProjectAs).then((fn) => { unlistenSaveAs = fn; });
 
     return () => {
-      removeLoadListener?.();
-      removeSaveListener?.();
-      removeSaveAsListener?.();
+      unlistenLoad?.();
+      unlistenSave?.();
+      unlistenSaveAs?.();
     };
   }, [handleLoadProject, handleSaveProject, handleSaveProjectAs]);
 
@@ -647,9 +641,9 @@ export default function VideoEditor() {
       }
 
       try {
-        const result = await window.electronAPI.getCursorTelemetry(fromFileUrl(videoPath));
+        const result = await backend.getCursorTelemetry(fromFileUrl(videoPath));
         if (mounted) {
-          setCursorTelemetry(result.success ? result.samples : []);
+          setCursorTelemetry(result?.samples ?? []);
         }
       } catch (telemetryError) {
         console.warn('Unable to load cursor telemetry:', telemetryError);
@@ -1242,11 +1236,7 @@ export default function VideoEditor() {
         label: 'Show in Folder',
         onClick: async () => {
           try {
-            const result = await window.electronAPI.revealInFolder(filePath);
-            if (!result.success) {
-              const errorMessage = result.error || result.message || 'Failed to reveal item in folder.';
-              toast.error(errorMessage);
-            }
+            await backend.revealInFolder(filePath);
           } catch (err) {
             toast.error(`Error revealing in folder: ${String(err)}`);
           }
@@ -1437,20 +1427,17 @@ export default function VideoEditor() {
           const timestamp = Date.now();
           const fileName = `export-${timestamp}.gif`;
 
-          const saveResult = await window.electronAPI.saveExportedVideo(arrayBuffer, fileName);
+          const savePath = await backend.saveExportedVideo(new Uint8Array(arrayBuffer), fileName);
 
-          if (saveResult.canceled) {
+          if (!savePath) {
             pendingExportSaveRef.current = { arrayBuffer, fileName };
             setHasPendingExportSave(true);
             setExportError('Save dialog canceled. Click Save Again to save without re-rendering.');
             toast.info('Save canceled. You can save again without re-exporting.');
             keepExportDialogOpen = true;
-          } else if (saveResult.success && saveResult.path) {
-            showExportSuccessToast(saveResult.path);
-            setExportedFilePath(saveResult.path);
           } else {
-            setExportError(saveResult.message || 'Failed to save GIF');
-            toast.error(saveResult.message || 'Failed to save GIF');
+            showExportSuccessToast(savePath);
+            setExportedFilePath(savePath);
           }
         } else {
           setExportError(result.error || 'GIF export failed');
@@ -1581,20 +1568,17 @@ export default function VideoEditor() {
           const timestamp = Date.now();
           const fileName = `export-${timestamp}.mp4`;
 
-          const saveResult = await window.electronAPI.saveExportedVideo(arrayBuffer, fileName);
+          const savePath = await backend.saveExportedVideo(new Uint8Array(arrayBuffer), fileName);
 
-          if (saveResult.canceled) {
+          if (!savePath) {
             pendingExportSaveRef.current = { arrayBuffer, fileName };
             setHasPendingExportSave(true);
             setExportError('Save dialog canceled. Click Save Again to save without re-rendering.');
             toast.info('Save canceled. You can save again without re-exporting.');
             keepExportDialogOpen = true;
-          } else if (saveResult.success && saveResult.path) {
-            showExportSuccessToast(saveResult.path);
-            setExportedFilePath(saveResult.path);
           } else {
-            setExportError(saveResult.message || 'Failed to save video');
-            toast.error(saveResult.message || 'Failed to save video');
+            showExportSuccessToast(savePath);
+            setExportedFilePath(savePath);
           }
         } else {
           setExportError(result.error || 'Export failed');
@@ -1684,35 +1668,25 @@ export default function VideoEditor() {
       return;
     }
 
-    const saveResult = await window.electronAPI.saveExportedVideo(pendingSave.arrayBuffer, pendingSave.fileName);
+    const savePath = await backend.saveExportedVideo(new Uint8Array(pendingSave.arrayBuffer), pendingSave.fileName);
 
-    if (saveResult.canceled) {
+    if (!savePath) {
       setExportError('Save dialog canceled. Click Save Again to save without re-rendering.');
       toast.info('Save canceled. You can try again.');
       return;
     }
 
-    if (saveResult.success && saveResult.path) {
-      pendingExportSaveRef.current = null;
-      setHasPendingExportSave(false);
-      setExportError(null);
-      setExportedFilePath(saveResult.path);
-      showExportSuccessToast(saveResult.path);
-      setShowExportDialog(false);
-      return;
-    }
-
-    const errorMessage = saveResult.message || 'Failed to save video';
-    setExportError(errorMessage);
-    toast.error(errorMessage);
+    pendingExportSaveRef.current = null;
+    setHasPendingExportSave(false);
+    setExportError(null);
+    setExportedFilePath(savePath);
+    showExportSuccessToast(savePath);
+    setShowExportDialog(false);
   }, [showExportSuccessToast]);
 
   const openRecordingsFolder = useCallback(async () => {
     try {
-      const result = await window.electronAPI.openRecordingsFolder();
-      if (!result.success) {
-        toast.error(result.message || result.error || 'Failed to open recordings folder.');
-      }
+      await backend.openRecordingsFolder();
     } catch (error) {
       toast.error(`Failed to open recordings folder: ${String(error)}`);
     }

@@ -1,9 +1,10 @@
 import { spawnSync } from 'node:child_process';
 import { chmod, mkdir } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 
 const projectRoot = process.cwd();
-const nativeRoot = path.join(projectRoot, 'electron', 'native');
+const nativeRoot = path.join(projectRoot, 'src-tauri', 'native');
 
 if (process.platform !== 'darwin') {
   console.log('[build-native-helpers] Skipping: host platform is not macOS.');
@@ -44,6 +45,11 @@ for (const helper of helpers) {
   const sourcePath = path.join(nativeRoot, helper.source);
   const outputPath = path.join(outputDir, helper.output);
 
+  if (!existsSync(sourcePath)) {
+    console.warn(`[build-native-helpers] Source not found: ${sourcePath}, skipping.`);
+    continue;
+  }
+
   const result = spawnSync('swiftc', ['-O', sourcePath, '-o', outputPath], {
     encoding: 'utf8',
     timeout: 120000,
@@ -57,4 +63,3 @@ for (const helper of helpers) {
   await chmod(outputPath, 0o755);
   console.log(`[build-native-helpers] Built ${helper.output} -> ${outputPath}`);
 }
-

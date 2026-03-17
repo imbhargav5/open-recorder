@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { DEFAULT_SHORTCUTS, mergeWithDefaults, type ShortcutsConfig } from '@/lib/shortcuts';
 import { isMac as getIsMac } from '@/utils/platformUtils';
+import { getShortcuts as backendGetShortcuts, saveShortcuts as backendSaveShortcuts } from '@/lib/backend';
 
 interface ShortcutsContextValue {
   shortcuts: ShortcutsConfig;
@@ -28,7 +29,7 @@ export function ShortcutsProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     getIsMac().then(setIsMac).catch(() => {});
 
-    window.electronAPI.getShortcuts?.()
+    backendGetShortcuts()
       .then((saved) => {
         if (saved) {
           setShortcuts(mergeWithDefaults(saved as Partial<ShortcutsConfig>));
@@ -39,7 +40,7 @@ export function ShortcutsProvider({ children }: { children: ReactNode }) {
 
   const persistShortcuts = useCallback(
     async (config?: ShortcutsConfig) => {
-      await window.electronAPI.saveShortcuts?.(config ?? shortcuts);
+      await backendSaveShortcuts(config ?? shortcuts);
     },
     [shortcuts],
   );

@@ -1,5 +1,6 @@
 import { WebDemuxer } from 'web-demuxer';
 import type { TrimRegion, SpeedRegion } from '@/components/video-editor/types';
+import { readLocalFile } from '@/lib/backend';
 
 export interface DecodedVideoInfo {
   width: number;
@@ -71,12 +72,8 @@ export class StreamingVideoDecoder {
     const localFilePath = this.toLocalFilePath(resourceUrl);
 
     if (localFilePath) {
-      const result = await window.electronAPI.readLocalFile(localFilePath);
-      if (!result.success || !result.data) {
-        throw new Error(result.error || 'Failed to read local video file');
-      }
-
-      const bytes = result.data instanceof Uint8Array ? result.data : new Uint8Array(result.data);
+      const data = await readLocalFile(localFilePath);
+      const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
       const arrayBuffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
       return new File([arrayBuffer], filename, { type: this.inferMimeType(filename) });
     }

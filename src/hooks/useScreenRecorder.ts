@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { fixWebmDuration } from "@fix-webm-duration/fix";
 import { createDefaultFacecamSettings, type RecordingSession } from "@/lib/recordingSession";
+import * as backend from "@/lib/backend";
 
 const TARGET_FRAME_RATE = 60;
 const TARGET_WIDTH = 3840;
@@ -37,10 +38,6 @@ type FacecamCaptureResult = {
   path: string;
   offsetMs: number;
 } | null;
-
-function shouldFallbackFromNativeMacCapture(result: { success: boolean; message?: string | null }) {
-  return !result.success && result.message === MAC_NATIVE_CAPTURE_START_FAILURE;
-}
 
 type UseScreenRecorderReturn = {
   recording: boolean;
@@ -89,24 +86,24 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
   const recordingSessionId = useRef<string>("");
 
   const preparePermissions = useCallback(async (options: { startup?: boolean } = {}) => {
-    const platform = await window.electronAPI.getPlatform();
+    const platform = await backend.getPlatform();
     if (platform !== "darwin") {
       return true;
     }
 
-    const screenPermission = await window.electronAPI.getScreenRecordingPermissionStatus();
-    if (!screenPermission.success || screenPermission.status !== "granted") {
-      const requestedScreenPermission = await window.electronAPI.requestScreenRecordingPermission();
-      if (requestedScreenPermission.success && requestedScreenPermission.status === "granted") {
+    const screenStatus = await backend.getScreenRecordingPermissionStatus();
+    if (screenStatus !== "granted") {
+      const granted = await backend.requestScreenRecordingPermission();
+      if (granted) {
         return true;
       }
 
-      const refreshedScreenPermission = await window.electronAPI.getScreenRecordingPermissionStatus();
-      if (refreshedScreenPermission.success && refreshedScreenPermission.status === "granted") {
+      const refreshedStatus = await backend.getScreenRecordingPermissionStatus();
+      if (refreshedStatus === "granted") {
         return true;
       }
 
-      await window.electronAPI.openScreenRecordingPreferences();
+      await backend.openScreenRecordingPreferences();
       alert(
         options.startup
           ? "Open Recorder needs Screen Recording permission before you start. System Settings has been opened. After enabling it, quit and reopen Open Recorder."
@@ -115,28 +112,24 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
       return false;
     }
 
-    const accessibilityPermission = await window.electronAPI.getAccessibilityPermissionStatus();
-    if (!accessibilityPermission.success) {
+    const accessibilityStatus = await backend.getAccessibilityPermissionStatus();
+    if (accessibilityStatus !== "granted") {
+      const granted = await backend.requestAccessibilityPermission();
+      if (granted) {
+        return true;
+      }
+
+      await backend.openAccessibilityPreferences();
+      alert(
+        options.startup
+          ? "Open Recorder also needs Accessibility permission for cursor tracking. System Settings has been opened. After enabling it, quit and reopen Open Recorder."
+          : "Accessibility permission is still missing. System Settings has been opened again. Enable it, then quit and reopen Open Recorder before recording.",
+      );
+
       return false;
     }
 
-    if (accessibilityPermission.trusted) {
-      return true;
-    }
-
-    const requestedAccessibility = await window.electronAPI.requestAccessibilityPermission();
-    if (requestedAccessibility.success && requestedAccessibility.trusted) {
-      return true;
-    }
-
-    await window.electronAPI.openAccessibilityPreferences();
-    alert(
-      options.startup
-        ? "Open Recorder also needs Accessibility permission for cursor tracking. System Settings has been opened. After enabling it, quit and reopen Open Recorder."
-        : "Accessibility permission is still missing. System Settings has been opened again. Enable it, then quit and reopen Open Recorder before recording.",
-    );
-
-    return false;
+    return true;
   }, []);
 
   const selectMimeType = () => {
@@ -303,17 +296,17 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
             const fixedBlob = await fixWebmDuration(buggyBlob, duration);
             const arrayBuffer = await fixedBlob.arrayBuffer();
             const fileName = `${RECORDING_FILE_PREFIX}${sessionId}${FACECAM_FILE_SUFFIX}`;
-            const result = await window.electronAPI.storeRecordingAsset(arrayBuffer, fileName);
+            const storedPath = await backend.storeRecordingAsset(new Uint8Array(arrayBuffer), fileName);
 
-            if (!result.success || !result.path) {
-              console.error("Failed to store facecam recording:", result.error ?? result.message);
+            if (!storedPath) {
+              console.error("Failed to store facecam recording");
               settle(null);
               return;
             }
 
             const screenStartedAt = screenRecordingStartedAt.current ?? startedAt;
             settle({
-              path: result.path,
+              path: storedPath,
               offsetMs: Math.round(startedAt - screenStartedAt),
             });
           } catch (error) {
@@ -338,29 +331,33 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
         wgcRecording.current = false;
         const facecamResultPromise = stopFacecamCapture();
 
-        const result = await window.electronAPI.stopNativeScreenRecording();
-        await window.electronAPI.setRecordingState(false);
+        const stoppedPath = await backend.stopNativeScreenRecording();
+        await backend.setRecordingState(false);
 
-        if (!result.success || !result.path) {
-          console.error("Failed to stop native screen recording:", result.error ?? result.message);
+        if (!stoppedPath) {
+          console.error("Failed to stop native screen recording");
           cleanupCapturedMedia();
           await facecamResultPromise.catch(() => null);
           return;
         }
 
-        let finalPath = result.path;
+        let finalPath = stoppedPath;
 
         if (isWgc) {
-          const muxResult = await window.electronAPI.muxWgcRecording();
-          finalPath = muxResult?.path ?? result.path;
+          try {
+            const muxPath = await backend.muxWgcRecording();
+            finalPath = muxPath ?? stoppedPath;
+          } catch {
+            // use original path
+          }
         }
 
         const facecamResult = await facecamResultPromise;
-        await window.electronAPI.setCurrentRecordingSession(
+        await backend.setCurrentRecordingSession(
           buildRecordingSession(finalPath, facecamResult),
         );
         cleanupCapturedMedia();
-        await window.electronAPI.switchToEditor();
+        await backend.switchToEditor();
       })();
       return;
     }
@@ -370,53 +367,45 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
       cleanupCapturedMedia();
       mediaRecorder.current.stop();
       setRecording(false);
-      void window.electronAPI.setRecordingState(false);
+      void backend.setRecordingState(false);
     }
   }, [buildRecordingSession, cleanupCapturedMedia, stopFacecamCapture]);
 
   useEffect(() => {
     void (async () => {
-      const platform = await window.electronAPI.getPlatform();
+      const platform = await backend.getPlatform();
       setIsMacOS(platform === "darwin");
     })();
   }, []);
 
   useEffect(() => {
-    let cleanup: (() => void) | undefined;
+    let unlistenTray: (() => void) | undefined;
+    let unlistenState: (() => void) | undefined;
+    let unlistenInterrupted: (() => void) | undefined;
 
-    if (window.electronAPI?.onStopRecordingFromTray) {
-      cleanup = window.electronAPI.onStopRecordingFromTray(() => {
-        stopRecording();
-      });
-    }
+    backend.onStopRecordingFromTray(() => {
+      stopRecording();
+    }).then((fn) => { unlistenTray = fn; });
 
-    const removeRecordingStateListener = window.electronAPI?.onRecordingStateChanged?.((state) => {
-      setRecording(state.recording);
-    });
+    backend.onRecordingStateChanged((isRecording) => {
+      setRecording(isRecording);
+    }).then((fn) => { unlistenState = fn; });
 
-    const removeRecordingInterruptedListener = window.electronAPI?.onRecordingInterrupted?.((state) => {
+    backend.onRecordingInterrupted(() => {
       setRecording(false);
       nativeScreenRecording.current = false;
       cleanupCapturedMedia();
-      void window.electronAPI.setRecordingState(false);
-
-      if (state.reason === "window-unavailable" && !hasPromptedForReselect.current) {
-        hasPromptedForReselect.current = true;
-        alert(state.message);
-        void window.electronAPI.openSourceSelector();
-      } else {
-        console.error(state.message);
-      }
-    });
+      void backend.setRecordingState(false);
+    }).then((fn) => { unlistenInterrupted = fn; });
 
     return () => {
-      cleanup?.();
-      removeRecordingStateListener?.();
-      removeRecordingInterruptedListener?.();
+      unlistenTray?.();
+      unlistenState?.();
+      unlistenInterrupted?.();
 
       if (nativeScreenRecording.current) {
         nativeScreenRecording.current = false;
-        void window.electronAPI.stopNativeScreenRecording();
+        void backend.stopNativeScreenRecording();
       }
 
       if (mediaRecorder.current?.state === "recording") {
@@ -445,7 +434,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
     screenRecordingStartedAt.current = null;
 
     try {
-      const selectedSource = await window.electronAPI.getSelectedSource();
+      const selectedSource = await backend.getSelectedSource();
       if (!selectedSource) {
         alert("Please select a source to record");
         return;
@@ -456,21 +445,18 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
         return;
       }
 
-      const platform = await window.electronAPI.getPlatform();
+      const platform = await backend.getPlatform();
       const useNativeMacScreenCapture =
         platform === "darwin" &&
-        (selectedSource.id?.startsWith("screen:") || selectedSource.id?.startsWith("window:")) &&
-        typeof window.electronAPI.startNativeScreenRecording === "function";
+        (selectedSource.id?.startsWith("screen:") || selectedSource.id?.startsWith("window:"));
 
       let useWgcCapture = false;
       if (
         platform === "win32" &&
-        (selectedSource.id?.startsWith("screen:") || selectedSource.id?.startsWith("window:")) &&
-        typeof window.electronAPI.isWgcAvailable === "function"
+        (selectedSource.id?.startsWith("screen:") || selectedSource.id?.startsWith("window:"))
       ) {
         try {
-          const wgcResult = await window.electronAPI.isWgcAvailable();
-          useWgcCapture = wgcResult.available;
+          useWgcCapture = await backend.isWgcAvailable();
         } catch {
           useWgcCapture = false;
         }
@@ -489,35 +475,34 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
           }
         }
 
-        const nativeResult = await window.electronAPI.startNativeScreenRecording(selectedSource, {
-          capturesSystemAudio: systemAudioEnabled,
-          capturesMicrophone: microphoneEnabled,
-          microphoneDeviceId,
-          microphoneLabel: micLabel,
-        });
-        if (!nativeResult.success) {
+        let nativeStarted = false;
+        try {
+          await backend.startNativeScreenRecording(selectedSource, {
+            capturesSystemAudio: systemAudioEnabled,
+            capturesMicrophone: microphoneEnabled,
+            microphoneDeviceId,
+            microphoneLabel: micLabel,
+          });
+          nativeStarted = true;
+        } catch (nativeError) {
+          const errMsg = nativeError instanceof Error ? nativeError.message : String(nativeError);
           if (useWgcCapture) {
-            console.warn("WGC capture failed, falling back to browser capture:", nativeResult.error ?? nativeResult.message);
-          } else if (shouldFallbackFromNativeMacCapture(nativeResult)) {
-            console.warn(
-              "Native macOS capture failed, falling back to browser capture:",
-              nativeResult.error ?? nativeResult.message,
-            );
+            console.warn("WGC capture failed, falling back to browser capture:", errMsg);
+          } else if (errMsg === MAC_NATIVE_CAPTURE_START_FAILURE) {
+            console.warn("Native macOS capture failed, falling back to browser capture:", errMsg);
           } else {
-            throw new Error(
-              nativeResult.error ?? nativeResult.message ?? "Failed to start native screen recording",
-            );
+            throw new Error(errMsg || "Failed to start native screen recording");
           }
         }
 
-        if (nativeResult.success) {
+        if (nativeStarted) {
           await startFacecamCapture(recordingSessionId.current);
           nativeScreenRecording.current = true;
           wgcRecording.current = useWgcCapture;
           startTime.current = Date.now();
           screenRecordingStartedAt.current = startTime.current;
           setRecording(true);
-          await window.electronAPI.setRecordingState(true);
+          await backend.setRecordingState(true);
           return;
         }
       }
@@ -525,7 +510,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
       const wantsAudioCapture = microphoneEnabled || systemAudioEnabled;
 
       try {
-        await window.electronAPI.hideOsCursor?.();
+        await backend.hideCursor();
       } catch {
         console.warn("Could not hide OS cursor before recording.");
       }
@@ -721,9 +706,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
         try {
           const videoBlob = await fixWebmDuration(buggyBlob, duration);
           const arrayBuffer = await videoBlob.arrayBuffer();
-          const videoResult = await window.electronAPI.storeRecordedVideo(arrayBuffer, videoFileName);
-          if (!videoResult.success || !videoResult.path) {
-            console.error("Failed to store video:", videoResult.message);
+          const storedPath = await backend.storeRecordedVideo(new Uint8Array(arrayBuffer), videoFileName);
+          if (!storedPath) {
+            console.error("Failed to store video");
             return;
           }
 
@@ -732,10 +717,10 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
             : null;
           pendingFacecamResult.current = null;
 
-          await window.electronAPI.setCurrentRecordingSession(
-            buildRecordingSession(videoResult.path, facecamResult),
+          await backend.setCurrentRecordingSession(
+            buildRecordingSession(storedPath, facecamResult),
           );
-          await window.electronAPI.switchToEditor();
+          await backend.switchToEditor();
         } catch (error) {
           console.error("Error saving recording:", error);
         }
@@ -746,7 +731,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
       startTime.current = Date.now();
       screenRecordingStartedAt.current = startTime.current;
       setRecording(true);
-      await window.electronAPI.setRecordingState(true);
+      await backend.setRecordingState(true);
     } catch (error) {
       console.error("Failed to start recording:", error);
       alert(error instanceof Error ? `Failed to start recording: ${error.message}` : "Failed to start recording");

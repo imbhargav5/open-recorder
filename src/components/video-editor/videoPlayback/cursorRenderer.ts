@@ -3,6 +3,7 @@ import { MotionBlurFilter } from 'pixi-filters/motion-blur';
 import type { CursorTelemetryPoint } from '../types';
 import { createSpringState, getCursorSpringConfig, resetSpringState, stepSpringValue } from './motionSmoothing';
 import { uploadedCursorAssets, UPLOADED_CURSOR_SAMPLE_SIZE } from './uploadedCursorAssets';
+import { getSystemCursorAssets } from '@/lib/backend';
 
 type CursorAssetKey = NonNullable<CursorTelemetryPoint['cursorType']>;
 
@@ -173,9 +174,11 @@ export async function preloadCursorAssets() {
       let systemCursors: Record<string, SystemCursorAsset> = {};
 
       try {
-        const result = await window.electronAPI.getSystemCursorAssets();
-        if (result.success && result.cursors) {
+        const result = await getSystemCursorAssets();
+        if (result && result.cursors) {
           systemCursors = result.cursors;
+        } else if (result && typeof result === 'object') {
+          systemCursors = result as Record<string, SystemCursorAsset>;
         }
       } catch (error) {
         console.warn('[CursorRenderer] Failed to fetch system cursor assets:', error);

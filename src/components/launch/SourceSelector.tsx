@@ -4,6 +4,8 @@ import { MdCheck } from "react-icons/md";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
 import { Card } from "../ui/card";
 import styles from "./SourceSelector.module.css";
+import { getSources, selectSource } from "@/lib/backend";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 
 interface DesktopSource {
   id: string;
@@ -15,19 +17,22 @@ interface DesktopSource {
   sourceType: 'screen' | 'window';
   appName?: string;
   windowTitle?: string;
+  windowId?: number;
 }
 
 function parseSourceMetadata(source: ProcessedDesktopSource) {
-  if (source.sourceType === 'window' && (source.appName || source.windowTitle)) {
+  const sourceType: 'screen' | 'window' =
+    source.sourceType ?? (source.id.startsWith('window:') ? 'window' : 'screen');
+
+  if (sourceType === 'window' && (source.appName || source.windowTitle)) {
     return {
-      sourceType: 'window' as const,
+      sourceType,
       appName: source.appName,
       windowTitle: source.windowTitle ?? source.name,
       displayName: source.windowTitle ?? source.name,
     };
   }
 
-  const sourceType: 'screen' | 'window' = source.id.startsWith('window:') ? 'window' : 'screen';
   if (sourceType === 'window') {
     const [appNamePart, ...windowTitleParts] = source.name.split(' — ');
     const appName = appNamePart?.trim() || undefined;
@@ -59,7 +64,7 @@ export function SourceSelector() {
     async function fetchSources() {
       setLoading(true);
       try {
-        const rawSources = await window.electronAPI.getSources({
+        const rawSources = await getSources({
           types: ['screen', 'window'],
           thumbnailSize: { width: 320, height: 180 },
           fetchWindowIcons: true
@@ -72,12 +77,13 @@ export function SourceSelector() {
               id: source.id,
               name: metadata.displayName,
               thumbnail: source.thumbnail,
-              display_id: source.display_id,
+              display_id: source.display_id ?? source.displayId ?? '',
               appIcon: source.appIcon,
               originalName: source.name,
               sourceType: metadata.sourceType,
               appName: metadata.appName,
               windowTitle: metadata.windowTitle,
+              windowId: source.windowId,
             };
           })
         );
@@ -90,8 +96,8 @@ export function SourceSelector() {
     fetchSources();
   }, []);
 
-  const screenSources = sources.filter(s => s.id.startsWith('screen:'));
-  const windowSources = sources.filter(s => s.id.startsWith('window:'));
+  const screenSources = sources.filter(s => s.sourceType === 'screen');
+  const windowSources = sources.filter(s => s.sourceType === 'window');
 
   useEffect(() => {
     if (loading) {
@@ -110,7 +116,7 @@ export function SourceSelector() {
 
   const handleSourceSelect = (source: DesktopSource) => setSelectedSource(source);
   const handleShare = async () => {
-    if (selectedSource) await window.electronAPI.selectSource(selectedSource);
+    if (selectedSource) await selectSource(selectedSource);
   };
 
   if (loading) {
@@ -151,11 +157,18 @@ export function SourceSelector() {
                   >
                     <div className="p-1">
                       <div className="relative mb-1">
-                        <img
-                          src={source.thumbnail || ''}
-                          alt={source.name}
-                          className="w-full aspect-video object-cover rounded border border-zinc-800"
-                        />
+                        {source.thumbnail ? (
+                          <img
+                            src={source.thumbnail}
+                            alt={source.name}
+                            className="w-full aspect-video object-cover rounded border border-zinc-800"
+                          />
+                        ) : (
+                          <div className="w-full aspect-video rounded border border-zinc-800 bg-zinc-900/80 flex flex-col items-center justify-center text-zinc-400 gap-2">
+                            <div className="w-8 h-8 rounded-md bg-zinc-800 border border-zinc-700" />
+                            <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">Display</div>
+                          </div>
+                        )}
                         {selectedSource?.id === source.id && (
                           <div className="absolute -top-1 -right-1">
                             <div className="w-4 h-4 bg-[#2563EB] rounded-full flex items-center justify-center shadow-md">
@@ -233,11 +246,10 @@ export function SourceSelector() {
       </div>
       <div className="border-t border-zinc-800 p-2 w-full max-w-xl">
         <div className="flex justify-center gap-2">
-          <Button variant="outline" onClick={() => window.close()} className="px-4 py-1 text-xs bg-zinc-800 border-zinc-700 text-zinc-200 hover:bg-zinc-700">Cancel</Button>
+          <Button variant="outline" onClick={() => getCurrentWindow().close()} className="px-4 py-1 text-xs bg-zinc-800 border-zinc-700 text-zinc-200 hover:bg-zinc-700">Cancel</Button>
           <Button onClick={handleShare} disabled={!selectedSource} className="px-4 py-1 text-xs bg-[#2563EB] text-white hover:bg-[#2563EB]/80 disabled:opacity-50 disabled:bg-zinc-700">Share</Button>
         </div>
       </div>
     </div>
   );
 }
-

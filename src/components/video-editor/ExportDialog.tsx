@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { X, Download, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { ExportProgress } from '@/lib/exporter';
-import { toast } from 'sonner'; // Add this import
+import { toast } from 'sonner';
+import { revealInFolder } from '@/lib/backend';
 
 
 interface ExportDialogProps {
@@ -88,15 +89,10 @@ export function ExportDialog({
   const handleClickShowInFolder = async () => {
     if (exportedFilePath) {
       try {
-        const result = await window.electronAPI.revealInFolder(exportedFilePath);
-        if (!result.success) {
-          const errorMessage = result.error || result.message || 'Failed to reveal item in folder.';
-          console.error('Failed to reveal in folder:', errorMessage);
-          toast.error(errorMessage);
-        }
+        await revealInFolder(exportedFilePath);
       } catch (err) {
         const errorMessage = String(err);
-        console.error('Error calling revealInFolder IPC:', errorMessage);
+        console.error('Error calling revealInFolder:', errorMessage);
         toast.error(`Error revealing in folder: ${errorMessage}`);
       }
     }
