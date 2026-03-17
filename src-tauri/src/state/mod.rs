@@ -60,6 +60,7 @@ pub struct ShortcutConfig {
 
 pub struct AppState {
     pub selected_source: Option<SelectedSource>,
+    pub cached_sources: Vec<SelectedSource>,
     pub current_video_path: Option<String>,
     pub current_recording_session: Option<RecordingSession>,
     pub current_project_path: Option<String>,
@@ -76,6 +77,7 @@ impl Default for AppState {
     fn default() -> Self {
         Self {
             selected_source: None,
+            cached_sources: Vec::new(),
             current_video_path: None,
             current_recording_session: None,
             current_project_path: None,

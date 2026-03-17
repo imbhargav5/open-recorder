@@ -1,47 +1,45 @@
 use tauri::AppHandle;
 
+#[cfg(target_os = "macos")]
+#[link(name = "CoreGraphics", kind = "framework")]
+unsafe extern "C" {
+    fn CGPreflightScreenCaptureAccess() -> bool;
+    fn CGRequestScreenCaptureAccess() -> bool;
+}
+
+#[cfg(target_os = "macos")]
+fn run_on_main_thread<R: Send + 'static>(
+    app: &AppHandle,
+    callback: impl FnOnce() -> R + Send + 'static,
+) -> Result<R, String> {
+    let (tx, rx) = std::sync::mpsc::sync_channel(1);
+
+    app.run_on_main_thread(move || {
+        let _ = tx.send(callback());
+    })
+    .map_err(|e| e.to_string())?;
+
+    rx.recv().map_err(|e| e.to_string())
+}
+
+#[cfg(target_os = "macos")]
+fn preflight_screen_capture_access() -> bool {
+    unsafe { CGPreflightScreenCaptureAccess() }
+}
+
+#[cfg(target_os = "macos")]
+fn request_screen_capture_access() -> bool {
+    unsafe { CGRequestScreenCaptureAccess() }
+}
+
 #[tauri::command]
 pub async fn get_screen_recording_permission_status(
-    _app: AppHandle,
+    app: AppHandle,
 ) -> Result<String, String> {
     #[cfg(target_os = "macos")]
     {
-        let exe_path = std::env::current_exe().map_err(|e| e.to_string())?;
-        let bin_dir = exe_path.parent().ok_or("Cannot find binary directory")?;
-
-        let triple = if cfg!(target_arch = "aarch64") {
-            "aarch64-apple-darwin"
-        } else {
-            "x86_64-apple-darwin"
-        };
-
-        let sidecar_name = format!("openscreen-screencapturekit-helper-{}", triple);
-        let sidecar_path = bin_dir.join(&sidecar_name);
-
-        if sidecar_path.exists() {
-            let output = tokio::process::Command::new(&sidecar_path)
-                .arg("--preflight-screen-capture-access")
-                .output()
-                .await
-                .map_err(|e| e.to_string())?;
-
-            let status = String::from_utf8_lossy(&output.stdout).trim().to_lowercase();
-            if status == "granted" {
-                return Ok("granted".to_string());
-            }
-            if status == "denied" {
-                return Ok("denied".to_string());
-            }
-
-            if output.status.success() {
-                return Ok("unknown".to_string());
-            }
-
-            return Ok("denied".to_string());
-        }
-
-        // Fallback: assume we need to check
-        Ok("unknown".to_string())
+        let granted = run_on_main_thread(&app, preflight_screen_capture_access)?;
+        Ok(if granted { "granted" } else { "denied" }.to_string())
     }
 
     #[cfg(not(target_os = "macos"))]
@@ -52,34 +50,11 @@ pub async fn get_screen_recording_permission_status(
 
 #[tauri::command]
 pub async fn request_screen_recording_permission(
-    _app: AppHandle,
+    app: AppHandle,
 ) -> Result<bool, String> {
     #[cfg(target_os = "macos")]
     {
-        let exe_path = std::env::current_exe().map_err(|e| e.to_string())?;
-        let bin_dir = exe_path.parent().ok_or("Cannot find binary directory")?;
-
-        let triple = if cfg!(target_arch = "aarch64") {
-            "aarch64-apple-darwin"
-        } else {
-            "x86_64-apple-darwin"
-        };
-
-        let sidecar_name = format!("openscreen-screencapturekit-helper-{}", triple);
-        let sidecar_path = bin_dir.join(&sidecar_name);
-
-        if sidecar_path.exists() {
-            let output = tokio::process::Command::new(&sidecar_path)
-                .arg("--request-screen-capture-access")
-                .output()
-                .await
-                .map_err(|e| e.to_string())?;
-
-            let status = String::from_utf8_lossy(&output.stdout).trim().to_lowercase();
-            return Ok(status == "granted");
-        }
-
-        Ok(false)
+        run_on_main_thread(&app, request_screen_capture_access)
     }
 
     #[cfg(not(target_os = "macos"))]

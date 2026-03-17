@@ -184,6 +184,10 @@ func parseThumbnailSize(arguments: [String]) -> ThumbnailSize {
 	return ThumbnailSize(width: width, height: height)
 }
 
+func shouldSkipThumbnails(arguments: [String]) -> Bool {
+	arguments.contains("--no-thumbnails")
+}
+
 let excludedBundleIds: Set<String> = [
 	"com.apple.controlcenter",
 	"com.apple.dock",
@@ -209,7 +213,9 @@ let ownBundleIds: Set<String> = [
 ]
 
 let _ = CGMainDisplayID()
-let thumbnailSize = parseThumbnailSize(arguments: Array(CommandLine.arguments.dropFirst()))
+let commandArguments = Array(CommandLine.arguments.dropFirst())
+let thumbnailSize = parseThumbnailSize(arguments: commandArguments)
+let skipThumbnails = shouldSkipThumbnails(arguments: commandArguments)
 
 Task {
 	do {
@@ -234,7 +240,7 @@ Task {
 				name: displayName,
 				display_id: displayId,
 				sourceType: "screen",
-				thumbnail: await displayThumbnail(display: display, targetSize: thumbnailSize),
+				thumbnail: skipThumbnails ? nil : await displayThumbnail(display: display, targetSize: thumbnailSize),
 				appIcon: nil,
 				appName: nil,
 				windowTitle: nil,
@@ -290,7 +296,7 @@ Task {
 				name: resolvedName,
 				display_id: matchedDisplay.map { String($0.displayID) } ?? "",
 				sourceType: "window",
-				thumbnail: await windowThumbnail(window: window, targetSize: thumbnailSize),
+				thumbnail: skipThumbnails ? nil : await windowThumbnail(window: window, targetSize: thumbnailSize),
 				appIcon: appIconDataURL(bundleId: bundleId),
 				appName: appName,
 				windowTitle: resolvedWindowTitle,
