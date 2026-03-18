@@ -45,11 +45,21 @@ pub fn setup_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         .minimize()
         .build()?;
 
+    // Help menu
+    let check_updates =
+        MenuItemBuilder::with_id("menu-check-updates", "Check for Updates...")
+            .build(app)?;
+
+    let help_menu = SubmenuBuilder::new(app, "Help")
+        .item(&check_updates)
+        .build()?;
+
     let menu = MenuBuilder::new(app)
         .item(&file_menu)
         .item(&edit_menu)
         .item(&view_menu)
         .item(&window_menu)
+        .item(&help_menu)
         .build()?;
 
     app.set_menu(menu)?;
@@ -65,6 +75,9 @@ pub fn setup_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             }
             "menu-save-project-as" => {
                 let _ = app.emit("menu-save-project-as", ());
+            }
+            "menu-check-updates" => {
+                let _ = app.emit("menu-check-updates", ());
             }
             _ => {}
         }

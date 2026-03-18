@@ -6,9 +6,7 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '..');
 const sourceIconPath = path.join(repoRoot, 'branding', 'source-assets', 'open-recorder-brand-image.png');
-const iconBuilderEntryPath = path.join(repoRoot, 'node_modules', 'electron-icon-builder', 'index.js');
-
-const generatedPngDir = path.join(repoRoot, 'icons', 'icons', 'png');
+const tauriIconsDir = path.join(repoRoot, 'src-tauri', 'icons');
 
 const publicIconSizes = [16, 32, 64, 128, 256, 512, 1024];
 const brandAssetSizes = [16, 32, 64, 128, 256, 512, 1024];
@@ -22,13 +20,15 @@ async function copyWithParents(from, to) {
   await copyFile(from, to);
 }
 
-function runIconBuilder() {
+function runTauriIconBuilder() {
+  // Use Tauri's built-in icon generator
   const result = spawnSync(
-    process.execPath,
-    [iconBuilderEntryPath, '--input', sourceIconPath, '--output', 'icons'],
+    'npx',
+    ['@tauri-apps/cli', 'icon', sourceIconPath, '--output', tauriIconsDir],
     {
       cwd: repoRoot,
       stdio: 'inherit',
+      shell: true,
     },
   );
 
@@ -37,41 +37,60 @@ function runIconBuilder() {
   }
 
   if (result.status !== 0) {
-    throw new Error(`electron-icon-builder failed with exit code ${result.status ?? 'unknown'}`);
+    throw new Error(`cargo tauri icon failed with exit code ${result.status ?? 'unknown'}`);
   }
 }
 
 async function syncGeneratedAssets() {
   const copyJobs = [];
 
+  // Tauri icon generator creates icons at known sizes in src-tauri/icons/
+  // Map available generated sizes to public assets
+  const tauriSizeMap = {
+    32: '32x32.png',
+    128: '128x128.png',
+    256: '128x128@2x.png',
+  };
+
   for (const size of publicIconSizes) {
-    copyJobs.push(
-      copyWithParents(
-        path.join(generatedPngDir, `${size}x${size}.png`),
-        path.join(repoRoot, 'public', 'app-icons', `open-recorder-${size}.png`),
-      ),
-    );
+    // Use the closest Tauri-generated PNG or the source image for larger sizes
+    const tauriFile = tauriSizeMap[size];
+    if (tauriFile) {
+      copyJobs.push(
+        copyWithParents(
+          path.join(tauriIconsDir, tauriFile),
+          path.join(repoRoot, 'public', 'app-icons', `open-recorder-${size}.png`),
+        ),
+      );
+    }
   }
 
   for (const size of brandAssetSizes) {
+    const tauriFile = tauriSizeMap[size];
+    if (tauriFile) {
+      copyJobs.push(
+        copyWithParents(
+          path.join(tauriIconsDir, tauriFile),
+          path.join(repoRoot, 'branding', 'source-assets', `${size}-mac.png`),
+        ),
+      );
+    }
+  }
+
+  // Copy specific assets
+  if (tauriSizeMap[128]) {
     copyJobs.push(
       copyWithParents(
-        path.join(generatedPngDir, `${size}x${size}.png`),
-        path.join(repoRoot, 'branding', 'source-assets', `${size}-mac.png`),
+        path.join(tauriIconsDir, tauriSizeMap[128]),
+        path.join(repoRoot, 'public', 'rec-button.png'),
       ),
     );
   }
 
+  // Use the source image for full-size
   copyJobs.push(
     copyWithParents(
-      path.join(generatedPngDir, '64x64.png'),
-      path.join(repoRoot, 'public', 'rec-button.png'),
-    ),
-  );
-
-  copyJobs.push(
-    copyWithParents(
-      path.join(generatedPngDir, '1024x1024.png'),
+      sourceIconPath,
       path.join(repoRoot, 'public', 'openscreen.png'),
     ),
   );
@@ -81,8 +100,7 @@ async function syncGeneratedAssets() {
 
 async function main() {
   await ensureFileExists(sourceIconPath);
-  await ensureFileExists(iconBuilderEntryPath);
-  runIconBuilder();
+  runTauriIconBuilder();
   await syncGeneratedAssets();
   console.log('Brand icons regenerated from branding/source-assets/open-recorder-brand-image.png');
 }

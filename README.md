@@ -30,7 +30,7 @@ Open Recorder runs on:
 - **Windows**
 - **Linux**
 
-Linux currently use Electron's capture path, which means the OS cursor cannot always be hidden during recording.
+Linux currently uses the browser capture path, which means the OS cursor cannot always be hidden during recording.
 
 
 
@@ -142,13 +142,16 @@ npm run dev
 
 ## Signed macOS releases in GitHub Actions
 
-The manual release workflow at `.github/workflows/release.yml` can produce signed and notarized macOS DMGs when these GitHub repository secrets are configured:
+The manual release workflow at `.github/workflows/release.yml` uses Tauri to produce signed and notarized macOS DMGs, Windows NSIS installers, and Linux AppImages when these GitHub repository secrets are configured:
 
-- `CSC_LINK`: base64-encoded `Developer ID Application` `.p12` certificate export
-- `CSC_KEY_PASSWORD`: password used when exporting the `.p12`
+- `APPLE_CERTIFICATE`: base64-encoded `Developer ID Application` `.p12` certificate export
+- `APPLE_CERTIFICATE_PASSWORD`: password used when exporting the `.p12`
+- `APPLE_SIGNING_IDENTITY`: signing identity name
 - `APPLE_ID`: Apple Developer account email
 - `APPLE_APP_SPECIFIC_PASSWORD`: app-specific password for notarization
 - `APPLE_TEAM_ID`: your Apple Developer team ID
+- `TAURI_SIGNING_PRIVATE_KEY`: Tauri updater signing private key
+- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`: password for the signing key (optional)
 
 This repo now includes two helper scripts:
 
@@ -224,7 +227,7 @@ Adjust:
 
 ### Linux Cursor Capture
 
-Electron's desktop capture API does not allow hiding the system cursor during recording.
+The browser capture API used on Linux does not allow hiding the system cursor during recording.
 
 If you enable the animated cursor layer, recordings may contain **two cursors**.
 
@@ -254,9 +257,10 @@ System audio capture depends on platform support.
 Open Recorder is a **desktop video editor with a renderer-driven motion pipeline and platform-specific capture layer**.
 
 **Capture**
-- Electron orchestrates recording
-- macOS uses native helpers for ScreenCaptureKit and cursor telemetry
+- Tauri orchestrates recording
+- macOS uses native ScreenCaptureKit helpers for capture and cursor telemetry
 - Windows uses native WGC for screen capture
+- Linux uses FFmpeg-based capture with browser fallback
 
 **Motion**
 - Zoom regions

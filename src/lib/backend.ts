@@ -282,6 +282,10 @@ export function onRequestSaveBeforeClose(callback: () => void): Promise<Unlisten
   return listen('request-save-before-close', callback);
 }
 
+export function onMenuCheckUpdates(callback: () => void): Promise<UnlistenFn> {
+  return listen('menu-check-updates', callback);
+}
+
 // ─── Asset Path Conversion ──────────────────────────────────────────────────
 
 export function convertFileToSrc(path: string): Promise<string> {
@@ -294,6 +298,3 @@ export function isTauri(): boolean {
   return true;
 }
 
-export function isElectron(): boolean {
-  return false;
-}

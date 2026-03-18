@@ -242,10 +242,10 @@ export function LaunchWindow() {
 
   return (
     <div className="w-full h-full flex items-end justify-center bg-transparent overflow-hidden">
-      <div className={`flex flex-col items-center gap-2 mx-auto ${styles.electronDrag}`}>
+      <div className={`flex flex-col items-center gap-2 mx-auto ${styles.tauriDrag}`}>
         {showCameraControls && (
           <div
-            className={`flex items-center gap-3 rounded-[22px] border border-white/15 bg-[rgba(18,18,26,0.92)] px-3 py-2 shadow-xl backdrop-blur-xl ${styles.electronNoDrag}`}
+            className={`flex items-center gap-3 rounded-[22px] border border-white/15 bg-[rgba(18,18,26,0.92)] px-3 py-2 shadow-xl backdrop-blur-xl ${styles.tauriNoDrag}`}
           >
             <div className="h-14 w-24 overflow-hidden rounded-2xl border border-white/10 bg-black/30">
               <video
@@ -277,7 +277,7 @@ export function LaunchWindow() {
 
         {showMicControls && (
           <div
-            className={`flex items-center gap-2 rounded-full border border-white/15 bg-[rgba(18,18,26,0.92)] px-3 py-2 shadow-xl backdrop-blur-xl ${styles.electronNoDrag}`}
+            className={`flex items-center gap-2 rounded-full border border-white/15 bg-[rgba(18,18,26,0.92)] px-3 py-2 shadow-xl backdrop-blur-xl ${styles.tauriNoDrag}`}
           >
             <select
               value={microphoneDeviceId || selectedDeviceId}
@@ -298,7 +298,7 @@ export function LaunchWindow() {
         )}
 
         <div
-          className={`w-full mx-auto flex items-center gap-1.5 px-3 py-2 ${styles.electronDrag} ${styles.hudBar}`}
+          className={`w-full mx-auto flex items-center gap-1.5 px-3 py-2 ${styles.tauriDrag} ${styles.hudBar}`}
           style={{
             borderRadius: 9999,
             background: "linear-gradient(135deg, rgba(28,28,36,0.97) 0%, rgba(18,18,26,0.96) 100%)",
@@ -308,14 +308,14 @@ export function LaunchWindow() {
             minHeight: 48,
           }}
         >
-          <div className={`flex items-center px-1 ${styles.electronDrag}`}>
+          <div className={`flex items-center px-1 ${styles.tauriDrag}`}>
             <RxDragHandleDots2 size={16} className="text-white/35" />
           </div>
 
           <Button
             variant="link"
             size="sm"
-            className={`gap-1 text-white/80 bg-transparent hover:bg-transparent px-0 text-xs ${styles.electronNoDrag}`}
+            className={`gap-1 text-white/80 bg-transparent hover:bg-transparent px-0 text-xs ${styles.tauriNoDrag}`}
             onClick={openSourceSelector}
             disabled={recording}
             title={selectedSource}
@@ -326,7 +326,7 @@ export function LaunchWindow() {
 
           <div className={dividerClass} />
 
-          <div className={`flex items-center gap-1 ${styles.electronNoDrag}`}>
+          <div className={`flex items-center gap-1 ${styles.tauriNoDrag}`}>
             <Button
               variant="link"
               size="icon"
@@ -366,7 +366,7 @@ export function LaunchWindow() {
             size="sm"
             onClick={hasSelectedSource ? toggleRecording : openSourceSelector}
             disabled={!hasSelectedSource && !recording}
-            className={`gap-1 text-white bg-transparent hover:bg-transparent px-0 text-xs ${styles.electronNoDrag}`}
+            className={`gap-1 text-white bg-transparent hover:bg-transparent px-0 text-xs ${styles.tauriNoDrag}`}
           >
             {recording ? (
               <>
@@ -387,7 +387,7 @@ export function LaunchWindow() {
             onClick={chooseRecordingsDir}
             disabled={recording}
             title={recordingsDirectory ? `Recording folder: ${recordingsDirectory}` : "Choose recordings folder"}
-            className={`text-white/75 hover:bg-transparent px-1 text-[11px] underline decoration-white/45 underline-offset-2 ${styles.electronNoDrag}`}
+            className={`text-white/75 hover:bg-transparent px-1 text-[11px] underline decoration-white/45 underline-offset-2 ${styles.tauriNoDrag}`}
           >
             <ContentClamp truncateLength={18}>{`Path: /${recordingsDirectoryName}/`}</ContentClamp>
           </Button>
@@ -400,7 +400,7 @@ export function LaunchWindow() {
               onClick={openVideoFile}
               disabled={recording}
               title="Open video file"
-              className={`text-white/70 hover:bg-transparent ${styles.electronNoDrag}`}
+              className={`text-white/70 hover:bg-transparent ${styles.tauriNoDrag}`}
             >
               <MdVideoFile size={15} />
             </Button>
@@ -410,7 +410,7 @@ export function LaunchWindow() {
               onClick={openProjectFile}
               disabled={recording}
               title="Open project"
-              className={`text-white/70 hover:bg-transparent ${styles.electronNoDrag}`}
+              className={`text-white/70 hover:bg-transparent ${styles.tauriNoDrag}`}
             >
               <FaFolderOpen size={14} />
             </Button>
@@ -420,7 +420,7 @@ export function LaunchWindow() {
               size="icon"
               onClick={sendHudOverlayHide}
               title="Hide HUD"
-              className={`text-white/70 hover:bg-transparent ${styles.electronNoDrag}`}
+              className={`text-white/70 hover:bg-transparent ${styles.tauriNoDrag}`}
             >
               <FiMinus size={16} />
             </Button>
@@ -429,7 +429,7 @@ export function LaunchWindow() {
               size="icon"
               onClick={sendHudOverlayClose}
               title="Close App"
-              className={`text-white/70 hover:bg-transparent ${styles.electronNoDrag}`}
+              className={`text-white/70 hover:bg-transparent ${styles.tauriNoDrag}`}
             >
               <FiX size={16} />
             </Button>

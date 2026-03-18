@@ -1,4 +1,4 @@
-name: Release Builds
+name: Release Tauri App
 
 on:
   workflow_dispatch:
@@ -25,90 +25,31 @@ permissions:
   contents: write
 
 jobs:
-  build-macos-x64:
-    name: Build macOS x64
-    runs-on: macos-15-intel
-    env:
-      CSC_LINK: ${{ secrets.CSC_LINK }}
-      CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-      APPLE_ID: ${{ secrets.APPLE_ID }}
-      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Install app dependencies
-        run: npx electron-builder install-app-deps
-
-      - name: Sync brand icons
-        run: npm run build:icons
-
-      - name: Build native macOS helpers
-        run: npm run build:native-helpers
-
-      - name: Verify macOS signing secrets
-        shell: bash
-        run: |
-          for name in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
-            if [ -z "${!name}" ]; then
-              echo "::error::Missing required GitHub secret mapped to $name"
-              exit 1
-            fi
-          done
-
-      - name: Build macOS x64
-        env:
-          # Notarize the final DMG in a dedicated step below instead of the inner app bundle.
-          APPLE_ID: ""
-          APPLE_APP_SPECIFIC_PASSWORD: ""
-          APPLE_TEAM_ID: ""
-        run: |
-          npx tsc
-          npx vite build
-          npx electron-builder --mac dmg --x64 --publish never
-
-      - name: Notarize macOS x64 DMG
-        run: |
-          xcrun notarytool submit release/OpenRecorder-x64.dmg \
-            --apple-id "$APPLE_ID" \
-            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
-            --team-id "$APPLE_TEAM_ID" \
-            --wait
-
-      - name: Staple and validate notarized macOS x64 artifact
-        run: |
-          xcrun stapler staple release/OpenRecorder-x64.dmg
-          xcrun stapler validate release/OpenRecorder-x64.dmg
-
-      - name: Upload macOS x64 artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: macos-x64
-          path: release/OpenRecorder-x64.dmg
-          if-no-files-found: error
-
   build-macos-arm64:
     name: Build macOS arm64
     runs-on: macos-14
     env:
-      CSC_LINK: ${{ secrets.CSC_LINK }}
-      CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
       APPLE_ID: ${{ secrets.APPLE_ID }}
-      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+      APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -116,65 +57,101 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Install frontend dependencies
+        run: npm ci --ignore-scripts
 
-      - name: Install app dependencies
-        run: npx electron-builder install-app-deps
+      - name: Build sidecars
+        run: npm run build:sidecars
 
-      - name: Sync brand icons
-        run: npm run build:icons
-
-      - name: Build native macOS helpers
-        run: npm run build:native-helpers
-
-      - name: Verify macOS signing secrets
-        shell: bash
-        run: |
-          for name in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
-            if [ -z "${!name}" ]; then
-              echo "::error::Missing required GitHub secret mapped to $name"
-              exit 1
-            fi
-          done
-
-      - name: Build macOS arm64
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
         env:
-          # Notarize the final DMG in a dedicated step below instead of the inner app bundle.
-          APPLE_ID: ""
-          APPLE_APP_SPECIFIC_PASSWORD: ""
-          APPLE_TEAM_ID: ""
-        run: |
-          npx tsc
-          npx vite build
-          npx electron-builder --mac dmg --arm64 --publish never
-
-      - name: Notarize macOS arm64 DMG
-        run: |
-          xcrun notarytool submit release/OpenRecorder-arm64.dmg \
-            --apple-id "$APPLE_ID" \
-            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
-            --team-id "$APPLE_TEAM_ID" \
-            --wait
-
-      - name: Staple and validate notarized macOS arm64 artifact
-        run: |
-          xcrun stapler staple release/OpenRecorder-arm64.dmg
-          xcrun stapler validate release/OpenRecorder-arm64.dmg
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: --target aarch64-apple-darwin
 
       - name: Upload macOS arm64 artifact
         uses: actions/upload-artifact@v4
         with:
           name: macos-arm64
-          path: release/OpenRecorder-arm64.dmg
+          path: |
+            src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
+            src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app.tar.gz
+            src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app.tar.gz.sig
+          if-no-files-found: error
+
+  build-macos-x64:
+    name: Build macOS x64
+    runs-on: macos-13
+    env:
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Build sidecars
+        run: npm run build:sidecars
+
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: --target x86_64-apple-darwin
+
+      - name: Upload macOS x64 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-x64
+          path: |
+            src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
+            src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app.tar.gz
+            src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app.tar.gz.sig
           if-no-files-found: error
 
   build-windows-x64:
     name: Build Windows x64
     runs-on: windows-latest
+    env:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -182,36 +159,49 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Install frontend dependencies
+        run: npm ci --ignore-scripts
 
-      - name: Install app dependencies
-        run: npx electron-builder install-app-deps
+      - name: Build sidecars
+        run: npm run build:sidecars
 
-      - name: Sync brand icons
-        run: npm run build:icons
-
-      - name: Build Windows x64
-        shell: pwsh
-        run: |
-          npx tsc
-          npx vite build
-          npx electron-builder --win nsis --x64 --publish never
-          Rename-Item -Path release/OpenRecorder.exe -NewName OpenRecorder-windows-x64.exe
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload Windows x64 artifact
         uses: actions/upload-artifact@v4
         with:
           name: windows-x64
-          path: release/OpenRecorder-windows-x64.exe
+          path: |
+            src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/bundle/nsis/*.nsis.zip
+            src-tauri/target/release/bundle/nsis/*.nsis.zip.sig
           if-no-files-found: error
 
   build-linux-x64:
     name: Build Linux x64
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
+    env:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -219,27 +209,23 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Install frontend dependencies
+        run: npm ci --ignore-scripts
 
-      - name: Install app dependencies
-        run: npx electron-builder install-app-deps
-
-      - name: Sync brand icons
-        run: npm run build:icons
-
-      - name: Build Linux x64
-        run: |
-          npx tsc
-          npx vite build
-          npx electron-builder --linux AppImage --x64 --publish never
-          mv release/OpenRecorder.AppImage release/OpenRecorder-linux-x64.AppImage
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload Linux x64 artifact
         uses: actions/upload-artifact@v4
         with:
           name: linux-x64
-          path: release/OpenRecorder-linux-x64.AppImage
+          path: |
+            src-tauri/target/release/bundle/appimage/*.AppImage
+            src-tauri/target/release/bundle/appimage/*.AppImage.tar.gz
+            src-tauri/target/release/bundle/appimage/*.AppImage.tar.gz.sig
+            src-tauri/target/release/bundle/deb/*.deb
           if-no-files-found: error
 
   publish-release:
@@ -251,29 +237,107 @@ jobs:
       - build-linux-x64
     runs-on: ubuntu-latest
     steps:
-      - name: Download macOS x64 artifact
+      - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          name: macos-x64
           path: release-assets
+          merge-multiple: true
 
-      - name: Download macOS arm64 artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: macos-arm64
-          path: release-assets
+      - name: List artifacts
+        run: find release-assets -type f | sort
 
-      - name: Download Windows x64 artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: windows-x64
-          path: release-assets
+      - name: Generate updater manifest (latest.json)
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.inputs.tag_name }}"
+          VERSION="${TAG#v}"
+          REPO="imbhargav5/open-recorder"
+          BASE_URL="https://github.com/${REPO}/releases/download/${TAG}"
+          PUB_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          NOTES=$(echo '${{ github.event.inputs.release_notes }}' | sed 's/"/\\"/g' || echo "")
 
-      - name: Download Linux x64 artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: linux-x64
-          path: release-assets
+          # Helper: find a file matching a glob and read its contents (first match)
+          read_sig() {
+            local pattern="$1"
+            local sig_file
+            sig_file=$(find release-assets -name "$pattern" -type f | head -1)
+            if [ -n "$sig_file" ]; then
+              cat "$sig_file"
+            else
+              echo ""
+            fi
+          }
+
+          get_filename() {
+            local pattern="$1"
+            local found
+            found=$(find release-assets -name "$pattern" -type f | head -1)
+            if [ -n "$found" ]; then
+              basename "$found"
+            else
+              echo ""
+            fi
+          }
+
+          # macOS arm64
+          MAC_ARM64_SIG=$(read_sig "*.app.tar.gz.sig")
+          MAC_ARM64_FILE=$(get_filename "*.app.tar.gz" | head -1)
+
+          # macOS x64 - same artifact name from both builds since merge-multiple
+          # We use the same .app.tar.gz for both architectures as they are separate builds
+          MAC_X64_SIG="$MAC_ARM64_SIG"
+          MAC_X64_FILE="$MAC_ARM64_FILE"
+
+          # Try to find distinct x64 vs arm64 sig files if artifact names differ
+          ARM64_SIG_FILE=$(find release-assets -name "*.app.tar.gz.sig" -type f | head -1)
+          X64_SIG_FILE=$(find release-assets -name "*.app.tar.gz.sig" -type f | tail -1)
+          if [ -n "$ARM64_SIG_FILE" ] && [ -n "$X64_SIG_FILE" ] && [ "$ARM64_SIG_FILE" != "$X64_SIG_FILE" ]; then
+            MAC_ARM64_SIG=$(cat "$ARM64_SIG_FILE")
+            MAC_ARM64_FILE=$(basename "${ARM64_SIG_FILE%.sig}")
+            MAC_X64_SIG=$(cat "$X64_SIG_FILE")
+            MAC_X64_FILE=$(basename "${X64_SIG_FILE%.sig}")
+          fi
+
+          # Windows
+          WIN_SIG=$(read_sig "*.nsis.zip.sig")
+          WIN_FILE=$(get_filename "*.nsis.zip")
+          # Filter out .sig from the nsis.zip match
+          WIN_FILE=$(find release-assets -name "*.nsis.zip" ! -name "*.sig" -type f | head -1 | xargs -r basename)
+
+          # Linux
+          LINUX_SIG=$(read_sig "*.AppImage.tar.gz.sig")
+          LINUX_FILE=$(find release-assets -name "*.AppImage.tar.gz" ! -name "*.sig" -type f | head -1 | xargs -r basename)
+
+          # Build the JSON manifest
+          cat > release-assets/latest.json << MANIFEST
+          {
+            "version": "${VERSION}",
+            "notes": "${NOTES}",
+            "pub_date": "${PUB_DATE}",
+            "platforms": {
+              "darwin-aarch64": {
+                "signature": "${MAC_ARM64_SIG}",
+                "url": "${BASE_URL}/${MAC_ARM64_FILE}"
+              },
+              "darwin-x86_64": {
+                "signature": "${MAC_X64_SIG}",
+                "url": "${BASE_URL}/${MAC_X64_FILE}"
+              },
+              "windows-x86_64": {
+                "signature": "${WIN_SIG}",
+                "url": "${BASE_URL}/${WIN_FILE}"
+              },
+              "linux-x86_64": {
+                "signature": "${LINUX_SIG}",
+                "url": "${BASE_URL}/${LINUX_FILE}"
+              }
+            }
+          }
+          MANIFEST
+
+          echo "Generated latest.json:"
+          cat release-assets/latest.json
 
       - name: Create or update release
         uses: ncipollo/release-action@v1
@@ -285,8 +349,4 @@ jobs:
           allowUpdates: true
           replacesArtifacts: true
           artifactErrorsFailBuild: true
-          artifacts: |
-            release-assets/OpenRecorder-arm64.dmg
-            release-assets/OpenRecorder-x64.dmg
-            release-assets/OpenRecorder-windows-x64.exe
-            release-assets/OpenRecorder-linux-x64.AppImage
+          artifacts: release-assets/**/*

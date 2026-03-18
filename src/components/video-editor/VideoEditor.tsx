@@ -12,6 +12,7 @@ import PlaybackControls from "./PlaybackControls";
 import TimelineEditor from "./timeline/TimelineEditor";
 import { SettingsPanel } from "./SettingsPanel";
 import { ExportDialog } from "./ExportDialog";
+import { UpdateNotification } from "@/components/UpdateNotification";
 import { DEFAULT_WALLPAPER_RELATIVE_PATH, WALLPAPER_PATHS } from "@/lib/wallpapers";
 import {
   createProjectData,
@@ -1931,6 +1932,7 @@ export default function VideoEditor() {
       </div>
 
       <Toaster theme="dark" className="pointer-events-auto" />
+      <UpdateNotification />
       
       <ExportDialog
         isOpen={showExportDialog}

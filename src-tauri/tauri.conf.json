@@ -28,7 +28,7 @@
     ],
     "macOSPrivateApi": true,
     "security": {
-      "csp": "default-src 'self'; img-src 'self' asset: https://asset.localhost blob: data:; media-src 'self' asset: https://asset.localhost blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' ipc: http://ipc.localhost"
+      "csp": "default-src 'self'; img-src 'self' asset: https://asset.localhost blob: data:; media-src 'self' asset: https://asset.localhost blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' ipc: http://ipc.localhost https://github.com https://objects.githubusercontent.com"
     },
     "trayIcon": {
       "iconPath": "icons/icon.png",
@@ -73,8 +73,13 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "",
-      "endpoints": []
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDc4NzYwQjNGRUM1RUUzNEQKUldSTjQxN3NQd3QyZUVjcGwrSlRvWEVjclo2cG9LMGNSQU9tc2VyQ3JjTXJsV01kOWJ6UC9JY08K",
+      "endpoints": [
+        "https://github.com/imbhargav5/open-recorder/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
     }
   }
 }
