@@ -3,9 +3,33 @@ import ScreenCaptureKit
 import AVFoundation
 import CoreGraphics
 
+/// A helper that decodes either a JSON number or a JSON string (containing digits) as UInt32.
+struct FlexibleUInt32: Codable {
+	let value: UInt32
+
+	init(from decoder: Decoder) throws {
+		let container = try decoder.singleValueContainer()
+		if let intValue = try? container.decode(UInt32.self) {
+			value = intValue
+		} else if let stringValue = try? container.decode(String.self), let parsed = UInt32(stringValue) {
+			value = parsed
+		} else {
+			throw DecodingError.typeMismatch(
+				UInt32.self,
+				DecodingError.Context(codingPath: decoder.codingPath, debugDescription: "Expected a UInt32 or a numeric string")
+			)
+		}
+	}
+
+	func encode(to encoder: Encoder) throws {
+		var container = encoder.singleValueContainer()
+		try container.encode(value)
+	}
+}
+
 struct CaptureConfig: Codable {
 	let fps: Int?
-	let displayId: CGDirectDisplayID?
+	let displayId: FlexibleUInt32?
 	let windowId: UInt32?
 	let outputPath: String?
 	let capturesSystemAudio: Bool?
@@ -133,7 +157,7 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 			streamConfig.height = outputHeight
 		} else {
 			trackedWindowId = nil
-			let displayId = config.displayId ?? CGMainDisplayID()
+			let displayId = config.displayId?.value ?? CGMainDisplayID()
 			guard let display = availableContent.displays.first(where: { $0.displayID == displayId }) else {
 				throw NSError(domain: "OpenRecorderCapture", code: 4, userInfo: [NSLocalizedDescriptionKey: "Display not found"])
 			}

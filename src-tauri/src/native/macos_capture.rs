@@ -73,9 +73,11 @@ pub async fn start_capture(
     let microphone_device_id = read_string(options, &["microphoneDeviceId"]);
     let fps = read_u64(options, &["fps", "frameRate"]).unwrap_or(60);
 
+    let display_id_num: u64 = display_id.parse().unwrap_or(0);
+
     let config = serde_json::json!({
         "outputPath": output_path,
-        "displayId": display_id,
+        "displayId": display_id_num,
         "windowId": window_id,
         "fps": fps,
         "capturesSystemAudio": captures_system_audio,

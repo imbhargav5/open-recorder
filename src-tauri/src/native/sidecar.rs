@@ -1,10 +1,11 @@
 use std::process::Stdio;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, Lines};
-use tokio::process::{Child, ChildStdout, Command};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader, Lines};
+use tokio::process::{Child, ChildStderr, ChildStdout, Command};
 
 pub struct SidecarProcess {
     child: Child,
     stdout_lines: Option<Lines<BufReader<ChildStdout>>>,
+    stderr: Option<ChildStderr>,
 }
 
 impl SidecarProcess {
@@ -19,10 +20,12 @@ impl SidecarProcess {
 
         let stdout = child.stdout.take().ok_or("stdout not available")?;
         let stdout_lines = BufReader::new(stdout).lines();
+        let stderr = child.stderr.take();
 
         Ok(Self {
             child,
             stdout_lines: Some(stdout_lines),
+            stderr,
         })
     }
 
@@ -49,7 +52,7 @@ impl SidecarProcess {
 
         let timeout = tokio::time::Duration::from_millis(timeout_ms);
 
-        tokio::time::timeout(timeout, async {
+        let result = tokio::time::timeout(timeout, async {
             while let Ok(Some(line)) = lines.next_line().await {
                 if line.contains(pattern) {
                     return Ok(line);
@@ -58,7 +61,39 @@ impl SidecarProcess {
             Err("Pattern not found in stdout".to_string())
         })
         .await
-        .map_err(|_| format!("Timeout waiting for pattern '{}'", pattern))?
+        .map_err(|_| format!("Timeout waiting for pattern '{}'", pattern))?;
+
+        // If the pattern was not found (process exited), try to read stderr
+        // for a more informative error message
+        if let Err(_) = &result {
+            let stderr_output = self.read_stderr().await;
+            if !stderr_output.is_empty() {
+                return Err(format!("Process exited with error: {}", stderr_output));
+            }
+        }
+
+        result
+    }
+
+    async fn read_stderr(&mut self) -> String {
+        let Some(stderr) = self.stderr.take() else {
+            return String::new();
+        };
+
+        let mut buffer = Vec::new();
+        let mut reader = tokio::io::BufReader::new(stderr);
+
+        // Use a short timeout to avoid blocking if the process is still running
+        let read_result = tokio::time::timeout(
+            tokio::time::Duration::from_millis(500),
+            reader.read_to_end(&mut buffer),
+        )
+        .await;
+
+        match read_result {
+            Ok(Ok(_)) => String::from_utf8_lossy(&buffer).trim().to_string(),
+            _ => String::new(),
+        }
     }
 
     pub async fn wait_for_close(&mut self) -> Result<i32, String> {
