@@ -13,6 +13,13 @@ declare global {
     appName?: string;
     windowTitle?: string;
     windowId?: number;
+    // snake_case variants (legacy backend compat)
+    source_type?: string;
+    app_icon?: string | null;
+    original_name?: string;
+    app_name?: string;
+    window_title?: string;
+    window_id?: number;
   }
 
   interface CursorTelemetryPoint {

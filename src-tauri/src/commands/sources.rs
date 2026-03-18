@@ -98,40 +98,53 @@ pub async fn get_sources(
         let mut sources = Vec::new();
 
         if with_thumbnails {
-            let sidecar_path = crate::native::sidecar::get_sidecar_path("openscreen-window-list")?;
-            let timeout_duration = Duration::from_millis(
-                opts.as_ref()
-                    .and_then(|options| options.timeout_ms)
-                    .unwrap_or(if wants_windows { 8000 } else { 4000 }),
-            );
-            match fetch_macos_sources_via_sidecar(
-                &sidecar_path,
-                wants_screens,
-                wants_windows,
-                thumbnail_width,
-                thumbnail_height,
-                false,
-                timeout_duration,
-            )
-            .await
-            {
-                Ok(sidecar_sources) => {
-                    let (screen_sources, window_sources) =
-                        partition_sources_by_kind(sidecar_sources);
-                    if wants_screens {
-                        if screen_sources.is_empty() {
-                            sources.extend(fallback_macos_sources()?);
-                        } else {
-                            sources.extend(screen_sources);
-                        }
-                    }
+            match crate::native::sidecar::get_sidecar_path("openscreen-window-list") {
+                Ok(sidecar_path) => {
+                    let timeout_duration = Duration::from_millis(
+                        opts.as_ref()
+                            .and_then(|options| options.timeout_ms)
+                            .unwrap_or(if wants_windows { 8000 } else { 4000 }),
+                    );
+                    match fetch_macos_sources_via_sidecar(
+                        &sidecar_path,
+                        wants_screens,
+                        wants_windows,
+                        thumbnail_width,
+                        thumbnail_height,
+                        false,
+                        timeout_duration,
+                    )
+                    .await
+                    {
+                        Ok(sidecar_sources) => {
+                            let (screen_sources, window_sources) =
+                                partition_sources_by_kind(sidecar_sources);
+                            if wants_screens {
+                                if screen_sources.is_empty() {
+                                    sources.extend(fallback_macos_sources()?);
+                                } else {
+                                    sources.extend(screen_sources);
+                                }
+                            }
 
-                    if wants_windows {
-                        cache_window_sources(&state, &window_sources)?;
-                        sources.extend(window_sources);
-                    }
+                            if wants_windows {
+                                cache_window_sources(&state, &window_sources)?;
+                                sources.extend(window_sources);
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("[get_sources] Sidecar thumbnail fetch failed: {}", e);
+                            if wants_screens {
+                                sources.extend(fallback_macos_sources()?);
+                            }
+                            if wants_windows {
+                                sources.extend(cached_window_sources(&state)?);
+                            }
+                        }
+                    };
                 }
-                Err(_) => {
+                Err(e) => {
+                    eprintln!("[get_sources] Sidecar not found for thumbnails: {}", e);
                     if wants_screens {
                         sources.extend(fallback_macos_sources()?);
                     }
@@ -139,7 +152,7 @@ pub async fn get_sources(
                         sources.extend(cached_window_sources(&state)?);
                     }
                 }
-            };
+            }
         } else {
             if wants_screens {
                 sources.extend(fallback_macos_sources()?);

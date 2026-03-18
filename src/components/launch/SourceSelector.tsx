@@ -27,14 +27,14 @@ function mapSources(rawSources: ProcessedDesktopSource[]): DesktopSource[] {
 		return {
 			id: source.id,
 			name: metadata.displayName,
-			thumbnail: source.thumbnail,
+			thumbnail: source.thumbnail ?? null,
 			display_id: source.display_id ?? source.displayId ?? "",
-			appIcon: source.appIcon,
+			appIcon: source.appIcon ?? source.app_icon ?? null,
 			originalName: source.name,
 			sourceType: metadata.sourceType,
 			appName: metadata.appName,
 			windowTitle: metadata.windowTitle,
-			windowId: source.windowId,
+			windowId: source.windowId ?? source.window_id,
 		};
 	});
 }
@@ -46,7 +46,14 @@ function mergeSources(
 	const incomingById = new Map(incomingSources.map((source) => [source.id, source]));
 	const mergedSources = existingSources.map((source) => {
 		const incoming = incomingById.get(source.id);
-		return incoming ? { ...source, ...incoming } : source;
+		if (!incoming) return source;
+		return {
+			...source,
+			...incoming,
+			// Preserve existing non-null values when incoming has null
+			thumbnail: incoming.thumbnail ?? source.thumbnail,
+			appIcon: incoming.appIcon ?? source.appIcon,
+		};
 	});
 
 	for (const source of incomingSources) {
@@ -60,27 +67,32 @@ function mergeSources(
 
 function parseSourceMetadata(source: ProcessedDesktopSource) {
 	const sourceType: "screen" | "window" =
-		source.sourceType ?? (source.id.startsWith("window:") ? "window" : "screen");
+		source.sourceType
+		?? (source.source_type as "screen" | "window" | undefined)
+		?? (source.id.startsWith("window:") ? "window" : "screen");
 
-	if (sourceType === "window" && (source.appName || source.windowTitle)) {
+	const appName = source.appName ?? source.app_name;
+	const windowTitle = source.windowTitle ?? source.window_title;
+
+	if (sourceType === "window" && (appName || windowTitle)) {
 		return {
 			sourceType,
-			appName: source.appName,
-			windowTitle: source.windowTitle ?? source.name,
-			displayName: source.windowTitle ?? source.name,
+			appName,
+			windowTitle: windowTitle ?? source.name,
+			displayName: windowTitle ?? source.name,
 		};
 	}
 
 	if (sourceType === "window") {
 		const [appNamePart, ...windowTitleParts] = source.name.split(" — ");
-		const appName = appNamePart?.trim() || undefined;
-		const windowTitle = windowTitleParts.join(" — ").trim() || source.name.trim();
+		const parsedAppName = appNamePart?.trim() || undefined;
+		const parsedWindowTitle = windowTitleParts.join(" — ").trim() || source.name.trim();
 
 		return {
 			sourceType,
-			appName,
-			windowTitle,
-			displayName: windowTitle,
+			appName: parsedAppName,
+			windowTitle: parsedWindowTitle,
+			displayName: parsedWindowTitle,
 		};
 	}
 
@@ -126,7 +138,7 @@ export function SourceSelector() {
 				thumbnailSize: { width: 320, height: 180 },
 				withThumbnails: true,
 				timeoutMs: 5000,
-				fetchWindowIcons: true,
+
 			});
 
 			if (!cancelled.current) {
@@ -148,7 +160,7 @@ export function SourceSelector() {
 				const rawSources = await getSources({
 					types: ["screen"],
 					thumbnailSize: { width: 320, height: 180 },
-					fetchWindowIcons: true,
+	
 				});
 				if (!cancelled) {
 					setSources(mapSources(rawSources));
@@ -165,7 +177,7 @@ export function SourceSelector() {
 				const windowSources = await getSources({
 					types: ["window"],
 					thumbnailSize: { width: 320, height: 180 },
-					fetchWindowIcons: true,
+	
 				});
 
 				if (!cancelled) {
@@ -203,7 +215,7 @@ export function SourceSelector() {
 					thumbnailSize: { width: 320, height: 180 },
 					withThumbnails: true,
 					timeoutMs: 8000,
-					fetchWindowIcons: true,
+	
 				});
 
 				if (!cancelled) {

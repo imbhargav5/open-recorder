@@ -3,23 +3,24 @@ mod recording_state;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SelectedSource {
     pub id: String,
     pub name: String,
-    #[serde(default, alias = "sourceType")]
+    #[serde(default)]
     pub source_type: Option<String>, // "screen" or "window"
     pub thumbnail: Option<String>,
-    #[serde(default, alias = "displayId")]
+    #[serde(default, alias = "display_id")]
     pub display_id: Option<String>,
-    #[serde(default, alias = "appIcon")]
+    #[serde(default)]
     pub app_icon: Option<String>,
-    #[serde(default, alias = "originalName")]
+    #[serde(default)]
     pub original_name: Option<String>,
-    #[serde(default, alias = "appName")]
+    #[serde(default)]
     pub app_name: Option<String>,
-    #[serde(default, alias = "windowTitle")]
+    #[serde(default)]
     pub window_title: Option<String>,
-    #[serde(default, alias = "windowId")]
+    #[serde(default)]
     pub window_id: Option<u64>,
 }
 
