@@ -1,5 +1,5 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { MdCheck } from "react-icons/md";
 import { flashSelectedScreen, getSources, selectSource } from "@/lib/backend";
 import { Button } from "../ui/button";
@@ -99,6 +99,46 @@ export function SourceSelector() {
 	const [loading, setLoading] = useState(true);
 	const [windowsLoading, setWindowsLoading] = useState(true);
 
+	const refreshingRef = useRef(false);
+
+	const refreshThumbnails = useCallback(async (cancelled: { current: boolean }) => {
+		if (refreshingRef.current) return;
+		refreshingRef.current = true;
+
+		try {
+			const previewScreens = await getSources({
+				types: ["screen"],
+				thumbnailSize: { width: 320, height: 180 },
+				withThumbnails: true,
+				timeoutMs: 3000,
+			});
+
+			if (!cancelled.current) {
+				setSources((prev) => mergeSources(prev, mapSources(previewScreens)));
+			}
+		} catch {
+			// Silently ignore refresh errors
+		}
+
+		try {
+			const previewWindows = await getSources({
+				types: ["window"],
+				thumbnailSize: { width: 320, height: 180 },
+				withThumbnails: true,
+				timeoutMs: 5000,
+				fetchWindowIcons: true,
+			});
+
+			if (!cancelled.current) {
+				setSources((prev) => mergeSources(prev, mapSources(previewWindows)));
+			}
+		} catch {
+			// Silently ignore refresh errors
+		} finally {
+			refreshingRef.current = false;
+		}
+	}, []);
+
 	useEffect(() => {
 		let cancelled = false;
 
@@ -179,6 +219,21 @@ export function SourceSelector() {
 			cancelled = true;
 		};
 	}, []);
+
+	// Periodically refresh thumbnails to show live previews
+	useEffect(() => {
+		if (loading) return;
+
+		const cancelledRef = { current: false };
+		const intervalId = setInterval(() => {
+			void refreshThumbnails(cancelledRef);
+		}, 3000);
+
+		return () => {
+			cancelledRef.current = true;
+			clearInterval(intervalId);
+		};
+	}, [loading, refreshThumbnails]);
 
 	const screenSources = sources.filter((s) => s.sourceType === "screen");
 	const windowSources = sources.filter((s) => s.sourceType === "window");
