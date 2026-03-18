@@ -86,7 +86,7 @@ pub async fn start_capture(
     let config_str = serde_json::to_string(&config).map_err(|e| e.to_string())?;
     let sidecar_path_str = sidecar_path.to_string_lossy().to_string();
 
-    let mut process = SidecarProcess::spawn(&sidecar_path_str, &["--config", &config_str]).await?;
+    let mut process = SidecarProcess::spawn(&sidecar_path_str, &[&config_str]).await?;
 
     // Wait for "Recording started" confirmation
     match process

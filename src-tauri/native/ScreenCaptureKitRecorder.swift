@@ -506,8 +506,15 @@ guard arguments.count >= 1 else {
 	exit(1)
 }
 
+let configJSON: String
+if arguments.count >= 2, arguments[0] == "--config" {
+	configJSON = arguments[1]
+} else {
+	configJSON = arguments[0]
+}
+
 let service = RecorderService()
-service.start(configJSON: arguments[0])
+service.start(configJSON: configJSON)
 
 DispatchQueue.global(qos: .utility).async {
 	while let input = readLine(strippingNewline: true)?.lowercased() {
