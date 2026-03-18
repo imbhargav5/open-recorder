@@ -39,6 +39,25 @@ function mapSources(rawSources: ProcessedDesktopSource[]): DesktopSource[] {
 	});
 }
 
+function mergeSources(
+	existingSources: DesktopSource[],
+	incomingSources: DesktopSource[],
+): DesktopSource[] {
+	const incomingById = new Map(incomingSources.map((source) => [source.id, source]));
+	const mergedSources = existingSources.map((source) => {
+		const incoming = incomingById.get(source.id);
+		return incoming ? { ...source, ...incoming } : source;
+	});
+
+	for (const source of incomingSources) {
+		if (!existingSources.some((existing) => existing.id === source.id)) {
+			mergedSources.push(source);
+		}
+	}
+
+	return mergedSources;
+}
+
 function parseSourceMetadata(source: ProcessedDesktopSource) {
 	const sourceType: "screen" | "window" =
 		source.sourceType ?? (source.id.startsWith("window:") ? "window" : "screen");
@@ -121,6 +140,37 @@ export function SourceSelector() {
 				if (!cancelled) {
 					setWindowsLoading(false);
 				}
+			}
+
+			try {
+				const previewScreens = await getSources({
+					types: ["screen"],
+					thumbnailSize: { width: 320, height: 180 },
+					withThumbnails: true,
+					timeoutMs: 4000,
+				});
+
+				if (!cancelled) {
+					setSources((prev) => mergeSources(prev, mapSources(previewScreens)));
+				}
+			} catch (error) {
+				console.error("Error loading screen previews:", error);
+			}
+
+			try {
+				const previewWindows = await getSources({
+					types: ["window"],
+					thumbnailSize: { width: 320, height: 180 },
+					withThumbnails: true,
+					timeoutMs: 8000,
+					fetchWindowIcons: true,
+				});
+
+				if (!cancelled) {
+					setSources((prev) => mergeSources(prev, mapSources(previewWindows)));
+				}
+			} catch (error) {
+				console.error("Error loading window previews:", error);
 			}
 		}
 

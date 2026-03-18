@@ -37,6 +37,8 @@ pub struct ThumbnailSize {
 pub struct SourceListOptions {
     pub types: Option<Vec<String>>,
     pub thumbnail_size: Option<ThumbnailSize>,
+    pub with_thumbnails: Option<bool>,
+    pub timeout_ms: Option<u64>,
 }
 
 #[tauri::command]
@@ -76,6 +78,10 @@ pub async fn get_sources(
     #[cfg(target_os = "macos")]
     {
         let (wants_screens, wants_windows) = requested_source_kinds(opts.as_ref());
+        let with_thumbnails = opts
+            .as_ref()
+            .and_then(|options| options.with_thumbnails)
+            .unwrap_or(false);
         let thumbnail_width = opts
             .as_ref()
             .and_then(|options| options.thumbnail_size.as_ref())
@@ -91,28 +97,78 @@ pub async fn get_sources(
 
         let mut sources = Vec::new();
 
-        if wants_screens {
-            sources.extend(fallback_macos_sources()?);
-        }
-
-        if wants_windows {
+        if with_thumbnails {
             let sidecar_path = crate::native::sidecar::get_sidecar_path("openscreen-window-list")?;
-            match fetch_macos_window_sources_via_sidecar(
+            let timeout_duration = Duration::from_millis(
+                opts.as_ref()
+                    .and_then(|options| options.timeout_ms)
+                    .unwrap_or(if wants_windows { 8000 } else { 4000 }),
+            );
+            match fetch_macos_sources_via_sidecar(
                 &sidecar_path,
+                wants_screens,
+                wants_windows,
                 thumbnail_width,
                 thumbnail_height,
-                Duration::from_millis(1500),
+                false,
+                timeout_duration,
             )
             .await
             {
-                Ok(window_sources) => {
-                    cache_window_sources(&state, &window_sources)?;
-                    sources.extend(window_sources);
+                Ok(sidecar_sources) => {
+                    let (screen_sources, window_sources) =
+                        partition_sources_by_kind(sidecar_sources);
+                    if wants_screens {
+                        if screen_sources.is_empty() {
+                            sources.extend(fallback_macos_sources()?);
+                        } else {
+                            sources.extend(screen_sources);
+                        }
+                    }
+
+                    if wants_windows {
+                        cache_window_sources(&state, &window_sources)?;
+                        sources.extend(window_sources);
+                    }
                 }
                 Err(_) => {
-                    sources.extend(cached_window_sources(&state)?);
+                    if wants_screens {
+                        sources.extend(fallback_macos_sources()?);
+                    }
+                    if wants_windows {
+                        sources.extend(cached_window_sources(&state)?);
+                    }
                 }
             };
+        } else {
+            if wants_screens {
+                sources.extend(fallback_macos_sources()?);
+            }
+
+            if wants_windows {
+                let sidecar_path =
+                    crate::native::sidecar::get_sidecar_path("openscreen-window-list")?;
+                match fetch_macos_sources_via_sidecar(
+                    &sidecar_path,
+                    false,
+                    true,
+                    thumbnail_width,
+                    thumbnail_height,
+                    true,
+                    Duration::from_millis(1500),
+                )
+                .await
+                {
+                    Ok(sidecar_sources) => {
+                        let (_, window_sources) = partition_sources_by_kind(sidecar_sources);
+                        cache_window_sources(&state, &window_sources)?;
+                        sources.extend(window_sources);
+                    }
+                    Err(_) => {
+                        sources.extend(cached_window_sources(&state)?);
+                    }
+                };
+            }
         }
 
         if sources.is_empty() {
@@ -132,10 +188,13 @@ pub async fn get_sources(
 }
 
 #[cfg(target_os = "macos")]
-async fn fetch_macos_window_sources_via_sidecar(
+async fn fetch_macos_sources_via_sidecar(
     sidecar_path: &Path,
+    wants_screens: bool,
+    wants_windows: bool,
     thumbnail_width: u32,
     thumbnail_height: u32,
+    no_thumbnails: bool,
     timeout_duration: Duration,
 ) -> Result<Vec<SelectedSource>, String> {
     let mut command = tokio::process::Command::new(sidecar_path);
@@ -144,12 +203,19 @@ async fn fetch_macos_window_sources_via_sidecar(
         .arg("--thumbnail-width")
         .arg(thumbnail_width.to_string())
         .arg("--thumbnail-height")
-        .arg(thumbnail_height.to_string())
-        .arg("--no-thumbnails");
+        .arg(thumbnail_height.to_string());
+
+    command
+        .arg("--types")
+        .arg(requested_types_argument(wants_screens, wants_windows));
+
+    if no_thumbnails {
+        command.arg("--no-thumbnails");
+    }
 
     let output = timeout(timeout_duration, command.output())
         .await
-        .map_err(|_| "Timed out waiting for macOS window source helper".to_string())?
+        .map_err(|_| "Timed out waiting for macOS source helper".to_string())?
         .map_err(|e| e.to_string())?;
 
     if !output.status.success() {
@@ -166,12 +232,55 @@ async fn fetch_macos_window_sources_via_sidecar(
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let mut sources: Vec<SelectedSource> = serde_json::from_str(&stdout).map_err(|e| e.to_string())?;
-    sources.retain(|source| {
-        source.id.starts_with("window:")
-            || source.source_type.as_deref() == Some("window")
-    });
+    sources.retain(|source| source_matches_requested_kind(source, wants_screens, wants_windows));
     sources.retain(|source| !source.id.trim().is_empty() && !source.name.trim().is_empty());
     Ok(sources)
+}
+
+fn source_matches_requested_kind(
+    source: &SelectedSource,
+    wants_screens: bool,
+    wants_windows: bool,
+) -> bool {
+    match source.source_type.as_deref().or_else(|| {
+        if source.id.starts_with("screen:") {
+            Some("screen")
+        } else if source.id.starts_with("window:") {
+            Some("window")
+        } else {
+            None
+        }
+    }) {
+        Some("screen") => wants_screens,
+        Some("window") => wants_windows,
+        _ => false,
+    }
+}
+
+fn requested_types_argument(wants_screens: bool, wants_windows: bool) -> String {
+    match (wants_screens, wants_windows) {
+        (true, true) => "screen,window".to_string(),
+        (true, false) => "screen".to_string(),
+        (false, true) => "window".to_string(),
+        (false, false) => "screen,window".to_string(),
+    }
+}
+
+fn partition_sources_by_kind(
+    sources: Vec<SelectedSource>,
+) -> (Vec<SelectedSource>, Vec<SelectedSource>) {
+    let mut screen_sources = Vec::new();
+    let mut window_sources = Vec::new();
+
+    for source in sources {
+        if source_matches_requested_kind(&source, true, false) {
+            screen_sources.push(source);
+        } else if source_matches_requested_kind(&source, false, true) {
+            window_sources.push(source);
+        }
+    }
+
+    (screen_sources, window_sources)
 }
 
 fn requested_source_kinds(opts: Option<&SourceListOptions>) -> (bool, bool) {
