@@ -241,10 +241,49 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: release-assets
-          merge-multiple: true
 
       - name: List artifacts
         run: find release-assets -type f | sort
+
+      - name: Prepare release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-upload
+
+          copy_match() {
+            local source_dir="$1"
+            local pattern="$2"
+            local dest_name="$3"
+            local found=""
+
+            if [ -d "$source_dir" ]; then
+              found=$(find "$source_dir" -name "$pattern" -type f | head -1)
+            fi
+
+            if [ -n "$found" ]; then
+              cp "$found" "release-upload/$dest_name"
+            fi
+          }
+
+          copy_match "release-assets/macos-arm64" "*.dmg" "OpenRecorder-arm64.dmg"
+          copy_match "release-assets/macos-arm64" "*.app.tar.gz" "OpenRecorder-arm64.app.tar.gz"
+          copy_match "release-assets/macos-arm64" "*.app.tar.gz.sig" "OpenRecorder-arm64.app.tar.gz.sig"
+
+          copy_match "release-assets/macos-x64" "*.dmg" "OpenRecorder-x64.dmg"
+          copy_match "release-assets/macos-x64" "*.app.tar.gz" "OpenRecorder-x64.app.tar.gz"
+          copy_match "release-assets/macos-x64" "*.app.tar.gz.sig" "OpenRecorder-x64.app.tar.gz.sig"
+
+          copy_match "release-assets/windows-x64" "*setup.exe" "OpenRecorder-windows-x64.exe"
+          copy_match "release-assets/windows-x64" "*.nsis.zip" "OpenRecorder-windows-x64.nsis.zip"
+          copy_match "release-assets/windows-x64" "*.nsis.zip.sig" "OpenRecorder-windows-x64.nsis.zip.sig"
+
+          copy_match "release-assets/linux-x64" "*.AppImage" "OpenRecorder-linux-x64.AppImage"
+          copy_match "release-assets/linux-x64" "*.AppImage.tar.gz" "OpenRecorder-linux-x64.AppImage.tar.gz"
+          copy_match "release-assets/linux-x64" "*.AppImage.tar.gz.sig" "OpenRecorder-linux-x64.AppImage.tar.gz.sig"
+          copy_match "release-assets/linux-x64" "*.deb" "OpenRecorder-linux-x64.deb"
+
+          find release-upload -type f | sort
 
       - name: Generate updater manifest (latest.json)
         shell: bash
@@ -261,7 +300,7 @@ jobs:
           read_sig() {
             local pattern="$1"
             local sig_file
-            sig_file=$(find release-assets -name "$pattern" -type f | head -1)
+            sig_file=$(find release-upload -name "$pattern" -type f | head -1)
             if [ -n "$sig_file" ]; then
               cat "$sig_file"
             else
@@ -272,7 +311,7 @@ jobs:
           get_filename() {
             local pattern="$1"
             local found
-            found=$(find release-assets -name "$pattern" -type f | head -1)
+            found=$(find release-upload -name "$pattern" -type f | head -1)
             if [ -n "$found" ]; then
               basename "$found"
             else
@@ -281,36 +320,27 @@ jobs:
           }
 
           # macOS arm64
-          MAC_ARM64_SIG=$(read_sig "*.app.tar.gz.sig")
-          MAC_ARM64_FILE=$(get_filename "*.app.tar.gz" | head -1)
-
-          # macOS x64 - same artifact name from both builds since merge-multiple
-          # We use the same .app.tar.gz for both architectures as they are separate builds
-          MAC_X64_SIG="$MAC_ARM64_SIG"
-          MAC_X64_FILE="$MAC_ARM64_FILE"
-
-          # Try to find distinct x64 vs arm64 sig files if artifact names differ
-          ARM64_SIG_FILE=$(find release-assets -name "*.app.tar.gz.sig" -type f | head -1)
-          X64_SIG_FILE=$(find release-assets -name "*.app.tar.gz.sig" -type f | tail -1)
-          if [ -n "$ARM64_SIG_FILE" ] && [ -n "$X64_SIG_FILE" ] && [ "$ARM64_SIG_FILE" != "$X64_SIG_FILE" ]; then
-            MAC_ARM64_SIG=$(cat "$ARM64_SIG_FILE")
-            MAC_ARM64_FILE=$(basename "${ARM64_SIG_FILE%.sig}")
-            MAC_X64_SIG=$(cat "$X64_SIG_FILE")
-            MAC_X64_FILE=$(basename "${X64_SIG_FILE%.sig}")
-          fi
+          MAC_ARM64_SIG=$(read_sig "OpenRecorder-arm64.app.tar.gz.sig")
+          MAC_ARM64_FILE=$(get_filename "OpenRecorder-arm64.app.tar.gz")
+          MAC_X64_SIG=$(read_sig "OpenRecorder-x64.app.tar.gz.sig")
+          MAC_X64_FILE=$(get_filename "OpenRecorder-x64.app.tar.gz")
 
           # Windows
-          WIN_SIG=$(read_sig "*.nsis.zip.sig")
-          WIN_FILE=$(get_filename "*.nsis.zip")
-          # Filter out .sig from the nsis.zip match
-          WIN_FILE=$(find release-assets -name "*.nsis.zip" ! -name "*.sig" -type f | head -1 | xargs -r basename)
+          WIN_SIG=$(read_sig "OpenRecorder-windows-x64.nsis.zip.sig")
+          WIN_FILE=$(get_filename "OpenRecorder-windows-x64.nsis.zip")
+          if [ -z "$WIN_FILE" ]; then
+            WIN_FILE=$(get_filename "OpenRecorder-windows-x64.exe")
+          fi
 
           # Linux
-          LINUX_SIG=$(read_sig "*.AppImage.tar.gz.sig")
-          LINUX_FILE=$(find release-assets -name "*.AppImage.tar.gz" ! -name "*.sig" -type f | head -1 | xargs -r basename)
+          LINUX_SIG=$(read_sig "OpenRecorder-linux-x64.AppImage.tar.gz.sig")
+          LINUX_FILE=$(get_filename "OpenRecorder-linux-x64.AppImage.tar.gz")
+          if [ -z "$LINUX_FILE" ]; then
+            LINUX_FILE=$(get_filename "OpenRecorder-linux-x64.AppImage")
+          fi
 
           # Build the JSON manifest
-          cat > release-assets/latest.json << MANIFEST
+          cat > release-upload/latest.json << MANIFEST
           {
             "version": "${VERSION}",
             "notes": "${NOTES}",
@@ -337,7 +367,7 @@ jobs:
           MANIFEST
 
           echo "Generated latest.json:"
-          cat release-assets/latest.json
+          cat release-upload/latest.json
 
       - name: Create or update release
         uses: ncipollo/release-action@v1
@@ -349,4 +379,4 @@ jobs:
           allowUpdates: true
           replacesArtifacts: true
           artifactErrorsFailBuild: true
-          artifacts: release-assets/**/*
+          artifacts: release-upload/*
