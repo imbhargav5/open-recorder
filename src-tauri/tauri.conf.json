@@ -4,9 +4,9 @@
   "version": "0.0.4",
   "identifier": "dev.openrecorder.app",
   "build": {
-    "beforeDevCommand": "node node_modules/.bin/vite",
+    "beforeDevCommand": "npx vite",
     "devUrl": "http://localhost:5173",
-    "beforeBuildCommand": "node node_modules/.bin/vite build",
+    "beforeBuildCommand": "npx vite build",
     "frontendDist": "../dist"
   },
   "app": {
