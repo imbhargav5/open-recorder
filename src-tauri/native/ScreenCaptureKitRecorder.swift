@@ -64,9 +64,9 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 	private var microphoneOnlyInput: AVAssetWriterInput?
 	private var stream: SCStream?
 	private var firstSampleTime: CMTime = .zero
+	private var lastVideoFrameEndTime: CMTime = .zero
 	private var firstPrimaryAudioSampleTime: CMTime?
 	private var firstMicrophoneSampleTime: CMTime?
-	private var lastSampleBuffer: CMSampleBuffer?
 	private var isRecording = false
 	private var sessionStarted = false
 	private var frameCount = 0
@@ -278,6 +278,7 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		isRecording = true
 		frameCount = 0
 		firstSampleTime = .zero
+		lastVideoFrameEndTime = .zero
 		startWindowValidationIfNeeded()
 		print("Recording started")
 		fflush(stdout)
@@ -310,10 +311,10 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 			}
 
 			let presentationTime = sampleBuffer.presentationTimeStamp - firstSampleTime
-			lastSampleBuffer = sampleBuffer
 			let timing = CMSampleTimingInfo(duration: sampleBuffer.duration, presentationTimeStamp: presentationTime, decodeTimeStamp: sampleBuffer.decodeTimeStamp)
 			if let retimedSampleBuffer = try? CMSampleBuffer(copying: sampleBuffer, withNewTiming: [timing]) {
 				videoInput.append(retimedSampleBuffer)
+				lastVideoFrameEndTime = CMTimeAdd(presentationTime, resolvedVideoSampleDuration(sampleBuffer.duration))
 				frameCount += 1
 			}
 			return
@@ -357,15 +358,10 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		}
 		stream = nil
 
-		if let originalBuffer = lastSampleBuffer, let videoInput = videoInput {
-			let additionalTime = CMTime(seconds: ProcessInfo.processInfo.systemUptime, preferredTimescale: 600) - firstSampleTime
-			let timing = CMSampleTimingInfo(duration: originalBuffer.duration, presentationTimeStamp: additionalTime, decodeTimeStamp: originalBuffer.decodeTimeStamp)
-			if let additionalSampleBuffer = try? CMSampleBuffer(copying: originalBuffer, withNewTiming: [timing]) {
-				videoInput.append(additionalSampleBuffer)
-			}
-		}
-
-		assetWriter?.endSession(atSourceTime: lastSampleBuffer?.presentationTimeStamp ?? .zero)
+		// ScreenCaptureKit timestamps are absolute host times, so finalize using the
+		// retimed zero-based timeline we wrote into the asset.
+		let sessionEndTime = CMTimeCompare(lastVideoFrameEndTime, .zero) > 0 ? lastVideoFrameEndTime : .zero
+		assetWriter?.endSession(atSourceTime: sessionEndTime)
 		videoInput?.markAsFinished()
 		audioInput?.markAsFinished()
 		await assetWriter?.finishWriting()
@@ -383,9 +379,9 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		microphoneOutputURL = nil
 		sessionStarted = false
 		firstSampleTime = .zero
+		lastVideoFrameEndTime = .zero
 		firstPrimaryAudioSampleTime = nil
 		firstMicrophoneSampleTime = nil
-		lastSampleBuffer = nil
 		frameCount = 0
 		capturesSystemAudio = false
 		capturesMicrophone = false
@@ -407,6 +403,15 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		if let retimedSampleBuffer = try? CMSampleBuffer(copying: sampleBuffer, withNewTiming: [timing]) {
 			input.append(retimedSampleBuffer)
 		}
+	}
+
+	private func resolvedVideoSampleDuration(_ duration: CMTime) -> CMTime {
+		let seconds = duration.seconds
+		if duration.isValid && seconds.isFinite && seconds > 0 {
+			return duration
+		}
+
+		return CMTime(value: 1, timescale: CMTimeScale(targetCaptureFPS))
 	}
 
 	private static func audioOutputSettings(bitRate: Int) -> [String: Any] {

@@ -112,13 +112,30 @@ pub async fn start_capture(
 pub async fn stop_capture(_app: &AppHandle) -> Result<(), String> {
     let mut guard = get_capture_process().lock().await;
     if let Some(ref mut process) = *guard {
-        // Send "stop" via stdin to gracefully stop recording
-        process.write_stdin("stop\n").await?;
+        // Send "stop" via stdin to gracefully stop recording.
+        // If the process already exited (e.g. window closed), stdin write may fail — that's ok.
+        let _ = process.write_stdin("stop\n").await;
 
-        // Wait for the process to exit
-        let exit_code = process.wait_for_close().await?;
-        if exit_code != 0 {
-            eprintln!("ScreenCaptureKit helper exited with code {}", exit_code);
+        // Wait for the process to exit with a timeout to avoid hanging forever
+        // if the sidecar's asset writer gets stuck during finishWriting().
+        match tokio::time::timeout(
+            tokio::time::Duration::from_secs(15),
+            process.wait_for_close(),
+        )
+        .await
+        {
+            Ok(Ok(exit_code)) => {
+                if exit_code != 0 {
+                    eprintln!("ScreenCaptureKit helper exited with code {}", exit_code);
+                }
+            }
+            Ok(Err(e)) => {
+                eprintln!("Error waiting for ScreenCaptureKit helper: {}", e);
+            }
+            Err(_) => {
+                eprintln!("Timed out waiting for ScreenCaptureKit helper to exit, killing process");
+                let _ = process.kill().await;
+            }
         }
     }
     *guard = None;

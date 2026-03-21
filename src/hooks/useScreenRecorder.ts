@@ -331,13 +331,20 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
         wgcRecording.current = false;
         const facecamResultPromise = stopFacecamCapture();
 
-        const stoppedPath = await backend.stopNativeScreenRecording();
-        await backend.setRecordingState(false);
+        let stoppedPath: string | null = null;
+        try {
+          stoppedPath = await backend.stopNativeScreenRecording();
+        } catch (error) {
+          console.error("Error stopping native screen recording:", error);
+        }
+        await backend.setRecordingState(false).catch(() => null);
+
+        cleanupCapturedMedia();
 
         if (!stoppedPath) {
           console.error("Failed to stop native screen recording");
-          cleanupCapturedMedia();
           await facecamResultPromise.catch(() => null);
+          await backend.switchToEditor();
           return;
         }
 
@@ -352,11 +359,10 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
           }
         }
 
-        const facecamResult = await facecamResultPromise;
+        const facecamResult = await facecamResultPromise.catch(() => null);
         await backend.setCurrentRecordingSession(
           buildRecordingSession(finalPath, facecamResult),
         );
-        cleanupCapturedMedia();
         await backend.switchToEditor();
       })();
       return;

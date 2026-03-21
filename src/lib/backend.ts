@@ -41,6 +41,10 @@ export async function readLocalFile(path: string): Promise<Uint8Array> {
   return new Uint8Array(data);
 }
 
+export function resolveMediaPlaybackUrl(path: string): Promise<string> {
+  return invoke('resolve_media_playback_url', { path });
+}
+
 export function storeRecordedVideo(
   videoData: Uint8Array,
   fileName: string
@@ -297,4 +301,3 @@ export function convertFileToSrc(path: string): Promise<string> {
 export function isTauri(): boolean {
   return true;
 }
-

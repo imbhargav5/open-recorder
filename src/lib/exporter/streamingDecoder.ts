@@ -34,20 +34,37 @@ export class StreamingVideoDecoder {
   private metadata: DecodedVideoInfo | null = null;
 
   private toLocalFilePath(resourceUrl: string): string | null {
-    if (!resourceUrl.startsWith('file:')) {
-      return null;
+    if (resourceUrl.startsWith('file:')) {
+      try {
+        const url = new URL(resourceUrl);
+        let filePath = decodeURIComponent(url.pathname);
+        if (/^\/[A-Za-z]:/.test(filePath)) {
+          filePath = filePath.slice(1);
+        }
+        return filePath;
+      } catch {
+        return resourceUrl.replace(/^file:\/\//, '');
+      }
     }
 
-    try {
-      const url = new URL(resourceUrl);
-      let filePath = decodeURIComponent(url.pathname);
-      if (/^\/[A-Za-z]:/.test(filePath)) {
-        filePath = filePath.slice(1);
+    // Tauri asset protocol: asset://localhost/path or https://asset.localhost/path
+    // The path is encoded via encodeURIComponent, so slashes become %2F.
+    // URL.pathname adds a leading /, so we strip it before decoding.
+    if (resourceUrl.startsWith('asset://') || resourceUrl.startsWith('https://asset.localhost/') || resourceUrl.startsWith('http://asset.localhost/')) {
+      try {
+        const url = new URL(resourceUrl);
+        const rawPath = url.pathname.startsWith('/') ? url.pathname.slice(1) : url.pathname;
+        let filePath = decodeURIComponent(rawPath);
+        if (/^\/[A-Za-z]:/.test(filePath)) {
+          filePath = filePath.slice(1);
+        }
+        return filePath;
+      } catch {
+        return null;
       }
-      return filePath;
-    } catch {
-      return resourceUrl.replace(/^file:\/\//, '');
     }
+
+    return null;
   }
 
   private inferMimeType(fileName: string): string {

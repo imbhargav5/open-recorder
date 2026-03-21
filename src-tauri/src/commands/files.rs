@@ -2,6 +2,33 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 use crate::state::{AppState, RecordingSession};
+use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
+
+const URL_COMPONENT_ENCODE_SET: &AsciiSet = &CONTROLS
+    .add(b' ')
+    .add(b'"')
+    .add(b'#')
+    .add(b'$')
+    .add(b'%')
+    .add(b'&')
+    .add(b'+')
+    .add(b',')
+    .add(b'/')
+    .add(b':')
+    .add(b';')
+    .add(b'<')
+    .add(b'=')
+    .add(b'>')
+    .add(b'?')
+    .add(b'@')
+    .add(b'[')
+    .add(b'\\')
+    .add(b']')
+    .add(b'^')
+    .add(b'`')
+    .add(b'{')
+    .add(b'|')
+    .add(b'}');
 
 fn get_recordings_dir(state: &AppState) -> PathBuf {
     if let Some(ref custom) = state.custom_recordings_dir {
@@ -16,6 +43,25 @@ fn get_recordings_dir(state: &AppState) -> PathBuf {
 #[tauri::command]
 pub async fn read_local_file(path: String) -> Result<Vec<u8>, String> {
     tokio::fs::read(&path).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn resolve_media_playback_url(path: String) -> Result<String, String> {
+    if path.trim().is_empty() {
+        return Err("Path is required".to_string());
+    }
+
+    let encoded = utf8_percent_encode(&path, URL_COMPONENT_ENCODE_SET).to_string();
+
+    #[cfg(target_os = "windows")]
+    {
+        Ok(format!("http://asset.localhost/{encoded}"))
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        Ok(format!("asset://localhost/{encoded}"))
+    }
 }
 
 #[tauri::command]

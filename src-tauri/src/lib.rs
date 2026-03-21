@@ -55,6 +55,7 @@ pub fn run() {
             commands::platform::hide_cursor,
             // Files
             commands::files::read_local_file,
+            commands::files::resolve_media_playback_url,
             commands::files::store_recorded_video,
             commands::files::store_recording_asset,
             commands::files::get_recorded_video_path,

@@ -25,6 +25,7 @@ pub struct SelectedSource {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct FacecamSettings {
     pub enabled: bool,
     pub shape: String,
@@ -36,6 +37,7 @@ pub struct FacecamSettings {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RecordingSession {
     pub screen_video_path: String,
     pub facecam_video_path: Option<String>,

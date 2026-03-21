@@ -193,6 +193,26 @@ func availableDisplays() throws -> [DisplayInfo] {
 		}
 }
 
+func canCaptureScreen() -> Bool {
+	if #available(macOS 10.15, *) {
+		guard CGPreflightScreenCaptureAccess() else {
+			return false
+		}
+	}
+
+	// Probe with a real capture to detect cases where preflight passes but capture hangs
+	let semaphore = DispatchSemaphore(value: 0)
+	var probeSucceeded = false
+	DispatchQueue.global(qos: .userInitiated).async {
+		if let _ = createDisplayImage(displayID: CGMainDisplayID()) {
+			probeSucceeded = true
+		}
+		semaphore.signal()
+	}
+
+	return semaphore.wait(timeout: .now() + 2.0) == .success && probeSucceeded
+}
+
 func displayThumbnail(displayID: CGDirectDisplayID, targetSize: ThumbnailSize) -> String? {
 	guard let image = createDisplayImage(displayID: displayID) else {
 		return nil
@@ -283,7 +303,7 @@ let ownBundleIds: Set<String> = [
 
 let commandArguments = Array(CommandLine.arguments.dropFirst())
 let thumbnailSize = parseThumbnailSize(arguments: commandArguments)
-let skipThumbnails = shouldSkipThumbnails(arguments: commandArguments)
+let skipThumbnails = shouldSkipThumbnails(arguments: commandArguments) || !canCaptureScreen()
 let requestedTypes = parseRequestedTypes(arguments: commandArguments)
 let wantsScreens = requestedTypes.contains("screen")
 let wantsWindows = requestedTypes.contains("window")

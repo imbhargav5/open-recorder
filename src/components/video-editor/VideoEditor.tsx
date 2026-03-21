@@ -85,6 +85,7 @@ export default function VideoEditor() {
   const [videoPath, setVideoPath] = useState<string | null>(null);
   const [videoSourcePath, setVideoSourcePath] = useState<string | null>(null);
   const [facecamVideoPath, setFacecamVideoPath] = useState<string | null>(null);
+  const [facecamPlaybackPath, setFacecamPlaybackPath] = useState<string | null>(null);
   const [facecamOffsetMs, setFacecamOffsetMs] = useState(0);
   const [currentProjectPath, setCurrentProjectPath] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -225,6 +226,18 @@ export default function VideoEditor() {
     applyHistorySnapshot(next);
   }, [applyHistorySnapshot, buildHistorySnapshot, cloneSnapshot]);
 
+  const resolvePlaybackPaths = useCallback(async (sourcePath: string, nextFacecamPath?: string | null) => {
+    const [resolvedVideoPath, resolvedFacecamPath] = await Promise.all([
+      backend.resolveMediaPlaybackUrl(sourcePath),
+      nextFacecamPath ? backend.resolveMediaPlaybackUrl(nextFacecamPath) : Promise.resolve(null),
+    ]);
+
+    return {
+      resolvedVideoPath,
+      resolvedFacecamPath,
+    };
+  }, []);
+
   const applyLoadedProject = useCallback(async (candidate: unknown, path?: string | null) => {
     if (!validateProjectData(candidate)) {
       return false;
@@ -244,6 +257,10 @@ export default function VideoEditor() {
       typeof project.facecamOffsetMs === "number" && Number.isFinite(project.facecamOffsetMs)
         ? project.facecamOffsetMs
         : 0;
+    const { resolvedVideoPath, resolvedFacecamPath } = await resolvePlaybackPaths(
+      sourcePath,
+      normalizedFacecamVideoPath,
+    );
 
     try {
       videoPlaybackRef.current?.pause();
@@ -256,8 +273,9 @@ export default function VideoEditor() {
 
     setError(null);
     setVideoSourcePath(sourcePath);
-    setVideoPath(toFileUrl(sourcePath));
+    setVideoPath(resolvedVideoPath);
     setFacecamVideoPath(normalizedFacecamVideoPath);
+    setFacecamPlaybackPath(resolvedFacecamPath);
     setFacecamOffsetMs(normalizedFacecamOffsetMs);
     setCurrentProjectPath(path ?? null);
 
@@ -310,10 +328,10 @@ export default function VideoEditor() {
       facecamOffsetMs: normalizedFacecamOffsetMs,
     })));
     return true;
-  }, []);
+  }, [resolvePlaybackPaths]);
 
   const currentProjectSnapshot = useMemo(() => {
-    const sourcePath = videoSourcePath ?? (videoPath ? fromFileUrl(videoPath) : null);
+    const sourcePath = videoSourcePath;
     if (!sourcePath) {
       return null;
     }
@@ -350,7 +368,6 @@ export default function VideoEditor() {
       }),
     );
   }, [
-    videoPath,
     videoSourcePath,
     facecamVideoPath,
     facecamOffsetMs,
@@ -437,9 +454,14 @@ export default function VideoEditor() {
           const nextFacecamPath = session.facecamVideoPath
             ? fromFileUrl(session.facecamVideoPath)
             : null;
+          const { resolvedVideoPath, resolvedFacecamPath } = await resolvePlaybackPaths(
+            sourcePath,
+            nextFacecamPath,
+          );
           setVideoSourcePath(sourcePath);
-          setVideoPath(toFileUrl(sourcePath));
+          setVideoPath(resolvedVideoPath);
           setFacecamVideoPath(nextFacecamPath);
+          setFacecamPlaybackPath(resolvedFacecamPath);
           setFacecamOffsetMs(session.facecamOffsetMs ?? 0);
           setFacecamSettings(
             normalizeFacecamSettings(session.facecamSettings, {
@@ -450,9 +472,11 @@ export default function VideoEditor() {
           setLastSavedSnapshot(null);
         } else if (videoPathResult) {
           const sourcePath = fromFileUrl(videoPathResult);
+          const resolvedVideoPath = await backend.resolveMediaPlaybackUrl(sourcePath);
           setVideoSourcePath(sourcePath);
-          setVideoPath(toFileUrl(sourcePath));
+          setVideoPath(resolvedVideoPath);
           setFacecamVideoPath(null);
+          setFacecamPlaybackPath(null);
           setFacecamOffsetMs(0);
           setFacecamSettings(createDefaultFacecamSettings(false));
           setCurrentProjectPath(null);
@@ -468,7 +492,7 @@ export default function VideoEditor() {
     }
 
     loadInitialData();
-  }, [applyLoadedProject]);
+  }, [applyLoadedProject, resolvePlaybackPaths]);
 
   const saveProject = useCallback(async (forceSaveAs: boolean) => {
     if (!videoPath) {
@@ -476,7 +500,7 @@ export default function VideoEditor() {
       return;
     }
 
-    const sourcePath = videoSourcePath ?? fromFileUrl(videoPath);
+    const sourcePath = videoSourcePath;
     if (!sourcePath) {
       toast.error('Unable to determine source video path');
       return;
@@ -599,19 +623,23 @@ export default function VideoEditor() {
   }, [saveProject]);
 
   const handleLoadProject = useCallback(async () => {
-    const result = await backend.loadProjectFile();
+    try {
+      const result = await backend.loadProjectFile();
 
-    if (!result) {
-      return;
+      if (!result) {
+        return;
+      }
+
+      const restored = await applyLoadedProject(result.data, result.filePath ?? null);
+      if (!restored) {
+        toast.error('Invalid project file format');
+        return;
+      }
+
+      toast.success(`Project loaded from ${result.filePath}`);
+    } catch (loadError) {
+      toast.error(`Failed to load project: ${String(loadError)}`);
     }
-
-    const restored = await applyLoadedProject(result.data, result.filePath ?? null);
-    if (!restored) {
-      toast.error('Invalid project file format');
-      return;
-    }
-
-    toast.success(`Project loaded from ${result.filePath}`);
   }, [applyLoadedProject]);
 
   useEffect(() => {
@@ -634,7 +662,7 @@ export default function VideoEditor() {
     let mounted = true;
 
     async function loadCursorTelemetry() {
-      if (!videoPath) {
+      if (!videoSourcePath) {
         if (mounted) {
           setCursorTelemetry([]);
         }
@@ -642,7 +670,7 @@ export default function VideoEditor() {
       }
 
       try {
-        const result = await backend.getCursorTelemetry(fromFileUrl(videoPath));
+        const result = await backend.getCursorTelemetry(videoSourcePath);
         if (mounted) {
           setCursorTelemetry(result?.samples ?? []);
         }
@@ -659,7 +687,7 @@ export default function VideoEditor() {
     return () => {
       mounted = false;
     };
-  }, [videoPath]);
+  }, [videoSourcePath]);
 
   const normalizedCursorTelemetry = useMemo(() => {
     if (cursorTelemetry.length === 0) {
@@ -1349,6 +1377,12 @@ export default function VideoEditor() {
       return;
     }
 
+    const sourcePath = videoSourcePath;
+    if (!sourcePath) {
+      toast.error('Unable to determine source video path');
+      return;
+    }
+
     const video = videoPlaybackRef.current?.video;
     if (!video) {
       toast.error('Video not ready');
@@ -1380,12 +1414,14 @@ export default function VideoEditor() {
       const containerElement = playbackRef?.containerRef?.current;
       const previewWidth = containerElement?.clientWidth || 1920;
       const previewHeight = containerElement?.clientHeight || 1080;
+      const sourceVideoUrl = toFileUrl(sourcePath);
+      const facecamSourceUrl = facecamVideoPath ? toFileUrl(facecamVideoPath) : undefined;
 
       if (settings.format === 'gif' && settings.gifConfig) {
         // GIF Export
         const gifExporter = new GifExporter({
-          videoUrl: videoPath,
-          facecamVideoUrl: facecamVideoPath ? toFileUrl(facecamVideoPath) : undefined,
+          videoUrl: sourceVideoUrl,
+          facecamVideoUrl: facecamSourceUrl,
           facecamOffsetMs,
           width: settings.gifConfig.width,
           height: settings.gifConfig.height,
@@ -1526,14 +1562,14 @@ export default function VideoEditor() {
         }
 
         const exporter = new VideoExporter({
-          videoUrl: videoPath,
+          videoUrl: sourceVideoUrl,
           width: exportWidth,
           height: exportHeight,
           frameRate: 60,
           bitrate,
           codec: 'avc1.640033',
           wallpaper,
-          facecamVideoUrl: facecamVideoPath ? toFileUrl(facecamVideoPath) : undefined,
+          facecamVideoUrl: facecamSourceUrl,
           facecamOffsetMs,
           trimRegions,
           speedRegions,
@@ -1602,7 +1638,7 @@ export default function VideoEditor() {
       setShowExportDialog(keepExportDialogOpen);
       setExportProgress(null);
     }
-  }, [videoPath, facecamVideoPath, facecamOffsetMs, wallpaper, trimRegions, speedRegions, shadowIntensity, backgroundBlur, zoomMotionBlur, connectZooms, showCursor, effectiveCursorTelemetry, effectiveZoomRegions, cursorSize, cursorSmoothing, cursorMotionBlur, cursorClickBounce, borderRadius, padding, cropRegion, facecamSettings, annotationRegions, isPlaying, aspectRatio, exportQuality, showExportSuccessToast, restorePreviewAfterExport]);
+  }, [videoPath, videoSourcePath, facecamVideoPath, facecamOffsetMs, wallpaper, trimRegions, speedRegions, shadowIntensity, backgroundBlur, zoomMotionBlur, connectZooms, showCursor, effectiveCursorTelemetry, effectiveZoomRegions, cursorSize, cursorSmoothing, cursorMotionBlur, cursorClickBounce, borderRadius, padding, cropRegion, facecamSettings, annotationRegions, isPlaying, aspectRatio, exportQuality, showExportSuccessToast, restorePreviewAfterExport]);
 
   const handleOpenExportDialog = useCallback(() => {
     if (!videoPath) {
@@ -1759,7 +1795,7 @@ export default function VideoEditor() {
                       aspectRatio={aspectRatio}
                       ref={videoPlaybackRef}
                       videoPath={videoPath || ''}
-                      facecamVideoPath={facecamVideoPath ? toFileUrl(facecamVideoPath) : undefined}
+                      facecamVideoPath={facecamPlaybackPath || undefined}
                       facecamOffsetMs={facecamOffsetMs}
                       facecamSettings={facecamSettings}
                       onDurationChange={setDuration}
