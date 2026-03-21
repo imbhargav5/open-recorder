@@ -15,6 +15,7 @@
 	"version": "0.0.4",
 	"type": "module",
 	"scripts": {
+		"tauri": "tauri",
 		"dev": "cargo tauri dev",
 		"build": "cargo tauri build",
 		"build:sidecars": "node scripts/build-tauri-sidecars.mjs",
