@@ -843,7 +843,7 @@ export default function VideoEditor() {
     return () => { mounted = false };
   }, []);
 
-  function togglePlayPause() {
+  const togglePlayPause = useCallback(() => {
     const playback = videoPlaybackRef.current;
     const video = playback?.video;
     if (!playback || !video) return;
@@ -853,13 +853,30 @@ export default function VideoEditor() {
     } else {
       playback.play().catch(err => console.error('Video play failed:', err));
     }
-  }
+  }, [isPlaying]);
 
-  function handleSeek(time: number) {
+  const handleSeek = useCallback((time: number) => {
     const video = videoPlaybackRef.current?.video;
     if (!video) return;
     video.currentTime = time;
-  }
+  }, []);
+
+  // Derived values for SettingsPanel — memoized to keep props stable
+  const selectedZoomDepth = useMemo(() => {
+    if (!selectedZoomId) return null;
+    return zoomRegions.find(z => z.id === selectedZoomId)?.depth ?? null;
+  }, [selectedZoomId, zoomRegions]);
+
+  const selectedSpeedValue = useMemo(() => {
+    if (!selectedSpeedId) return null;
+    return speedRegions.find(r => r.id === selectedSpeedId)?.speed ?? null;
+  }, [selectedSpeedId, speedRegions]);
+
+  const gifOutputDimensions = useMemo(() => {
+    const videoWidth = videoPlaybackRef.current?.video?.videoWidth || 1920;
+    const videoHeight = videoPlaybackRef.current?.video?.videoHeight || 1080;
+    return calculateOutputDimensions(videoWidth, videoHeight, gifSizePreset, GIF_SIZE_PRESETS);
+  }, [gifSizePreset, duration]);
 
   const handleSelectZoom = useCallback((id: string | null) => {
     setSelectedZoomId(id);
@@ -1800,7 +1817,6 @@ export default function VideoEditor() {
                       facecamSettings={facecamSettings}
                       onDurationChange={setDuration}
                       onTimeUpdate={setCurrentTime}
-                      currentTime={currentTime}
                       onPlayStateChange={setIsPlaying}
                       onError={setError}
                       wallpaper={wallpaper}
@@ -1897,8 +1913,8 @@ export default function VideoEditor() {
           <SettingsPanel
           selected={wallpaper}
           onWallpaperChange={setWallpaper}
-          selectedZoomDepth={selectedZoomId ? zoomRegions.find(z => z.id === selectedZoomId)?.depth : null}
-          onZoomDepthChange={(depth) => selectedZoomId && handleZoomDepthChange(depth)}
+          selectedZoomDepth={selectedZoomDepth}
+          onZoomDepthChange={handleZoomDepthChange}
           selectedZoomId={selectedZoomId}
           onZoomDelete={handleZoomDelete}
           selectedTrimId={selectedTrimId}
@@ -1944,12 +1960,7 @@ export default function VideoEditor() {
           onGifLoopChange={setGifLoop}
           gifSizePreset={gifSizePreset}
           onGifSizePresetChange={setGifSizePreset}
-          gifOutputDimensions={calculateOutputDimensions(
-            videoPlaybackRef.current?.video?.videoWidth || 1920,
-            videoPlaybackRef.current?.video?.videoHeight || 1080,
-            gifSizePreset,
-            GIF_SIZE_PRESETS
-          )}
+          gifOutputDimensions={gifOutputDimensions}
           onExport={handleOpenExportDialog}
           selectedAnnotationId={selectedAnnotationId}
           annotationRegions={annotationRegions}
@@ -1961,7 +1972,7 @@ export default function VideoEditor() {
           onSaveProject={handleSaveProject}
           onLoadProject={handleLoadProject}
           selectedSpeedId={selectedSpeedId}
-          selectedSpeedValue={selectedSpeedId ? speedRegions.find(r => r.id === selectedSpeedId)?.speed ?? null : null}
+          selectedSpeedValue={selectedSpeedValue}
           onSpeedChange={handleSpeedChange}
           onSpeedDelete={handleSpeedDelete}
         />

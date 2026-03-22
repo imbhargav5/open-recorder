@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type WheelEvent } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type WheelEvent } from "react";
 import { useTimelineContext } from "dnd-timeline";
 import { Button } from "@/components/ui/button";
 import { Plus, Scissors, ZoomIn, MessageSquare, ChevronDown, Check, Gauge, WandSparkles } from "lucide-react";
@@ -566,7 +566,7 @@ function Timeline({
   );
 }
 
-export default function TimelineEditor({
+function TimelineEditorInner({
   videoDuration,
   currentTime,
   onSeek,
@@ -1373,3 +1373,4 @@ export default function TimelineEditor({
   );
 }
 
+export default memo(TimelineEditorInner);

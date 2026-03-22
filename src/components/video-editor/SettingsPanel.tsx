@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { useEffect, useRef } from "react";
+import { memo, useEffect, useRef } from "react";
 import { getAssetPath, getRenderableAssetUrl } from "@/lib/assetPath";
 import { openExternalUrl } from "@/lib/backend";
 import { createDefaultFacecamSettings, type FacecamSettings } from "@/lib/recordingSession";
@@ -46,6 +46,12 @@ const GRADIENTS = [
   "linear-gradient(to right, #f78ca0 0%, #f9748f 19%, #fd868c 60%, #fe9a8b 100%)",
   "linear-gradient(to top, #48c6ef 0%, #6f86d6 100%)",
   "linear-gradient(to right, #0acffe 0%, #495aff 100%)",
+];
+
+const COLOR_PALETTE = [
+  '#FF0000', '#FFD700', '#00FF00', '#FFFFFF', '#0000FF', '#FF6B00',
+  '#9B59B6', '#E91E63', '#00BCD4', '#FF5722', '#8BC34A', '#FFC107',
+  '#2563EB', '#000000', '#607D8B', '#795548',
 ];
 
 interface SettingsPanelProps {
@@ -116,8 +122,6 @@ interface SettingsPanelProps {
   onSpeedDelete?: (id: string) => void;
 }
 
-export default SettingsPanel;
-
 const ZOOM_DEPTH_OPTIONS: Array<{ depth: ZoomDepth; label: string }> = [
   { depth: 1, label: "1.25×" },
   { depth: 2, label: "1.5×" },
@@ -127,7 +131,7 @@ const ZOOM_DEPTH_OPTIONS: Array<{ depth: ZoomDepth; label: string }> = [
   { depth: 6, label: "5×" },
 ];
 
-export function SettingsPanel({ 
+function SettingsPanelInner({
   selected, 
   onWallpaperChange, 
   selectedZoomDepth, 
@@ -211,12 +215,6 @@ export function SettingsPanel({
     })()
     return () => { mounted = false }
   }, [])
-  const colorPalette = [
-    '#FF0000', '#FFD700', '#00FF00', '#FFFFFF', '#0000FF', '#FF6B00',
-    '#9B59B6', '#E91E63', '#00BCD4', '#FF5722', '#8BC34A', '#FFC107',
-    '#2563EB', '#000000', '#607D8B', '#795548',
-  ];
-  
   const [selectedColor, setSelectedColor] = useState('#ADADAD');
   const [gradient, setGradient] = useState<string>(GRADIENTS[0]);
   const [showCropModal, setShowCropModal] = useState(false);
@@ -816,7 +814,7 @@ export function SettingsPanel({
                     <div className="p-1">
                       <Block
                         color={selectedColor}
-                        colors={colorPalette}
+                        colors={COLOR_PALETTE}
                         onChange={(color) => {
                           setSelectedColor(color.hex);
                           onWallpaperChange(color.hex);
@@ -1058,3 +1056,6 @@ export function SettingsPanel({
     </div>
   );
 }
+
+export const SettingsPanel = memo(SettingsPanelInner);
+export default SettingsPanel;

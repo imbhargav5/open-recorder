@@ -1,5 +1,5 @@
 import type React from "react";
-import { useEffect, useRef, useImperativeHandle, forwardRef, useState, useMemo, useCallback } from "react";
+import { memo, useEffect, useRef, useImperativeHandle, forwardRef, useState, useMemo, useCallback } from "react";
 import { getAssetPath, getRenderableAssetUrl } from "@/lib/assetPath";
 import { getFacecamLayout, type FacecamSettings } from "@/lib/recordingSession";
 import { DEFAULT_WALLPAPER_PATH, DEFAULT_WALLPAPER_RELATIVE_PATH } from "@/lib/wallpapers";
@@ -53,7 +53,6 @@ interface VideoPlaybackProps {
   facecamSettings?: FacecamSettings;
   onDurationChange: (duration: number) => void;
   onTimeUpdate: (time: number) => void;
-  currentTime: number;
   onPlayStateChange: (playing: boolean) => void;
   onError: (error: string) => void;
   wallpaper?: string;
@@ -97,14 +96,13 @@ export interface VideoPlaybackRef {
   refreshFrame: () => Promise<void>;
 }
 
-const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(({
+const VideoPlayback = memo(forwardRef<VideoPlaybackRef, VideoPlaybackProps>(({
   videoPath,
   facecamVideoPath,
   facecamOffsetMs = 0,
   facecamSettings,
   onDurationChange,
   onTimeUpdate,
-  currentTime,
   onPlayStateChange,
   onError,
   wallpaper,
@@ -152,6 +150,9 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(({
   const [pixiReady, setPixiReady] = useState(false);
   const [videoReady, setVideoReady] = useState(false);
   const [facecamReady, setFacecamReady] = useState(false);
+  const [, setAnnotationVisibilityTick] = useState(0);
+  const annotationRegionsRef = useRef(annotationRegions);
+  const selectedAnnotationIdRef = useRef(selectedAnnotationId);
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const focusIndicatorRef = useRef<HTMLDivElement | null>(null);
   const currentTimeRef = useRef(0);
@@ -189,6 +190,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(({
   const motionBlurStateRef = useRef<MotionBlurState>(createMotionBlurState());
   const facecamOffsetMsRef = useRef(facecamOffsetMs);
   const facecamSettingsRef = useRef(facecamSettings);
+  const prevVisibleAnnotationIdsRef = useRef('');
 
   const clampFocusToStage = useCallback((focus: ZoomFocus, depth: ZoomDepth) => {
     return clampFocusToStageUtil(focus, depth, stageSizeRef.current);
@@ -547,6 +549,14 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(({
   useEffect(() => {
     facecamSettingsRef.current = facecamSettings;
   }, [facecamSettings]);
+
+  useEffect(() => {
+    annotationRegionsRef.current = annotationRegions;
+  }, [annotationRegions]);
+
+  useEffect(() => {
+    selectedAnnotationIdRef.current = selectedAnnotationId;
+  }, [selectedAnnotationId]);
 
   useEffect(() => {
     if (!pixiReady || !videoReady) return;
@@ -1142,6 +1152,21 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(({
           !isPlayingRef.current || isSeekingRef.current,
         );
       }
+
+      // Track annotation visibility changes to trigger re-renders only when needed
+      const annotations = annotationRegionsRef.current;
+      if (annotations.length > 0) {
+        const nowMs = currentTimeRef.current;
+        const selId = selectedAnnotationIdRef.current;
+        const visibleIds = annotations
+          .filter(a => a.id === selId || (nowMs >= a.startMs && nowMs <= a.endMs))
+          .map(a => a.id)
+          .join(',');
+        if (visibleIds !== prevVisibleAnnotationIdsRef.current) {
+          prevVisibleAnnotationIdsRef.current = visibleIds;
+          setAnnotationVisibilityTick(t => t + 1);
+        }
+      }
     };
 
     app.ticker.add(ticker);
@@ -1307,7 +1332,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(({
               
               if (annotation.id === selectedAnnotationId) return true;
               
-              const timeMs = Math.round(currentTime * 1000);
+              const timeMs = Math.round(currentTimeRef.current);
               return timeMs >= annotation.startMs && timeMs <= annotation.endMs;
             });
             
@@ -1373,7 +1398,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(({
       )}
     </div>
   );
-});
+}));
 
 VideoPlayback.displayName = 'VideoPlayback';
 

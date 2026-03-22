@@ -4,6 +4,25 @@ use tauri::{
 };
 
 pub fn setup_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    // App menu (macOS application menu — appears under the app name in the top bar)
+    let check_updates =
+        MenuItemBuilder::with_id("menu-check-updates", "Check for Updates...")
+            .build(app)?;
+
+    let app_menu = SubmenuBuilder::new(app, "Open Recorder")
+        .about(None)
+        .separator()
+        .item(&check_updates)
+        .separator()
+        .services()
+        .separator()
+        .hide()
+        .hide_others()
+        .show_all()
+        .separator()
+        .quit()
+        .build()?;
+
     // File menu
     let load_project = MenuItemBuilder::with_id("menu-load-project", "Open Project...")
         .accelerator("CmdOrCtrl+O")
@@ -46,15 +65,11 @@ pub fn setup_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         .build()?;
 
     // Help menu
-    let check_updates =
-        MenuItemBuilder::with_id("menu-check-updates", "Check for Updates...")
-            .build(app)?;
-
     let help_menu = SubmenuBuilder::new(app, "Help")
-        .item(&check_updates)
         .build()?;
 
     let menu = MenuBuilder::new(app)
+        .item(&app_menu)
         .item(&file_menu)
         .item(&edit_menu)
         .item(&view_menu)

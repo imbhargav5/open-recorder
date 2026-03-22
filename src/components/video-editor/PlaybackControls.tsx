@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Button } from "../ui/button";
 import { Play, Pause } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -10,7 +11,7 @@ interface PlaybackControlsProps {
   onSeek: (time: number) => void;
 }
 
-export default function PlaybackControls({
+function PlaybackControls({
   isPlaying,
   currentTime,
   duration,
@@ -91,3 +92,4 @@ export default function PlaybackControls({
   );
 }
 
+export default memo(PlaybackControls);
