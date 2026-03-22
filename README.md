@@ -280,6 +280,84 @@ Open Recorder is a **desktop video editor with a renderer-driven motion pipeline
 
 ---
 
+# Performance
+
+Open Recorder is an opensource, blazing fast ScreenStudio alternative. Built with **Tauri and Rust**, it is highly performant but very small in size compared to its competitors. It adds auto-zoom, cursor animations, and more to your screen recordings — all without the overhead of traditional Electron-based tools.
+
+### Lightweight Native Architecture
+
+Unlike Electron apps that bundle an entire Chromium browser, Open Recorder uses **Tauri** — a Rust-based framework that leverages the operating system's native webview. This means:
+
+- **Dramatically smaller binary size** — the app ships without a bundled browser engine, keeping the installer compact compared to Electron alternatives
+- **Lower baseline memory usage** — no separate Chromium process tree consuming hundreds of megabytes at idle
+- **Rust-powered backend** — the core orchestration layer is written in Rust with async I/O via Tokio, providing near-zero overhead for system-level operations like file handling, process management, and native API bridging
+
+### Native Platform Capture — No Browser Bottleneck
+
+Open Recorder bypasses slow browser-based capture APIs wherever possible by using **platform-specific native capture**:
+
+- **macOS**: Uses Apple's **ScreenCaptureKit** framework directly via a native Swift sidecar, delivering hardware-optimized screen capture with cursor telemetry at minimal CPU cost
+- **Windows**: Uses the native **Windows.Graphics.Capture (WGC)** API through a dedicated sidecar for display and app-window capture, plus native **WASAPI** for system and microphone audio
+- **Linux**: FFmpeg-based capture pipeline with browser fallback
+
+These native capture paths run outside the main application process as lightweight sidecar binaries, keeping the UI thread responsive during recording.
+
+### Streaming Decoder — Single-Pass Frame Processing
+
+The export pipeline uses a **streaming forward-pass decoder** built on the WebCodecs `VideoDecoder` API and `web-demuxer`. Instead of seeking to each frame individually (which is extremely slow with compressed video), Open Recorder decodes frames in a single continuous pass:
+
+- Frames flow through the decoder in order — no costly random seeks into the compressed bitstream
+- Trimmed regions are decoded (necessary for P-frame and B-frame reference chains) but their output is discarded immediately, avoiding unnecessary rendering work
+- Frames are resampled to the target frame rate during the same streaming pass, eliminating a separate processing step
+
+This architecture is **significantly faster than seek-per-frame approaches**, especially for longer recordings.
+
+### Hardware-Accelerated Video Encoding
+
+Export uses the **WebCodecs API** with `hardwareAcceleration: 'prefer-hardware'`, offloading H.264 encoding to the GPU when available:
+
+- Encodes to `avc1.640033` (H.264 High Profile) for broad compatibility
+- **Variable bitrate** mode adapts quality dynamically — 30 Mbps at 1080p, scaling up to 80 Mbps at 5K+ resolutions
+- A deep encode queue of **120 frames** keeps the hardware encoder saturated for maximum throughput
+- Falls back gracefully to software encoding when GPU encoding is unavailable
+
+### Efficient Rendering with PixiJS
+
+All frame composition — video, cursor, annotations, zoom transforms — is handled by **PixiJS**, a GPU-accelerated 2D rendering engine:
+
+- Separate canvas layers for background, scene content, and shadow compositing avoid redundant GPU draw calls
+- Textures are destroyed immediately after replacement, preventing GPU memory leaks during long exports
+- Drop shadows use lightweight CSS `drop-shadow()` filters composited on a separate canvas, rather than expensive per-frame GPU shader passes
+
+### Math-Driven Smooth Animations
+
+Cursor smoothing, zoom transitions, and pan animations all use **spring physics** (via the `motion` library) rather than simple linear interpolation:
+
+- Custom stiffness and damping parameters produce natural, Apple-style motion curves
+- Stationary detection with configurable snap behavior (52ms delay, sub-pixel epsilon) eliminates visual jitter when the cursor pauses
+- Deadzone filtering on zoom scale and translation prevents micro-jitters from triggering unnecessary re-renders
+- Motion blur intensity is computed directly from cursor velocity, applied only when meaningful
+
+### Optimized Build Pipeline
+
+The production build is tuned for minimal bundle size:
+
+- **Terser minification** with `drop_console` and `drop_debugger` strips all debug logging from production builds
+- **Manual code splitting** isolates heavy dependencies — PixiJS, React, and video processing libraries each load in their own chunk, enabling parallel downloads and better caching
+- **Tree-shaking** eliminates unused code paths from icon libraries and utility packages
+- **Strict TypeScript** (`noUnusedLocals`, `noUnusedParameters`) catches dead code at compile time before it reaches the bundle
+
+### Resource Management
+
+Open Recorder is designed for long recording and editing sessions without degradation:
+
+- Explicit cleanup of PixiJS textures, decoder instances, and audio processors prevents memory leaks
+- Streaming decoder reuses a single `VideoDecoder` instance across the export rather than creating and destroying decoders per segment
+- Facecam frame syncing uses queue management to bound memory usage during multi-stream exports
+- All native sidecar processes are lifecycle-managed by Tauri and terminated cleanly on app exit
+
+---
+
 # Contribution
 
 All contributors welcomed!
