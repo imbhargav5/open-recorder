@@ -74,3 +74,116 @@ pub async fn get_system_cursor_assets(
 
     Ok(serde_json::json!({}))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Helper: replicate the telemetry path construction logic for testing
+    fn telemetry_path_for_video(video_path: &str) -> String {
+        format!(
+            "{}.cursor.json",
+            video_path
+                .trim_end_matches(".mov")
+                .trim_end_matches(".mp4")
+                .trim_end_matches(".webm")
+        )
+    }
+
+    #[test]
+    fn test_telemetry_path_from_mov() {
+        let path = telemetry_path_for_video("/path/to/recording.mov");
+        assert_eq!(path, "/path/to/recording.cursor.json");
+    }
+
+    #[test]
+    fn test_telemetry_path_from_mp4() {
+        let path = telemetry_path_for_video("/path/to/recording.mp4");
+        assert_eq!(path, "/path/to/recording.cursor.json");
+    }
+
+    #[test]
+    fn test_telemetry_path_from_webm() {
+        let path = telemetry_path_for_video("/path/to/recording.webm");
+        assert_eq!(path, "/path/to/recording.cursor.json");
+    }
+
+    #[test]
+    fn test_telemetry_path_no_recognized_extension() {
+        let path = telemetry_path_for_video("/path/to/recording.avi");
+        assert_eq!(path, "/path/to/recording.avi.cursor.json");
+    }
+
+    #[test]
+    fn test_telemetry_path_no_extension() {
+        let path = telemetry_path_for_video("/path/to/recording");
+        assert_eq!(path, "/path/to/recording.cursor.json");
+    }
+
+    #[test]
+    fn test_telemetry_path_double_extension_mov_mp4() {
+        // trim_end_matches strips sequentially: .mov → .mp4 → result
+        let path = telemetry_path_for_video("/path/to/file.mp4.mov");
+        assert_eq!(path, "/path/to/file.cursor.json");
+    }
+
+    #[test]
+    fn test_telemetry_path_with_spaces() {
+        let path = telemetry_path_for_video("/path/to/my recording.mov");
+        assert_eq!(path, "/path/to/my recording.cursor.json");
+    }
+
+    #[test]
+    fn test_telemetry_path_empty_string() {
+        let path = telemetry_path_for_video("");
+        assert_eq!(path, ".cursor.json");
+    }
+
+    #[tokio::test]
+    async fn test_get_cursor_telemetry_missing_file_returns_fallback() {
+        let result = get_cursor_telemetry("/nonexistent/path/video.mov".to_string()).await;
+        assert!(result.is_ok());
+        let value = result.unwrap();
+        assert_eq!(value["samples"], serde_json::json!([]));
+        assert_eq!(value["clicks"], serde_json::json!([]));
+    }
+
+    #[tokio::test]
+    async fn test_get_cursor_telemetry_valid_json_file() {
+        let dir = std::env::temp_dir();
+        let video_path = dir.join("open_recorder_test_cursor.mov");
+        let telemetry_path = dir.join("open_recorder_test_cursor.cursor.json");
+
+        let telemetry_data = serde_json::json!({
+            "samples": [{"x": 100, "y": 200, "t": 0}],
+            "clicks": [{"x": 100, "y": 200, "t": 0, "type": "left"}]
+        });
+        tokio::fs::write(&telemetry_path, serde_json::to_string(&telemetry_data).unwrap())
+            .await
+            .unwrap();
+
+        let result = get_cursor_telemetry(video_path.to_string_lossy().to_string()).await;
+        let _ = tokio::fs::remove_file(&telemetry_path).await;
+
+        assert!(result.is_ok());
+        let value = result.unwrap();
+        assert!(value["samples"].is_array());
+        assert_eq!(value["samples"].as_array().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_get_cursor_telemetry_invalid_json_returns_error() {
+        let dir = std::env::temp_dir();
+        let video_path = dir.join("open_recorder_test_bad_cursor.mov");
+        let telemetry_path = dir.join("open_recorder_test_bad_cursor.cursor.json");
+
+        tokio::fs::write(&telemetry_path, "not valid json {{{")
+            .await
+            .unwrap();
+
+        let result = get_cursor_telemetry(video_path.to_string_lossy().to_string()).await;
+        let _ = tokio::fs::remove_file(&telemetry_path).await;
+
+        assert!(result.is_err());
+    }
+}

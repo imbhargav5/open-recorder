@@ -108,3 +108,60 @@ pub async fn mux_wgc_recording(
         Err("WGC is only available on Windows".to_string())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_get_platform_returns_known_value() {
+        let platform = get_platform();
+        assert!(
+            ["darwin", "win32", "linux"].contains(&platform.as_str()),
+            "Unexpected platform: {}",
+            platform
+        );
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn test_get_platform_macos() {
+        assert_eq!(get_platform(), "darwin");
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn test_get_platform_windows() {
+        assert_eq!(get_platform(), "win32");
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn test_get_platform_linux() {
+        assert_eq!(get_platform(), "linux");
+    }
+
+    #[test]
+    fn test_get_platform_is_not_empty() {
+        assert!(!get_platform().is_empty());
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
+    fn test_is_wgc_available_false_on_non_windows() {
+        assert!(!is_wgc_available());
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn test_is_wgc_available_true_on_windows() {
+        assert!(is_wgc_available());
+    }
+
+    #[test]
+    fn test_get_platform_deterministic() {
+        let p1 = get_platform();
+        let p2 = get_platform();
+        assert_eq!(p1, p2);
+    }
+}

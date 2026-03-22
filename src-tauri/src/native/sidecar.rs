@@ -154,3 +154,178 @@ fn get_target_triple() -> &'static str {
     )))]
     { "unknown-unknown-unknown" }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ==================== get_target_triple ====================
+
+    #[test]
+    fn test_get_target_triple_is_not_empty() {
+        let triple = get_target_triple();
+        assert!(!triple.is_empty());
+    }
+
+    #[test]
+    fn test_get_target_triple_contains_os() {
+        let triple = get_target_triple();
+        let has_known_os = triple.contains("apple-darwin")
+            || triple.contains("windows")
+            || triple.contains("linux")
+            || triple == "unknown-unknown-unknown";
+        assert!(has_known_os, "Unexpected triple: {}", triple);
+    }
+
+    #[test]
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    fn test_get_target_triple_macos_arm() {
+        assert_eq!(get_target_triple(), "aarch64-apple-darwin");
+    }
+
+    #[test]
+    #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+    fn test_get_target_triple_macos_x86() {
+        assert_eq!(get_target_triple(), "x86_64-apple-darwin");
+    }
+
+    #[test]
+    #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
+    fn test_get_target_triple_windows() {
+        assert_eq!(get_target_triple(), "x86_64-pc-windows-msvc");
+    }
+
+    #[test]
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    fn test_get_target_triple_linux() {
+        assert_eq!(get_target_triple(), "x86_64-unknown-linux-gnu");
+    }
+
+    #[test]
+    fn test_get_target_triple_deterministic() {
+        assert_eq!(get_target_triple(), get_target_triple());
+    }
+
+    // ==================== get_sidecar_path ====================
+
+    #[test]
+    fn test_get_sidecar_path_nonexistent_sidecar() {
+        // Neither the triple-suffixed nor the plain name should exist
+        let result = get_sidecar_path("nonexistent-sidecar-binary-12345");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("not found"), "Error: {}", err);
+    }
+
+    #[test]
+    fn test_get_sidecar_path_error_contains_sidecar_name() {
+        let result = get_sidecar_path("my-test-sidecar");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("my-test-sidecar"));
+    }
+
+    #[test]
+    fn test_get_sidecar_path_builds_triple_suffixed_name() {
+        // We can't easily test success (no sidecar present in test env),
+        // but we can verify the error message mentions the expected path format
+        let result = get_sidecar_path("test-helper");
+        if let Err(err) = result {
+            let triple = get_target_triple();
+            let expected_name = format!("test-helper-{}", triple);
+            assert!(err.contains(&expected_name), "Error should mention {}: {}", expected_name, err);
+        }
+    }
+
+    // ==================== SidecarProcess ====================
+
+    #[tokio::test]
+    async fn test_sidecar_spawn_valid_command() {
+        let result = SidecarProcess::spawn("echo", &["hello"]).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_sidecar_spawn_invalid_command() {
+        let result = SidecarProcess::spawn("/nonexistent/binary", &[]).await;
+        assert!(result.is_err());
+        match result {
+            Err(err) => assert!(err.contains("Failed to spawn sidecar")),
+            Ok(_) => panic!("Expected error"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_sidecar_spawn_error_contains_path() {
+        let result = SidecarProcess::spawn("/fake/path/to/sidecar", &[]).await;
+        match result {
+            Err(err) => assert!(err.contains("/fake/path/to/sidecar")),
+            Ok(_) => panic!("Expected error"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_sidecar_wait_for_close_echo() {
+        let mut proc = SidecarProcess::spawn("echo", &["done"]).await.unwrap();
+        let exit_code = proc.wait_for_close().await.unwrap();
+        assert_eq!(exit_code, 0);
+    }
+
+    #[tokio::test]
+    async fn test_sidecar_wait_for_close_false_command() {
+        let mut proc = SidecarProcess::spawn("false", &[]).await.unwrap();
+        let exit_code = proc.wait_for_close().await.unwrap();
+        assert_ne!(exit_code, 0);
+    }
+
+    #[tokio::test]
+    async fn test_sidecar_kill() {
+        let mut proc = SidecarProcess::spawn("sleep", &["60"]).await.unwrap();
+        let result = proc.kill().await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_sidecar_wait_for_stdout_pattern_found() {
+        // Use printf to output a line with our pattern
+        let mut proc = SidecarProcess::spawn("echo", &["Recording started"]).await.unwrap();
+        let result = proc.wait_for_stdout_pattern("Recording started", 5000).await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().contains("Recording started"));
+    }
+
+    #[tokio::test]
+    async fn test_sidecar_wait_for_stdout_pattern_timeout() {
+        // sleep produces no stdout, so pattern will timeout
+        let mut proc = SidecarProcess::spawn("sleep", &["60"]).await.unwrap();
+        let result = proc.wait_for_stdout_pattern("will-never-appear", 100).await;
+        let _ = proc.kill().await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Timeout"));
+    }
+
+    #[tokio::test]
+    async fn test_sidecar_wait_for_stdout_pattern_process_exits_without_match() {
+        // echo outputs "hello" then exits - pattern "xyz" won't be found
+        let mut proc = SidecarProcess::spawn("echo", &["hello"]).await.unwrap();
+        let result = proc.wait_for_stdout_pattern("xyz", 2000).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_sidecar_write_stdin() {
+        // cat reads from stdin and echoes to stdout
+        let mut proc = SidecarProcess::spawn("cat", &[]).await.unwrap();
+        let write_result = proc.write_stdin("test input\n").await;
+        assert!(write_result.is_ok());
+        let _ = proc.kill().await;
+    }
+
+    #[tokio::test]
+    async fn test_sidecar_write_stdin_then_read_pattern() {
+        let mut proc = SidecarProcess::spawn("cat", &[]).await.unwrap();
+        proc.write_stdin("MAGIC_PATTERN\n").await.unwrap();
+        let result = proc.wait_for_stdout_pattern("MAGIC_PATTERN", 2000).await;
+        let _ = proc.kill().await;
+        assert!(result.is_ok());
+    }
+}

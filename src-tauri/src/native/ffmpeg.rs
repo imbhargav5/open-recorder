@@ -104,3 +104,52 @@ fn which_ffmpeg() -> Result<String, String> {
 
     Err("FFmpeg not found. Please install FFmpeg.".to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_which_ffmpeg_returns_result() {
+        // which_ffmpeg either finds ffmpeg or returns an error
+        let result = which_ffmpeg();
+        match result {
+            Ok(path) => {
+                assert!(!path.is_empty());
+                assert!(path.contains("ffmpeg"));
+            }
+            Err(err) => {
+                assert_eq!(err, "FFmpeg not found. Please install FFmpeg.");
+            }
+        }
+    }
+
+    #[test]
+    fn test_which_ffmpeg_returns_known_path_if_found() {
+        let result = which_ffmpeg();
+        if let Ok(path) = result {
+            let known_paths = [
+                "ffmpeg",
+                "/usr/bin/ffmpeg",
+                "/usr/local/bin/ffmpeg",
+                "/opt/homebrew/bin/ffmpeg",
+            ];
+            assert!(
+                known_paths.contains(&path.as_str()),
+                "Unexpected ffmpeg path: {}",
+                path
+            );
+        }
+    }
+
+    #[test]
+    fn test_which_ffmpeg_deterministic() {
+        let r1 = which_ffmpeg();
+        let r2 = which_ffmpeg();
+        match (r1, r2) {
+            (Ok(p1), Ok(p2)) => assert_eq!(p1, p2),
+            (Err(e1), Err(e2)) => assert_eq!(e1, e2),
+            _ => panic!("which_ffmpeg returned inconsistent results"),
+        }
+    }
+}

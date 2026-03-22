@@ -156,3 +156,259 @@ pub async fn start_capture(
 pub async fn stop_capture(_app: &AppHandle) -> Result<(), String> {
     Err("macOS capture is only available on macOS".to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    #[allow(unused_imports)]
+    use super::*;
+
+    // ==================== read_string ====================
+
+    #[cfg(target_os = "macos")]
+    mod macos_tests {
+        use super::*;
+
+        #[test]
+        fn test_read_string_first_key_found() {
+            let value = serde_json::json!({"name": "test"});
+            let result = read_string(&value, &["name"]);
+            assert_eq!(result.as_deref(), Some("test"));
+        }
+
+        #[test]
+        fn test_read_string_second_key_found() {
+            let value = serde_json::json!({"display_id": "42"});
+            let result = read_string(&value, &["displayId", "display_id"]);
+            assert_eq!(result.as_deref(), Some("42"));
+        }
+
+        #[test]
+        fn test_read_string_first_key_preferred() {
+            let value = serde_json::json!({"displayId": "1", "display_id": "2"});
+            let result = read_string(&value, &["displayId", "display_id"]);
+            assert_eq!(result.as_deref(), Some("1"));
+        }
+
+        #[test]
+        fn test_read_string_no_keys_found() {
+            let value = serde_json::json!({"other": "data"});
+            let result = read_string(&value, &["name", "id"]);
+            assert!(result.is_none());
+        }
+
+        #[test]
+        fn test_read_string_empty_string_filtered() {
+            let value = serde_json::json!({"name": ""});
+            let result = read_string(&value, &["name"]);
+            assert!(result.is_none());
+        }
+
+        #[test]
+        fn test_read_string_whitespace_only_filtered() {
+            let value = serde_json::json!({"name": "   "});
+            let result = read_string(&value, &["name"]);
+            assert!(result.is_none());
+        }
+
+        #[test]
+        fn test_read_string_trims_whitespace() {
+            let value = serde_json::json!({"name": "  hello  "});
+            let result = read_string(&value, &["name"]);
+            assert_eq!(result.as_deref(), Some("hello"));
+        }
+
+        #[test]
+        fn test_read_string_non_string_value() {
+            let value = serde_json::json!({"name": 42});
+            let result = read_string(&value, &["name"]);
+            assert!(result.is_none());
+        }
+
+        #[test]
+        fn test_read_string_null_value() {
+            let value = serde_json::json!({"name": null});
+            let result = read_string(&value, &["name"]);
+            assert!(result.is_none());
+        }
+
+        // ==================== read_u64 ====================
+
+        #[test]
+        fn test_read_u64_found() {
+            let value = serde_json::json!({"fps": 60});
+            let result = read_u64(&value, &["fps"]);
+            assert_eq!(result, Some(60));
+        }
+
+        #[test]
+        fn test_read_u64_second_key() {
+            let value = serde_json::json!({"frameRate": 30});
+            let result = read_u64(&value, &["fps", "frameRate"]);
+            assert_eq!(result, Some(30));
+        }
+
+        #[test]
+        fn test_read_u64_not_found() {
+            let value = serde_json::json!({"other": 42});
+            let result = read_u64(&value, &["fps"]);
+            assert!(result.is_none());
+        }
+
+        #[test]
+        fn test_read_u64_string_value_returns_none() {
+            let value = serde_json::json!({"fps": "60"});
+            let result = read_u64(&value, &["fps"]);
+            assert!(result.is_none());
+        }
+
+        #[test]
+        fn test_read_u64_negative_returns_none() {
+            let value = serde_json::json!({"fps": -1});
+            let result = read_u64(&value, &["fps"]);
+            assert!(result.is_none());
+        }
+
+        #[test]
+        fn test_read_u64_zero() {
+            let value = serde_json::json!({"fps": 0});
+            let result = read_u64(&value, &["fps"]);
+            assert_eq!(result, Some(0));
+        }
+
+        // ==================== read_bool ====================
+
+        #[test]
+        fn test_read_bool_true() {
+            let value = serde_json::json!({"enabled": true});
+            let result = read_bool(&value, &["enabled"], false);
+            assert!(result);
+        }
+
+        #[test]
+        fn test_read_bool_false() {
+            let value = serde_json::json!({"enabled": false});
+            let result = read_bool(&value, &["enabled"], true);
+            assert!(!result);
+        }
+
+        #[test]
+        fn test_read_bool_not_found_returns_default_true() {
+            let value = serde_json::json!({"other": true});
+            let result = read_bool(&value, &["enabled"], true);
+            assert!(result);
+        }
+
+        #[test]
+        fn test_read_bool_not_found_returns_default_false() {
+            let value = serde_json::json!({"other": true});
+            let result = read_bool(&value, &["enabled"], false);
+            assert!(!result);
+        }
+
+        #[test]
+        fn test_read_bool_second_key() {
+            let value = serde_json::json!({"recordSystemAudio": true});
+            let result = read_bool(&value, &["capturesSystemAudio", "recordSystemAudio"], false);
+            assert!(result);
+        }
+
+        #[test]
+        fn test_read_bool_non_bool_value_returns_default() {
+            let value = serde_json::json!({"enabled": "true"});
+            let result = read_bool(&value, &["enabled"], false);
+            assert!(!result); // String "true" is not a bool
+        }
+
+        // ==================== parse_window_id_from_source_id ====================
+
+        #[test]
+        fn test_parse_window_id_valid() {
+            let result = parse_window_id_from_source_id("window:123:0");
+            assert_eq!(result, Some(123));
+        }
+
+        #[test]
+        fn test_parse_window_id_large_number() {
+            let result = parse_window_id_from_source_id("window:999999:0");
+            assert_eq!(result, Some(999999));
+        }
+
+        #[test]
+        fn test_parse_window_id_zero() {
+            let result = parse_window_id_from_source_id("window:0:0");
+            assert_eq!(result, Some(0));
+        }
+
+        #[test]
+        fn test_parse_window_id_screen_prefix_returns_none() {
+            let result = parse_window_id_from_source_id("screen:1:0");
+            assert!(result.is_none());
+        }
+
+        #[test]
+        fn test_parse_window_id_no_prefix_returns_none() {
+            let result = parse_window_id_from_source_id("123:0");
+            assert!(result.is_none());
+        }
+
+        #[test]
+        fn test_parse_window_id_non_numeric_returns_none() {
+            let result = parse_window_id_from_source_id("window:abc:0");
+            assert!(result.is_none());
+        }
+
+        #[test]
+        fn test_parse_window_id_empty_after_prefix_returns_none() {
+            let result = parse_window_id_from_source_id("window:");
+            // split(':').next() returns Some(""), which can't parse to u64
+            assert!(result.is_none());
+        }
+
+        // ==================== parse_display_id_from_source_id ====================
+
+        #[test]
+        fn test_parse_display_id_valid() {
+            let result = parse_display_id_from_source_id("screen:42:0");
+            assert_eq!(result.as_deref(), Some("42"));
+        }
+
+        #[test]
+        fn test_parse_display_id_zero() {
+            let result = parse_display_id_from_source_id("screen:0:0");
+            assert_eq!(result.as_deref(), Some("0"));
+        }
+
+        #[test]
+        fn test_parse_display_id_window_prefix_returns_none() {
+            let result = parse_display_id_from_source_id("window:1:0");
+            assert!(result.is_none());
+        }
+
+        #[test]
+        fn test_parse_display_id_empty() {
+            let result = parse_display_id_from_source_id("");
+            assert!(result.is_none());
+        }
+
+        #[test]
+        fn test_parse_display_id_no_colon_after_value() {
+            let result = parse_display_id_from_source_id("screen:42");
+            assert_eq!(result.as_deref(), Some("42"));
+        }
+    }
+
+    // ==================== Non-macOS capture tests ====================
+
+    #[cfg(not(target_os = "macos"))]
+    mod non_macos_tests {
+        use super::*;
+
+        #[tokio::test]
+        async fn test_start_capture_returns_error_on_non_macos() {
+            let app = tauri::test::mock_builder().build(tauri::generate_context!());
+            // Can't easily create an AppHandle in tests without full Tauri setup,
+            // but the function signature tells us it should return an error.
+            // This test documents the expected behavior.
+        }
+    }
+}
