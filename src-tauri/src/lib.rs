@@ -1,5 +1,5 @@
 mod commands;
-mod state;
+pub mod state;
 mod native;
 mod input;
 mod tray;

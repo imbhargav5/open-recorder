@@ -165,3 +165,162 @@ pub async fn load_current_project_file(
         Ok(None)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ==================== Project File I/O ====================
+
+    #[tokio::test]
+    async fn test_project_file_write_and_read() {
+        let dir = std::env::temp_dir();
+        let path = dir.join("open_recorder_test_project.openrecorder");
+
+        let project_data = serde_json::json!({
+            "version": 1,
+            "scenes": [{"name": "Scene 1", "duration": 10.0}],
+            "settings": {"resolution": "1920x1080"}
+        });
+        let data_str = serde_json::to_string_pretty(&project_data).unwrap();
+        tokio::fs::write(&path, &data_str).await.unwrap();
+
+        let read_data = tokio::fs::read_to_string(&path).await.unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&read_data).unwrap();
+        assert_eq!(parsed["version"], 1);
+        assert_eq!(parsed["scenes"].as_array().unwrap().len(), 1);
+
+        let _ = tokio::fs::remove_file(&path).await;
+    }
+
+    #[tokio::test]
+    async fn test_project_file_invalid_json_returns_error() {
+        let dir = std::env::temp_dir();
+        let path = dir.join("open_recorder_test_bad_project.openrecorder");
+        tokio::fs::write(&path, "not valid json {{{").await.unwrap();
+
+        let read_data = tokio::fs::read_to_string(&path).await.unwrap();
+        let result: Result<serde_json::Value, _> = serde_json::from_str(&read_data);
+        assert!(result.is_err());
+
+        let _ = tokio::fs::remove_file(&path).await;
+    }
+
+    #[tokio::test]
+    async fn test_project_file_nonexistent_path() {
+        let result = tokio::fs::read_to_string("/nonexistent/project.openrecorder").await;
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_default_project_name() {
+        let suggested: Option<String> = None;
+        let file_name = suggested.unwrap_or_else(|| "Untitled.openrecorder".to_string());
+        assert_eq!(file_name, "Untitled.openrecorder");
+    }
+
+    #[test]
+    fn test_custom_project_name() {
+        let suggested = Some("My Project.openrecorder".to_string());
+        let file_name = suggested.unwrap_or_else(|| "Untitled.openrecorder".to_string());
+        assert_eq!(file_name, "My Project.openrecorder");
+    }
+
+    // ==================== Project File State Management ====================
+
+    #[test]
+    fn test_project_save_updates_state() {
+        let state = std::sync::Mutex::new(AppState::default());
+        {
+            let mut s = state.lock().unwrap();
+            s.current_project_path = Some("/tmp/project.openrecorder".to_string());
+            s.has_unsaved_changes = false;
+        }
+        let s = state.lock().unwrap();
+        assert_eq!(s.current_project_path.as_deref(), Some("/tmp/project.openrecorder"));
+        assert!(!s.has_unsaved_changes);
+    }
+
+    #[test]
+    fn test_existing_path_skips_dialog() {
+        let existing_path = Some("/existing/path.openrecorder".to_string());
+        let path_str = if let Some(existing) = existing_path {
+            Some(existing)
+        } else {
+            None
+        };
+        assert_eq!(path_str.as_deref(), Some("/existing/path.openrecorder"));
+    }
+
+    #[test]
+    fn test_no_existing_path_needs_dialog() {
+        let existing_path: Option<String> = None;
+        let path_str = if let Some(existing) = existing_path {
+            Some(existing)
+        } else {
+            None
+        };
+        assert!(path_str.is_none());
+    }
+
+    // ==================== load_current_project_file logic ====================
+
+    #[tokio::test]
+    async fn test_load_current_project_with_valid_file() {
+        let dir = std::env::temp_dir();
+        let path = dir.join("open_recorder_test_load_current.openrecorder");
+        let project = serde_json::json!({"version": 2, "data": "test"});
+        tokio::fs::write(&path, serde_json::to_string(&project).unwrap())
+            .await
+            .unwrap();
+
+        let path_str = path.to_string_lossy().to_string();
+        assert!(std::path::Path::new(&path_str).exists());
+
+        let data = tokio::fs::read_to_string(&path_str).await.unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&data).unwrap();
+        let result = serde_json::json!({ "data": parsed, "filePath": path_str });
+        assert_eq!(result["data"]["version"], 2);
+
+        let _ = tokio::fs::remove_file(&path).await;
+    }
+
+    #[test]
+    fn test_load_current_no_path_returns_none() {
+        let state = AppState::default();
+        assert!(state.current_project_path.is_none());
+    }
+
+    #[test]
+    fn test_load_current_nonexistent_path() {
+        assert!(!std::path::Path::new("/nonexistent/project.openrecorder").exists());
+    }
+
+    // ==================== Project File Roundtrip ====================
+
+    #[tokio::test]
+    async fn test_project_file_full_roundtrip() {
+        let dir = std::env::temp_dir();
+        let path = dir.join("open_recorder_test_roundtrip.openrecorder");
+
+        let original = serde_json::json!({
+            "version": 1,
+            "videoPath": "/videos/recording.mov",
+            "scenes": [
+                {"name": "Intro", "startTime": 0.0, "endTime": 5.0},
+                {"name": "Main", "startTime": 5.0, "endTime": 30.0}
+            ],
+            "cursor": {"visible": true, "scale": 1.5},
+            "background": {"type": "gradient", "colors": ["#1a1a2e", "#16213e"]}
+        });
+
+        let data_str = serde_json::to_string_pretty(&original).unwrap();
+        tokio::fs::write(&path, &data_str).await.unwrap();
+
+        let loaded_str = tokio::fs::read_to_string(&path).await.unwrap();
+        let loaded: serde_json::Value = serde_json::from_str(&loaded_str).unwrap();
+        assert_eq!(original, loaded);
+
+        let _ = tokio::fs::remove_file(&path).await;
+    }
+}

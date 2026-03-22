@@ -102,3 +102,98 @@ pub fn set_has_unsaved_changes(
     s.has_unsaved_changes = has_changes;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ==================== Window Constants ====================
+
+    #[test]
+    fn test_editor_window_dimensions() {
+        let width = 1200.0_f64;
+        let height = 800.0_f64;
+        assert!(width > 0.0);
+        assert!(height > 0.0);
+        assert!(width >= 800.0); // min width
+        assert!(height >= 600.0); // min height
+    }
+
+    #[test]
+    fn test_editor_min_dimensions() {
+        let min_width = 800.0_f64;
+        let min_height = 600.0_f64;
+        assert!(min_width > 0.0);
+        assert!(min_height > 0.0);
+    }
+
+    #[test]
+    fn test_source_selector_dimensions() {
+        let width = 620.0_f64;
+        let height = 420.0_f64;
+        let min_height = 350.0_f64;
+        let max_height = 500.0_f64;
+        assert!(min_height <= height);
+        assert!(height <= max_height);
+        assert_eq!(width, 620.0);
+    }
+
+    // ==================== Window URLs ====================
+
+    #[test]
+    fn test_editor_url() {
+        let url = "index.html?windowType=editor";
+        assert!(url.contains("windowType=editor"));
+    }
+
+    #[test]
+    fn test_source_selector_url() {
+        let url = "index.html?windowType=source-selector";
+        assert!(url.contains("windowType=source-selector"));
+    }
+
+    // ==================== Unsaved Changes State ====================
+
+    #[test]
+    fn test_set_unsaved_changes_true() {
+        let state = std::sync::Mutex::new(AppState::default());
+        {
+            let mut s = state.lock().unwrap();
+            s.has_unsaved_changes = true;
+        }
+        let s = state.lock().unwrap();
+        assert!(s.has_unsaved_changes);
+    }
+
+    #[test]
+    fn test_set_unsaved_changes_false() {
+        let state = std::sync::Mutex::new(AppState::default());
+        {
+            let mut s = state.lock().unwrap();
+            s.has_unsaved_changes = true;
+        }
+        {
+            let mut s = state.lock().unwrap();
+            s.has_unsaved_changes = false;
+        }
+        let s = state.lock().unwrap();
+        assert!(!s.has_unsaved_changes);
+    }
+
+    #[test]
+    fn test_unsaved_changes_default_is_false() {
+        let state = AppState::default();
+        assert!(!state.has_unsaved_changes);
+    }
+
+    // ==================== Background Color ====================
+
+    #[test]
+    fn test_editor_background_color() {
+        let color = Color(0, 0, 0, 255);
+        assert_eq!(color.0, 0); // R
+        assert_eq!(color.1, 0); // G
+        assert_eq!(color.2, 0); // B
+        assert_eq!(color.3, 255); // A (fully opaque)
+    }
+}

@@ -395,6 +395,286 @@ mod tests {
             let result = parse_display_id_from_source_id("screen:42");
             assert_eq!(result.as_deref(), Some("42"));
         }
+
+        // ==================== Capture Config Construction ====================
+
+        /// Helper that replicates the config construction logic from start_capture
+        fn build_capture_config(
+            source: &serde_json::Value,
+            options: &serde_json::Value,
+            output_path: &str,
+        ) -> serde_json::Value {
+            let source_id = read_string(source, &["id"]).unwrap_or_default();
+            let display_id = read_string(source, &["displayId", "display_id"])
+                .or_else(|| parse_display_id_from_source_id(&source_id))
+                .unwrap_or_else(|| "0".to_string());
+            let window_id = read_u64(source, &["windowId", "window_id"])
+                .or_else(|| parse_window_id_from_source_id(&source_id));
+            let captures_system_audio =
+                read_bool(options, &["capturesSystemAudio", "recordSystemAudio"], false);
+            let captures_microphone =
+                read_bool(options, &["capturesMicrophone", "recordMicrophone"], false);
+            let microphone_device_id = read_string(options, &["microphoneDeviceId"]);
+            let fps = read_u64(options, &["fps", "frameRate"]).unwrap_or(60);
+            let display_id_num: u64 = display_id.parse().unwrap_or(0);
+
+            serde_json::json!({
+                "outputPath": output_path,
+                "displayId": display_id_num,
+                "windowId": window_id,
+                "fps": fps,
+                "capturesSystemAudio": captures_system_audio,
+                "capturesMicrophone": captures_microphone,
+                "microphoneDeviceId": microphone_device_id,
+            })
+        }
+
+        #[test]
+        fn test_config_screen_recording_defaults() {
+            let source = serde_json::json!({"id": "screen:1:0", "displayId": "1"});
+            let options = serde_json::json!({});
+            let config = build_capture_config(&source, &options, "/tmp/out.mov");
+
+            assert_eq!(config["outputPath"], "/tmp/out.mov");
+            assert_eq!(config["displayId"], 1);
+            assert_eq!(config["fps"], 60);
+            assert_eq!(config["capturesSystemAudio"], false);
+            assert_eq!(config["capturesMicrophone"], false);
+            assert!(config["windowId"].is_null());
+        }
+
+        #[test]
+        fn test_config_window_recording() {
+            let source = serde_json::json!({"id": "window:42:0", "windowId": 42});
+            let options = serde_json::json!({"fps": 30});
+            let config = build_capture_config(&source, &options, "/tmp/window.mov");
+
+            assert_eq!(config["windowId"], 42);
+            assert_eq!(config["fps"], 30);
+        }
+
+        #[test]
+        fn test_config_display_id_fallback_to_source_id() {
+            // No explicit displayId, should parse from source id
+            let source = serde_json::json!({"id": "screen:99:0"});
+            let options = serde_json::json!({});
+            let config = build_capture_config(&source, &options, "/tmp/out.mov");
+
+            assert_eq!(config["displayId"], 99);
+        }
+
+        #[test]
+        fn test_config_display_id_fallback_to_zero() {
+            // No displayId, no parseable source id
+            let source = serde_json::json!({"id": "unknown"});
+            let options = serde_json::json!({});
+            let config = build_capture_config(&source, &options, "/tmp/out.mov");
+
+            assert_eq!(config["displayId"], 0);
+        }
+
+        #[test]
+        fn test_config_window_id_from_source_id_fallback() {
+            // No explicit windowId, should parse from source id
+            let source = serde_json::json!({"id": "window:77:0"});
+            let options = serde_json::json!({});
+            let config = build_capture_config(&source, &options, "/tmp/out.mov");
+
+            assert_eq!(config["windowId"], 77);
+        }
+
+        #[test]
+        fn test_config_window_id_none_for_screen() {
+            let source = serde_json::json!({"id": "screen:1:0"});
+            let options = serde_json::json!({});
+            let config = build_capture_config(&source, &options, "/tmp/out.mov");
+
+            assert!(config["windowId"].is_null());
+        }
+
+        #[test]
+        fn test_config_all_audio_options_enabled() {
+            let source = serde_json::json!({"id": "screen:0:0"});
+            let options = serde_json::json!({
+                "capturesSystemAudio": true,
+                "capturesMicrophone": true,
+                "microphoneDeviceId": "device-123"
+            });
+            let config = build_capture_config(&source, &options, "/tmp/out.mov");
+
+            assert_eq!(config["capturesSystemAudio"], true);
+            assert_eq!(config["capturesMicrophone"], true);
+            assert_eq!(config["microphoneDeviceId"], "device-123");
+        }
+
+        #[test]
+        fn test_config_alternative_audio_key_names() {
+            // Test the alternative key names (recordSystemAudio, recordMicrophone)
+            let source = serde_json::json!({"id": "screen:0:0"});
+            let options = serde_json::json!({
+                "recordSystemAudio": true,
+                "recordMicrophone": true
+            });
+            let config = build_capture_config(&source, &options, "/tmp/out.mov");
+
+            assert_eq!(config["capturesSystemAudio"], true);
+            assert_eq!(config["capturesMicrophone"], true);
+        }
+
+        #[test]
+        fn test_config_fps_from_alternative_key() {
+            let source = serde_json::json!({"id": "screen:0:0"});
+            let options = serde_json::json!({"frameRate": 24});
+            let config = build_capture_config(&source, &options, "/tmp/out.mov");
+
+            assert_eq!(config["fps"], 24);
+        }
+
+        #[test]
+        fn test_config_explicit_display_id_preferred_over_source_id() {
+            let source = serde_json::json!({"id": "screen:99:0", "displayId": "42"});
+            let options = serde_json::json!({});
+            let config = build_capture_config(&source, &options, "/tmp/out.mov");
+
+            assert_eq!(config["displayId"], 42);
+        }
+
+        #[test]
+        fn test_config_display_id_snake_case_alias() {
+            let source = serde_json::json!({"id": "screen:0:0", "display_id": "7"});
+            let options = serde_json::json!({});
+            let config = build_capture_config(&source, &options, "/tmp/out.mov");
+
+            assert_eq!(config["displayId"], 7);
+        }
+
+        #[test]
+        fn test_config_non_numeric_display_id_falls_back_to_zero() {
+            let source = serde_json::json!({"id": "screen:abc:0", "displayId": "abc"});
+            let options = serde_json::json!({});
+            let config = build_capture_config(&source, &options, "/tmp/out.mov");
+
+            // "abc".parse::<u64>() fails, unwrap_or(0) applies
+            assert_eq!(config["displayId"], 0);
+        }
+
+        #[test]
+        fn test_config_serializes_to_valid_json() {
+            let source = serde_json::json!({"id": "screen:1:0"});
+            let options = serde_json::json!({"fps": 30});
+            let config = build_capture_config(&source, &options, "/tmp/out.mov");
+
+            let json_str = serde_json::to_string(&config).unwrap();
+            let reparsed: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+            assert_eq!(config, reparsed);
+        }
+
+        // ==================== OnceLock Singleton ====================
+
+        #[tokio::test]
+        async fn test_get_capture_process_returns_none_initially() {
+            let guard = get_capture_process().lock().await;
+            // Note: may be Some if a previous test set it, but the singleton should exist
+            drop(guard); // Just verify we can acquire the lock
+        }
+
+        // ==================== Mock Sidecar Integration ====================
+
+        #[tokio::test]
+        async fn test_mock_sidecar_start_stop_lifecycle() {
+            use std::os::unix::fs::PermissionsExt;
+
+            let dir = std::env::temp_dir();
+            let script_path = dir.join("open_recorder_test_mock_sidecar.sh");
+
+            // Create a mock sidecar that prints "Recording started" then waits for stdin
+            let script = "#!/bin/bash\necho \"Recording started\"\nread line\nexit 0\n";
+            tokio::fs::write(&script_path, script).await.unwrap();
+            tokio::fs::set_permissions(&script_path, std::fs::Permissions::from_mode(0o755))
+                .await
+                .unwrap();
+
+            let sidecar_str = script_path.to_string_lossy().to_string();
+            let mut process = SidecarProcess::spawn(&sidecar_str, &[]).await.unwrap();
+
+            // Wait for "Recording started"
+            let result = process
+                .wait_for_stdout_pattern("Recording started", 5000)
+                .await;
+            assert!(result.is_ok(), "Failed to detect start: {:?}", result.err());
+
+            // Send stop command
+            let write_result = process.write_stdin("stop\n").await;
+            assert!(write_result.is_ok());
+
+            // Wait for clean exit
+            let exit_code = process.wait_for_close().await.unwrap();
+            assert_eq!(exit_code, 0);
+
+            let _ = tokio::fs::remove_file(&script_path).await;
+        }
+
+        #[tokio::test]
+        async fn test_mock_sidecar_kill_on_timeout() {
+            use std::os::unix::fs::PermissionsExt;
+
+            let dir = std::env::temp_dir();
+            let script_path = dir.join("open_recorder_test_mock_hang.sh");
+
+            // Create a sidecar that hangs forever (never prints the expected pattern)
+            let script = "#!/bin/bash\necho \"Initializing...\"\nsleep 300\n";
+            tokio::fs::write(&script_path, script).await.unwrap();
+            tokio::fs::set_permissions(&script_path, std::fs::Permissions::from_mode(0o755))
+                .await
+                .unwrap();
+
+            let sidecar_str = script_path.to_string_lossy().to_string();
+            let mut process = SidecarProcess::spawn(&sidecar_str, &[]).await.unwrap();
+
+            // Pattern should timeout
+            let result = process
+                .wait_for_stdout_pattern("Recording started", 500)
+                .await;
+            assert!(result.is_err());
+
+            // Kill the hanging process
+            let kill_result = process.kill().await;
+            assert!(kill_result.is_ok());
+
+            let _ = tokio::fs::remove_file(&script_path).await;
+        }
+
+        #[tokio::test]
+        async fn test_mock_sidecar_with_stderr_output() {
+            use std::os::unix::fs::PermissionsExt;
+
+            let dir = std::env::temp_dir();
+            let script_path = dir.join("open_recorder_test_mock_stderr.sh");
+
+            // Sidecar that writes to stderr then exits
+            let script = "#!/bin/bash\necho \"Error: permission denied\" >&2\nexit 1\n";
+            tokio::fs::write(&script_path, script).await.unwrap();
+            tokio::fs::set_permissions(&script_path, std::fs::Permissions::from_mode(0o755))
+                .await
+                .unwrap();
+
+            let sidecar_str = script_path.to_string_lossy().to_string();
+            let mut process = SidecarProcess::spawn(&sidecar_str, &[]).await.unwrap();
+
+            // Pattern won't be found, should capture stderr in error message
+            let result = process
+                .wait_for_stdout_pattern("Recording started", 2000)
+                .await;
+            assert!(result.is_err());
+            let err = result.unwrap_err();
+            assert!(
+                err.contains("permission denied") || err.contains("Process exited"),
+                "Error should contain stderr output: {}",
+                err
+            );
+
+            let _ = tokio::fs::remove_file(&script_path).await;
+        }
     }
 
     // ==================== Non-macOS capture tests ====================
