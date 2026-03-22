@@ -1,4 +1,4 @@
-import { Assets, BlurFilter, Container, Graphics, Sprite, Texture } from 'pixi.js';
+import { Assets, BlurFilter, Container, Graphics, Sprite, Texture } from '@/lib/pixi';
 import { MotionBlurFilter } from 'pixi-filters/motion-blur';
 import type { CursorTelemetryPoint } from '../types';
 import { createSpringState, getCursorSpringConfig, resetSpringState, stepSpringValue } from './motionSmoothing';
@@ -755,4 +755,3 @@ export function drawCursorOnCanvas(
 
   ctx.restore();
 }
-

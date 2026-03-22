@@ -1,4 +1,4 @@
-import { Container, BlurFilter } from 'pixi.js';
+import { Container, BlurFilter } from '@/lib/pixi';
 import { MotionBlurFilter } from 'pixi-filters/motion-blur';
 
 const PEAK_VELOCITY_PPS = 2000;
@@ -236,4 +236,3 @@ export function applyZoomTransform({
     y: transform.y,
   };
 }
-

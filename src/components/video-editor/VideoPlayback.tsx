@@ -3,7 +3,7 @@ import { useEffect, useRef, useImperativeHandle, forwardRef, useState, useMemo, 
 import { getAssetPath, getRenderableAssetUrl } from "@/lib/assetPath";
 import { getFacecamLayout, type FacecamSettings } from "@/lib/recordingSession";
 import { DEFAULT_WALLPAPER_PATH, DEFAULT_WALLPAPER_RELATIVE_PATH } from "@/lib/wallpapers";
-import { Application, Container, Sprite, Graphics, BlurFilter, Texture, VideoSource } from 'pixi.js';
+import { Application, Container, Sprite, Graphics, BlurFilter, Texture, VideoSource } from '@/lib/pixi';
 import { MotionBlurFilter } from 'pixi-filters/motion-blur';
 import { ZOOM_DEPTH_SCALES, type ZoomRegion, type ZoomFocus, type ZoomDepth, type TrimRegion, type SpeedRegion, type AnnotationRegion, type CursorTelemetryPoint } from "./types";
 import { DEFAULT_FOCUS, ZOOM_SCALE_DEADZONE, ZOOM_TRANSLATION_DEADZONE_PX } from "./videoPlayback/constants";

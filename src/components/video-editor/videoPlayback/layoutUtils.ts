@@ -1,4 +1,4 @@
-import { Application, Sprite, Graphics } from 'pixi.js';
+import { Application, Sprite, Graphics } from '@/lib/pixi';
 import type { CropRegion } from '../types';
 
 interface LayoutParams {
@@ -109,4 +109,3 @@ export function layoutVideoContent(params: LayoutParams): LayoutResult | null {
     cropBounds: { startX: cropStartX, endX: cropEndX, startY: cropStartY, endY: cropEndY },
   };
 }
-

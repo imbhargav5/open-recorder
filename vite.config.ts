@@ -40,7 +40,7 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          pixi: ['pixi.js'],
+          pixi: ['pixi.js', 'pixi.js/unsafe-eval'],
           'react-vendor': ['react', 'react-dom'],
           'video-processing': [
             'mediabunny',

@@ -1,4 +1,4 @@
-import { Application, Container, Sprite, Graphics, BlurFilter, Texture } from 'pixi.js';
+import { Application, Container, Sprite, Graphics, BlurFilter, Texture } from '@/lib/pixi';
 import { MotionBlurFilter } from 'pixi-filters/motion-blur';
 import type { ZoomRegion, CropRegion, AnnotationRegion, SpeedRegion, CursorTelemetryPoint } from '@/components/video-editor/types';
 import { getFacecamLayout, type FacecamSettings } from '@/lib/recordingSession';

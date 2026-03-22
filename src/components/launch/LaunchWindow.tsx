@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useActor } from "@xstate/react";
 import { BsRecordCircle } from "react-icons/bs";
 import { FaRegStopCircle } from "react-icons/fa";
 import { FaFolderOpen } from "react-icons/fa6";
@@ -6,21 +7,25 @@ import { FiMinus, FiX } from "react-icons/fi";
 import { MdMic, MdMicOff, MdMonitor, MdVideocam, MdVideocamOff, MdVideoFile, MdVolumeOff, MdVolumeUp } from "react-icons/md";
 import { useCameraDevices } from "../../hooks/useCameraDevices";
 import { RxDragHandleDots2 } from "react-icons/rx";
-import { useAudioLevelMeter } from "../../hooks/useAudioLevelMeter";
 import { useMicrophoneDevices } from "../../hooks/useMicrophoneDevices";
 import { useScreenRecorder } from "../../hooks/useScreenRecorder";
+import { microphoneMachine } from "../../machines/microphoneMachine";
 import { Button } from "../ui/button";
-import { AudioLevelMeter } from "../ui/audio-level-meter";
 import { ContentClamp } from "../ui/content-clamp";
+import { Popover, PopoverAnchor, PopoverContent } from "../ui/popover";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
+import { Switch } from "../ui/switch";
 import styles from "./LaunchWindow.module.css";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import * as backend from "@/lib/backend";
+
+const SYSTEM_DEFAULT_MICROPHONE_ID = "__system_default_microphone__";
 
 export function LaunchWindow() {
   const {
     recording,
     toggleRecording,
     preparePermissions,
-    microphoneEnabled,
     setMicrophoneEnabled,
     microphoneDeviceId,
     setMicrophoneDeviceId,
@@ -33,18 +38,36 @@ export function LaunchWindow() {
   } = useScreenRecorder();
   const [recordingStart, setRecordingStart] = useState<number | null>(null);
   const [elapsed, setElapsed] = useState(0);
-  const showMicControls = microphoneEnabled && !recording;
   const showCameraControls = cameraEnabled && !recording;
-  const { devices, selectedDeviceId, setSelectedDeviceId } = useMicrophoneDevices(microphoneEnabled);
+
+  const setMicEnabledRef = useRef(setMicrophoneEnabled);
+  setMicEnabledRef.current = setMicrophoneEnabled;
+
+  const providedMachine = useMemo(
+    () =>
+      microphoneMachine.provide({
+        actions: {
+          enableMic: () => setMicEnabledRef.current(true),
+          disableMic: () => setMicEnabledRef.current(false),
+        },
+      }),
+    [],
+  );
+
+  const [micState, micSend] = useActor(providedMachine);
+
+  const isMicEnabled = micState.matches("on") || micState.matches("selecting") || micState.matches("lockedOn");
+  const isPopoverOpen = micState.matches("selecting");
+
+  const { devices, selectedDeviceId, setSelectedDeviceId, error: microphoneDevicesError } = useMicrophoneDevices(
+    isPopoverOpen,
+  );
   const {
     devices: cameraDevices,
     selectedDeviceId: selectedCameraDeviceId,
     setSelectedDeviceId: setSelectedCameraDeviceId,
   } = useCameraDevices(cameraEnabled);
-  const { level } = useAudioLevelMeter({
-    enabled: showMicControls,
-    deviceId: microphoneDeviceId,
-  });
+  const micButtonRef = useRef<HTMLButtonElement | null>(null);
   const cameraPreviewRef = useRef<HTMLVideoElement | null>(null);
 
   useEffect(() => {
@@ -59,6 +82,17 @@ export function LaunchWindow() {
     }
   }, [selectedCameraDeviceId, setCameraDeviceId]);
 
+  // Sync recording state into the machine
+  const prevRecording = useRef(recording);
+  useEffect(() => {
+    if (recording && !prevRecording.current) {
+      micSend({ type: "RECORDING_START" });
+    } else if (!recording && prevRecording.current) {
+      micSend({ type: "RECORDING_STOP" });
+    }
+    prevRecording.current = recording;
+  }, [recording, micSend]);
+
   useEffect(() => {
     if (!showCameraControls) {
       if (cameraPreviewRef.current) {
@@ -69,10 +103,15 @@ export function LaunchWindow() {
 
     let mounted = true;
     let previewStream: MediaStream | null = null;
+    const mediaDevices = navigator.mediaDevices;
 
     const loadPreview = async () => {
+      if (!mediaDevices?.getUserMedia) {
+        return;
+      }
+
       try {
-        previewStream = await navigator.mediaDevices.getUserMedia({
+        previewStream = await mediaDevices.getUserMedia({
           video: cameraDeviceId
             ? {
                 deviceId: { exact: cameraDeviceId },
@@ -228,17 +267,18 @@ export function LaunchWindow() {
     : "recordings";
   const dividerClass = "mx-1 h-5 w-px shrink-0 bg-white/35";
 
-  const toggleMicrophone = () => {
-    if (!recording) {
-      setMicrophoneEnabled(!microphoneEnabled);
-    }
-  };
-
   const toggleCamera = () => {
     if (!recording) {
       setCameraEnabled(!cameraEnabled);
     }
   };
+
+  const microphoneSelectValue = devices.some((device) => device.deviceId === (microphoneDeviceId || selectedDeviceId))
+    ? (microphoneDeviceId || selectedDeviceId)
+    : SYSTEM_DEFAULT_MICROPHONE_ID;
+  const cameraSelectValue = cameraDevices.some((device) => device.deviceId === (cameraDeviceId || selectedCameraDeviceId))
+    ? (cameraDeviceId || selectedCameraDeviceId)
+    : undefined;
 
   return (
     <div className="w-full h-full flex items-end justify-center bg-transparent overflow-hidden">
@@ -257,43 +297,35 @@ export function LaunchWindow() {
             </div>
             <div className="flex flex-col gap-1.5">
               <div className="text-[10px] font-medium tracking-[0.18em] uppercase text-white/50">Facecam</div>
-              <select
-                value={cameraDeviceId || selectedCameraDeviceId}
-                onChange={(event) => {
-                  setSelectedCameraDeviceId(event.target.value);
-                  setCameraDeviceId(event.target.value);
+              <Select
+                value={cameraSelectValue}
+                onValueChange={(value) => {
+                  setSelectedCameraDeviceId(value);
+                  setCameraDeviceId(value);
                 }}
-                className={`max-w-[230px] rounded-full border border-white/15 bg-[#131722] px-3 py-1 text-xs text-slate-100 outline-none ${styles.micSelect}`}
+                disabled={cameraDevices.length === 0}
               >
-                {cameraDevices.map((device) => (
-                  <option key={device.deviceId} value={device.deviceId}>
-                    {device.label}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger
+                  className={`h-8 max-w-[230px] rounded-full border-white/15 bg-[#131722] px-3 py-1 text-xs text-slate-100 outline-none ring-0 ring-offset-0 focus:ring-0 focus:ring-offset-0 ${styles.tauriNoDrag}`}
+                >
+                  <SelectValue placeholder="Select camera" />
+                </SelectTrigger>
+                <SelectContent
+                  className="z-[100] border-white/15 bg-[#131722] text-slate-100"
+                  position="popper"
+                >
+                  {cameraDevices.map((device) => (
+                    <SelectItem
+                      key={device.deviceId}
+                      value={device.deviceId}
+                      className="text-xs focus:bg-white/10 focus:text-white"
+                    >
+                      {device.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-          </div>
-        )}
-
-        {showMicControls && (
-          <div
-            className={`flex items-center gap-2 rounded-full border border-white/15 bg-[rgba(18,18,26,0.92)] px-3 py-2 shadow-xl backdrop-blur-xl ${styles.tauriNoDrag}`}
-          >
-            <select
-              value={microphoneDeviceId || selectedDeviceId}
-              onChange={(event) => {
-                setSelectedDeviceId(event.target.value);
-                setMicrophoneDeviceId(event.target.value);
-              }}
-              className={`max-w-[230px] rounded-full border border-white/15 bg-[#131722] px-3 py-1 text-xs text-slate-100 outline-none ${styles.micSelect}`}
-            >
-              {devices.map((device) => (
-                <option key={device.deviceId} value={device.deviceId}>
-                  {device.label}
-                </option>
-              ))}
-            </select>
-            <AudioLevelMeter level={level} className="w-24" />
           </div>
         )}
 
@@ -308,7 +340,10 @@ export function LaunchWindow() {
             minHeight: 48,
           }}
         >
-          <div className={`flex items-center px-1 ${styles.tauriDrag}`}>
+          <div
+            className="flex items-center px-1 cursor-grab active:cursor-grabbing"
+            onMouseDown={() => getCurrentWindow().startDragging()}
+          >
             <RxDragHandleDots2 size={16} className="text-white/35" />
           </div>
 
@@ -333,27 +368,104 @@ export function LaunchWindow() {
               onClick={() => !recording && setSystemAudioEnabled(!systemAudioEnabled)}
               disabled={recording}
               title={systemAudioEnabled ? "Disable system audio" : "Enable system audio"}
-              className="text-white/80 hover:bg-transparent"
+              className={`text-white/80 hover:bg-transparent ${styles.tauriNoDrag}`}
             >
               {systemAudioEnabled ? <MdVolumeUp size={16} className="text-[#2563EB]" /> : <MdVolumeOff size={16} className="text-white/35" />}
             </Button>
-            <Button
-              variant="link"
-              size="icon"
-              onClick={toggleMicrophone}
-              disabled={recording}
-              title={microphoneEnabled ? "Disable microphone" : "Enable microphone"}
-              className="text-white/80 hover:bg-transparent"
-            >
-              {microphoneEnabled ? <MdMic size={16} className="text-[#2563EB]" /> : <MdMicOff size={16} className="text-white/35" />}
-            </Button>
+            <Popover open={isPopoverOpen}>
+              <PopoverAnchor asChild>
+                <Button
+                  ref={micButtonRef}
+                  variant="link"
+                  size="icon"
+                  onClick={() => micSend({ type: "CLICK" })}
+                  disabled={recording}
+                  title={isMicEnabled ? "Microphone settings" : "Enable microphone"}
+                  className={`text-white/80 hover:bg-transparent ${styles.tauriNoDrag}`}
+                >
+                  {isMicEnabled ? <MdMic size={16} className="text-[#2563EB]" /> : <MdMicOff size={16} className="text-white/35" />}
+                </Button>
+              </PopoverAnchor>
+              <PopoverContent
+                align="center"
+                side="top"
+                sideOffset={10}
+                className={`w-[280px] rounded-2xl border border-white/15 bg-[rgba(18,18,26,0.96)] p-3 text-slate-100 shadow-xl backdrop-blur-xl ${styles.tauriNoDrag}`}
+                onPointerDownOutside={(e) => {
+                  if (micButtonRef.current?.contains(e.target as Node)) {
+                    e.preventDefault();
+                  } else {
+                    micSend({ type: "CLOSE_POPOVER" });
+                  }
+                }}
+                onEscapeKeyDown={() => micSend({ type: "CLOSE_POPOVER" })}
+                onFocusOutside={(e) => e.preventDefault()}
+              >
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="text-[10px] font-medium tracking-[0.18em] uppercase text-white/50">
+                    Microphone
+                  </span>
+                  <Switch
+                    checked={isMicEnabled}
+                    onCheckedChange={(checked) => {
+                      if (!checked) {
+                        micSend({ type: "DISABLE" });
+                      }
+                    }}
+                  />
+                </div>
+                <div className="mb-3 text-xs text-white/65">
+                  {microphoneDevicesError
+                    ? "Using the system default microphone in this window."
+                    : "Choose which microphone to record."}
+                </div>
+                <Select
+                  value={microphoneSelectValue}
+                  onValueChange={(value) => {
+                    if (value === SYSTEM_DEFAULT_MICROPHONE_ID) {
+                      setSelectedDeviceId("default");
+                      setMicrophoneDeviceId(undefined);
+                    } else {
+                      setSelectedDeviceId(value);
+                      setMicrophoneDeviceId(value);
+                    }
+                  }}
+                >
+                  <SelectTrigger
+                    className={`h-8 w-full rounded-full border-white/15 bg-[#131722] px-3 py-1 text-xs text-slate-100 outline-none ring-0 ring-offset-0 focus:ring-0 focus:ring-offset-0 ${styles.tauriNoDrag}`}
+                  >
+                    <SelectValue placeholder="Select microphone" />
+                  </SelectTrigger>
+                  <SelectContent
+                    className="z-[100] border-white/15 bg-[#131722] text-slate-100"
+                    position="popper"
+                  >
+                    <SelectItem
+                      value={SYSTEM_DEFAULT_MICROPHONE_ID}
+                      className="text-xs focus:bg-white/10 focus:text-white"
+                    >
+                      {microphoneDevicesError ? "System Default Microphone" : "Default Microphone"}
+                    </SelectItem>
+                    {devices.map((device) => (
+                      <SelectItem
+                        key={device.deviceId}
+                        value={device.deviceId}
+                        className="text-xs focus:bg-white/10 focus:text-white"
+                      >
+                        {device.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </PopoverContent>
+            </Popover>
             <Button
               variant="link"
               size="icon"
               onClick={toggleCamera}
               disabled={recording}
               title={cameraEnabled ? "Disable facecam" : "Enable facecam"}
-              className="text-white/80 hover:bg-transparent"
+              className={`text-white/80 hover:bg-transparent ${styles.tauriNoDrag}`}
             >
               {cameraEnabled ? <MdVideocam size={16} className="text-[#2563EB]" /> : <MdVideocamOff size={16} className="text-white/35" />}
             </Button>

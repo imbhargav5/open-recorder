@@ -17,6 +17,14 @@ export function useCameraDevices(enabled: boolean = true) {
       return
     }
 
+    const mediaDevices = navigator.mediaDevices
+    if (!mediaDevices?.enumerateDevices) {
+      setDevices([])
+      setError('Camera device listing is unavailable in this window')
+      setIsLoading(false)
+      return
+    }
+
     let mounted = true
 
     const loadDevices = async () => {
@@ -24,8 +32,7 @@ export function useCameraDevices(enabled: boolean = true) {
         setIsLoading(true)
         setError(null)
 
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
-        const allDevices = await navigator.mediaDevices.enumerateDevices()
+        const allDevices = await mediaDevices.enumerateDevices()
         const videoInputs = allDevices
           .filter((device) => device.kind === 'videoinput')
           .map((device) => ({
@@ -33,8 +40,6 @@ export function useCameraDevices(enabled: boolean = true) {
             label: device.label || `Camera ${device.deviceId.slice(0, 8)}`,
             groupId: device.groupId,
           }))
-
-        stream.getTracks().forEach((track) => track.stop())
 
         if (mounted) {
           setDevices(videoInputs)
@@ -59,11 +64,11 @@ export function useCameraDevices(enabled: boolean = true) {
       void loadDevices()
     }
 
-    navigator.mediaDevices.addEventListener('devicechange', handleDeviceChange)
+    mediaDevices.addEventListener?.('devicechange', handleDeviceChange)
 
     return () => {
       mounted = false
-      navigator.mediaDevices.removeEventListener('devicechange', handleDeviceChange)
+      mediaDevices.removeEventListener?.('devicechange', handleDeviceChange)
     }
   }, [enabled, selectedDeviceId])
 
