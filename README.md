@@ -9,8 +9,8 @@
   <img src="https://img.shields.io/badge/open%20source-MIT-2563eb?style=for-the-badge" alt="MIT license" />
 </p>
 
-### Create polished, pro-grade screen recordings.
-[Open Recorder](https://github.com/imbhargav5/open-recorder) is an **open-source screen recorder and editor** for creating **polished walkthroughs, demos, tutorials, and product videos**. Contribution encouraged.
+### Create polished, pro-grade screen recordings and screenshots.
+[Open Recorder](https://github.com/imbhargav5/open-recorder) is an **open-source screen recorder, screenshot tool, and editor** for creating **polished walkthroughs, demos, tutorials, and product videos**. Contribution encouraged.
 
 **FAQ**: What are the changes between this and **Openscreen**? A: Open Recorder adds a full cursor animation/rendering pipeline, native screen capture for Mac and Windows, zoom animations faithful to Screen Studio, cursor loops, smoother panning behaviour, and more major tweaks.
 > This fork exists because the original maintainer does not wish implementing the architectural changes that make some of these features possible i.e. different recording pipeline.
@@ -22,7 +22,7 @@
 ---
 ## What is Open Recorder?
 
-Open Recorder lets you record your screen and automatically transform it into a polished video. It handles the heavy lifting of zooming into important actions and smoothing out jittery cursor movement so your demos look professional by default.
+Open Recorder lets you record your screen and capture screenshots, automatically transforming recordings into polished videos. It handles the heavy lifting of zooming into important actions and smoothing out jittery cursor movement so your demos look professional by default. Screenshots can be styled with custom backgrounds, padding, rounded corners, and shadows before saving or copying to clipboard.
 
 Open Recorder runs on:
 
@@ -86,6 +86,15 @@ Linux currently uses the browser capture path, which means the OS cursor cannot 
 - Rounded corners
 - Blur
 - Drop shadows
+
+### Screenshots
+
+- Capture entire screen, a specific window, or a custom selected area
+- Built-in image editor opens automatically after capture
+- Background styling: wallpapers, gradients, solid colors, or transparent
+- Adjustable padding, border radius, and shadow intensity
+- Save as PNG or copy directly to clipboard
+- Uses native `screencapture` on macOS for high-quality, silent captures
 
 ### Export
 
@@ -189,6 +198,19 @@ xattr -rd com.apple.quarantine "/Applications/Open Recorder.app"
 ---
 
 # Usage
+
+## Screenshot
+
+1. Launch Open Recorder
+2. Choose **Screenshot** from the HUD overlay
+3. Select a capture mode: **Screen**, **Window**, or **Area**
+4. Click **Take Screenshot**
+5. The image editor opens automatically with your capture
+6. Customize the background (wallpaper, gradient, solid color, or transparent)
+7. Adjust padding, border radius, and shadow intensity
+8. **Save as PNG** or **Copy to clipboard**
+
+---
 
 ## Record
 
