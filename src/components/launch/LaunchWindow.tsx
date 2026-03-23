@@ -1,11 +1,27 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useActor } from "@xstate/react";
+import { AppWindow, BoxSelect, Camera, ChevronLeft, Monitor, Video } from "lucide-react";
+import {
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import { BsRecordCircle } from "react-icons/bs";
 import { FaRegStopCircle } from "react-icons/fa";
-import { MdMic, MdMicOff, MdMonitor, MdVideocam, MdVideocamOff, MdVolumeOff, MdVolumeUp } from "react-icons/md";
-import { Monitor, AppWindow, BoxSelect, Video, ChevronLeft, Camera } from "lucide-react";
-import { useCameraDevices } from "../../hooks/useCameraDevices";
+import {
+	MdMic,
+	MdMicOff,
+	MdMonitor,
+	MdVideocam,
+	MdVideocamOff,
+	MdVolumeOff,
+	MdVolumeUp,
+} from "react-icons/md";
 import { RxDragHandleDots2 } from "react-icons/rx";
+import * as backend from "@/lib/backend";
+import { useCameraDevices } from "../../hooks/useCameraDevices";
 import { useMicrophoneDevices } from "../../hooks/useMicrophoneDevices";
 import { useScreenRecorder } from "../../hooks/useScreenRecorder";
 import { microphoneMachine } from "../../machines/microphoneMachine";
@@ -15,8 +31,6 @@ import { Popover, PopoverAnchor, PopoverContent } from "../ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
 import styles from "./LaunchWindow.module.css";
-import { getCurrentWindow } from "@tauri-apps/api/window";
-import * as backend from "@/lib/backend";
 
 const SYSTEM_DEFAULT_MICROPHONE_ID = "__system_default_microphone__";
 
@@ -26,732 +40,842 @@ type ScreenshotMode = "screen" | "window" | "area";
 // ─── Mode Button ────────────────────────────────────────────────────────────
 
 function ModeButton({
-  icon,
-  active,
-  onClick,
-  title,
-  disabled,
+	icon,
+	active,
+	onClick,
+	title,
+	disabled,
 }: {
-  icon: React.ReactNode;
-  active: boolean;
-  onClick: () => void;
-  title: string;
-  disabled?: boolean;
+	icon: React.ReactNode;
+	active: boolean;
+	onClick: () => void;
+	title: string;
+	disabled?: boolean;
 }) {
-  return (
-    <button
-      onClick={onClick}
-      title={title}
-      disabled={disabled}
-      className={`flex items-center justify-center w-[30px] h-[30px] rounded-md transition-all ${styles.tauriNoDrag} ${
-        active
-          ? "bg-white/15 text-white shadow-sm"
-          : "text-white/40 hover:text-white/70 hover:bg-white/5"
-      } ${disabled ? "opacity-30 cursor-not-allowed" : "cursor-pointer"}`}
-    >
-      {icon}
-    </button>
-  );
+	return (
+		<button
+			onClick={onClick}
+			title={title}
+			disabled={disabled}
+			className={`flex items-center justify-center w-[30px] h-[30px] rounded-md transition-all ${styles.tauriNoDrag} ${
+				active
+					? "bg-white/15 text-white shadow-sm"
+					: "text-white/40 hover:text-white/70 hover:bg-white/5"
+			} ${disabled ? "opacity-30 cursor-not-allowed" : "cursor-pointer"}`}
+		>
+			{icon}
+		</button>
+	);
 }
 
 // ─── Shared styles ───────────────────────────────────────────────────────────
 
 const barStyle: React.CSSProperties = {
-  borderRadius: 9999,
-  background: "linear-gradient(135deg, rgba(28,28,36,0.97) 0%, rgba(18,18,26,0.96) 100%)",
-  backdropFilter: "blur(16px) saturate(140%)",
-  WebkitBackdropFilter: "blur(16px) saturate(140%)",
-  border: "1px solid rgba(80,80,120,0.25)",
-  minHeight: 48,
+	borderRadius: 9999,
+	background: "linear-gradient(135deg, rgba(28,28,36,0.97) 0%, rgba(18,18,26,0.96) 100%)",
+	backdropFilter: "blur(16px) saturate(140%)",
+	WebkitBackdropFilter: "blur(16px) saturate(140%)",
+	border: "1px solid rgba(80,80,120,0.25)",
+	minHeight: 48,
 };
 
 const dialogStyle: React.CSSProperties = {
-  borderRadius: 18,
-  background: "linear-gradient(135deg, rgba(28,28,36,0.97) 0%, rgba(18,18,26,0.96) 100%)",
-  backdropFilter: "blur(16px) saturate(140%)",
-  WebkitBackdropFilter: "blur(16px) saturate(140%)",
-  border: "1px solid rgba(80,80,120,0.25)",
-  minHeight: 48,
+	borderRadius: 18,
+	background: "linear-gradient(135deg, rgba(28,28,36,0.97) 0%, rgba(18,18,26,0.96) 100%)",
+	backdropFilter: "blur(16px) saturate(140%)",
+	WebkitBackdropFilter: "blur(16px) saturate(140%)",
+	border: "1px solid rgba(80,80,120,0.25)",
+	minHeight: 48,
 };
 
 // ─── LaunchWindow ───────────────────────────────────────────────────────────
 
 export function LaunchWindow() {
-  const [view, setView] = useState<View>("choice");
-  const [screenshotMode, setScreenshotMode] = useState<ScreenshotMode | null>(null);
-  const [isCapturing, setIsCapturing] = useState(false);
+	const [view, setView] = useState<View>("choice");
+	const [screenshotMode, setScreenshotMode] = useState<ScreenshotMode | null>(null);
+	const [isCapturing, setIsCapturing] = useState(false);
 
-  const {
-    recording,
-    toggleRecording,
-    preparePermissions,
-    setMicrophoneEnabled,
-    microphoneDeviceId,
-    setMicrophoneDeviceId,
-    systemAudioEnabled,
-    setSystemAudioEnabled,
-    cameraEnabled,
-    setCameraEnabled,
-    cameraDeviceId,
-    setCameraDeviceId,
-  } = useScreenRecorder();
+	const {
+		recording,
+		toggleRecording,
+		preparePermissions,
+		setMicrophoneEnabled,
+		microphoneDeviceId,
+		setMicrophoneDeviceId,
+		systemAudioEnabled,
+		setSystemAudioEnabled,
+		cameraEnabled,
+		setCameraEnabled,
+		cameraDeviceId,
+		setCameraDeviceId,
+	} = useScreenRecorder();
 
-  const [recordingStart, setRecordingStart] = useState<number | null>(null);
-  const [elapsed, setElapsed] = useState(0);
-  const showCameraPreview = cameraEnabled && !recording && view === "recording";
+	const [recordingStart, setRecordingStart] = useState<number | null>(null);
+	const [elapsed, setElapsed] = useState(0);
+	const showCameraPreview = cameraEnabled && !recording && view === "recording";
 
-  const setMicEnabledRef = useRef(setMicrophoneEnabled);
-  setMicEnabledRef.current = setMicrophoneEnabled;
+	const setMicEnabledRef = useRef(setMicrophoneEnabled);
+	setMicEnabledRef.current = setMicrophoneEnabled;
 
-  const providedMachine = useMemo(
-    () =>
-      microphoneMachine.provide({
-        actions: {
-          enableMic: () => setMicEnabledRef.current(true),
-          disableMic: () => setMicEnabledRef.current(false),
-        },
-      }),
-    [],
-  );
+	const providedMachine = useMemo(
+		() =>
+			microphoneMachine.provide({
+				actions: {
+					enableMic: () => setMicEnabledRef.current(true),
+					disableMic: () => setMicEnabledRef.current(false),
+				},
+			}),
+		[],
+	);
 
-  const [micState, micSend] = useActor(providedMachine);
+	const [micState, micSend] = useActor(providedMachine);
 
-  const isMicEnabled = micState.matches("on") || micState.matches("selecting") || micState.matches("lockedOn");
-  const isPopoverOpen = micState.matches("selecting");
+	const isMicEnabled =
+		micState.matches("on") || micState.matches("selecting") || micState.matches("lockedOn");
+	const isPopoverOpen = micState.matches("selecting");
 
-  const { devices, selectedDeviceId, setSelectedDeviceId, error: microphoneDevicesError } = useMicrophoneDevices(
-    isPopoverOpen,
-  );
-  const {
-    devices: cameraDevices,
-    selectedDeviceId: selectedCameraDeviceId,
-    setSelectedDeviceId: setSelectedCameraDeviceId,
-  } = useCameraDevices(cameraEnabled);
-  const micButtonRef = useRef<HTMLButtonElement | null>(null);
-  const cameraPreviewRef = useRef<HTMLVideoElement | null>(null);
+	const {
+		devices,
+		selectedDeviceId,
+		setSelectedDeviceId,
+		isLoading: isLoadingMicrophoneDevices,
+		isRequestingAccess: isRequestingMicrophoneAccess,
+		permissionDenied: microphonePermissionDenied,
+		error: microphoneDevicesError,
+	} = useMicrophoneDevices(isPopoverOpen);
+	const {
+		devices: cameraDevices,
+		selectedDeviceId: selectedCameraDeviceId,
+		setSelectedDeviceId: setSelectedCameraDeviceId,
+		isLoading: isLoadingCameraDevices,
+		isRequestingAccess: isRequestingCameraAccess,
+		permissionDenied: cameraPermissionDenied,
+		error: cameraDevicesError,
+	} = useCameraDevices(cameraEnabled);
+	const micButtonRef = useRef<HTMLButtonElement | null>(null);
+	const cameraPreviewRef = useRef<HTMLVideoElement | null>(null);
 
-  useEffect(() => {
-    if (selectedDeviceId && selectedDeviceId !== "default") {
-      setMicrophoneDeviceId(selectedDeviceId);
-    }
-  }, [selectedDeviceId, setMicrophoneDeviceId]);
+	useEffect(() => {
+		setMicrophoneDeviceId(selectedDeviceId !== "default" ? selectedDeviceId : undefined);
+	}, [selectedDeviceId, setMicrophoneDeviceId]);
 
-  useEffect(() => {
-    if (selectedCameraDeviceId && selectedCameraDeviceId !== "default") {
-      setCameraDeviceId(selectedCameraDeviceId);
-    }
-  }, [selectedCameraDeviceId, setCameraDeviceId]);
+	useEffect(() => {
+		setCameraDeviceId(selectedCameraDeviceId !== "default" ? selectedCameraDeviceId : undefined);
+	}, [selectedCameraDeviceId, setCameraDeviceId]);
 
-  // Sync recording state into the microphone machine
-  const prevRecording = useRef(recording);
-  useEffect(() => {
-    if (recording && !prevRecording.current) {
-      micSend({ type: "RECORDING_START" });
-    } else if (!recording && prevRecording.current) {
-      micSend({ type: "RECORDING_STOP" });
-      // When recording stops, return to choice view
-      setView("choice");
-      setScreenshotMode(null);
-    }
-    prevRecording.current = recording;
-  }, [recording, micSend]);
+	// Sync recording state into the microphone machine
+	const prevRecording = useRef(recording);
+	useEffect(() => {
+		if (recording && !prevRecording.current) {
+			micSend({ type: "RECORDING_START" });
+		} else if (!recording && prevRecording.current) {
+			micSend({ type: "RECORDING_STOP" });
+			// When recording stops, return to choice view
+			setView("choice");
+			setScreenshotMode(null);
+		}
+		prevRecording.current = recording;
+	}, [recording, micSend]);
 
-  // Facecam preview
-  useEffect(() => {
-    if (!showCameraPreview) {
-      if (cameraPreviewRef.current) {
-        cameraPreviewRef.current.srcObject = null;
-      }
-      return;
-    }
+	// Facecam preview
+	useEffect(() => {
+		if (!showCameraPreview) {
+			if (cameraPreviewRef.current) {
+				cameraPreviewRef.current.srcObject = null;
+			}
+			return;
+		}
 
-    let mounted = true;
-    let previewStream: MediaStream | null = null;
-    const mediaDevices = navigator.mediaDevices;
+		let mounted = true;
+		let previewStream: MediaStream | null = null;
+		const mediaDevices = navigator.mediaDevices;
 
-    const loadPreview = async () => {
-      if (!mediaDevices?.getUserMedia) return;
-      try {
-        previewStream = await mediaDevices.getUserMedia({
-          video: cameraDeviceId
-            ? {
-                deviceId: { exact: cameraDeviceId },
-                width: { ideal: 640, max: 640 },
-                height: { ideal: 360, max: 360 },
-                frameRate: { ideal: 30, max: 30 },
-              }
-            : {
-                width: { ideal: 640, max: 640 },
-                height: { ideal: 360, max: 360 },
-                frameRate: { ideal: 30, max: 30 },
-              },
-          audio: false,
-        });
+		const loadPreview = async () => {
+			if (!mediaDevices?.getUserMedia) return;
+			try {
+				previewStream = await mediaDevices.getUserMedia({
+					video: cameraDeviceId
+						? {
+								deviceId: { exact: cameraDeviceId },
+								width: { ideal: 640, max: 640 },
+								height: { ideal: 360, max: 360 },
+								frameRate: { ideal: 30, max: 30 },
+							}
+						: {
+								width: { ideal: 640, max: 640 },
+								height: { ideal: 360, max: 360 },
+								frameRate: { ideal: 30, max: 30 },
+							},
+					audio: false,
+				});
 
-        if (!mounted || !cameraPreviewRef.current) {
-          previewStream?.getTracks().forEach((track) => track.stop());
-          return;
-        }
+				if (!mounted || !cameraPreviewRef.current) {
+					previewStream?.getTracks().forEach((track) => track.stop());
+					return;
+				}
 
-        cameraPreviewRef.current.srcObject = previewStream;
-        await cameraPreviewRef.current.play().catch(() => {});
-      } catch (error) {
-        console.error("Failed to load facecam preview:", error);
-      }
-    };
+				cameraPreviewRef.current.srcObject = previewStream;
+				await cameraPreviewRef.current.play().catch(() => {
+					// Ignore autoplay races for the preview element.
+				});
+			} catch (error) {
+				console.error("Failed to load facecam preview:", error);
+			}
+		};
 
-    void loadPreview();
+		void loadPreview();
 
-    return () => {
-      mounted = false;
-      if (cameraPreviewRef.current) {
-        cameraPreviewRef.current.srcObject = null;
-      }
-      previewStream?.getTracks().forEach((track) => track.stop());
-    };
-  }, [cameraDeviceId, showCameraPreview]);
+		return () => {
+			mounted = false;
+			if (cameraPreviewRef.current) {
+				cameraPreviewRef.current.srcObject = null;
+			}
+			previewStream?.getTracks().forEach((track) => track.stop());
+		};
+	}, [cameraDeviceId, showCameraPreview]);
 
-  // Elapsed timer
-  useEffect(() => {
-    let timer: NodeJS.Timeout | null = null;
-    if (recording) {
-      if (!recordingStart) setRecordingStart(Date.now());
-      timer = setInterval(() => {
-        if (recordingStart) {
-          setElapsed(Math.floor((Date.now() - recordingStart) / 1000));
-        }
-      }, 1000);
-    } else {
-      setRecordingStart(null);
-      setElapsed(0);
-      if (timer) clearInterval(timer);
-    }
-    return () => {
-      if (timer) clearInterval(timer);
-    };
-  }, [recording, recordingStart]);
+	// Elapsed timer
+	useEffect(() => {
+		let timer: NodeJS.Timeout | null = null;
+		if (recording) {
+			if (!recordingStart) setRecordingStart(Date.now());
+			timer = setInterval(() => {
+				if (recordingStart) {
+					setElapsed(Math.floor((Date.now() - recordingStart) / 1000));
+				}
+			}, 1000);
+		} else {
+			setRecordingStart(null);
+			setElapsed(0);
+			if (timer) clearInterval(timer);
+		}
+		return () => {
+			if (timer) clearInterval(timer);
+		};
+	}, [recording, recordingStart]);
 
-  const formatTime = (seconds: number) => {
-    const m = Math.floor(seconds / 60).toString().padStart(2, "0");
-    const s = (seconds % 60).toString().padStart(2, "0");
-    return `${m}:${s}`;
-  };
+	const formatTime = (seconds: number) => {
+		const m = Math.floor(seconds / 60)
+			.toString()
+			.padStart(2, "0");
+		const s = (seconds % 60).toString().padStart(2, "0");
+		return `${m}:${s}`;
+	};
 
-  // Source tracking
-  const [selectedSource, setSelectedSource] = useState("Screen");
-  const [hasSelectedSource, setHasSelectedSource] = useState(false);
-  useEffect(() => {
-    const checkSelectedSource = async () => {
-      try {
-        const source = await backend.getSelectedSource();
-        if (source) {
-          setSelectedSource(source.name);
-          setHasSelectedSource(true);
-        } else {
-          setSelectedSource("Screen");
-          setHasSelectedSource(false);
-        }
-      } catch {
-        // ignore
-      }
-    };
+	// Source tracking
+	const [selectedSource, setSelectedSource] = useState("Screen");
+	const [hasSelectedSource, setHasSelectedSource] = useState(false);
+	useEffect(() => {
+		const checkSelectedSource = async () => {
+			try {
+				const source = await backend.getSelectedSource();
+				if (source) {
+					setSelectedSource(source.name);
+					setHasSelectedSource(true);
+				} else {
+					setSelectedSource("Screen");
+					setHasSelectedSource(false);
+				}
+			} catch {
+				// ignore
+			}
+		};
 
-    void checkSelectedSource();
-    const interval = setInterval(checkSelectedSource, 500);
-    return () => clearInterval(interval);
-  }, []);
+		void checkSelectedSource();
+		const interval = setInterval(checkSelectedSource, 500);
+		return () => clearInterval(interval);
+	}, []);
 
-  const openSourceSelector = async () => {
-    const screenStatus = await backend.getScreenRecordingPermissionStatus().catch(() => "unknown");
-    if (screenStatus !== "granted") {
-      const granted = await backend.requestScreenRecordingPermission().catch(() => false);
-      if (!granted) {
-        await backend.openScreenRecordingPreferences().catch(() => {});
-        alert(
-          "Open Recorder needs Screen Recording permission to show live screen and window previews. System Settings has been opened. After enabling it, quit and reopen Open Recorder.",
-        );
-        return;
-      }
-    }
+	const openSourceSelector = async () => {
+		const screenStatus = await backend.getScreenRecordingPermissionStatus().catch(() => "unknown");
+		if (screenStatus !== "granted") {
+			const granted = await backend.requestScreenRecordingPermission().catch(() => false);
+			if (!granted) {
+				await backend.openScreenRecordingPreferences().catch(() => {
+					// Ignore preference-opening failures and keep showing the permission alert.
+				});
+				alert(
+					"Open Recorder needs Screen Recording permission to show live screen and window previews. System Settings has been opened. After enabling it, quit and reopen Open Recorder.",
+				);
+				return;
+			}
+		}
 
-    const permissionsReady = await preparePermissions();
-    if (!permissionsReady) return;
+		const permissionsReady = await preparePermissions();
+		if (!permissionsReady) return;
 
-    backend.openSourceSelector().catch(() => {});
-  };
+		backend.openSourceSelector().catch(() => {
+			// Ignore selector launch failures because the permissions flow already handled the user-facing error.
+		});
+	};
 
-  const openVideoFile = async () => {
-    const path = await backend.openVideoFilePicker();
-    if (!path) return;
-    await backend.setCurrentVideoPath(path);
-    await backend.switchToEditor();
-  };
+	const openVideoFile = useCallback(async () => {
+		const path = await backend.openVideoFilePicker();
+		if (!path) return;
+		await backend.setCurrentVideoPath(path);
+		await backend.switchToEditor();
+	}, []);
 
-  const openProjectFile = async () => {
-    const result = await backend.loadProjectFile();
-    if (!result) return;
-    await backend.switchToEditor();
-  };
+	const openProjectFile = useCallback(async () => {
+		const result = await backend.loadProjectFile();
+		if (!result) return;
+		await backend.switchToEditor();
+	}, []);
 
-  useEffect(() => {
-    const unlistenVideo = backend.onMenuOpenVideoFile(() => {
-      void openVideoFile();
-    });
-    const unlistenProject = backend.onMenuLoadProject(() => {
-      void openProjectFile();
-    });
-    return () => {
-      void unlistenVideo.then((fn) => fn());
-      void unlistenProject.then((fn) => fn());
-    };
-  }, []);
+	useEffect(() => {
+		const unlistenVideo = backend.onMenuOpenVideoFile(() => {
+			void openVideoFile();
+		});
+		const unlistenProject = backend.onMenuLoadProject(() => {
+			void openProjectFile();
+		});
+		return () => {
+			void unlistenVideo.then((fn) => fn());
+			void unlistenProject.then((fn) => fn());
+		};
+	}, [openProjectFile, openVideoFile]);
 
-  const dividerClass = "mx-1 h-5 w-px shrink-0 bg-white/20";
+	const dividerClass = "mx-1 h-5 w-px shrink-0 bg-white/20";
 
-  const toggleCamera = () => {
-    if (!recording) {
-      setCameraEnabled(!cameraEnabled);
-    }
-  };
+	const toggleCamera = () => {
+		if (!recording) {
+			setCameraEnabled(!cameraEnabled);
+		}
+	};
 
-  const microphoneSelectValue = devices.some((device) => device.deviceId === (microphoneDeviceId || selectedDeviceId))
-    ? (microphoneDeviceId || selectedDeviceId)
-    : SYSTEM_DEFAULT_MICROPHONE_ID;
-  const cameraSelectValue = cameraDevices.some((device) => device.deviceId === (cameraDeviceId || selectedCameraDeviceId))
-    ? (cameraDeviceId || selectedCameraDeviceId)
-    : undefined;
+	const microphoneSelectValue = devices.some(
+		(device) => device.deviceId === (microphoneDeviceId || selectedDeviceId),
+	)
+		? microphoneDeviceId || selectedDeviceId
+		: SYSTEM_DEFAULT_MICROPHONE_ID;
+	const cameraSelectValue = cameraDevices.some(
+		(device) => device.deviceId === (cameraDeviceId || selectedCameraDeviceId),
+	)
+		? cameraDeviceId || selectedCameraDeviceId
+		: undefined;
+	const microphoneHelperText = isRequestingMicrophoneAccess
+		? "Requesting microphone access to show all inputs..."
+		: microphonePermissionDenied
+			? "Microphone access was denied. Using the system default microphone."
+			: microphoneDevicesError
+				? "Using the system default microphone in this window."
+				: isLoadingMicrophoneDevices
+					? "Loading microphone devices..."
+					: "Choose which microphone to record.";
+	const cameraHelperText = isRequestingCameraAccess
+		? "Requesting camera access to show all cameras..."
+		: cameraPermissionDenied
+			? "Camera access was denied. Using the default camera when available."
+			: cameraDevicesError
+				? "Camera device listing is unavailable in this window."
+				: isLoadingCameraDevices
+					? "Loading camera devices..."
+					: "Choose which facecam to preview and record.";
 
-  // ─── Screenshot capture ───────────────────────────────────────────────────
+	// ─── Screenshot capture ───────────────────────────────────────────────────
 
-  const handleScreenshotModeSelect = async (mode: ScreenshotMode) => {
-    setScreenshotMode(mode);
-    if (mode === "area") {
-      // Immediately enter area selection mode
-      await handleAreaCapture();
-    } else {
-      // Open source selector for screen/window selection
-      await openSourceSelector();
-    }
-  };
+	const handleScreenshotModeSelect = async (mode: ScreenshotMode) => {
+		setScreenshotMode(mode);
+		if (mode === "area") {
+			// Immediately enter area selection mode
+			await handleAreaCapture();
+		} else {
+			// Open source selector for screen/window selection
+			await openSourceSelector();
+		}
+	};
 
-  const handleScreenshotCapture = async () => {
-    if (isCapturing || !screenshotMode) return;
-    setIsCapturing(true);
+	const handleScreenshotCapture = async () => {
+		if (isCapturing || !screenshotMode) return;
+		setIsCapturing(true);
 
-    try {
-      if (screenshotMode === "screen") {
-        // Hide HUD so it doesn't appear in the screenshot
-        await getCurrentWindow().hide();
-        await new Promise((resolve) => setTimeout(resolve, 350));
+		try {
+			if (screenshotMode === "screen") {
+				// Hide HUD so it doesn't appear in the screenshot
+				await getCurrentWindow().hide();
+				await new Promise((resolve) => setTimeout(resolve, 350));
 
-        const path = await backend.takeScreenshot("screen", undefined);
-        if (path) {
-          await backend.switchToImageEditor();
-        } else {
-          await getCurrentWindow().show();
-        }
-      } else if (screenshotMode === "window") {
-        const source = await backend.getSelectedSource();
-        const windowId = source?.windowId;
+				const path = await backend.takeScreenshot("screen", undefined);
+				if (path) {
+					await backend.switchToImageEditor();
+				} else {
+					await getCurrentWindow().show();
+				}
+			} else if (screenshotMode === "window") {
+				const source = await backend.getSelectedSource();
+				const windowId = source?.windowId;
 
-        if (!windowId) {
-          await openSourceSelector();
-          setIsCapturing(false);
-          return;
-        }
+				if (!windowId) {
+					await openSourceSelector();
+					setIsCapturing(false);
+					return;
+				}
 
-        const path = await backend.takeScreenshot("window", windowId);
-        if (path) {
-          await backend.switchToImageEditor();
-        }
-      }
-    } catch (error) {
-      console.error("Screenshot capture failed:", error);
-      await getCurrentWindow().show().catch(() => {});
-    } finally {
-      setIsCapturing(false);
-    }
-  };
+				const path = await backend.takeScreenshot("window", windowId);
+				if (path) {
+					await backend.switchToImageEditor();
+				}
+			}
+		} catch (error) {
+			console.error("Screenshot capture failed:", error);
+			await getCurrentWindow()
+				.show()
+				.catch(() => {
+					// Ignore show-window races after a failed capture attempt.
+				});
+		} finally {
+			setIsCapturing(false);
+		}
+	};
 
-  const handleAreaCapture = async () => {
-    if (isCapturing) return;
-    setIsCapturing(true);
+	const handleAreaCapture = async () => {
+		if (isCapturing) return;
+		setIsCapturing(true);
 
-    try {
-      await getCurrentWindow().hide();
-      await new Promise((resolve) => setTimeout(resolve, 350));
+		try {
+			await getCurrentWindow().hide();
+			await new Promise((resolve) => setTimeout(resolve, 350));
 
-      const path = await backend.takeScreenshot("area", undefined);
-      if (path) {
-        await backend.switchToImageEditor();
-      } else {
-        // User cancelled area selection
-        await getCurrentWindow().show();
-      }
-    } catch (error) {
-      console.error("Area capture failed:", error);
-      await getCurrentWindow().show().catch(() => {});
-    } finally {
-      setIsCapturing(false);
-    }
-  };
+			const path = await backend.takeScreenshot("area", undefined);
+			if (path) {
+				await backend.switchToImageEditor();
+			} else {
+				// User cancelled area selection
+				await getCurrentWindow().show();
+			}
+		} catch (error) {
+			console.error("Area capture failed:", error);
+			await getCurrentWindow()
+				.show()
+				.catch(() => {
+					// Ignore show-window races after a failed area capture attempt.
+				});
+		} finally {
+			setIsCapturing(false);
+		}
+	};
 
-  // ─── Render helpers ───────────────────────────────────────────────────────
+	// ─── Render helpers ───────────────────────────────────────────────────────
 
-  const dragHandle = (
-    <div
-      className="flex items-center px-1 cursor-grab active:cursor-grabbing"
-      onMouseDown={() => getCurrentWindow().startDragging()}
-    >
-      <RxDragHandleDots2 size={16} className="text-white/35" />
-    </div>
-  );
+	const handleDragHandlePointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+		event.preventDefault();
+		event.stopPropagation();
 
-  // ─── Render ───────────────────────────────────────────────────────────────
+		void backend.startHudOverlayDrag().catch((error) => {
+			console.error("Failed to start HUD overlay drag:", error);
+		});
+	}, []);
 
-  return (
-    <div className="w-full h-full flex items-end justify-center bg-transparent overflow-hidden">
-      <div className={`flex flex-col items-center gap-2 mx-auto ${styles.tauriDrag}`}>
+	const dragHandle = (
+		<div
+			className={`flex items-center px-1 cursor-grab active:cursor-grabbing ${styles.dragHandle}`}
+			onPointerDown={handleDragHandlePointerDown}
+		>
+			<RxDragHandleDots2 size={16} className="text-white/35" />
+		</div>
+	);
 
-        {/* ── Facecam preview (only in recording view, before recording starts) ── */}
-        {showCameraPreview && (
-          <div
-            className={`flex items-center gap-3 rounded-[22px] border border-white/15 bg-[rgba(18,18,26,0.92)] px-3 py-2 shadow-xl backdrop-blur-xl ${styles.tauriNoDrag}`}
-          >
-            <div className="h-14 w-24 overflow-hidden rounded-2xl border border-white/10 bg-black/30">
-              <video
-                ref={cameraPreviewRef}
-                className="h-full w-full object-cover"
-                muted
-                playsInline
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <div className="text-[10px] font-medium tracking-[0.18em] uppercase text-white/50">Facecam</div>
-              <Select
-                value={cameraSelectValue}
-                onValueChange={(value) => {
-                  setSelectedCameraDeviceId(value);
-                  setCameraDeviceId(value);
-                }}
-                disabled={cameraDevices.length === 0}
-              >
-                <SelectTrigger
-                  className={`h-8 max-w-[230px] rounded-full border-white/15 bg-[#131722] px-3 py-1 text-xs text-slate-100 outline-none ring-0 ring-offset-0 focus:ring-0 focus:ring-offset-0 ${styles.tauriNoDrag}`}
-                >
-                  <SelectValue placeholder="Select camera" />
-                </SelectTrigger>
-                <SelectContent className="z-[100] border-white/15 bg-[#131722] text-slate-100" position="popper">
-                  {cameraDevices.map((device) => (
-                    <SelectItem key={device.deviceId} value={device.deviceId} className="text-xs focus:bg-white/10 focus:text-white">
-                      {device.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        )}
+	// ─── Render ───────────────────────────────────────────────────────────────
 
-        {/* ================================================================
+	return (
+		<div className="w-full h-full flex items-end justify-center bg-transparent overflow-hidden">
+			<div className={`flex flex-col items-center gap-2 mx-auto ${styles.tauriDrag}`}>
+				{/* ── Facecam preview (only in recording view, before recording starts) ── */}
+				{showCameraPreview && (
+					<div
+						className={`flex items-center gap-3 rounded-[22px] border border-white/15 bg-[rgba(18,18,26,0.92)] px-3 py-2 shadow-xl backdrop-blur-xl ${styles.tauriNoDrag}`}
+					>
+						<div className="h-14 w-24 overflow-hidden rounded-2xl border border-white/10 bg-black/30">
+							<video
+								ref={cameraPreviewRef}
+								className="h-full w-full object-cover"
+								muted
+								playsInline
+							/>
+						</div>
+						<div className="flex flex-col gap-1.5">
+							<div className="text-[10px] font-medium tracking-[0.18em] uppercase text-white/50">
+								Facecam
+							</div>
+							<div className="max-w-[230px] text-[11px] text-white/55">{cameraHelperText}</div>
+							<Select
+								value={cameraSelectValue}
+								onValueChange={(value) => {
+									setSelectedCameraDeviceId(value);
+									setCameraDeviceId(value);
+								}}
+								disabled={
+									cameraDevices.length === 0 || isLoadingCameraDevices || isRequestingCameraAccess
+								}
+							>
+								<SelectTrigger
+									className={`h-8 max-w-[230px] rounded-full border-white/15 bg-[#131722] px-3 py-1 text-xs text-slate-100 outline-none ring-0 ring-offset-0 focus:ring-0 focus:ring-offset-0 ${styles.tauriNoDrag}`}
+								>
+									<SelectValue
+										placeholder={
+											isRequestingCameraAccess
+												? "Unlocking cameras..."
+												: isLoadingCameraDevices
+													? "Loading cameras..."
+													: "Select camera"
+										}
+									/>
+								</SelectTrigger>
+								<SelectContent
+									className="z-[100] border-white/15 bg-[#131722] text-slate-100"
+									position="popper"
+								>
+									{cameraDevices.map((device) => (
+										<SelectItem
+											key={device.deviceId}
+											value={device.deviceId}
+											className="text-xs focus:bg-white/10 focus:text-white"
+										>
+											{device.label}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+						</div>
+					</div>
+				)}
+
+				{/* ================================================================
             VIEW 1 — Choice Dialog
             [drag]  [ Screenshot ]  [ Record Video ]
            ================================================================ */}
-        {view === "choice" && !recording && (
-          <div
-            className={`flex items-center gap-3 px-4 py-3 ${styles.tauriDrag} ${styles.hudBar}`}
-            style={dialogStyle}
-          >
-            {dragHandle}
+				{view === "choice" && !recording && (
+					<div
+						className={`flex items-center gap-3 px-4 py-3 ${styles.tauriDrag} ${styles.hudBar}`}
+						style={dialogStyle}
+					>
+						{dragHandle}
 
-            <button
-              onClick={() => { setView("screenshot"); setScreenshotMode(null); }}
-              className={`flex items-center gap-2.5 px-5 py-2.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.08] hover:border-white/[0.15] transition-all cursor-pointer ${styles.tauriNoDrag}`}
-            >
-              <Camera size={16} className="text-white/70" />
-              <span className="text-[13px] font-medium text-white/80">Screenshot</span>
-            </button>
+						<button
+							onClick={() => {
+								setView("screenshot");
+								setScreenshotMode(null);
+							}}
+							className={`flex items-center gap-2.5 px-5 py-2.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.08] hover:border-white/[0.15] transition-all cursor-pointer ${styles.tauriNoDrag}`}
+						>
+							<Camera size={16} className="text-white/70" />
+							<span className="text-[13px] font-medium text-white/80">Screenshot</span>
+						</button>
 
-            <button
-              onClick={() => setView("recording")}
-              className={`flex items-center gap-2.5 px-5 py-2.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.08] hover:border-white/[0.15] transition-all cursor-pointer ${styles.tauriNoDrag}`}
-            >
-              <Video size={16} className="text-white/70" />
-              <span className="text-[13px] font-medium text-white/80">Record Video</span>
-            </button>
-          </div>
-        )}
+						<button
+							onClick={() => setView("recording")}
+							className={`flex items-center gap-2.5 px-5 py-2.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.08] hover:border-white/[0.15] transition-all cursor-pointer ${styles.tauriNoDrag}`}
+						>
+							<Video size={16} className="text-white/70" />
+							<span className="text-[13px] font-medium text-white/80">Record Video</span>
+						</button>
+					</div>
+				)}
 
-        {/* ================================================================
+				{/* ================================================================
             VIEW 2 — Screenshot Bar
             [drag] [← back] [Screen] [Window] [Area] | [source] | [Take Screenshot]
            ================================================================ */}
-        {view === "screenshot" && !recording && (
-          <div
-            className={`w-full mx-auto flex items-center gap-1.5 px-3 py-2 ${styles.tauriDrag} ${styles.hudBar}`}
-            style={barStyle}
-          >
-            {dragHandle}
+				{view === "screenshot" && !recording && (
+					<div
+						className={`w-full mx-auto flex items-center gap-1.5 px-3 py-2 ${styles.tauriDrag} ${styles.hudBar}`}
+						style={barStyle}
+					>
+						{dragHandle}
 
-            {/* Back button */}
-            <Button
-              variant="link"
-              size="icon"
-              onClick={() => { setView("choice"); setScreenshotMode(null); }}
-              title="Back"
-              className={`text-white/60 hover:text-white hover:bg-transparent ${styles.tauriNoDrag}`}
-            >
-              <ChevronLeft size={16} />
-            </Button>
+						{/* Back button */}
+						<Button
+							variant="link"
+							size="icon"
+							onClick={() => {
+								setView("choice");
+								setScreenshotMode(null);
+							}}
+							title="Back"
+							className={`text-white/60 hover:text-white hover:bg-transparent ${styles.tauriNoDrag}`}
+						>
+							<ChevronLeft size={16} />
+						</Button>
 
-            <div className={dividerClass} />
+						<div className={dividerClass} />
 
-            {/* Screenshot mode buttons */}
-            <div className="flex items-center gap-0.5 bg-white/[0.06] rounded-lg p-[3px]">
-              <ModeButton
-                icon={<Monitor size={15} />}
-                active={screenshotMode === "screen"}
-                onClick={() => handleScreenshotModeSelect("screen")}
-                title="Capture Entire Screen"
-              />
-              <ModeButton
-                icon={<AppWindow size={15} />}
-                active={screenshotMode === "window"}
-                onClick={() => handleScreenshotModeSelect("window")}
-                title="Capture Window"
-              />
-              <ModeButton
-                icon={<BoxSelect size={15} />}
-                active={screenshotMode === "area"}
-                onClick={() => handleScreenshotModeSelect("area")}
-                title="Capture Area"
-              />
-            </div>
+						{/* Screenshot mode buttons */}
+						<div className="flex items-center gap-0.5 bg-white/[0.06] rounded-lg p-[3px]">
+							<ModeButton
+								icon={<Monitor size={15} />}
+								active={screenshotMode === "screen"}
+								onClick={() => handleScreenshotModeSelect("screen")}
+								title="Capture Entire Screen"
+							/>
+							<ModeButton
+								icon={<AppWindow size={15} />}
+								active={screenshotMode === "window"}
+								onClick={() => handleScreenshotModeSelect("window")}
+								title="Capture Window"
+							/>
+							<ModeButton
+								icon={<BoxSelect size={15} />}
+								active={screenshotMode === "area"}
+								onClick={() => handleScreenshotModeSelect("area")}
+								title="Capture Area"
+							/>
+						</div>
 
-            {/* Source display + Take Screenshot CTA — shown after source is selected */}
-            {screenshotMode && screenshotMode !== "area" && hasSelectedSource && (
-              <>
-                <div className={dividerClass} />
+						{/* Source display + Take Screenshot CTA — shown after source is selected */}
+						{screenshotMode && screenshotMode !== "area" && hasSelectedSource && (
+							<>
+								<div className={dividerClass} />
 
-                {/* Selected source indicator (clickable to re-open source selector) */}
-                <Button
-                  variant="link"
-                  size="sm"
-                  className={`gap-1 text-white/60 bg-transparent hover:bg-transparent px-0 text-xs ${styles.tauriNoDrag}`}
-                  onClick={openSourceSelector}
-                  title={selectedSource}
-                >
-                  <MdMonitor size={14} className="text-white/60" />
-                  <ContentClamp truncateLength={10}>{selectedSource}</ContentClamp>
-                </Button>
+								{/* Selected source indicator (clickable to re-open source selector) */}
+								<Button
+									variant="link"
+									size="sm"
+									className={`gap-1 text-white/60 bg-transparent hover:bg-transparent px-0 text-xs ${styles.tauriNoDrag}`}
+									onClick={openSourceSelector}
+									title={selectedSource}
+								>
+									<MdMonitor size={14} className="text-white/60" />
+									<ContentClamp truncateLength={10}>{selectedSource}</ContentClamp>
+								</Button>
 
-                <div className={dividerClass} />
+								<div className={dividerClass} />
 
-                {/* Take Screenshot CTA */}
-                <Button
-                  variant="link"
-                  size="sm"
-                  onClick={handleScreenshotCapture}
-                  disabled={isCapturing}
-                  className={`gap-1.5 text-white bg-transparent hover:bg-transparent px-1 text-xs font-medium ${styles.tauriNoDrag}`}
-                >
-                  {isCapturing ? (
-                    <>
-                      <div className="h-3 w-3 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                      <span className="text-white/70">Capturing...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Camera size={14} className="text-white/85" />
-                      <span className="text-white/80">Take Screenshot</span>
-                    </>
-                  )}
-                </Button>
-              </>
-            )}
-          </div>
-        )}
+								{/* Take Screenshot CTA */}
+								<Button
+									variant="link"
+									size="sm"
+									onClick={handleScreenshotCapture}
+									disabled={isCapturing}
+									className={`gap-1.5 text-white bg-transparent hover:bg-transparent px-1 text-xs font-medium ${styles.tauriNoDrag}`}
+								>
+									{isCapturing ? (
+										<>
+											<div className="h-3 w-3 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+											<span className="text-white/70">Capturing...</span>
+										</>
+									) : (
+										<>
+											<Camera size={14} className="text-white/85" />
+											<span className="text-white/80">Take Screenshot</span>
+										</>
+									)}
+								</Button>
+							</>
+						)}
+					</div>
+				)}
 
-        {/* ================================================================
+				{/* ================================================================
             VIEW 3 — Recording Controls
             [drag] [← back] [source] | [volume] [mic] [camera] | [record/stop]
            ================================================================ */}
-        {(view === "recording" || recording) && (
-          <div
-            className={`w-full mx-auto flex items-center gap-1.5 px-3 py-2 ${styles.tauriDrag} ${styles.hudBar}`}
-            style={barStyle}
-          >
-            {dragHandle}
+				{(view === "recording" || recording) && (
+					<div
+						className={`w-full mx-auto flex items-center gap-1.5 px-3 py-2 ${styles.tauriDrag} ${styles.hudBar}`}
+						style={barStyle}
+					>
+						{dragHandle}
 
-            {/* Back button — return to choice (only when not recording) */}
-            {!recording && (
-              <>
-                <Button
-                  variant="link"
-                  size="icon"
-                  onClick={() => setView("choice")}
-                  title="Back"
-                  className={`text-white/60 hover:text-white hover:bg-transparent ${styles.tauriNoDrag}`}
-                >
-                  <ChevronLeft size={16} />
-                </Button>
-                <div className={dividerClass} />
-              </>
-            )}
+						{/* Back button — return to choice (only when not recording) */}
+						{!recording && (
+							<>
+								<Button
+									variant="link"
+									size="icon"
+									onClick={() => setView("choice")}
+									title="Back"
+									className={`text-white/60 hover:text-white hover:bg-transparent ${styles.tauriNoDrag}`}
+								>
+									<ChevronLeft size={16} />
+								</Button>
+								<div className={dividerClass} />
+							</>
+						)}
 
-            {/* Source selector */}
-            <Button
-              variant="link"
-              size="sm"
-              className={`gap-1 text-white/80 bg-transparent hover:bg-transparent px-0 text-xs ${styles.tauriNoDrag}`}
-              onClick={openSourceSelector}
-              disabled={recording}
-              title={selectedSource}
-            >
-              <MdMonitor size={14} className="text-white/80" />
-              <ContentClamp truncateLength={6}>{selectedSource}</ContentClamp>
-            </Button>
+						{/* Source selector */}
+						<Button
+							variant="link"
+							size="sm"
+							className={`gap-1 text-white/80 bg-transparent hover:bg-transparent px-0 text-xs ${styles.tauriNoDrag}`}
+							onClick={openSourceSelector}
+							disabled={recording}
+							title={selectedSource}
+						>
+							<MdMonitor size={14} className="text-white/80" />
+							<ContentClamp truncateLength={6}>{selectedSource}</ContentClamp>
+						</Button>
 
-            <div className={dividerClass} />
+						<div className={dividerClass} />
 
-            {/* Audio / Mic / Camera */}
-            <div className={`flex items-center gap-1 ${styles.tauriNoDrag}`}>
-              <Button
-                variant="link"
-                size="icon"
-                onClick={() => !recording && setSystemAudioEnabled(!systemAudioEnabled)}
-                disabled={recording}
-                title={systemAudioEnabled ? "Disable system audio" : "Enable system audio"}
-                className={`text-white/80 hover:bg-transparent ${styles.tauriNoDrag}`}
-              >
-                {systemAudioEnabled ? (
-                  <MdVolumeUp size={16} className="text-[#2563EB]" />
-                ) : (
-                  <MdVolumeOff size={16} className="text-white/35" />
-                )}
-              </Button>
+						{/* Audio / Mic / Camera */}
+						<div className={`flex items-center gap-1 ${styles.tauriNoDrag}`}>
+							<Button
+								variant="link"
+								size="icon"
+								onClick={() => !recording && setSystemAudioEnabled(!systemAudioEnabled)}
+								disabled={recording}
+								title={systemAudioEnabled ? "Disable system audio" : "Enable system audio"}
+								className={`text-white/80 hover:bg-transparent ${styles.tauriNoDrag}`}
+							>
+								{systemAudioEnabled ? (
+									<MdVolumeUp size={16} className="text-[#2563EB]" />
+								) : (
+									<MdVolumeOff size={16} className="text-white/35" />
+								)}
+							</Button>
 
-              <Popover open={isPopoverOpen}>
-                <PopoverAnchor asChild>
-                  <Button
-                    ref={micButtonRef}
-                    variant="link"
-                    size="icon"
-                    onClick={() => micSend({ type: "CLICK" })}
-                    disabled={recording}
-                    title={isMicEnabled ? "Microphone settings" : "Enable microphone"}
-                    className={`text-white/80 hover:bg-transparent ${styles.tauriNoDrag}`}
-                  >
-                    {isMicEnabled ? (
-                      <MdMic size={16} className="text-[#2563EB]" />
-                    ) : (
-                      <MdMicOff size={16} className="text-white/35" />
-                    )}
-                  </Button>
-                </PopoverAnchor>
-                <PopoverContent
-                  align="center"
-                  side="top"
-                  sideOffset={10}
-                  className={`w-[280px] rounded-2xl border border-white/15 bg-[rgba(18,18,26,0.96)] p-3 text-slate-100 shadow-xl backdrop-blur-xl ${styles.tauriNoDrag}`}
-                  onPointerDownOutside={(e) => {
-                    if (micButtonRef.current?.contains(e.target as Node)) {
-                      e.preventDefault();
-                    } else {
-                      micSend({ type: "CLOSE_POPOVER" });
-                    }
-                  }}
-                  onEscapeKeyDown={() => micSend({ type: "CLOSE_POPOVER" })}
-                  onFocusOutside={(e) => e.preventDefault()}
-                >
-                  <div className="mb-2 flex items-center justify-between">
-                    <span className="text-[10px] font-medium tracking-[0.18em] uppercase text-white/50">
-                      Microphone
-                    </span>
-                    <Switch
-                      checked={isMicEnabled}
-                      onCheckedChange={(checked) => {
-                        if (!checked) micSend({ type: "DISABLE" });
-                      }}
-                    />
-                  </div>
-                  <div className="mb-3 text-xs text-white/65">
-                    {microphoneDevicesError
-                      ? "Using the system default microphone in this window."
-                      : "Choose which microphone to record."}
-                  </div>
-                  <Select
-                    value={microphoneSelectValue}
-                    onValueChange={(value) => {
-                      if (value === SYSTEM_DEFAULT_MICROPHONE_ID) {
-                        setSelectedDeviceId("default");
-                        setMicrophoneDeviceId(undefined);
-                      } else {
-                        setSelectedDeviceId(value);
-                        setMicrophoneDeviceId(value);
-                      }
-                    }}
-                  >
-                    <SelectTrigger
-                      className={`h-8 w-full rounded-full border-white/15 bg-[#131722] px-3 py-1 text-xs text-slate-100 outline-none ring-0 ring-offset-0 focus:ring-0 focus:ring-offset-0 ${styles.tauriNoDrag}`}
-                    >
-                      <SelectValue placeholder="Select microphone" />
-                    </SelectTrigger>
-                    <SelectContent className="z-[100] border-white/15 bg-[#131722] text-slate-100" position="popper">
-                      <SelectItem value={SYSTEM_DEFAULT_MICROPHONE_ID} className="text-xs focus:bg-white/10 focus:text-white">
-                        {microphoneDevicesError ? "System Default Microphone" : "Default Microphone"}
-                      </SelectItem>
-                      {devices.map((device) => (
-                        <SelectItem key={device.deviceId} value={device.deviceId} className="text-xs focus:bg-white/10 focus:text-white">
-                          {device.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </PopoverContent>
-              </Popover>
+							<Popover open={isPopoverOpen}>
+								<PopoverAnchor asChild>
+									<Button
+										ref={micButtonRef}
+										variant="link"
+										size="icon"
+										onClick={() => micSend({ type: "CLICK" })}
+										disabled={recording}
+										title={isMicEnabled ? "Microphone settings" : "Enable microphone"}
+										className={`text-white/80 hover:bg-transparent ${styles.tauriNoDrag}`}
+									>
+										{isMicEnabled ? (
+											<MdMic size={16} className="text-[#2563EB]" />
+										) : (
+											<MdMicOff size={16} className="text-white/35" />
+										)}
+									</Button>
+								</PopoverAnchor>
+								<PopoverContent
+									align="center"
+									side="top"
+									sideOffset={10}
+									className={`w-[280px] rounded-2xl border border-white/15 bg-[rgba(18,18,26,0.96)] p-3 text-slate-100 shadow-xl backdrop-blur-xl ${styles.tauriNoDrag}`}
+									onPointerDownOutside={(e) => {
+										if (micButtonRef.current?.contains(e.target as Node)) {
+											e.preventDefault();
+										} else {
+											micSend({ type: "CLOSE_POPOVER" });
+										}
+									}}
+									onEscapeKeyDown={() => micSend({ type: "CLOSE_POPOVER" })}
+									onFocusOutside={(e) => e.preventDefault()}
+								>
+									<div className="mb-2 flex items-center justify-between">
+										<span className="text-[10px] font-medium tracking-[0.18em] uppercase text-white/50">
+											Microphone
+										</span>
+										<Switch
+											checked={isMicEnabled}
+											onCheckedChange={(checked) => {
+												if (!checked) micSend({ type: "DISABLE" });
+											}}
+										/>
+									</div>
+									<div className="mb-3 text-xs text-white/65">
+										<div className="flex items-center gap-2">
+											{(isLoadingMicrophoneDevices || isRequestingMicrophoneAccess) && (
+												<div className="h-3 w-3 rounded-full border-2 border-white/25 border-t-white animate-spin" />
+											)}
+											<span>{microphoneHelperText}</span>
+										</div>
+									</div>
+									<Select
+										value={microphoneSelectValue}
+										onValueChange={(value) => {
+											if (value === SYSTEM_DEFAULT_MICROPHONE_ID) {
+												setSelectedDeviceId("default");
+												setMicrophoneDeviceId(undefined);
+											} else {
+												setSelectedDeviceId(value);
+												setMicrophoneDeviceId(value);
+											}
+										}}
+										disabled={isLoadingMicrophoneDevices || isRequestingMicrophoneAccess}
+									>
+										<SelectTrigger
+											className={`h-8 w-full rounded-full border-white/15 bg-[#131722] px-3 py-1 text-xs text-slate-100 outline-none ring-0 ring-offset-0 focus:ring-0 focus:ring-offset-0 ${styles.tauriNoDrag}`}
+										>
+											<SelectValue
+												placeholder={
+													isRequestingMicrophoneAccess
+														? "Unlocking microphones..."
+														: isLoadingMicrophoneDevices
+															? "Loading microphones..."
+															: "Select microphone"
+												}
+											/>
+										</SelectTrigger>
+										<SelectContent
+											className="z-[100] border-white/15 bg-[#131722] text-slate-100"
+											position="popper"
+										>
+											<SelectItem
+												value={SYSTEM_DEFAULT_MICROPHONE_ID}
+												className="text-xs focus:bg-white/10 focus:text-white"
+											>
+												{microphonePermissionDenied || microphoneDevicesError
+													? "System Default Microphone"
+													: "Default Microphone"}
+											</SelectItem>
+											{devices.map((device) => (
+												<SelectItem
+													key={device.deviceId}
+													value={device.deviceId}
+													className="text-xs focus:bg-white/10 focus:text-white"
+												>
+													{device.label}
+												</SelectItem>
+											))}
+										</SelectContent>
+									</Select>
+								</PopoverContent>
+							</Popover>
 
-              <Button
-                variant="link"
-                size="icon"
-                onClick={toggleCamera}
-                disabled={recording}
-                title={cameraEnabled ? "Disable facecam" : "Enable facecam"}
-                className={`text-white/80 hover:bg-transparent ${styles.tauriNoDrag}`}
-              >
-                {cameraEnabled ? (
-                  <MdVideocam size={16} className="text-[#2563EB]" />
-                ) : (
-                  <MdVideocamOff size={16} className="text-white/35" />
-                )}
-              </Button>
-            </div>
+							<Button
+								variant="link"
+								size="icon"
+								onClick={toggleCamera}
+								disabled={recording}
+								title={cameraEnabled ? "Disable facecam" : "Enable facecam"}
+								className={`text-white/80 hover:bg-transparent ${styles.tauriNoDrag}`}
+							>
+								{cameraEnabled ? (
+									<MdVideocam size={16} className="text-[#2563EB]" />
+								) : (
+									<MdVideocamOff size={16} className="text-white/35" />
+								)}
+							</Button>
+						</div>
 
-            <div className={dividerClass} />
+						<div className={dividerClass} />
 
-            {/* Record / Stop */}
-            <Button
-              variant="link"
-              size="sm"
-              onClick={hasSelectedSource ? toggleRecording : openSourceSelector}
-              disabled={!hasSelectedSource && !recording}
-              className={`gap-1 text-white bg-transparent hover:bg-transparent px-0 text-xs ${styles.tauriNoDrag}`}
-            >
-              {recording ? (
-                <>
-                  <FaRegStopCircle size={14} className="text-red-400" />
-                  <span className="text-red-400 font-medium tabular-nums">{formatTime(elapsed)}</span>
-                </>
-              ) : (
-                <>
-                  <BsRecordCircle size={14} className={hasSelectedSource ? "text-white/85" : "text-white/35"} />
-                  <span className={hasSelectedSource ? "text-white/80" : "text-white/35"}>Record</span>
-                </>
-              )}
-            </Button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
+						{/* Record / Stop */}
+						<Button
+							variant="link"
+							size="sm"
+							onClick={hasSelectedSource ? toggleRecording : openSourceSelector}
+							disabled={!hasSelectedSource && !recording}
+							className={`gap-1 text-white bg-transparent hover:bg-transparent px-0 text-xs ${styles.tauriNoDrag}`}
+						>
+							{recording ? (
+								<>
+									<FaRegStopCircle size={14} className="text-red-400" />
+									<span className="text-red-400 font-medium tabular-nums">
+										{formatTime(elapsed)}
+									</span>
+								</>
+							) : (
+								<>
+									<BsRecordCircle
+										size={14}
+										className={hasSelectedSource ? "text-white/85" : "text-white/35"}
+									/>
+									<span className={hasSelectedSource ? "text-white/80" : "text-white/35"}>
+										Record
+									</span>
+								</>
+							)}
+						</Button>
+					</div>
+				)}
+			</div>
+		</div>
+	);
 }

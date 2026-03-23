@@ -11,6 +11,11 @@
   -webkit-app-region: no-drag;
 }
 
+.dragHandle {
+  -webkit-app-region: no-drag;
+  touch-action: none;
+  user-select: none;
+}
 
 .folderButton {
   cursor: pointer;

@@ -1,5 +1,5 @@
 use std::sync::Mutex;
-use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder, Window};
 #[cfg(target_os = "macos")]
 use tauri::{LogicalPosition, Position, TitleBarStyle};
 use tauri::window::Color;
@@ -93,6 +93,11 @@ pub async fn hud_overlay_close(app: AppHandle) -> Result<(), String> {
         let _ = window.close();
     }
     Ok(())
+}
+
+#[tauri::command]
+pub async fn start_hud_overlay_drag(window: Window) -> Result<(), String> {
+    window.start_dragging().map_err(|e| e.to_string())
 }
 
 #[tauri::command]

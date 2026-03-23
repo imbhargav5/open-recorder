@@ -272,6 +272,10 @@ export function hudOverlayClose(): Promise<void> {
 	return invoke("hud_overlay_close");
 }
 
+export function startHudOverlayDrag(): Promise<void> {
+	return invoke("start_hud_overlay_drag");
+}
+
 export function setHasUnsavedChanges(hasChanges: boolean): Promise<void> {
 	return invoke("set_has_unsaved_changes", { hasChanges });
 }
