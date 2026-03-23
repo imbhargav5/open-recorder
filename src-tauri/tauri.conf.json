@@ -16,7 +16,7 @@
         "label": "hud-overlay",
         "title": "Open Recorder",
         "url": "index.html?windowType=hud-overlay",
-        "width": 600,
+        "width": 780,
         "height": 155,
         "resizable": false,
         "decorations": false,

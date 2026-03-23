@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { LaunchWindow } from "./components/launch/LaunchWindow";
 import { SourceSelector } from "./components/launch/SourceSelector";
 import VideoEditor from "./components/video-editor/VideoEditor";
+import ImageEditor from "./components/image-editor/ImageEditor";
 import { loadAllCustomFonts } from "./lib/customFonts";
 import { ShortcutsProvider } from "./contexts/ShortcutsContext";
 import { ShortcutsConfigDialog } from "./components/video-editor/ShortcutsConfigDialog";
@@ -46,6 +47,8 @@ export default function App() {
           <ShortcutsConfigDialog />
         </ShortcutsProvider>
       );
+    case 'image-editor':
+      return <ImageEditor />;
     default:
       return (
         <div className="flex h-full w-full items-center justify-center bg-slate-950 text-white">

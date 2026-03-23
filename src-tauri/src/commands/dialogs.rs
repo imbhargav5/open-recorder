@@ -34,6 +34,35 @@ pub async fn save_exported_video(
 }
 
 #[tauri::command]
+pub async fn save_screenshot_file(
+    app: AppHandle,
+    image_data: Vec<u8>,
+    file_name: String,
+) -> Result<Option<String>, String> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+
+    app.dialog()
+        .file()
+        .set_file_name(&file_name)
+        .add_filter("Image", &["png", "jpg", "jpeg"])
+        .save_file(move |path| {
+            let _ = tx.send(path);
+        });
+
+    let path = rx.await.map_err(|_| "Dialog cancelled".to_string())?;
+
+    if let Some(file_path) = path {
+        let path_str = file_path.to_string();
+        tokio::fs::write(&path_str, &image_data)
+            .await
+            .map_err(|e: std::io::Error| e.to_string())?;
+        Ok(Some(path_str))
+    } else {
+        Ok(None)
+    }
+}
+
+#[tauri::command]
 pub async fn open_video_file_picker(
     app: AppHandle,
 ) -> Result<Option<String>, String> {

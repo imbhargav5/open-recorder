@@ -31,6 +31,7 @@ export function ExportDialog({
   exportFormat = 'mp4',
   exportedFilePath, // Add this line
 }: ExportDialogProps) {
+  console.log("render <ExportDialog>");
   const [showSuccess, setShowSuccess] = useState(false);
 
   // Reset showSuccess when a new export starts or dialog reopens

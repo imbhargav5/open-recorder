@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type WheelEvent } from "react";
 import { useTimelineContext } from "dnd-timeline";
 import { Button } from "@/components/ui/button";
+import { type TimeStore, useTimeValue } from "../useTimeStore";
 import { Plus, Scissors, ZoomIn, MessageSquare, ChevronDown, Check, Gauge, WandSparkles } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -34,7 +35,7 @@ const SUGGESTION_SPACING_MS = 1800;
 
 interface TimelineEditorProps {
   videoDuration: number;
-  currentTime: number;
+  timeStore: TimeStore;
   onSeek?: (time: number) => void;
   cursorTelemetry?: CursorTelemetryPoint[];
   zoomRegions: ZoomRegion[];
@@ -568,7 +569,7 @@ function Timeline({
 
 function TimelineEditorInner({
   videoDuration,
-  currentTime,
+  timeStore,
   onSeek,
   cursorTelemetry = [],
   zoomRegions,
@@ -599,6 +600,8 @@ function TimelineEditorInner({
   aspectRatio,
   onAspectRatioChange,
 }: TimelineEditorProps) {
+  console.log("render <TimelineEditor>");
+  const currentTime = useTimeValue(timeStore);
   const totalMs = useMemo(() => Math.max(0, Math.round(videoDuration * 1000)), [videoDuration]);
   const currentTimeMs = useMemo(() => Math.round(currentTime * 1000), [currentTime]);
   const timelineScale = useMemo(() => calculateTimelineScale(videoDuration), [videoDuration]);

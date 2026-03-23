@@ -44,6 +44,7 @@ export function AnnotationSettingsPanel({
   onFigureDataChange,
   onDelete,
 }: AnnotationSettingsPanelProps) {
+  console.log("render <AnnotationSettingsPanel>");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [customFonts, setCustomFonts] = useState<CustomFont[]>([]);
 

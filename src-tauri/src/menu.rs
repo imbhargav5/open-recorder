@@ -24,6 +24,8 @@ pub fn setup_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         .build()?;
 
     // File menu
+    let open_video = MenuItemBuilder::with_id("menu-open-video-file", "Open Video File...")
+        .build(app)?;
     let load_project = MenuItemBuilder::with_id("menu-load-project", "Open Project...")
         .accelerator("CmdOrCtrl+O")
         .build(app)?;
@@ -36,7 +38,9 @@ pub fn setup_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             .build(app)?;
 
     let file_menu = SubmenuBuilder::new(app, "File")
+        .item(&open_video)
         .item(&load_project)
+        .separator()
         .item(&save_project)
         .item(&save_project_as)
         .separator()
@@ -82,6 +86,9 @@ pub fn setup_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     // Handle menu events
     app.on_menu_event(move |app, event| {
         match event.id().as_ref() {
+            "menu-open-video-file" => {
+                let _ = app.emit("menu-open-video-file", ());
+            }
             "menu-load-project" => {
                 let _ = app.emit("menu-load-project", ());
             }
