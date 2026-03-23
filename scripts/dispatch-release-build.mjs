@@ -157,12 +157,11 @@ function updateJsonVersion(filePath, nextVersion, spacing) {
 
 function updateTextVersion(filePath, pattern, replacement) {
 	const current = readFileSync(filePath, "utf8");
-	const next = current.replace(pattern, replacement);
-
-	if (next === current) {
+	if (!current.match(pattern)) {
 		die(`Could not update version in ${filePath}`);
 	}
 
+	const next = current.replace(pattern, replacement);
 	writeFileSync(filePath, next);
 }
 
