@@ -1,5 +1,5 @@
-use tauri::AppHandle;
 use std::sync::OnceLock;
+use tauri::AppHandle;
 use tokio::sync::Mutex;
 
 use super::sidecar::SidecarProcess;
@@ -66,10 +66,14 @@ pub async fn start_capture(
         .unwrap_or_else(|| "0".to_string());
     let window_id = read_u64(source, &["windowId", "window_id"])
         .or_else(|| parse_window_id_from_source_id(&source_id));
-    let captures_system_audio =
-        read_bool(options, &["capturesSystemAudio", "recordSystemAudio"], false);
+    let captures_system_audio = read_bool(
+        options,
+        &["capturesSystemAudio", "recordSystemAudio"],
+        false,
+    );
     let captures_microphone =
         read_bool(options, &["capturesMicrophone", "recordMicrophone"], false);
+    let shows_cursor = read_bool(options, &["showsCursor", "captureCursor"], false);
     let microphone_device_id = read_string(options, &["microphoneDeviceId"]);
     let fps = read_u64(options, &["fps", "frameRate"]).unwrap_or(60);
 
@@ -80,6 +84,7 @@ pub async fn start_capture(
         "displayId": display_id_num,
         "windowId": window_id,
         "fps": fps,
+        "showsCursor": shows_cursor,
         "capturesSystemAudio": captures_system_audio,
         "capturesMicrophone": captures_microphone,
         "microphoneDeviceId": microphone_device_id,
@@ -410,8 +415,11 @@ mod tests {
                 .unwrap_or_else(|| "0".to_string());
             let window_id = read_u64(source, &["windowId", "window_id"])
                 .or_else(|| parse_window_id_from_source_id(&source_id));
-            let captures_system_audio =
-                read_bool(options, &["capturesSystemAudio", "recordSystemAudio"], false);
+            let captures_system_audio = read_bool(
+                options,
+                &["capturesSystemAudio", "recordSystemAudio"],
+                false,
+            );
             let captures_microphone =
                 read_bool(options, &["capturesMicrophone", "recordMicrophone"], false);
             let microphone_device_id = read_string(options, &["microphoneDeviceId"]);

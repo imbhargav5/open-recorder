@@ -671,6 +671,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				let nativeStarted = false;
 				try {
 					await backend.startNativeScreenRecording(selectedSource, {
+						captureCursor: false,
 						capturesSystemAudio: systemAudioEnabled,
 						capturesMicrophone: microphoneEnabled,
 						microphoneDeviceId,

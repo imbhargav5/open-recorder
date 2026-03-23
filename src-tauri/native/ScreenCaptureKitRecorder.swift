@@ -32,6 +32,7 @@ struct CaptureConfig: Codable {
 	let displayId: FlexibleUInt32?
 	let windowId: UInt32?
 	let outputPath: String?
+	let showsCursor: Bool?
 	let capturesSystemAudio: Bool?
 	let capturesMicrophone: Bool?
 	let microphoneDeviceId: String?
@@ -121,7 +122,10 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		streamConfig.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(requestedFPS))
 		streamConfig.queueDepth = 6
 		streamConfig.pixelFormat = kCVPixelFormatType_32BGRA
-		streamConfig.showsCursor = true
+		// Cursor visuals are reconstructed from telemetry in the editor/exporter.
+		// Recording the OS cursor here would bake it into the source video and
+		// make the cursor controls impossible to honor later.
+		streamConfig.showsCursor = config.showsCursor ?? false
 		streamConfig.capturesAudio = capturesSystemAudio
 		streamConfig.sampleRate = 48000
 		streamConfig.channelCount = 2

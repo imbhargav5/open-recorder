@@ -7,11 +7,17 @@ use crate::state::AppState;
 #[tauri::command]
 pub fn get_platform() -> String {
     #[cfg(target_os = "macos")]
-    { "darwin".to_string() }
+    {
+        "darwin".to_string()
+    }
     #[cfg(target_os = "windows")]
-    { "win32".to_string() }
+    {
+        "win32".to_string()
+    }
     #[cfg(target_os = "linux")]
-    { "linux".to_string() }
+    {
+        "linux".to_string()
+    }
 }
 
 #[tauri::command]
@@ -38,7 +44,11 @@ pub async fn reveal_in_folder(path: String) -> Result<(), String> {
     #[cfg(target_os = "linux")]
     {
         tokio::process::Command::new("xdg-open")
-            .arg(std::path::Path::new(&path).parent().unwrap_or(std::path::Path::new(&path)))
+            .arg(
+                std::path::Path::new(&path)
+                    .parent()
+                    .unwrap_or(std::path::Path::new(&path)),
+            )
             .spawn()
             .map_err(|e| e.to_string())?;
     }
@@ -46,7 +56,9 @@ pub async fn reveal_in_folder(path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn open_recordings_folder(state: tauri::State<'_, Mutex<AppState>>) -> Result<(), String> {
+pub async fn open_recordings_folder(
+    state: tauri::State<'_, Mutex<AppState>>,
+) -> Result<(), String> {
     let dir = {
         let state = state.lock().map_err(|e| e.to_string())?;
         state.custom_recordings_dir.clone()
@@ -62,6 +74,17 @@ pub async fn open_recordings_folder(state: tauri::State<'_, Mutex<AppState>>) ->
 #[tauri::command]
 pub fn get_asset_base_path(app: AppHandle) -> Result<String, String> {
     let resource_dir = app.path().resource_dir().map_err(|e| e.to_string())?;
+    let public_resource_dir = resource_dir.join("_up_").join("public");
+
+    if public_resource_dir.exists() {
+        return Ok(public_resource_dir.to_string_lossy().to_string());
+    }
+
+    let legacy_public_dir = resource_dir.join("public");
+    if legacy_public_dir.exists() {
+        return Ok(legacy_public_dir.to_string_lossy().to_string());
+    }
+
     Ok(resource_dir.to_string_lossy().to_string())
 }
 
@@ -72,7 +95,10 @@ pub fn hide_cursor() -> Result<(), String> {
         // On macOS, use CoreGraphics to hide the cursor
         use std::process::Command;
         Command::new("osascript")
-            .args(["-e", "tell application \"System Events\" to set visible of cursor to false"])
+            .args([
+                "-e",
+                "tell application \"System Events\" to set visible of cursor to false",
+            ])
             .spawn()
             .ok();
     }
