@@ -35,6 +35,10 @@
 	},
 	"dependencies": {
 		"@fix-webm-duration/fix": "^1.0.1",
+		"@opentelemetry/api": "^1.9.0",
+		"@opentelemetry/resources": "^2.6.0",
+		"@opentelemetry/sdk-trace-web": "^2.6.0",
+		"@opentelemetry/semantic-conventions": "^1.40.0",
 		"@pixi/filter-drop-shadow": "^5.2.0",
 		"@pixi/filter-motion-blur": "^5.1.1",
 		"@radix-ui/react-accordion": "^1.2.12",

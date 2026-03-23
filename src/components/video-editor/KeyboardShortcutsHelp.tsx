@@ -5,6 +5,7 @@ import { useShortcuts } from "@/contexts/ShortcutsContext";
 import { formatBinding, SHORTCUT_LABELS, SHORTCUT_ACTIONS } from "@/lib/shortcuts";
 
 export function KeyboardShortcutsHelp() {
+  console.log("render <KeyboardShortcutsHelp>");
   const { shortcuts, isMac, openConfig } = useShortcuts();
 
   const [scrollLabels, setScrollLabels] = useState({ pan: 'Shift + Ctrl + Scroll', zoom: 'Ctrl + Scroll' });

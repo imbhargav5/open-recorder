@@ -74,6 +74,7 @@ pub struct AppState {
     pub has_unsaved_changes: bool,
     pub cursor_scale: f64,
     pub shortcuts: Option<ShortcutConfig>,
+    pub current_screenshot_path: Option<String>,
 }
 
 impl Default for AppState {
@@ -91,6 +92,7 @@ impl Default for AppState {
             has_unsaved_changes: false,
             cursor_scale: 1.0,
             shortcuts: None,
+            current_screenshot_path: None,
         }
     }
 }

@@ -3,6 +3,7 @@ use std::sync::Mutex;
 
 use crate::state::{AppState, RecordingSession};
 use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
+use tokio::io::AsyncWriteExt;
 
 const URL_COMPONENT_ENCODE_SET: &AsciiSet = &CONTROLS
     .add(b' ')
@@ -93,6 +94,65 @@ pub async fn store_recorded_video(
     }
 
     Ok(path_str)
+}
+
+#[tauri::command]
+pub async fn prepare_recording_file(
+    state: tauri::State<'_, Mutex<AppState>>,
+    file_name: String,
+) -> Result<String, String> {
+    let recordings_dir = {
+        let s = state.lock().map_err(|e| e.to_string())?;
+        get_recordings_dir(&s)
+    };
+
+    tokio::fs::create_dir_all(&recordings_dir)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let file_path = recordings_dir.join(&file_name);
+    tokio::fs::write(&file_path, [])
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(file_path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+pub async fn append_recording_data(
+    path: String,
+    data: Vec<u8>,
+) -> Result<(), String> {
+    let mut file = tokio::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    file.write_all(&data).await.map_err(|e| e.to_string())?;
+    file.flush().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn replace_recording_data(
+    path: String,
+    data: Vec<u8>,
+) -> Result<String, String> {
+    tokio::fs::write(&path, &data)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(path)
+}
+
+#[tauri::command]
+pub async fn delete_recording_file(path: String) -> Result<(), String> {
+    match tokio::fs::remove_file(&path).await {
+        Ok(_) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error.to_string()),
+    }
 }
 
 #[tauri::command]

@@ -134,6 +134,7 @@ const VideoPlayback = memo(forwardRef<VideoPlaybackRef, VideoPlaybackProps>(({
   cursorMotionBlur = DEFAULT_CURSOR_MOTION_BLUR,
   cursorClickBounce = DEFAULT_CURSOR_CLICK_BOUNCE,
 }, ref) => {
+  console.log("render <VideoPlayback>");
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const facecamVideoRef = useRef<HTMLVideoElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);

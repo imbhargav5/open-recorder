@@ -103,6 +103,47 @@ pub fn set_has_unsaved_changes(
     Ok(())
 }
 
+#[tauri::command]
+pub async fn switch_to_image_editor(app: AppHandle) -> Result<(), String> {
+    // Hide HUD overlay
+    if let Some(hud) = app.get_webview_window("hud-overlay") {
+        let _ = hud.hide();
+    }
+
+    // Close source selector if open
+    if let Some(selector) = app.get_webview_window("source-selector") {
+        let _ = selector.close();
+    }
+
+    // Create or focus image editor window
+    if let Some(editor) = app.get_webview_window("image-editor") {
+        let _ = editor.show();
+        let _ = editor.set_focus();
+    } else {
+        let mut builder = WebviewWindowBuilder::new(
+            &app,
+            "image-editor",
+            WebviewUrl::App("index.html?windowType=image-editor".into()),
+        )
+        .title("Open Recorder — Screenshot")
+        .inner_size(1100.0, 750.0)
+        .min_inner_size(800.0, 550.0)
+        .resizable(true)
+        .background_color(Color(0, 0, 0, 255));
+
+        #[cfg(target_os = "macos")]
+        {
+            builder = builder
+                .title_bar_style(TitleBarStyle::Overlay)
+                .traffic_light_position(Position::Logical(LogicalPosition::new(12.0, 12.0)));
+        }
+
+        builder.build().map_err(|e: tauri::Error| e.to_string())?;
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

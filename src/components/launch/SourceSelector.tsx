@@ -1,5 +1,5 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { MdCheck } from "react-icons/md";
 import { flashSelectedScreen, getSources, selectSource } from "@/lib/backend";
 import { Button } from "../ui/button";
@@ -67,9 +67,9 @@ function mergeSources(
 
 function parseSourceMetadata(source: ProcessedDesktopSource) {
 	const sourceType: "screen" | "window" =
-		source.sourceType
-		?? (source.source_type as "screen" | "window" | undefined)
-		?? (source.id.startsWith("window:") ? "window" : "screen");
+		source.sourceType ??
+		(source.source_type as "screen" | "window" | undefined) ??
+		(source.id.startsWith("window:") ? "window" : "screen");
 
 	const appName = source.appName ?? source.app_name;
 	const windowTitle = source.windowTitle ?? source.window_title;
@@ -111,46 +111,6 @@ export function SourceSelector() {
 	const [loading, setLoading] = useState(true);
 	const [windowsLoading, setWindowsLoading] = useState(true);
 
-	const refreshingRef = useRef(false);
-
-	const refreshThumbnails = useCallback(async (cancelled: { current: boolean }) => {
-		if (refreshingRef.current) return;
-		refreshingRef.current = true;
-
-		try {
-			const previewScreens = await getSources({
-				types: ["screen"],
-				thumbnailSize: { width: 320, height: 180 },
-				withThumbnails: true,
-				timeoutMs: 3000,
-			});
-
-			if (!cancelled.current) {
-				setSources((prev) => mergeSources(prev, mapSources(previewScreens)));
-			}
-		} catch {
-			// Silently ignore refresh errors
-		}
-
-		try {
-			const previewWindows = await getSources({
-				types: ["window"],
-				thumbnailSize: { width: 320, height: 180 },
-				withThumbnails: true,
-				timeoutMs: 5000,
-
-			});
-
-			if (!cancelled.current) {
-				setSources((prev) => mergeSources(prev, mapSources(previewWindows)));
-			}
-		} catch {
-			// Silently ignore refresh errors
-		} finally {
-			refreshingRef.current = false;
-		}
-	}, []);
-
 	useEffect(() => {
 		let cancelled = false;
 
@@ -160,7 +120,6 @@ export function SourceSelector() {
 				const rawSources = await getSources({
 					types: ["screen"],
 					thumbnailSize: { width: 320, height: 180 },
-	
 				});
 				if (!cancelled) {
 					setSources(mapSources(rawSources));
@@ -177,7 +136,6 @@ export function SourceSelector() {
 				const windowSources = await getSources({
 					types: ["window"],
 					thumbnailSize: { width: 320, height: 180 },
-	
 				});
 
 				if (!cancelled) {
@@ -215,7 +173,6 @@ export function SourceSelector() {
 					thumbnailSize: { width: 320, height: 180 },
 					withThumbnails: true,
 					timeoutMs: 8000,
-	
 				});
 
 				if (!cancelled) {
@@ -231,21 +188,6 @@ export function SourceSelector() {
 			cancelled = true;
 		};
 	}, []);
-
-	// Periodically refresh thumbnails to show live previews
-	useEffect(() => {
-		if (loading) return;
-
-		const cancelledRef = { current: false };
-		const intervalId = setInterval(() => {
-			void refreshThumbnails(cancelledRef);
-		}, 3000);
-
-		return () => {
-			cancelledRef.current = true;
-			clearInterval(intervalId);
-		};
-	}, [loading, refreshThumbnails]);
 
 	const screenSources = sources.filter((s) => s.sourceType === "screen");
 	const windowSources = sources.filter((s) => s.sourceType === "window");

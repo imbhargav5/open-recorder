@@ -7,3 +7,4 @@ pub mod cursor;
 pub mod permissions;
 pub mod dialogs;
 pub mod window_mgmt;
+pub mod screenshot;

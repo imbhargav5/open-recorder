@@ -30,7 +30,7 @@ pub fn run() {
                     let monitor_size = monitor.size();
                     let monitor_pos = monitor.position();
                     let scale = monitor.scale_factor();
-                    let w = 600.0;
+                    let w = 780.0;
                     let h = 155.0;
                     let x = monitor_pos.x as f64
                         + (monitor_size.width as f64 / scale - w) / 2.0;
@@ -57,6 +57,10 @@ pub fn run() {
             commands::files::read_local_file,
             commands::files::resolve_media_playback_url,
             commands::files::store_recorded_video,
+            commands::files::prepare_recording_file,
+            commands::files::append_recording_data,
+            commands::files::replace_recording_data,
+            commands::files::delete_recording_file,
             commands::files::store_recording_asset,
             commands::files::get_recorded_video_path,
             commands::files::set_current_video_path,
@@ -91,16 +95,22 @@ pub fn run() {
             commands::permissions::open_accessibility_preferences,
             // Dialogs
             commands::dialogs::save_exported_video,
+            commands::dialogs::save_screenshot_file,
             commands::dialogs::open_video_file_picker,
             commands::dialogs::save_project_file,
             commands::dialogs::load_project_file,
             commands::dialogs::load_current_project_file,
             // Window management
             commands::window_mgmt::switch_to_editor,
+            commands::window_mgmt::switch_to_image_editor,
             commands::window_mgmt::open_source_selector,
             commands::window_mgmt::hud_overlay_hide,
             commands::window_mgmt::hud_overlay_close,
             commands::window_mgmt::set_has_unsaved_changes,
+            // Screenshot
+            commands::screenshot::take_screenshot,
+            commands::screenshot::get_current_screenshot_path,
+            commands::screenshot::set_current_screenshot_path,
             // Windows-specific
             commands::platform::is_wgc_available,
             commands::platform::mux_wgc_recording,

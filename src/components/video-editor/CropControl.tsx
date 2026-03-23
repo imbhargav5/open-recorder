@@ -19,6 +19,7 @@ interface CropControlProps {
 type DragHandle = 'top' | 'right' | 'bottom' | 'left' | null;
 
 export function CropControl({ videoElement, cropRegion, onCropChange }: CropControlProps) {
+  console.log("render <CropControl>");
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState<DragHandle>(null);
