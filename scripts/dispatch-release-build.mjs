@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import * as readline from "node:readline";
 import { createInterface } from "node:readline/promises";
@@ -28,6 +28,7 @@ Options:
   --name VALUE             Release title. Defaults to "Open Recorder v<version>".
   --notes VALUE            Release notes body. Defaults to empty.
   --latest true|false      Whether to mark the release as latest. Defaults to true.
+  --yes                    Skip the interactive confirmation prompt.
   --ref VALUE              Git branch that contains the workflow file. Defaults to the current branch.
   --repo OWNER/REPO        GitHub repository slug. Defaults to the current origin remote.
   -h, --help               Show this help message.
@@ -40,6 +41,7 @@ function parseArgs(argv) {
 		name: "",
 		notes: "",
 		latest: "true",
+		yes: false,
 		repo: "",
 		ref: "",
 	};
@@ -58,6 +60,9 @@ function parseArgs(argv) {
 				break;
 			case "--latest":
 				args.latest = argv[++index] ?? die("--latest requires true or false");
+				break;
+			case "--yes":
+				args.yes = true;
 				break;
 			case "--repo":
 				args.repo = argv[++index] ?? die("--repo requires a value");
@@ -115,6 +120,10 @@ function run(command, args) {
 	}
 }
 
+function worktreeIsClean() {
+	return capture("git", ["status", "--short"], { allowFailure: true }) === "";
+}
+
 function resolveRepo() {
 	const remote = capture("git", ["remote", "get-url", "origin"]);
 	const match = remote.match(/(?:git@github\.com:|https:\/\/github\.com\/)(.+?)(?:\.git)?$/);
@@ -138,6 +147,59 @@ function latestSemverTagVersion() {
 		.split(/\r?\n/)
 		.map((tag) => /^v(\d+\.\d+\.\d+)$/.exec(tag)?.[1] ?? "")
 		.find(Boolean) ?? "";
+}
+
+function updateJsonVersion(filePath, nextVersion, spacing) {
+	const json = JSON.parse(readFileSync(filePath, "utf8"));
+	json.version = nextVersion;
+	writeFileSync(filePath, `${JSON.stringify(json, null, spacing)}\n`);
+}
+
+function updateTextVersion(filePath, pattern, replacement) {
+	const current = readFileSync(filePath, "utf8");
+	const next = current.replace(pattern, replacement);
+
+	if (next === current) {
+		die(`Could not update version in ${filePath}`);
+	}
+
+	writeFileSync(filePath, next);
+}
+
+function syncVersionFiles(nextVersion) {
+	updateJsonVersion("package.json", nextVersion, "\t");
+	updateJsonVersion("package-lock.json", nextVersion, "\t");
+	updateTextVersion(
+		"src-tauri/Cargo.toml",
+		/^version = "\d+\.\d+\.\d+"$/m,
+		`version = "${nextVersion}"`,
+	);
+	updateJsonVersion("src-tauri/tauri.conf.json", nextVersion, 2);
+	updateTextVersion(
+		"src-tauri/Cargo.lock",
+		/(\[\[package\]\]\s+name = "open-recorder"\s+version = ")\d+\.\d+\.\d+(")/m,
+		`$1${nextVersion}$2`,
+	);
+}
+
+function commitVersionBump(nextVersion) {
+	const versionFiles = [
+		"package.json",
+		"package-lock.json",
+		"src-tauri/Cargo.toml",
+		"src-tauri/tauri.conf.json",
+		"src-tauri/Cargo.lock",
+	];
+
+	run("git", ["add", ...versionFiles]);
+
+	const staged = capture("git", ["diff", "--cached", "--name-only"]);
+	if (!staged) {
+		return false;
+	}
+
+	run("git", ["commit", "-m", `Bump version to ${nextVersion}`]);
+	return true;
 }
 
 function parseSemver(version) {
@@ -295,6 +357,7 @@ async function main() {
 	const args = parseArgs(process.argv.slice(2));
 
 	capture("gh", ["auth", "status"]);
+	capture("git", ["fetch", "--tags", "origin"]);
 
 	const repo = args.repo || resolveRepo();
 	const currentBranch = capture("git", ["branch", "--show-current"]);
@@ -303,21 +366,19 @@ async function main() {
 	}
 
 	const ref = args.ref || currentBranch;
+	if (ref !== currentBranch) {
+		die(`Current branch is ${currentBranch}, but --ref was ${ref}. Checkout ${ref} before dispatching.`);
+	}
+
+	if (!worktreeIsClean()) {
+		die("Git worktree is dirty. Commit or stash your changes before dispatching a release.");
+	}
+
 	const packageVersion = currentVersion();
 	const latestTagVersion = latestSemverTagVersion();
 
-	let baseVersion = packageVersion;
-	let versionSource = "package.json";
-
-	if (latestTagVersion) {
-		const comparison = compareVersions(latestTagVersion, packageVersion);
-		if (comparison === 1) {
-			baseVersion = latestTagVersion;
-			versionSource = "git tag";
-		} else if (comparison === 0) {
-			versionSource = "package.json and git tag";
-		}
-	}
+	const baseVersion = latestTagVersion || packageVersion;
+	const versionSource = latestTagVersion ? "git tag" : "package.json";
 
 	const releaseType = args.releaseType || (await chooseReleaseType(baseVersion));
 	const nextVersion = bumpVersion(baseVersion, releaseType);
@@ -328,13 +389,23 @@ async function main() {
 	console.log(`Latest local release tag: ${latestTagVersion ? `v${latestTagVersion}` : "none"}`);
 	console.log(`Using base version from ${versionSource}: ${baseVersion}`);
 	console.log(`Selected release type: ${releaseType}`);
+	console.log(`Syncing version files to: ${nextVersion}`);
 	console.log(`Calculated release tag: ${tag}`);
 
-	const confirmed = await confirmPrompt(`Dispatch release workflow for ${tag}?`, true);
+	const confirmed = args.yes
+		? true
+		: await confirmPrompt(`Dispatch release workflow for ${tag}?`, true);
 
 	if (!confirmed) {
 		die("Aborted.");
 	}
+
+	syncVersionFiles(nextVersion);
+	const createdVersionCommit = commitVersionBump(nextVersion);
+
+	console.log(createdVersionCommit ? `Created version bump commit for ${nextVersion}.` : "Version files already matched the release version.");
+	console.log(`Pushing ${ref} to origin...`);
+	run("git", ["push", "origin", ref]);
 
 	console.log(`Dispatching Release Builds workflow for ${repo}`);
 	console.log(`Tag: ${tag}`);
