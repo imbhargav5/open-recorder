@@ -12,9 +12,6 @@
 ### Create polished, pro-grade screen recordings and screenshots.
 [Open Recorder](https://github.com/imbhargav5/open-recorder) is an **open-source screen recorder, screenshot tool, and editor** for creating **polished walkthroughs, demos, tutorials, and product videos**. Contribution encouraged.
 
-**FAQ**: What are the changes between this and **Openscreen**? A: Open Recorder adds a full cursor animation/rendering pipeline, native screen capture for Mac and Windows, zoom animations faithful to Screen Studio, cursor loops, smoother panning behaviour, and more major tweaks.
-> This fork exists because the original maintainer does not wish implementing the architectural changes that make some of these features possible i.e. different recording pipeline.
-
 <p align="center">
   <img src="./open-recorder-demo.gif" width="750" alt="Open Recorder demo video">
 </p>

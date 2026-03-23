@@ -11,6 +11,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { WALLPAPER_RELATIVE_PATHS, WALLPAPER_PATHS } from "@/lib/wallpapers";
 import { getAssetPath } from "@/lib/assetPath";
 import * as backend from "@/lib/backend";
+import { getSuggestedExportFileName } from "@/lib/exportFileName";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -303,7 +304,10 @@ export default function ImageEditor() {
 				return;
 			}
 			const arr = new Uint8Array(await blob.arrayBuffer());
-			const saved = await backend.saveScreenshotFile(arr, "screenshot.png");
+			const saved = await backend.saveScreenshotFile(
+				arr,
+				getSuggestedExportFileName("screenshot", "png"),
+			);
 			if (saved) {
 				toast.success("Screenshot saved!", { description: saved });
 			}

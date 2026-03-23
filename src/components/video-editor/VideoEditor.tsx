@@ -27,6 +27,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { useShortcuts } from "@/contexts/ShortcutsContext";
 import { getAssetPath } from "@/lib/assetPath";
 import * as backend from "@/lib/backend";
+import { getSuggestedExportFileName } from "@/lib/exportFileName";
 import {
 	calculateOutputDimensions,
 	type ExportFormat,
@@ -1684,8 +1685,7 @@ export default function VideoEditor() {
 
 					if (result.success && result.blob) {
 						const arrayBuffer = await result.blob.arrayBuffer();
-						const timestamp = Date.now();
-						const fileName = `export-${timestamp}.gif`;
+						const fileName = getSuggestedExportFileName("recording", "gif");
 
 						const savePath = await backend.saveExportedVideo(new Uint8Array(arrayBuffer), fileName);
 
@@ -1827,8 +1827,7 @@ export default function VideoEditor() {
 
 					if (result.success && result.blob) {
 						const arrayBuffer = await result.blob.arrayBuffer();
-						const timestamp = Date.now();
-						const fileName = `export-${timestamp}.mp4`;
+						const fileName = getSuggestedExportFileName("recording", "mp4");
 
 						const savePath = await backend.saveExportedVideo(new Uint8Array(arrayBuffer), fileName);
 

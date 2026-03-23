@@ -1,4 +1,4 @@
-import { getAssetBasePath, convertFileToSrc } from '@/lib/backend'
+import { convertFileToSrc } from '@/lib/backend'
 
 function encodeRelativeAssetPath(relativePath: string): string {
   return relativePath
@@ -11,25 +11,6 @@ function encodeRelativeAssetPath(relativePath: string): string {
 
 export async function getAssetPath(relativePath: string): Promise<string> {
   const encodedRelativePath = encodeRelativeAssetPath(relativePath)
-
-  try {
-    if (typeof window !== 'undefined') {
-      // If running in a dev server (http/https), prefer the web-served path
-      if (window.location?.protocol?.startsWith('http')) {
-        return `/${encodedRelativePath}`
-      }
-
-      // Use Tauri's convertFileSrc for asset protocol
-      const base = await getAssetBasePath()
-      if (base) {
-        const fullPath = `${base}/${relativePath}`
-        return convertFileToSrc(fullPath)
-      }
-    }
-  } catch {
-    // ignore and use fallback
-  }
-
   return `/${encodedRelativePath}`
 }
 
