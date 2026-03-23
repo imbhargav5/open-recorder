@@ -8,6 +8,8 @@ use crate::state::AppState;
 
 #[tauri::command]
 pub async fn switch_to_editor(app: AppHandle) -> Result<(), String> {
+    let app_name = app.package_info().name.clone();
+
     // Close or hide HUD overlay
     if let Some(hud) = app.get_webview_window("hud-overlay") {
         let _ = hud.hide();
@@ -28,7 +30,7 @@ pub async fn switch_to_editor(app: AppHandle) -> Result<(), String> {
             "editor",
             WebviewUrl::App("index.html?windowType=editor".into()),
         )
-        .title("Open Recorder")
+        .title(app_name)
         .inner_size(1200.0, 800.0)
         .min_inner_size(800.0, 600.0)
         .resizable(true)
@@ -105,6 +107,8 @@ pub fn set_has_unsaved_changes(
 
 #[tauri::command]
 pub async fn switch_to_image_editor(app: AppHandle) -> Result<(), String> {
+    let app_name = app.package_info().name.clone();
+
     // Hide HUD overlay
     if let Some(hud) = app.get_webview_window("hud-overlay") {
         let _ = hud.hide();
@@ -125,7 +129,7 @@ pub async fn switch_to_image_editor(app: AppHandle) -> Result<(), String> {
             "image-editor",
             WebviewUrl::App("index.html?windowType=image-editor".into()),
         )
-        .title("Open Recorder — Screenshot")
+        .title(format!("{app_name} — Screenshot"))
         .inner_size(1100.0, 750.0)
         .min_inner_size(800.0, 550.0)
         .resizable(true)

@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from "react";
+import { getIdentifier } from "@tauri-apps/api/app";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import * as backend from "@/lib/backend";
@@ -26,6 +27,7 @@ export type UseAppUpdaterReturn = {
 };
 
 export function useAppUpdater(): UseAppUpdaterReturn {
+  const [updatesEnabled, setUpdatesEnabled] = useState(!import.meta.env.DEV);
   const [status, setStatus] = useState<UpdateStatus>("idle");
   const [version, setVersion] = useState<string | null>(null);
   const [releaseNotes, setReleaseNotes] = useState<string | null>(null);
@@ -34,6 +36,13 @@ export function useAppUpdater(): UseAppUpdaterReturn {
   const updateRef = useRef<Update | null>(null);
 
   const checkForUpdate = useCallback(async () => {
+    if (!updatesEnabled) {
+      updateRef.current = null;
+      setStatus("idle");
+      setError(null);
+      return;
+    }
+
     try {
       setStatus("checking");
       setError(null);
@@ -54,7 +63,7 @@ export function useAppUpdater(): UseAppUpdaterReturn {
       setError(err instanceof Error ? err.message : "Failed to check for updates");
       setStatus("error");
     }
-  }, []);
+  }, [updatesEnabled]);
 
   const downloadAndInstall = useCallback(async () => {
     const update = updateRef.current;
@@ -103,14 +112,43 @@ export function useAppUpdater(): UseAppUpdaterReturn {
     updateRef.current = null;
   }, []);
 
+  useEffect(() => {
+    if (import.meta.env.DEV) {
+      setUpdatesEnabled(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    getIdentifier()
+      .then((identifier) => {
+        if (!cancelled) {
+          setUpdatesEnabled(!identifier.endsWith(".dev"));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setUpdatesEnabled(true);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Auto-check for updates on mount (after a delay)
   useEffect(() => {
+    if (!updatesEnabled) {
+      return;
+    }
+
     const timer = setTimeout(() => {
       checkForUpdate();
     }, AUTO_CHECK_DELAY_MS);
 
     return () => clearTimeout(timer);
-  }, [checkForUpdate]);
+  }, [checkForUpdate, updatesEnabled]);
 
   // Listen for manual "Check for Updates" from the menu
   useEffect(() => {

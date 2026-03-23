@@ -1,6 +1,7 @@
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter};
 
+use crate::app_paths;
 use crate::state::AppState;
 
 #[tauri::command]
@@ -34,9 +35,7 @@ pub async fn start_native_screen_recording(
         if let Some(ref custom) = s.custom_recordings_dir {
             std::path::PathBuf::from(custom)
         } else {
-            dirs::video_dir()
-                .unwrap_or_else(|| dirs::home_dir().unwrap_or_default().join("Videos"))
-                .join("Open Recorder")
+            app_paths::default_recordings_dir()
         }
     };
 
@@ -177,9 +176,7 @@ mod tests {
         let dir = if let Some(ref custom) = state.custom_recordings_dir {
             std::path::PathBuf::from(custom)
         } else {
-            dirs::video_dir()
-                .unwrap_or_else(|| dirs::home_dir().unwrap_or_default().join("Videos"))
-                .join("Open Recorder")
+            app_paths::default_recordings_dir()
         };
         assert_eq!(dir, std::path::PathBuf::from("/custom/recordings"));
     }
@@ -190,11 +187,9 @@ mod tests {
         let dir = if let Some(ref custom) = state.custom_recordings_dir {
             std::path::PathBuf::from(custom)
         } else {
-            dirs::video_dir()
-                .unwrap_or_else(|| dirs::home_dir().unwrap_or_default().join("Videos"))
-                .join("Open Recorder")
+            app_paths::default_recordings_dir()
         };
-        assert!(dir.ends_with("Open Recorder"));
+        assert!(dir.ends_with(app_paths::app_dir_name()));
     }
 
     #[test]

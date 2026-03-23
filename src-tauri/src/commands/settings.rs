@@ -1,12 +1,12 @@
 use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::AppHandle;
-use tauri::Manager;
 
+use crate::app_paths;
 use crate::state::{AppState, ShortcutConfig};
 
 fn get_config_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    app.path().app_config_dir().map_err(|e| e.to_string())
+    app_paths::app_config_dir(app)
 }
 
 #[tauri::command]
@@ -17,9 +17,7 @@ pub fn get_recordings_directory(
     let dir = if let Some(ref custom) = s.custom_recordings_dir {
         PathBuf::from(custom)
     } else {
-        dirs::video_dir()
-            .unwrap_or_else(|| dirs::home_dir().unwrap_or_default().join("Videos"))
-            .join("Open Recorder")
+        app_paths::default_recordings_dir()
     };
     Ok(dir.to_string_lossy().to_string())
 }
@@ -136,9 +134,7 @@ mod tests {
         let dir = if let Some(ref custom) = state.custom_recordings_dir {
             PathBuf::from(custom)
         } else {
-            dirs::video_dir()
-                .unwrap_or_else(|| dirs::home_dir().unwrap_or_default().join("Videos"))
-                .join("Open Recorder")
+            app_paths::default_recordings_dir()
         };
         assert_eq!(dir, PathBuf::from("/my/custom/dir"));
     }
@@ -149,22 +145,17 @@ mod tests {
         let dir = if let Some(ref custom) = state.custom_recordings_dir {
             PathBuf::from(custom)
         } else {
-            dirs::video_dir()
-                .unwrap_or_else(|| dirs::home_dir().unwrap_or_default().join("Videos"))
-                .join("Open Recorder")
+            app_paths::default_recordings_dir()
         };
-        assert!(dir.ends_with("Open Recorder"));
+        assert!(dir.ends_with(app_paths::app_dir_name()));
     }
 
     #[test]
     fn test_recordings_dir_to_string() {
-        let state = AppState::default();
-        let dir = dirs::video_dir()
-            .unwrap_or_else(|| dirs::home_dir().unwrap_or_default().join("Videos"))
-            .join("Open Recorder");
+        let dir = app_paths::default_recordings_dir();
         let dir_str = dir.to_string_lossy().to_string();
         assert!(!dir_str.is_empty());
-        assert!(dir_str.contains("Open Recorder"));
+        assert!(dir_str.contains(app_paths::app_dir_name()));
     }
 
     // ==================== Shortcuts JSON Persistence ====================

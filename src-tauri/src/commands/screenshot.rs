@@ -4,15 +4,14 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use tauri::{AppHandle, Manager};
 
+use crate::app_paths;
 use crate::state::AppState;
 
 fn get_screenshots_dir(state: &AppState) -> PathBuf {
     if let Some(ref custom) = state.custom_recordings_dir {
         PathBuf::from(custom)
     } else {
-        dirs::picture_dir()
-            .unwrap_or_else(|| dirs::home_dir().unwrap_or_default().join("Pictures"))
-            .join("Open Recorder")
+        app_paths::default_screenshots_dir()
     }
 }
 

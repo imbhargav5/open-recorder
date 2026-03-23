@@ -1,6 +1,7 @@
 use std::sync::Mutex;
 use tauri::{AppHandle, Manager};
 
+use crate::app_paths;
 use crate::state::AppState;
 
 #[tauri::command]
@@ -51,9 +52,7 @@ pub async fn open_recordings_folder(state: tauri::State<'_, Mutex<AppState>>) ->
         state.custom_recordings_dir.clone()
     };
     let recordings_dir = dir.unwrap_or_else(|| {
-        dirs::video_dir()
-            .unwrap_or_else(|| dirs::home_dir().unwrap_or_default().join("Videos"))
-            .join("Open Recorder")
+        app_paths::default_recordings_dir()
             .to_string_lossy()
             .to_string()
     });

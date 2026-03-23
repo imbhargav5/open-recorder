@@ -5,11 +5,12 @@ use tauri::{
 
 pub fn setup_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     // App menu (macOS application menu — appears under the app name in the top bar)
+    let app_name = app.package_info().name.clone();
     let check_updates =
         MenuItemBuilder::with_id("menu-check-updates", "Check for Updates...")
             .build(app)?;
 
-    let app_menu = SubmenuBuilder::new(app, "Open Recorder")
+    let app_menu = SubmenuBuilder::new(app, &app_name)
         .about(None)
         .separator()
         .item(&check_updates)

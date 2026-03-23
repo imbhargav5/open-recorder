@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { getName } from "@tauri-apps/api/app";
 import { LaunchWindow } from "./components/launch/LaunchWindow";
 import { SourceSelector } from "./components/launch/SourceSelector";
 import VideoEditor from "./components/video-editor/VideoEditor";
@@ -10,6 +11,7 @@ import { useI18n } from "./contexts/I18nContext";
 
 export default function App() {
   const [windowType, setWindowType] = useState('');
+  const [appName, setAppName] = useState('Open Recorder');
   const { locale, t } = useI18n();
 
   useEffect(() => {
@@ -27,13 +29,19 @@ export default function App() {
     loadAllCustomFonts().catch((error) => {
       console.error('Failed to load custom fonts:', error);
     });
+
+    getName()
+      .then(setAppName)
+      .catch(() => {
+        setAppName('Open Recorder');
+      });
   }, []);
 
   useEffect(() => {
     document.title = windowType === 'editor'
-      ? t('app.editorTitle', 'Open Recorder Editor')
-      : t('app.name', 'Open Recorder');
-  }, [windowType, locale, t]);
+      ? `${appName} Editor`
+      : appName;
+  }, [appName, windowType, locale, t]);
 
   switch (windowType) {
     case 'hud-overlay':
@@ -53,9 +61,9 @@ export default function App() {
       return (
         <div className="flex h-full w-full items-center justify-center bg-slate-950 text-white">
           <div className="flex items-center gap-4 rounded-2xl border border-white/10 bg-white/5 px-6 py-5 shadow-2xl shadow-black/30 backdrop-blur-xl">
-              <img src="/app-icons/open-recorder-128.png" alt={t('app.name', 'Open Recorder')} className="h-12 w-12 rounded-xl" />
+              <img src="/app-icons/open-recorder-128.png" alt={appName} className="h-12 w-12 rounded-xl" />
             <div>
-                <h1 className="text-xl font-semibold tracking-tight">{t('app.name', 'Open Recorder')}</h1>
+                <h1 className="text-xl font-semibold tracking-tight">{appName}</h1>
                 <p className="text-sm text-white/65">{t('app.subtitle', 'Screen recording and editing')}</p>
             </div>
           </div>

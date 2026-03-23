@@ -16,8 +16,10 @@
 	"type": "module",
 	"scripts": {
 		"tauri": "tauri",
-		"dev": "cargo tauri dev",
+		"dev": "cargo tauri dev --config src-tauri/tauri.dev.conf.json",
+		"dev:prod": "cargo tauri dev",
 		"build": "cargo tauri build",
+		"build:dev": "cargo tauri build --config src-tauri/tauri.dev.conf.json",
 		"build:sidecars": "node scripts/build-tauri-sidecars.mjs",
 		"build:icons": "node scripts/build-icons.mjs",
 		"build:mac": "npm run build:sidecars && cargo tauri build --target aarch64-apple-darwin",

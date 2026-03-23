@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use std::sync::Mutex;
 
+use crate::app_paths;
 use crate::state::{AppState, RecordingSession};
 use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
 use tokio::io::AsyncWriteExt;
@@ -35,9 +36,7 @@ fn get_recordings_dir(state: &AppState) -> PathBuf {
     if let Some(ref custom) = state.custom_recordings_dir {
         PathBuf::from(custom)
     } else {
-        dirs::video_dir()
-            .unwrap_or_else(|| dirs::home_dir().unwrap_or_default().join("Videos"))
-            .join("Open Recorder")
+        app_paths::default_recordings_dir()
     }
 }
 
@@ -250,8 +249,7 @@ mod tests {
     fn test_get_recordings_dir_without_custom_dir() {
         let state = AppState::default();
         let dir = get_recordings_dir(&state);
-        // Should end with "Open Recorder" regardless of platform
-        assert!(dir.ends_with("Open Recorder"));
+        assert!(dir.ends_with(app_paths::app_dir_name()));
     }
 
     #[test]

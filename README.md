@@ -138,6 +138,14 @@ npm install
 npm run dev
 ```
 
+`npm run dev` launches the separate `Open Recorder Dev` app identity so it can coexist with the production app.
+
+If you want to run the production identity from source instead, use:
+
+```bash
+npm run dev:prod
+```
+
 ---
 
 ## Signed macOS releases in GitHub Actions
