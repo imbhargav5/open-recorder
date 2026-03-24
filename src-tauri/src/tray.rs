@@ -53,13 +53,16 @@ fn tray_icon_image(_app: &tauri::App) -> Result<Image<'static>, Box<dyn std::err
 
 #[cfg(not(target_os = "macos"))]
 fn tray_icon_image(app: &tauri::App) -> Result<Image<'static>, Box<dyn std::error::Error>> {
-    app.default_window_icon().cloned().ok_or_else(|| {
-        std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "default window icon is not configured",
-        )
-        .into()
-    })
+    app.default_window_icon()
+        .cloned()
+        .map(Image::to_owned)
+        .ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "default window icon is not configured",
+            )
+            .into()
+        })
 }
 
 pub fn update_tray_menu(app: &AppHandle, recording: bool) {
