@@ -31,6 +31,7 @@
     "dialog:allow-save",
     "dialog:allow-message",
     "dialog:allow-ask",
+    "clipboard-manager:allow-write-image",
     "fs:default",
     "fs:allow-read-file",
     "fs:allow-write-file",

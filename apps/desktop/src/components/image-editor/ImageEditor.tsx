@@ -1,17 +1,17 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, Check, ClipboardCopy, Download, Palette } from "lucide-react";
-import { toast } from "sonner";
 import Block from "@uiw/react-color-block";
-
-import { cn } from "@/lib/utils";
+import { ArrowLeft, Check, ClipboardCopy, Download, Palette } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Toaster } from "@/components/ui/sonner";
-import { WALLPAPER_RELATIVE_PATHS, WALLPAPER_PATHS } from "@/lib/wallpapers";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getAssetPath } from "@/lib/assetPath";
 import * as backend from "@/lib/backend";
+import { copyCanvasImageToClipboard } from "@/lib/clipboard";
 import { getSuggestedExportFileName } from "@/lib/exportFileName";
+import { cn } from "@/lib/utils";
+import { WALLPAPER_PATHS, WALLPAPER_RELATIVE_PATHS } from "@/lib/wallpapers";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -161,9 +161,9 @@ export default function ImageEditor() {
 		}
 	}, [backgroundType, wallpaper, gradient, solidColor]);
 
-	// ─── Render to canvas and return blob ────────────────────────────────────
+	// ─── Render to canvas for export and clipboard flows ─────────────────────
 
-	const renderToBlob = useCallback(async (): Promise<Blob | null> => {
+	const renderToCanvas = useCallback(async (): Promise<HTMLCanvasElement | null> => {
 		const img = imageRef.current;
 		if (!img || !imageNaturalWidth || !imageNaturalHeight) return null;
 
@@ -280,7 +280,7 @@ export default function ImageEditor() {
 		ctx.drawImage(img, x, y, w, h);
 		ctx.restore();
 
-		return new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+		return canvas;
 	}, [
 		imageNaturalWidth,
 		imageNaturalHeight,
@@ -298,7 +298,10 @@ export default function ImageEditor() {
 	const handleSave = async () => {
 		setExporting(true);
 		try {
-			const blob = await renderToBlob();
+			const canvas = await renderToCanvas();
+			const blob = await new Promise<Blob | null>((resolve) =>
+				canvas?.toBlob(resolve, "image/png"),
+			);
 			if (!blob) {
 				toast.error("Failed to render image");
 				return;
@@ -321,12 +324,24 @@ export default function ImageEditor() {
 
 	const handleCopyToClipboard = async () => {
 		try {
-			const blob = await renderToBlob();
-			if (!blob) {
+			const canvas = await renderToCanvas();
+			if (!canvas) {
 				toast.error("Failed to render image");
 				return;
 			}
-			await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+
+			try {
+				await copyCanvasImageToClipboard(canvas);
+			} catch (nativeError) {
+				const blob = await new Promise<Blob | null>((resolve) =>
+					canvas.toBlob(resolve, "image/png"),
+				);
+				if (!blob || !navigator.clipboard?.write || typeof ClipboardItem === "undefined") {
+					throw nativeError;
+				}
+
+				await navigator.clipboard.write([new ClipboardItem({ [blob.type || "image/png"]: blob })]);
+			}
 			toast.success("Copied to clipboard!");
 		} catch (err) {
 			console.error("Copy failed:", err);
