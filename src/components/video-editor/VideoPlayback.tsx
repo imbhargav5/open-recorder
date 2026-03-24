@@ -1299,6 +1299,7 @@ const VideoPlayback = memo(
 					videoReadyRafRef.current = null;
 				}
 
+				let frameCount = 0;
 				const waitForRenderableFrame = () => {
 					const hasDimensions = video.videoWidth > 0 && video.videoHeight > 0;
 					const hasData = video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA;
@@ -1306,6 +1307,13 @@ const VideoPlayback = memo(
 						videoReadyRafRef.current = null;
 						setVideoReady(true);
 						return;
+					}
+					frameCount++;
+					// Safety: if after ~1 second (60 frames) the browser still hasn't
+					// loaded frame data (e.g. preload="metadata" only reached
+					// HAVE_METADATA), nudge it by triggering a load.
+					if (frameCount === 60 && video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+						video.load();
 					}
 					videoReadyRafRef.current = requestAnimationFrame(waitForRenderableFrame);
 				};
@@ -1500,7 +1508,7 @@ const VideoPlayback = memo(
 						ref={videoRef}
 						src={videoPath}
 						className="hidden"
-						preload="metadata"
+						preload="auto"
 						playsInline
 						onLoadedMetadata={handleLoadedMetadata}
 						onDurationChange={(e) => {
@@ -1513,7 +1521,7 @@ const VideoPlayback = memo(
 							ref={facecamVideoRef}
 							src={facecamVideoPath}
 							className="hidden"
-							preload="metadata"
+							preload="auto"
 							muted
 							playsInline
 							onLoadedMetadata={handleFacecamLoadedMetadata}
