@@ -352,22 +352,10 @@ export default function ImageEditor() {
 	const handleBackToCapture = async () => {
 		try {
 			// Show HUD overlay again, then close this window
-			const windowModule = await import("@tauri-apps/api/window");
-			const { getCurrentWindow } = windowModule;
-
-			// Try to show the HUD overlay via a known window label
-			try {
-				const allWindows = await windowModule.getAllWindows();
-				const hud = allWindows.find((w: { label: string }) => w.label === "hud-overlay");
-				if (hud) {
-					await hud.show();
-					await hud.setFocus();
-				}
-			} catch {
-				// HUD may already be visible
-			}
+			await backend.hudOverlayShow();
 
 			// Close image editor
+			const { getCurrentWindow } = await import("@tauri-apps/api/window");
 			const win = getCurrentWindow();
 			await win.close();
 		} catch {

@@ -17,7 +17,7 @@ pub fn set_recording_state(
 
     // Notify frontend and update tray
     let _ = app.emit("recording-state-changed", recording);
-    crate::tray::update_tray_menu(&app, recording);
+    crate::tray::update_tray_menu(&app);
 
     Ok(())
 }
@@ -104,7 +104,7 @@ pub async fn stop_native_screen_recording(
     }
 
     let _ = app.emit("recording-state-changed", false);
-    crate::tray::update_tray_menu(&app, false);
+    crate::tray::update_tray_menu(&app);
 
     Ok(output_path)
 }

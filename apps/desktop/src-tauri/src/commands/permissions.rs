@@ -157,8 +157,8 @@ fn av_authorization_status_to_string(status: i64) -> &'static str {
 #[cfg(target_os = "macos")]
 fn get_av_capture_authorization_status(media_type: *const std::ffi::c_void) -> &'static str {
     unsafe {
-        let cls = objc::runtime::Class::get("AVCaptureDevice")
-            .expect("AVCaptureDevice class not found");
+        let cls =
+            objc::runtime::Class::get("AVCaptureDevice").expect("AVCaptureDevice class not found");
         let status: i64 = objc::msg_send![cls, authorizationStatusForMediaType: media_type];
         av_authorization_status_to_string(status)
     }
@@ -342,8 +342,7 @@ mod tests {
 
         #[test]
         fn test_microphone_preferences_url() {
-            let url =
-                "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone";
+            let url = "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone";
             assert!(url.starts_with("x-apple.systempreferences:"));
             assert!(url.contains("Privacy_Microphone"));
         }

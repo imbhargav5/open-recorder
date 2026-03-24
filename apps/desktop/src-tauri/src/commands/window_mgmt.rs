@@ -14,6 +14,7 @@ pub async fn switch_to_editor(app: AppHandle) -> Result<(), String> {
     if let Some(hud) = app.get_webview_window("hud-overlay") {
         let _ = hud.hide();
     }
+    crate::tray::update_tray_menu(&app);
 
     // Close source selector if open
     if let Some(selector) = app.get_webview_window("source-selector") {
@@ -79,10 +80,21 @@ pub async fn open_source_selector(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub async fn hud_overlay_show(app: AppHandle) -> Result<(), String> {
+    if let Some(hud) = app.get_webview_window("hud-overlay") {
+        let _ = hud.show();
+        let _ = hud.set_focus();
+    }
+    crate::tray::update_tray_menu(&app);
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn hud_overlay_hide(app: AppHandle) -> Result<(), String> {
     if let Some(hud) = app.get_webview_window("hud-overlay") {
         let _ = hud.hide();
     }
+    crate::tray::update_tray_menu(&app);
     Ok(())
 }
 
@@ -118,6 +130,7 @@ pub async fn switch_to_image_editor(app: AppHandle) -> Result<(), String> {
     if let Some(hud) = app.get_webview_window("hud-overlay") {
         let _ = hud.hide();
     }
+    crate::tray::update_tray_menu(&app);
 
     // Close source selector if open
     if let Some(selector) = app.get_webview_window("source-selector") {

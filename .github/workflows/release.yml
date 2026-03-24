@@ -368,6 +368,23 @@ jobs:
           copy_match "release-assets/linux-x64" "*.AppImage.tar.gz.sig" "OpenRecorder-linux-x64.AppImage.tar.gz.sig"
           copy_match "release-assets/linux-x64" "*.deb" "OpenRecorder-linux-x64.deb"
 
+          require_file() {
+            local file_path="$1"
+            if [ ! -f "$file_path" ]; then
+              echo "Missing required updater artifact: $file_path" >&2
+              exit 1
+            fi
+          }
+
+          require_file "release-upload/OpenRecorder-arm64.app.tar.gz"
+          require_file "release-upload/OpenRecorder-arm64.app.tar.gz.sig"
+          require_file "release-upload/OpenRecorder-x64.app.tar.gz"
+          require_file "release-upload/OpenRecorder-x64.app.tar.gz.sig"
+          require_file "release-upload/OpenRecorder-windows-x64.nsis.zip"
+          require_file "release-upload/OpenRecorder-windows-x64.nsis.zip.sig"
+          require_file "release-upload/OpenRecorder-linux-x64.AppImage.tar.gz"
+          require_file "release-upload/OpenRecorder-linux-x64.AppImage.tar.gz.sig"
+
           find release-upload -type f | sort
 
       - name: Generate updater manifest (latest.json)
@@ -384,44 +401,23 @@ jobs:
           PUB_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
           NOTES=$(node -p 'JSON.stringify(process.env.RELEASE_NOTES ?? "").slice(1, -1)')
 
-          read_sig() {
-            local pattern="$1"
-            local sig_file
-            sig_file=$(find release-upload -name "$pattern" -type f | head -1)
-            if [ -n "$sig_file" ]; then
-              cat "$sig_file"
-            else
-              echo ""
+          read_required_file() {
+            local file_path="$1"
+            if [ ! -s "$file_path" ]; then
+              echo "Required file is missing or empty: $file_path" >&2
+              exit 1
             fi
+            cat "$file_path"
           }
 
-          get_filename() {
-            local pattern="$1"
-            local found
-            found=$(find release-upload -name "$pattern" -type f | head -1)
-            if [ -n "$found" ]; then
-              basename "$found"
-            else
-              echo ""
-            fi
-          }
-
-          MAC_ARM64_SIG=$(read_sig "OpenRecorder-arm64.app.tar.gz.sig")
-          MAC_ARM64_FILE=$(get_filename "OpenRecorder-arm64.app.tar.gz")
-          MAC_X64_SIG=$(read_sig "OpenRecorder-x64.app.tar.gz.sig")
-          MAC_X64_FILE=$(get_filename "OpenRecorder-x64.app.tar.gz")
-
-          WIN_SIG=$(read_sig "OpenRecorder-windows-x64.nsis.zip.sig")
-          WIN_FILE=$(get_filename "OpenRecorder-windows-x64.nsis.zip")
-          if [ -z "$WIN_FILE" ]; then
-            WIN_FILE=$(get_filename "OpenRecorder-windows-x64.exe")
-          fi
-
-          LINUX_SIG=$(read_sig "OpenRecorder-linux-x64.AppImage.tar.gz.sig")
-          LINUX_FILE=$(get_filename "OpenRecorder-linux-x64.AppImage.tar.gz")
-          if [ -z "$LINUX_FILE" ]; then
-            LINUX_FILE=$(get_filename "OpenRecorder-linux-x64.AppImage")
-          fi
+          MAC_ARM64_SIG=$(read_required_file "release-upload/OpenRecorder-arm64.app.tar.gz.sig")
+          MAC_ARM64_FILE="OpenRecorder-arm64.app.tar.gz"
+          MAC_X64_SIG=$(read_required_file "release-upload/OpenRecorder-x64.app.tar.gz.sig")
+          MAC_X64_FILE="OpenRecorder-x64.app.tar.gz"
+          WIN_SIG=$(read_required_file "release-upload/OpenRecorder-windows-x64.nsis.zip.sig")
+          WIN_FILE="OpenRecorder-windows-x64.nsis.zip"
+          LINUX_SIG=$(read_required_file "release-upload/OpenRecorder-linux-x64.AppImage.tar.gz.sig")
+          LINUX_FILE="OpenRecorder-linux-x64.AppImage.tar.gz"
 
           cat > release-upload/latest.json << MANIFEST
           {

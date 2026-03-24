@@ -2,9 +2,8 @@
  * Backend abstraction layer — Tauri v2 commands and event listeners.
  */
 
-import { invoke } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { convertFileSrc } from "@tauri-apps/api/core";
 import { resolveMediaPlaybackUrl as resolveMediaPlaybackAssetUrl } from "@/lib/mediaPlaybackUrl";
 
 export type { UnlistenFn };
@@ -223,7 +222,10 @@ export function saveExportedVideo(videoData: Uint8Array, fileName: string): Prom
 	});
 }
 
-export function saveScreenshotFile(imageData: Uint8Array, fileName: string): Promise<string | null> {
+export function saveScreenshotFile(
+	imageData: Uint8Array,
+	fileName: string,
+): Promise<string | null> {
 	return invoke("save_screenshot_file", {
 		imageData: Array.from(imageData),
 		fileName,
@@ -252,10 +254,7 @@ export function loadCurrentProjectFile(): Promise<any | null> {
 
 // ─── Screenshot ─────────────────────────────────────────────────────────────
 
-export function takeScreenshot(
-	captureType: string,
-	windowId?: number,
-): Promise<string> {
+export function takeScreenshot(captureType: string, windowId?: number): Promise<string> {
 	return invoke("take_screenshot", { captureType, windowId });
 }
 
@@ -279,6 +278,10 @@ export function switchToImageEditor(): Promise<void> {
 
 export function openSourceSelector(): Promise<void> {
 	return invoke("open_source_selector");
+}
+
+export function hudOverlayShow(): Promise<void> {
+	return invoke("hud_overlay_show");
 }
 
 export function hudOverlayHide(): Promise<void> {
@@ -311,6 +314,10 @@ export function muxWgcRecording(): Promise<string> {
 
 export function onStopRecordingFromTray(callback: () => void): Promise<UnlistenFn> {
 	return listen("stop-recording-from-tray", callback);
+}
+
+export function onNewRecordingFromTray(callback: () => void): Promise<UnlistenFn> {
+	return listen("new-recording-from-tray", callback);
 }
 
 export function onRecordingStateChanged(

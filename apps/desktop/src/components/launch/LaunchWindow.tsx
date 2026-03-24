@@ -1,13 +1,6 @@
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useActor } from "@xstate/react";
 import { AppWindow, BoxSelect, Camera, ChevronLeft, Monitor, Video } from "lucide-react";
-import {
-	useCallback,
-	useEffect,
-	useMemo,
-	useRef,
-	useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BsRecordCircle } from "react-icons/bs";
 import { FaRegStopCircle } from "react-icons/fa";
 import {
@@ -26,12 +19,9 @@ import { useMicrophoneDevices } from "../../hooks/useMicrophoneDevices";
 import { usePermissions } from "../../hooks/usePermissions";
 import { useScreenRecorder } from "../../hooks/useScreenRecorder";
 import { microphoneMachine } from "../../machines/microphoneMachine";
+import { isOnboardingComplete, PermissionOnboarding } from "../onboarding/PermissionOnboarding";
 import { Button } from "../ui/button";
 import { ContentClamp } from "../ui/content-clamp";
-import {
-	PermissionOnboarding,
-	isOnboardingComplete,
-} from "../onboarding/PermissionOnboarding";
 import { Popover, PopoverAnchor, PopoverContent } from "../ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
@@ -96,9 +86,7 @@ const dialogStyle: React.CSSProperties = {
 // ─── LaunchWindow ───────────────────────────────────────────────────────────
 
 export function LaunchWindow() {
-	const [view, setView] = useState<View>(() =>
-		isOnboardingComplete() ? "choice" : "onboarding",
-	);
+	const [view, setView] = useState<View>(() => (isOnboardingComplete() ? "choice" : "onboarding"));
 	const [screenshotMode, setScreenshotMode] = useState<ScreenshotMode | null>(null);
 	const [isCapturing, setIsCapturing] = useState(false);
 
@@ -298,7 +286,7 @@ export function LaunchWindow() {
 		return () => clearInterval(interval);
 	}, []);
 
-	const openSourceSelector = async () => {
+	const openSourceSelector = useCallback(async () => {
 		const screenStatus = await backend.getScreenRecordingPermissionStatus().catch(() => "unknown");
 		if (screenStatus !== "granted") {
 			const granted = await backend.requestScreenRecordingPermission().catch(() => false);
@@ -319,7 +307,7 @@ export function LaunchWindow() {
 		backend.openSourceSelector().catch(() => {
 			// Ignore selector launch failures because the permissions flow already handled the user-facing error.
 		});
-	};
+	}, [preparePermissions]);
 
 	const openVideoFile = useCallback(async () => {
 		const path = await backend.openVideoFilePicker();
@@ -341,11 +329,15 @@ export function LaunchWindow() {
 		const unlistenProject = backend.onMenuLoadProject(() => {
 			void openProjectFile();
 		});
+		const unlistenNewRecording = backend.onNewRecordingFromTray(() => {
+			void openSourceSelector();
+		});
 		return () => {
 			void unlistenVideo.then((fn) => fn());
 			void unlistenProject.then((fn) => fn());
+			void unlistenNewRecording.then((fn) => fn());
 		};
-	}, [openProjectFile, openVideoFile]);
+	}, [openProjectFile, openSourceSelector, openVideoFile]);
 
 	const dividerClass = "mx-1 h-5 w-px shrink-0 bg-white/20";
 
@@ -368,8 +360,7 @@ export function LaunchWindow() {
 	const micPermissionDeniedOrRestricted =
 		permissionsHook.permissions.microphone === "denied" ||
 		permissionsHook.permissions.microphone === "restricted";
-	const micPermissionNotDetermined =
-		permissionsHook.permissions.microphone === "not_determined";
+	const micPermissionNotDetermined = permissionsHook.permissions.microphone === "not_determined";
 
 	const microphoneHelperText = micPermissionDeniedOrRestricted
 		? "Microphone access was denied. Open System Settings to grant permission."
@@ -421,14 +412,14 @@ export function LaunchWindow() {
 		try {
 			if (screenshotMode === "screen") {
 				// Hide HUD so it doesn't appear in the screenshot
-				await getCurrentWindow().hide();
+				await backend.hudOverlayHide();
 				await new Promise((resolve) => setTimeout(resolve, 350));
 
 				const path = await backend.takeScreenshot("screen", undefined);
 				if (path) {
 					await backend.switchToImageEditor();
 				} else {
-					await getCurrentWindow().show();
+					await backend.hudOverlayShow();
 				}
 			} else if (screenshotMode === "window") {
 				const source = await backend.getSelectedSource();
@@ -447,11 +438,9 @@ export function LaunchWindow() {
 			}
 		} catch (error) {
 			console.error("Screenshot capture failed:", error);
-			await getCurrentWindow()
-				.show()
-				.catch(() => {
-					// Ignore show-window races after a failed capture attempt.
-				});
+			await backend.hudOverlayShow().catch(() => {
+				// Ignore show-window races after a failed capture attempt.
+			});
 		} finally {
 			setIsCapturing(false);
 		}
@@ -462,7 +451,7 @@ export function LaunchWindow() {
 		setIsCapturing(true);
 
 		try {
-			await getCurrentWindow().hide();
+			await backend.hudOverlayHide();
 			await new Promise((resolve) => setTimeout(resolve, 350));
 
 			const path = await backend.takeScreenshot("area", undefined);
@@ -470,15 +459,13 @@ export function LaunchWindow() {
 				await backend.switchToImageEditor();
 			} else {
 				// User cancelled area selection
-				await getCurrentWindow().show();
+				await backend.hudOverlayShow();
 			}
 		} catch (error) {
 			console.error("Area capture failed:", error);
-			await getCurrentWindow()
-				.show()
-				.catch(() => {
-					// Ignore show-window races after a failed area capture attempt.
-				});
+			await backend.hudOverlayShow().catch(() => {
+				// Ignore show-window races after a failed area capture attempt.
+			});
 		} finally {
 			setIsCapturing(false);
 		}

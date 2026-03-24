@@ -5,20 +5,56 @@ use tauri::{
     AppHandle, Emitter, Manager,
 };
 
+use crate::state::AppState;
+
 #[cfg(any(test, not(target_os = "macos")))]
 fn into_owned_tray_image(image: Image<'_>) -> Image<'static> {
     image.to_owned()
 }
 
-pub fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
-    let open_item = MenuItemBuilder::with_id("open", "Open").build(app)?;
-    let quit_item = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
+fn is_hud_visible<M: Manager<tauri::Wry>>(manager: &M) -> bool {
+    manager
+        .get_webview_window("hud-overlay")
+        .and_then(|window| window.is_visible().ok())
+        .unwrap_or(false)
+}
 
-    let menu = MenuBuilder::new(app)
+fn is_recording_active(app: &AppHandle) -> bool {
+    app.state::<std::sync::Mutex<AppState>>()
+        .lock()
+        .map(|state| state.native_screen_recording_active)
+        .unwrap_or(false)
+}
+
+fn should_enable_new_recording(recording: bool, hud_visible: bool) -> bool {
+    !recording && !hud_visible
+}
+
+fn build_tray_menu<M: Manager<tauri::Wry>>(
+    manager: &M,
+    recording: bool,
+    hud_visible: bool,
+) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
+    let open_item = MenuItemBuilder::with_id("open", "Open").build(manager)?;
+    let new_recording_item = MenuItemBuilder::with_id("new-recording", "New Recording")
+        .enabled(should_enable_new_recording(recording, hud_visible))
+        .build(manager)?;
+    let quit_item = MenuItemBuilder::with_id("quit", "Quit").build(manager)?;
+
+    let mut menu = MenuBuilder::new(manager)
         .item(&open_item)
-        .separator()
-        .item(&quit_item)
-        .build()?;
+        .item(&new_recording_item);
+
+    if recording {
+        let stop_item = MenuItemBuilder::with_id("stop", "Stop Recording").build(manager)?;
+        menu = menu.item(&stop_item);
+    }
+
+    menu.separator().item(&quit_item).build()
+}
+
+pub fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    let menu = build_tray_menu(app, is_recording_active(&app.handle()), is_hud_visible(app))?;
 
     TrayIconBuilder::with_id("main")
         .icon(tray_icon_image(app)?)
@@ -32,6 +68,12 @@ pub fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
                 } else if let Some(window) = app.get_webview_window("editor") {
                     let _ = window.show();
                     let _ = window.set_focus();
+                }
+                update_tray_menu(app);
+            }
+            "new-recording" => {
+                if should_enable_new_recording(is_recording_active(app), is_hud_visible(app)) {
+                    let _ = app.emit("new-recording-from-tray", ());
                 }
             }
             "stop" => {
@@ -70,35 +112,13 @@ fn tray_icon_image(app: &tauri::App) -> Result<Image<'static>, Box<dyn std::erro
         })
 }
 
-pub fn update_tray_menu(app: &AppHandle, recording: bool) {
-    // Rebuild tray menu based on recording state
+pub fn update_tray_menu(app: &AppHandle) {
     if let Some(tray) = app.tray_by_id("main") {
-        if recording {
-            if let Ok(stop_item) = MenuItemBuilder::with_id("stop", "Stop Recording").build(app) {
-                if let Ok(quit_item) = MenuItemBuilder::with_id("quit", "Quit").build(app) {
-                    if let Ok(menu) = MenuBuilder::new(app)
-                        .item(&stop_item)
-                        .separator()
-                        .item(&quit_item)
-                        .build()
-                    {
-                        let _ = tray.set_menu(Some(menu));
-                    }
-                }
-            }
-        } else {
-            if let Ok(open_item) = MenuItemBuilder::with_id("open", "Open").build(app) {
-                if let Ok(quit_item) = MenuItemBuilder::with_id("quit", "Quit").build(app) {
-                    if let Ok(menu) = MenuBuilder::new(app)
-                        .item(&open_item)
-                        .separator()
-                        .item(&quit_item)
-                        .build()
-                    {
-                        let _ = tray.set_menu(Some(menu));
-                    }
-                }
-            }
+        let recording = is_recording_active(app);
+        let hud_visible = is_hud_visible(app);
+
+        if let Ok(menu) = build_tray_menu(app, recording, hud_visible) {
+            let _ = tray.set_menu(Some(menu));
         }
     }
 }
@@ -137,5 +157,13 @@ mod tests {
         assert_eq!(tray_icon.height(), default_icon.height());
         assert_eq!(tray_icon.rgba(), default_icon.rgba());
         assert!(format!("{tray_icon:?}").contains("Cow::Owned"));
+    }
+
+    #[test]
+    fn enables_new_recording_only_when_idle_and_hud_hidden() {
+        assert!(should_enable_new_recording(false, false));
+        assert!(!should_enable_new_recording(true, false));
+        assert!(!should_enable_new_recording(false, true));
+        assert!(!should_enable_new_recording(true, true));
     }
 }

@@ -37,6 +37,37 @@ type UseAppUpdaterOptions = {
 	enableAutoCheck?: boolean;
 };
 
+function getErrorMessage(error: unknown, fallback: string): string {
+	if (error instanceof Error && error.message.trim()) {
+		return error.message;
+	}
+
+	if (typeof error === "string" && error.trim()) {
+		return error;
+	}
+
+	if (
+		typeof error === "object" &&
+		error !== null &&
+		"message" in error &&
+		typeof error.message === "string" &&
+		error.message.trim()
+	) {
+		return error.message;
+	}
+
+	try {
+		const serialized = JSON.stringify(error);
+		if (serialized && serialized !== "{}") {
+			return serialized;
+		}
+	} catch {
+		// Ignore serialization failures and fall back to the default message.
+	}
+
+	return fallback;
+}
+
 export function useAppUpdater({
 	enableAutoCheck = true,
 }: UseAppUpdaterOptions = {}): UseAppUpdaterReturn {
@@ -97,7 +128,7 @@ export function useAppUpdater({
 				}
 			} catch (err) {
 				console.error("Update check failed:", err);
-				setError(err instanceof Error ? err.message : "Failed to check for updates");
+				setError(getErrorMessage(err, "Failed to check for updates"));
 				setStatus("error");
 				setIsDialogOpen(showDialog);
 			}
@@ -138,7 +169,7 @@ export function useAppUpdater({
 			setStatus("ready");
 		} catch (err) {
 			console.error("Update download failed:", err);
-			setError(err instanceof Error ? err.message : "Failed to download update");
+			setError(getErrorMessage(err, "Failed to download update"));
 			setStatus("error");
 		}
 	}, [status]);
