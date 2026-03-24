@@ -39,6 +39,7 @@ import {
 	VideoExporter,
 } from "@/lib/exporter";
 import { getSuggestedExportFileName } from "@/lib/exportFileName";
+import { fromFileUrl, toFileUrl } from "@/lib/fileUrl";
 import { onRenderProfiler } from "@/lib/perf";
 import {
 	createDefaultFacecamSettings,
@@ -55,9 +56,7 @@ import PlaybackControls from "./PlaybackControls";
 import {
 	createProjectData,
 	deriveNextId,
-	fromFileUrl,
 	normalizeProjectEditor,
-	toFileUrl,
 	validateProjectData,
 } from "./projectPersistence";
 import { SettingsPanel } from "./SettingsPanel";

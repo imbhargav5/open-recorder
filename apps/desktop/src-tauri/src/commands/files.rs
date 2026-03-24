@@ -3,9 +3,12 @@ use std::sync::Mutex;
 
 use crate::app_paths;
 use crate::state::{AppState, RecordingSession};
-use percent_encoding::{utf8_percent_encode, AsciiSet, CONTROLS};
 use tokio::io::AsyncWriteExt;
 
+#[cfg(test)]
+use percent_encoding::{AsciiSet, CONTROLS};
+
+#[cfg(test)]
 const URL_COMPONENT_ENCODE_SET: &AsciiSet = &CONTROLS
     .add(b' ')
     .add(b'"')
@@ -43,25 +46,6 @@ fn get_recordings_dir(state: &AppState) -> PathBuf {
 #[tauri::command]
 pub async fn read_local_file(path: String) -> Result<Vec<u8>, String> {
     tokio::fs::read(&path).await.map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn resolve_media_playback_url(path: String) -> Result<String, String> {
-    if path.trim().is_empty() {
-        return Err("Path is required".to_string());
-    }
-
-    let encoded = utf8_percent_encode(&path, URL_COMPONENT_ENCODE_SET).to_string();
-
-    #[cfg(target_os = "windows")]
-    {
-        Ok(format!("http://asset.localhost/{encoded}"))
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        Ok(format!("asset://localhost/{encoded}"))
-    }
 }
 
 #[tauri::command]
@@ -325,49 +309,6 @@ mod tests {
         let encoded = utf8_percent_encode(path, URL_COMPONENT_ENCODE_SET).to_string();
         assert!(encoded.contains("%5B"));
         assert!(encoded.contains("%5D"));
-    }
-
-    // ==================== resolve_media_playback_url ====================
-
-    #[test]
-    fn test_resolve_media_playback_url_empty_path_returns_error() {
-        let result = resolve_media_playback_url("".to_string());
-        assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), "Path is required");
-    }
-
-    #[test]
-    fn test_resolve_media_playback_url_whitespace_only_returns_error() {
-        let result = resolve_media_playback_url("   ".to_string());
-        assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), "Path is required");
-    }
-
-    #[test]
-    fn test_resolve_media_playback_url_valid_path() {
-        let result = resolve_media_playback_url("/path/to/video.mov".to_string());
-        assert!(result.is_ok());
-        let url = result.unwrap();
-        // Should contain the encoded path
-        assert!(url.contains("video.mov"));
-    }
-
-    #[test]
-    fn test_resolve_media_playback_url_platform_scheme() {
-        let result = resolve_media_playback_url("/video.mov".to_string());
-        let url = result.unwrap();
-        #[cfg(target_os = "windows")]
-        assert!(url.starts_with("http://asset.localhost/"));
-        #[cfg(not(target_os = "windows"))]
-        assert!(url.starts_with("asset://localhost/"));
-    }
-
-    #[test]
-    fn test_resolve_media_playback_url_encodes_spaces() {
-        let result = resolve_media_playback_url("/my path/video file.mov".to_string());
-        let url = result.unwrap();
-        assert!(!url.contains(' '));
-        assert!(url.contains("%20"));
     }
 
     // ==================== File I/O ====================

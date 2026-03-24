@@ -5,6 +5,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { resolveMediaPlaybackUrl as resolveMediaPlaybackAssetUrl } from "@/lib/mediaPlaybackUrl";
 
 export type { UnlistenFn };
 
@@ -42,7 +43,7 @@ export async function readLocalFile(path: string): Promise<Uint8Array> {
 }
 
 export function resolveMediaPlaybackUrl(path: string): Promise<string> {
-	return invoke("resolve_media_playback_url", { path });
+	return Promise.resolve(resolveMediaPlaybackAssetUrl(path));
 }
 
 export function storeRecordedVideo(videoData: Uint8Array, fileName: string): Promise<string> {
