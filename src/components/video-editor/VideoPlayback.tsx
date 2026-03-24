@@ -87,6 +87,18 @@ function createPlaybackAnimationState(): PlaybackAnimationState {
 	};
 }
 
+function isDirectlyRenderableWallpaper(wallpaper: string): boolean {
+	return (
+		wallpaper.startsWith("#") ||
+		wallpaper.startsWith("linear-gradient") ||
+		wallpaper.startsWith("radial-gradient") ||
+		wallpaper.startsWith("data:") ||
+		wallpaper.startsWith("http") ||
+		wallpaper.startsWith("file://") ||
+		wallpaper.startsWith("/")
+	);
+}
+
 interface VideoPlaybackProps {
 	videoPath: string;
 	facecamVideoPath?: string;
@@ -1333,45 +1345,37 @@ const VideoPlayback = memo(
 			};
 
 			const [resolvedWallpaper, setResolvedWallpaper] = useState<string | null>(null);
+			const wallpaperResolutionIdRef = useRef(0);
 
 			useEffect(() => {
+				const resolutionId = wallpaperResolutionIdRef.current + 1;
+				wallpaperResolutionIdRef.current = resolutionId;
 				let mounted = true;
 				(async () => {
 					try {
 						if (!wallpaper) {
 							const def = await getAssetPath(DEFAULT_WALLPAPER_RELATIVE_PATH);
-							if (mounted) setResolvedWallpaper(def);
+							if (mounted && wallpaperResolutionIdRef.current === resolutionId) {
+								setResolvedWallpaper(def);
+							}
 							return;
 						}
 
-						if (
-							wallpaper.startsWith("#") ||
-							wallpaper.startsWith("linear-gradient") ||
-							wallpaper.startsWith("radial-gradient")
-						) {
-							if (mounted) setResolvedWallpaper(wallpaper);
+						if (isDirectlyRenderableWallpaper(wallpaper)) {
+							if (mounted && wallpaperResolutionIdRef.current === resolutionId) {
+								setResolvedWallpaper(wallpaper);
+							}
 							return;
 						}
 
-						// If it's a data URL (custom uploaded image), use as-is
-						if (wallpaper.startsWith("data:")) {
-							if (mounted) setResolvedWallpaper(wallpaper);
-							return;
-						}
-
-						if (
-							wallpaper.startsWith("http") ||
-							wallpaper.startsWith("file://") ||
-							wallpaper.startsWith("/")
-						) {
-							const renderable = await getRenderableAssetUrl(wallpaper);
-							if (mounted) setResolvedWallpaper(renderable);
-							return;
-						}
 						const p = await getRenderableAssetUrl(await getAssetPath(wallpaper.replace(/^\//, "")));
-						if (mounted) setResolvedWallpaper(p);
-					} catch (err) {
-						if (mounted) setResolvedWallpaper(wallpaper || DEFAULT_WALLPAPER_PATH);
+						if (mounted && wallpaperResolutionIdRef.current === resolutionId) {
+							setResolvedWallpaper(p);
+						}
+					} catch {
+						if (mounted && wallpaperResolutionIdRef.current === resolutionId) {
+							setResolvedWallpaper(wallpaper || DEFAULT_WALLPAPER_PATH);
+						}
 					}
 				})();
 				return () => {

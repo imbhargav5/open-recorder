@@ -1012,7 +1012,16 @@ export default function VideoEditor() {
 			try {
 				const resolvedPath = await getAssetPath(DEFAULT_WALLPAPER_RELATIVE_PATH);
 				if (mounted) {
-					setWallpaper(resolvedPath);
+					setWallpaper((current) => {
+						if (
+							!current ||
+							current === WALLPAPER_PATHS[0] ||
+							current === DEFAULT_WALLPAPER_RELATIVE_PATH
+						) {
+							return resolvedPath;
+						}
+						return current;
+					});
 				}
 			} catch (err) {
 				// If resolution fails, keep the fallback
