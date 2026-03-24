@@ -1,7 +1,7 @@
 ---
 name: publish-github-release
-description: Publish an Open Recorder GitHub release by choosing a patch, minor, or major version bump, running the repository release scripts, and dispatching the Release Tauri App workflow. Use when the user asks to cut, ship, dispatch, or publish a GitHub release, or to bump the app version for a release.
-compatibility: Requires this repository, git, the GitHub CLI with working auth, network access, push access to the repo, and a clean git worktree.
+description: Prepare an Open Recorder GitHub release by choosing a patch, minor, or major version bump, dispatching the release PR workflow, and guiding the user through merging that PR so the actual release can publish. Use when the user asks to cut, ship, dispatch, or publish a GitHub release, or to bump the app version for a release.
+compatibility: Requires this repository, git, the GitHub CLI with working auth, network access, and permission to dispatch GitHub Actions workflows.
 ---
 
 # Publish GitHub Release
@@ -29,9 +29,8 @@ pnpm release:dispatch
 Before running a release command:
 
 1. Make sure the repo is on the branch the user wants to release from.
-2. Make sure the git worktree is clean.
-3. Make sure `gh auth status` succeeds.
-4. If this release needs signed macOS artifacts and secrets are not configured yet, run:
+2. Make sure `gh auth status` succeeds.
+3. If this release needs signed macOS artifacts and secrets are not configured yet, run:
 
 ```bash
 pnpm release:setup-macos-signing
@@ -67,11 +66,11 @@ Supported flags come from `scripts/dispatch-release-build.mjs`:
 1. Confirm the intended release type if the user did not already specify patch, minor, or major.
 2. Check the preconditions above.
 3. Run the matching root workspace script.
-4. Report the calculated version tag and whether the workflow dispatch succeeded.
+4. Report that the release PR workflow was dispatched and explain that GitHub Actions will calculate the next version and open or update the release PR.
 5. If the user asks how the release process works or something fails, read [references/release-process.md](references/release-process.md).
 
 ## Important behaviors
 
-- The dispatcher fetches tags and uses the latest `v*` semver tag as the base version when available.
-- It updates version files, creates a `Bump version to <version>` commit, and pushes the current branch before dispatching the workflow.
-- It will stop immediately on a dirty worktree or missing GitHub CLI auth.
+- The local dispatcher does not update version files or create commits in the user's checkout.
+- It dispatches `.github/workflows/release-pr.yml`, and that workflow computes the next version and opens or updates the release PR.
+- Merging the release PR triggers `.github/workflows/release.yml`, which builds and publishes the actual GitHub release.

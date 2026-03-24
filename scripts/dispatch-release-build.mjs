@@ -1,19 +1,8 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
 import * as readline from "node:readline";
 import { createInterface } from "node:readline/promises";
-import { fileURLToPath } from "node:url";
-
-const scriptDir = dirname(fileURLToPath(import.meta.url));
-const repoRoot = resolve(scriptDir, "..");
-const desktopAppRoot = resolve(repoRoot, "apps", "desktop");
-const desktopPackageJsonPath = resolve(desktopAppRoot, "package.json");
-const tauriRoot = resolve(desktopAppRoot, "src-tauri");
-
-process.chdir(repoRoot);
 
 function die(message) {
 	console.error(`Error: ${message}`);
@@ -23,14 +12,15 @@ function die(message) {
 function usage() {
 	console.log(`Usage: node scripts/dispatch-release-build.mjs [options]
 
-Calculates the next semantic version tag, asks for confirmation, then triggers
-the Release Builds GitHub Actions workflow.
+Dispatches the release PR GitHub Actions workflow. That workflow computes the
+next semantic version, updates the desktop version files, and opens or updates
+the release PR. Merging that PR triggers the actual Release Tauri App workflow.
 
 Options:
   --release-type VALUE     Release type: patch, minor, or major. Uses a selector if omitted.
-  --name VALUE             Release title. Defaults to "Open Recorder v<version>".
-  --notes VALUE            Release notes body. Defaults to empty.
-  --latest true|false      Whether to mark the release as latest. Defaults to true.
+  --name VALUE             Optional release title override.
+  --notes VALUE            Optional release notes body.
+  --latest true|false      Whether the eventual release should be marked latest. Defaults to true.
   --yes                    Skip the interactive confirmation prompt.
   --ref VALUE              Git branch that contains the workflow file. Defaults to the current branch.
   --repo OWNER/REPO        GitHub repository slug. Defaults to the current origin remote.
@@ -97,7 +87,6 @@ function parseArgs(argv) {
 
 function capture(command, args, { allowFailure = false } = {}) {
 	const result = spawnSync(command, args, {
-		cwd: repoRoot,
 		encoding: "utf8",
 		stdio: ["ignore", "pipe", "pipe"],
 	});
@@ -116,17 +105,12 @@ function capture(command, args, { allowFailure = false } = {}) {
 
 function run(command, args) {
 	const result = spawnSync(command, args, {
-		cwd: repoRoot,
 		stdio: "inherit",
 	});
 
 	if (result.status !== 0) {
 		process.exit(result.status ?? 1);
 	}
-}
-
-function worktreeIsClean() {
-	return capture("git", ["status", "--short"], { allowFailure: true }) === "";
 }
 
 function resolveRepo() {
@@ -138,107 +122,22 @@ function resolveRepo() {
 	return match[1];
 }
 
-function currentVersion() {
-	const packageJson = JSON.parse(readFileSync(desktopPackageJsonPath, "utf8"));
-	return packageJson.version;
+function currentBranch() {
+	return capture("git", ["branch", "--show-current"], { allowFailure: true });
 }
 
-function latestSemverTagVersion() {
-	const tags = capture("git", ["tag", "--list", "v*", "--sort=-version:refname"], {
+function readDesktopVersionForRef(ref) {
+	const packageJson = capture("git", ["show", `${ref}:apps/desktop/package.json`], {
 		allowFailure: true,
 	});
-
-	return tags
-		.split(/\r?\n/)
-		.map((tag) => /^v(\d+\.\d+\.\d+)$/.exec(tag)?.[1] ?? "")
-		.find(Boolean) ?? "";
-}
-
-function updateJsonVersion(filePath, nextVersion, spacing) {
-	const json = JSON.parse(readFileSync(filePath, "utf8"));
-	json.version = nextVersion;
-	writeFileSync(filePath, `${JSON.stringify(json, null, spacing)}\n`);
-}
-
-function updateTextVersion(filePath, pattern, replacement) {
-	const current = readFileSync(filePath, "utf8");
-	if (!current.match(pattern)) {
-		die(`Could not update version in ${filePath}`);
+	if (!packageJson) {
+		return "";
 	}
 
-	const next = current.replace(pattern, replacement);
-	writeFileSync(filePath, next);
-}
-
-function syncVersionFiles(nextVersion) {
-	updateTextVersion(
-		resolve(tauriRoot, "Cargo.toml"),
-		/^version = "\d+\.\d+\.\d+"$/m,
-		`version = "${nextVersion}"`,
-	);
-	updateJsonVersion(resolve(tauriRoot, "tauri.conf.json"), nextVersion, 2);
-	updateTextVersion(
-		resolve(tauriRoot, "Cargo.lock"),
-		/(\[\[package\]\]\s+name = "open-recorder"\s+version = ")\d+\.\d+\.\d+(")/m,
-		`$1${nextVersion}$2`,
-	);
-	updateJsonVersion(desktopPackageJsonPath, nextVersion, "\t");
-}
-
-function commitVersionBump(nextVersion) {
-	const versionFiles = [
-		"apps/desktop/package.json",
-		"apps/desktop/src-tauri/Cargo.toml",
-		"apps/desktop/src-tauri/tauri.conf.json",
-		"apps/desktop/src-tauri/Cargo.lock",
-	];
-
-	run("git", ["add", ...versionFiles]);
-
-	const staged = capture("git", ["diff", "--cached", "--name-only"]);
-	if (!staged) {
-		return false;
-	}
-
-	run("git", ["commit", "-m", `Bump version to ${nextVersion}`]);
-	return true;
-}
-
-function parseSemver(version) {
-	const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version);
-	if (!match) {
-		die(`Invalid semantic version: ${version}`);
-	}
-	return match.slice(1).map(Number);
-}
-
-function compareVersions(first, second) {
-	const [aMajor, aMinor, aPatch] = parseSemver(first);
-	const [bMajor, bMinor, bPatch] = parseSemver(second);
-
-	if (aMajor !== bMajor) {
-		return aMajor > bMajor ? 1 : -1;
-	}
-	if (aMinor !== bMinor) {
-		return aMinor > bMinor ? 1 : -1;
-	}
-	if (aPatch !== bPatch) {
-		return aPatch > bPatch ? 1 : -1;
-	}
-	return 0;
-}
-
-function bumpVersion(baseVersion, releaseType) {
-	const [major, minor, patch] = parseSemver(baseVersion);
-	switch (releaseType) {
-		case "patch":
-			return `${major}.${minor}.${patch + 1}`;
-		case "minor":
-			return `${major}.${minor + 1}.0`;
-		case "major":
-			return `${major + 1}.0.0`;
-		default:
-			die(`Unsupported release type: ${releaseType}`);
+	try {
+		return JSON.parse(packageJson).version;
+	} catch {
+		return "";
 	}
 }
 
@@ -251,22 +150,22 @@ function clearRenderedMenu(lineCount) {
 	readline.clearScreenDown(process.stdout);
 }
 
-async function selectReleaseType(baseVersion) {
+async function selectReleaseType() {
 	if (!process.stdin.isTTY || !process.stdout.isTTY || typeof process.stdin.setRawMode !== "function") {
 		die("Interactive release selection requires a TTY. Pass --release-type patch, minor, or major.");
 	}
 
 	const choices = [
 		{
-			label: `patch  bug fixes and small improvements -> v${bumpVersion(baseVersion, "patch")}`,
+			label: "patch  bug fixes and small improvements",
 			value: "patch",
 		},
 		{
-			label: `minor  new features without breaking changes -> v${bumpVersion(baseVersion, "minor")}`,
+			label: "minor  new features without breaking changes",
 			value: "minor",
 		},
 		{
-			label: `major  breaking changes -> v${bumpVersion(baseVersion, "major")}`,
+			label: "major  breaking changes",
 			value: "major",
 		},
 	];
@@ -351,94 +250,63 @@ async function confirmPrompt(message, defaultValue = true) {
 	return answer === "y" || answer === "yes";
 }
 
-async function chooseReleaseType(baseVersion) {
-	return selectReleaseType(baseVersion);
-}
-
 async function main() {
 	const args = parseArgs(process.argv.slice(2));
 
 	capture("gh", ["auth", "status"]);
-	capture("git", ["fetch", "--tags", "origin"]);
 
 	const repo = args.repo || resolveRepo();
-	const currentBranch = capture("git", ["branch", "--show-current"]);
-	if (!currentBranch) {
-		die("Could not determine the current git branch.");
+	const branch = currentBranch();
+	const ref = args.ref || branch;
+	if (!ref) {
+		die("Could not determine the git ref. Pass --ref with the branch that contains the workflow file.");
 	}
 
-	const ref = args.ref || currentBranch;
-	if (ref !== currentBranch) {
-		die(`Current branch is ${currentBranch}, but --ref was ${ref}. Checkout ${ref} before dispatching.`);
-	}
+	const releaseType = args.releaseType || (await selectReleaseType());
+	const desktopVersion = readDesktopVersionForRef(ref);
 
-	if (!worktreeIsClean()) {
-		die("Git worktree is dirty. Commit or stash your changes before dispatching a release.");
-	}
-
-	const packageVersion = currentVersion();
-	const latestTagVersion = latestSemverTagVersion();
-
-	const baseVersion = latestTagVersion || packageVersion;
-	const versionSource = latestTagVersion ? "git tag" : "apps/desktop/package.json";
-
-	const releaseType = args.releaseType || (await chooseReleaseType(baseVersion));
-	const nextVersion = bumpVersion(baseVersion, releaseType);
-	const tag = `v${nextVersion}`;
-	const name = args.name || `Open Recorder v${nextVersion}`;
-
-	console.log(`Current desktop package version: ${packageVersion}`);
-	console.log(`Latest local release tag: ${latestTagVersion ? `v${latestTagVersion}` : "none"}`);
-	console.log(`Using base version from ${versionSource}: ${baseVersion}`);
+	console.log(`Dispatching release PR workflow for repository: ${repo}`);
+	console.log(`Git ref: ${ref}`);
 	console.log(`Selected release type: ${releaseType}`);
-	console.log(`Syncing version files to: ${nextVersion}`);
-	console.log(`Calculated release tag: ${tag}`);
+	if (desktopVersion) {
+		console.log(`Current desktop package version on ${ref}: ${desktopVersion}`);
+	}
+	console.log("The workflow will compute the next version, update version files in GitHub Actions, and open or update the release PR.");
 
 	const confirmed = args.yes
 		? true
-		: await confirmPrompt(`Dispatch release workflow for ${tag}?`, true);
+		: await confirmPrompt(`Dispatch release PR workflow for a ${releaseType} release on ${ref}?`, true);
 
 	if (!confirmed) {
 		die("Aborted.");
 	}
 
-	syncVersionFiles(nextVersion);
-	const createdVersionCommit = commitVersionBump(nextVersion);
-
-	console.log(createdVersionCommit ? `Created version bump commit for ${nextVersion}.` : "Version files already matched the release version.");
-	console.log(`Pushing ${ref} to origin...`);
-	run("git", ["push", "origin", ref]);
-
-	console.log(`Dispatching Release Builds workflow for ${repo}`);
-	console.log(`Tag: ${tag}`);
-	console.log(`Release title: ${name}`);
-	console.log(`Git ref: ${ref}`);
-
 	const workflowArgs = [
 		"workflow",
 		"run",
-		"release.yml",
+		"release-pr.yml",
 		"--repo",
 		repo,
 		"-f",
-		`tag_name=${tag}`,
+		`release_type=${releaseType}`,
 		"-f",
-		`release_name=${name}`,
+		`release_name=${args.name}`,
 		"-f",
 		`release_notes=${args.notes}`,
 		"-f",
 		`make_latest=${args.latest}`,
+		"-f",
+		`base_ref=${ref}`,
+		"--ref",
+		ref,
 	];
-
-	if (ref) {
-		workflowArgs.push("--ref", ref);
-	}
 
 	run("gh", workflowArgs);
 
 	console.log("");
-	console.log(`Workflow dispatched.`);
-	console.log(`Check status with: gh run list --repo ${repo} --workflow release.yml --limit 5`);
+	console.log("Workflow dispatched.");
+	console.log("GitHub Actions will compute the next version, create or update the release PR, and wait for that PR to be merged before publishing the release.");
+	console.log(`Check status with: gh run list --repo ${repo} --workflow release-pr.yml --limit 5`);
 }
 
 main().catch((error) => {

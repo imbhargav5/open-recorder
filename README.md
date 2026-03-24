@@ -156,7 +156,12 @@ pnpm dev:prod
 
 ## Signed macOS releases in GitHub Actions
 
-The manual release workflow at `.github/workflows/release.yml` uses Tauri to produce signed and notarized macOS DMGs, Windows NSIS installers, and Linux AppImages when these GitHub repository secrets are configured:
+The repository release flow uses two GitHub Actions workflows:
+
+- `.github/workflows/release-pr.yml` computes the next version and opens or updates a release PR.
+- `.github/workflows/release.yml` runs after that PR is merged to `main`, then builds and publishes the signed release artifacts.
+
+The release workflows use Tauri to produce signed and notarized macOS DMGs, Windows NSIS installers, and Linux AppImages when these GitHub repository secrets are configured:
 
 - `APPLE_CERTIFICATE`: base64-encoded `Developer ID Application` `.p12` certificate export
 - `APPLE_CERTIFICATE_PASSWORD`: password used when exporting the `.p12`
@@ -179,7 +184,7 @@ pnpm release:major
 
 `release:setup-macos-signing` detects the local `Developer ID Application` identity, exports a `.p12`, and uploads the GitHub secrets.
 
-`release:dispatch` uses an interactive selector to choose patch, minor, or major, calculates the next version from the latest release tag, updates the version files, commits and pushes that bump, and then dispatches the `Release Builds` workflow.
+`release:dispatch` uses an interactive selector to choose patch, minor, or major, then dispatches `.github/workflows/release-pr.yml`.
 
 Use the explicit helpers when you already know the release type:
 
@@ -199,13 +204,28 @@ pnpm release:major -- --latest false
 
 Internally, the dispatcher:
 
-1. Verifies `gh auth status` works and fetches tags from `origin`.
-2. Refuses to continue if the git worktree is dirty or the current branch does not match `--ref`.
-3. Picks the base version from the latest local `v*` tag, or falls back to `apps/desktop/package.json` if there are no release tags yet.
-4. Bumps the version as patch, minor, or major.
+1. Verifies `gh auth status` works.
+2. Resolves the GitHub repo and target branch.
+3. Dispatches `.github/workflows/release-pr.yml` with the chosen release type and optional release metadata.
+4. Leaves the local worktree untouched.
+
+Inside GitHub Actions, `.github/workflows/release-pr.yml` then:
+
+1. Fetches tags from `origin`.
+2. Reads `apps/desktop/package.json` and the latest local `v*` tag.
+3. Uses whichever version is newer as the base version.
+4. Computes the next patch, minor, or major version.
 5. Syncs `apps/desktop/package.json`, `apps/desktop/src-tauri/Cargo.toml`, `apps/desktop/src-tauri/tauri.conf.json`, and the `open-recorder` entry inside `apps/desktop/src-tauri/Cargo.lock`.
-6. Creates a `Bump version to <version>` commit and pushes the current branch.
-7. Dispatches `.github/workflows/release.yml`, which builds macOS arm64, macOS x64, Windows x64, and Linux x64 artifacts, generates `latest.json` for the updater, and creates or updates the GitHub release.
+6. Writes `.github/release-plan.json` with the release title, notes, and latest flag.
+7. Opens or updates the release PR.
+
+After that PR is merged, `.github/workflows/release.yml` automatically:
+
+1. Detects the version bump on `main`.
+2. Reads `.github/release-plan.json` for release metadata.
+3. Builds macOS arm64, macOS x64, Windows x64, and Linux x64 artifacts.
+4. Generates `latest.json` for the updater.
+5. Creates or updates the GitHub release.
 
 There is also a project skill at `skills/publish-github-release/` that captures this release flow for compatible agents.
 

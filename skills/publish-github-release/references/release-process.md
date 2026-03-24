@@ -52,50 +52,61 @@ From `scripts/dispatch-release-build.mjs`:
 
 ## Internal flow
 
-The dispatcher does the following:
+The local dispatcher does the following:
 
 1. Changes into the repo root.
 2. Verifies GitHub CLI auth with `gh auth status`.
-3. Fetches tags from `origin` with `git fetch --tags origin`.
-4. Resolves the repo slug from the `origin` remote unless `--repo` was supplied.
-5. Reads the current branch and rejects mismatched `--ref` values.
-6. Refuses to continue if `git status --short` is not empty.
-7. Reads `apps/desktop/package.json` for the current version.
-8. Looks for the latest local semver tag matching `v*`.
-9. Uses the latest tag as the base version when present, otherwise falls back to `apps/desktop/package.json`.
-10. Computes the next version:
-    - patch -> increments patch
-    - minor -> increments minor and resets patch to `0`
-    - major -> increments major and resets minor and patch to `0`
-11. Updates all release version files:
-    - `apps/desktop/package.json`
-    - `apps/desktop/src-tauri/Cargo.toml`
-    - `apps/desktop/src-tauri/tauri.conf.json`
-    - `apps/desktop/src-tauri/Cargo.lock` for the `open-recorder` package entry
-12. Stages those files.
-13. Creates a git commit named `Bump version to <nextVersion>` if there are staged changes.
-14. Pushes the current branch to `origin`.
-15. Dispatches `.github/workflows/release.yml` through `gh workflow run`.
+3. Resolves the repo slug from the `origin` remote unless `--repo` was supplied.
+4. Resolves the target branch from `--ref` or the current branch.
+5. Dispatches `.github/workflows/release-pr.yml` through `gh workflow run`.
+6. Leaves the local worktree untouched.
 
-## GitHub Actions workflow behavior
+`.github/workflows/release-pr.yml` then:
 
-`.github/workflows/release.yml` accepts:
+1. Checks out the requested base branch.
+2. Fetches tags from `origin`.
+3. Reads `apps/desktop/package.json` for the current version.
+4. Looks for the latest local semver tag matching `v*`.
+5. Uses the newer of those two versions as the base version.
+6. Computes the next version:
+   - patch -> increments patch
+   - minor -> increments minor and resets patch to `0`
+   - major -> increments major and resets minor and patch to `0`
+7. Updates all release version files:
+   - `apps/desktop/package.json`
+   - `apps/desktop/src-tauri/Cargo.toml`
+   - `apps/desktop/src-tauri/tauri.conf.json`
+   - `apps/desktop/src-tauri/Cargo.lock` for the `open-recorder` package entry
+8. Writes `.github/release-plan.json` with:
+   - `tagName`
+   - `releaseName`
+   - `releaseNotes`
+   - `makeLatest`
+9. Opens or updates the release PR.
 
-- `tag_name`
-- `release_name`
-- `release_notes`
-- `make_latest`
+## Release workflow behavior after merge
 
-The workflow then:
+Once the release PR is merged to `main`, `.github/workflows/release.yml` runs automatically.
 
-1. Builds macOS arm64.
-2. Builds macOS x64.
-3. Builds Windows x64.
-4. Builds Linux x64.
-5. Downloads all artifacts in the `publish-release` job.
-6. Renames the uploaded artifacts into stable release filenames.
-7. Generates `latest.json` for the auto-updater using the current tag and uploaded signatures.
-8. Creates or updates the GitHub release with `ncipollo/release-action`.
+That workflow:
+
+1. Detects that `apps/desktop/package.json` changed on `main`.
+2. Confirms the version actually changed.
+3. Reads `.github/release-plan.json` for release metadata when it exists.
+4. Builds macOS arm64.
+5. Builds macOS x64.
+6. Builds Windows x64.
+7. Builds Linux x64.
+8. Downloads and renames the uploaded artifacts into stable release filenames.
+9. Generates `latest.json` for the auto-updater using the current tag and uploaded signatures.
+10. Creates or updates the GitHub release with `ncipollo/release-action`.
+
+The workflow still supports manual `workflow_dispatch` as a fallback, but the normal path is:
+
+1. Run `pnpm release:patch`, `pnpm release:minor`, `pnpm release:major`, or `pnpm release:dispatch`.
+2. Let GitHub Actions open or update the release PR.
+3. Merge the release PR.
+4. Let `.github/workflows/release.yml` publish the release.
 
 ## Practical release commands
 
@@ -121,8 +132,8 @@ pnpm release:setup-macos-signing
 
 ## Common failure modes
 
-- Dirty worktree: commit or stash local changes first.
 - `gh auth status` fails: run `gh auth login`.
-- Wrong branch checked out: switch to the branch you intend to release from.
+- Wrong branch checked out: switch to the branch you intend to base the release PR on, or pass `--ref`.
 - Missing signing secrets: run `pnpm release:setup-macos-signing` or configure the required GitHub secrets manually.
-- Missing push permission: the version bump commit cannot be pushed, so the workflow is never dispatched.
+- Missing workflow permission: the release PR workflow cannot be dispatched.
+- Missing merge step: the release PR exists, but no release is published until that PR is merged to `main`.

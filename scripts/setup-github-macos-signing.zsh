@@ -174,4 +174,4 @@ gh secret set APPLE_TEAM_ID --repo "$repo" < "$tmp_dir/APPLE_TEAM_ID.txt"
 print
 print -- "GitHub Actions signing secrets are set for $repo."
 print -- "Exported certificate bundle: $cert_path"
-print -- "Next step: pnpm release:dispatch"
+print -- "Next step: pnpm release:dispatch (this opens or updates the release PR workflow)"

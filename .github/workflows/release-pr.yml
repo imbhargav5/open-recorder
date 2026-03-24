@@ -1,0 +1,84 @@
+name: Prepare Release PR
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: Release type to prepare
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+      release_name:
+        description: Optional release title override
+        required: false
+        type: string
+      release_notes:
+        description: Optional release notes
+        required: false
+        type: string
+      make_latest:
+        description: Mark the eventual release as the latest release
+        required: true
+        default: true
+        type: boolean
+      base_ref:
+        description: Branch to base the release PR on
+        required: true
+        default: main
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  prepare-release-pr:
+    name: Prepare release PR
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.base_ref }}
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Fetch release tags
+        run: git fetch --tags origin
+
+      - name: Prepare release files
+        id: prepare
+        env:
+          RELEASE_TYPE: ${{ github.event.inputs.release_type }}
+          RELEASE_NAME: ${{ github.event.inputs.release_name }}
+          RELEASE_NOTES: ${{ github.event.inputs.release_notes }}
+          MAKE_LATEST: ${{ github.event.inputs.make_latest }}
+        run: |
+          node scripts/prepare-release-pr.mjs \
+            --release-type "$RELEASE_TYPE" \
+            --name "$RELEASE_NAME" \
+            --notes "$RELEASE_NOTES" \
+            --latest "$MAKE_LATEST" \
+            --output "$GITHUB_OUTPUT"
+
+      - name: Create or update release PR
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: ${{ steps.prepare.outputs.branch_name }}
+          base: ${{ github.event.inputs.base_ref }}
+          commit-message: ${{ steps.prepare.outputs.commit_message }}
+          title: ${{ steps.prepare.outputs.pr_title }}
+          body: ${{ steps.prepare.outputs.pr_body }}
+          add-paths: |
+            .github/release-plan.json
+            apps/desktop/package.json
+            apps/desktop/src-tauri/Cargo.lock
+            apps/desktop/src-tauri/Cargo.toml
+            apps/desktop/src-tauri/tauri.conf.json
