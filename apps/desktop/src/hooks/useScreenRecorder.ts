@@ -222,46 +222,83 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			return true;
 		}
 
+		// ── Screen Recording (required) ──────────────────────────────────
 		const screenStatus = await backend.getScreenRecordingPermissionStatus();
 		if (screenStatus !== "granted") {
 			const granted = await backend.requestScreenRecordingPermission();
 			if (granted) {
-				return true;
+				// continue to next check
+			} else {
+				const refreshedStatus = await backend.getScreenRecordingPermissionStatus();
+				if (refreshedStatus !== "granted") {
+					await backend.openScreenRecordingPreferences();
+					alert(
+						options.startup
+							? "Open Recorder needs Screen Recording permission before you start. System Settings has been opened. After enabling it, quit and reopen Open Recorder."
+							: "Screen Recording permission is still missing. System Settings has been opened again. Enable it, then quit and reopen Open Recorder before recording.",
+					);
+					return false;
+				}
 			}
-
-			const refreshedStatus = await backend.getScreenRecordingPermissionStatus();
-			if (refreshedStatus === "granted") {
-				return true;
-			}
-
-			await backend.openScreenRecordingPreferences();
-			alert(
-				options.startup
-					? "Open Recorder needs Screen Recording permission before you start. System Settings has been opened. After enabling it, quit and reopen Open Recorder."
-					: "Screen Recording permission is still missing. System Settings has been opened again. Enable it, then quit and reopen Open Recorder before recording.",
-			);
-			return false;
 		}
 
+		// ── Accessibility (required) ─────────────────────────────────────
 		const accessibilityStatus = await backend.getAccessibilityPermissionStatus();
 		if (accessibilityStatus !== "granted") {
 			const granted = await backend.requestAccessibilityPermission();
-			if (granted) {
-				return true;
+			if (!granted) {
+				await backend.openAccessibilityPreferences();
+				alert(
+					options.startup
+						? "Open Recorder also needs Accessibility permission for cursor tracking. System Settings has been opened. After enabling it, quit and reopen Open Recorder."
+						: "Accessibility permission is still missing. System Settings has been opened again. Enable it, then quit and reopen Open Recorder before recording.",
+				);
+				return false;
 			}
+		}
 
-			await backend.openAccessibilityPreferences();
-			alert(
-				options.startup
-					? "Open Recorder also needs Accessibility permission for cursor tracking. System Settings has been opened. After enabling it, quit and reopen Open Recorder."
-					: "Accessibility permission is still missing. System Settings has been opened again. Enable it, then quit and reopen Open Recorder before recording.",
-			);
+		// ── Microphone (check if enabled and not yet granted) ────────────
+		if (microphoneEnabled) {
+			const micStatus = await backend.getMicrophonePermissionStatus().catch(() => "unknown");
+			if (micStatus === "not_determined") {
+				// Trigger the system prompt via getUserMedia
+				try {
+					const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+					stream.getTracks().forEach((track) => track.stop());
+				} catch {
+					// User denied or error — recording will proceed without mic
+					console.warn("Microphone permission not granted during pre-recording check.");
+				}
+			} else if (micStatus === "denied" || micStatus === "restricted") {
+				await backend.openMicrophonePreferences();
+				alert(
+					"Microphone access is currently denied. System Settings has been opened. Grant microphone access, then try recording again.",
+				);
+				return false;
+			}
+		}
 
-			return false;
+		// ── Camera (check if enabled and not yet granted) ────────────────
+		if (cameraEnabled) {
+			const camStatus = await backend.getCameraPermissionStatus().catch(() => "unknown");
+			if (camStatus === "not_determined") {
+				try {
+					const stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: true });
+					stream.getTracks().forEach((track) => track.stop());
+				} catch {
+					console.warn("Camera permission not granted during pre-recording check.");
+				}
+			} else if (camStatus === "denied" || camStatus === "restricted") {
+				await backend.openCameraPreferences();
+				alert(
+					"Camera access is currently denied. System Settings has been opened. Grant camera access, then try recording again.",
+				);
+				return false;
+			}
 		}
 
 		return true;
-	}, []);
+	}, [microphoneEnabled, cameraEnabled]);
 
 	const selectMimeType = useCallback(() => {
 		const preferred = [

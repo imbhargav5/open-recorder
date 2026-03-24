@@ -92,6 +92,10 @@ pub fn run() {
             commands::permissions::get_accessibility_permission_status,
             commands::permissions::request_accessibility_permission,
             commands::permissions::open_accessibility_preferences,
+            commands::permissions::get_microphone_permission_status,
+            commands::permissions::get_camera_permission_status,
+            commands::permissions::open_microphone_preferences,
+            commands::permissions::open_camera_preferences,
             // Dialogs
             commands::dialogs::save_exported_video,
             commands::dialogs::save_screenshot_file,

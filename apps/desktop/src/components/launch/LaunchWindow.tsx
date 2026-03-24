@@ -23,10 +23,15 @@ import { RxDragHandleDots2 } from "react-icons/rx";
 import * as backend from "@/lib/backend";
 import { useCameraDevices } from "../../hooks/useCameraDevices";
 import { useMicrophoneDevices } from "../../hooks/useMicrophoneDevices";
+import { usePermissions } from "../../hooks/usePermissions";
 import { useScreenRecorder } from "../../hooks/useScreenRecorder";
 import { microphoneMachine } from "../../machines/microphoneMachine";
 import { Button } from "../ui/button";
 import { ContentClamp } from "../ui/content-clamp";
+import {
+	PermissionOnboarding,
+	isOnboardingComplete,
+} from "../onboarding/PermissionOnboarding";
 import { Popover, PopoverAnchor, PopoverContent } from "../ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
@@ -34,7 +39,7 @@ import styles from "./LaunchWindow.module.css";
 
 const SYSTEM_DEFAULT_MICROPHONE_ID = "__system_default_microphone__";
 
-type View = "choice" | "screenshot" | "recording";
+type View = "onboarding" | "choice" | "screenshot" | "recording";
 type ScreenshotMode = "screen" | "window" | "area";
 
 // ─── Mode Button ────────────────────────────────────────────────────────────
@@ -91,9 +96,13 @@ const dialogStyle: React.CSSProperties = {
 // ─── LaunchWindow ───────────────────────────────────────────────────────────
 
 export function LaunchWindow() {
-	const [view, setView] = useState<View>("choice");
+	const [view, setView] = useState<View>(() =>
+		isOnboardingComplete() ? "choice" : "onboarding",
+	);
 	const [screenshotMode, setScreenshotMode] = useState<ScreenshotMode | null>(null);
 	const [isCapturing, setIsCapturing] = useState(false);
+
+	const permissionsHook = usePermissions();
 
 	const {
 		recording,
@@ -134,6 +143,8 @@ export function LaunchWindow() {
 		micState.matches("on") || micState.matches("selecting") || micState.matches("lockedOn");
 	const isPopoverOpen = micState.matches("selecting");
 
+	// Only enumerate microphone devices when popover is open AND permission is granted
+	const micPermissionGranted = permissionsHook.permissions.microphone === "granted";
 	const {
 		devices,
 		selectedDeviceId,
@@ -142,7 +153,8 @@ export function LaunchWindow() {
 		isRequestingAccess: isRequestingMicrophoneAccess,
 		permissionDenied: microphonePermissionDenied,
 		error: microphoneDevicesError,
-	} = useMicrophoneDevices(isPopoverOpen);
+	} = useMicrophoneDevices(isPopoverOpen && micPermissionGranted);
+	const camPermissionGranted = permissionsHook.permissions.camera === "granted";
 	const {
 		devices: cameraDevices,
 		selectedDeviceId: selectedCameraDeviceId,
@@ -151,7 +163,7 @@ export function LaunchWindow() {
 		isRequestingAccess: isRequestingCameraAccess,
 		permissionDenied: cameraPermissionDenied,
 		error: cameraDevicesError,
-	} = useCameraDevices(cameraEnabled);
+	} = useCameraDevices(cameraEnabled && camPermissionGranted);
 	const micButtonRef = useRef<HTMLButtonElement | null>(null);
 	const cameraPreviewRef = useRef<HTMLVideoElement | null>(null);
 
@@ -353,24 +365,41 @@ export function LaunchWindow() {
 	)
 		? cameraDeviceId || selectedCameraDeviceId
 		: undefined;
-	const microphoneHelperText = isRequestingMicrophoneAccess
-		? "Requesting microphone access to show all inputs..."
-		: microphonePermissionDenied
-			? "Microphone access was denied. Using the system default microphone."
-			: microphoneDevicesError
-				? "Using the system default microphone in this window."
-				: isLoadingMicrophoneDevices
-					? "Loading microphone devices..."
-					: "Choose which microphone to record.";
-	const cameraHelperText = isRequestingCameraAccess
-		? "Requesting camera access to show all cameras..."
-		: cameraPermissionDenied
-			? "Camera access was denied. Using the default camera when available."
-			: cameraDevicesError
-				? "Camera device listing is unavailable in this window."
-				: isLoadingCameraDevices
-					? "Loading camera devices..."
-					: "Choose which facecam to preview and record.";
+	const micPermissionDeniedOrRestricted =
+		permissionsHook.permissions.microphone === "denied" ||
+		permissionsHook.permissions.microphone === "restricted";
+	const micPermissionNotDetermined =
+		permissionsHook.permissions.microphone === "not_determined";
+
+	const microphoneHelperText = micPermissionDeniedOrRestricted
+		? "Microphone access was denied. Open System Settings to grant permission."
+		: micPermissionNotDetermined
+			? "Microphone permission is required. Click 'Grant Access' below."
+			: isRequestingMicrophoneAccess
+				? "Requesting microphone access to show all inputs..."
+				: microphonePermissionDenied
+					? "Microphone access was denied. Using the system default microphone."
+					: microphoneDevicesError
+						? "Using the system default microphone in this window."
+						: isLoadingMicrophoneDevices
+							? "Loading microphone devices..."
+							: "Choose which microphone to record.";
+
+	const camPermissionDeniedOrRestricted =
+		permissionsHook.permissions.camera === "denied" ||
+		permissionsHook.permissions.camera === "restricted";
+
+	const cameraHelperText = camPermissionDeniedOrRestricted
+		? "Camera access was denied. Open System Settings to grant permission."
+		: isRequestingCameraAccess
+			? "Requesting camera access to show all cameras..."
+			: cameraPermissionDenied
+				? "Camera access was denied. Using the default camera when available."
+				: cameraDevicesError
+					? "Camera device listing is unavailable in this window."
+					: isLoadingCameraDevices
+						? "Loading camera devices..."
+						: "Choose which facecam to preview and record.";
 
 	// ─── Screenshot capture ───────────────────────────────────────────────────
 
@@ -476,6 +505,16 @@ export function LaunchWindow() {
 	);
 
 	// ─── Render ───────────────────────────────────────────────────────────────
+
+	// Show the onboarding overlay on first launch
+	if (view === "onboarding") {
+		return (
+			<PermissionOnboarding
+				permissionsHook={permissionsHook}
+				onComplete={() => setView("choice")}
+			/>
+		);
+	}
 
 	return (
 		<div className="w-full h-full flex items-end justify-center bg-transparent overflow-hidden">
@@ -776,55 +815,74 @@ export function LaunchWindow() {
 											<span>{microphoneHelperText}</span>
 										</div>
 									</div>
-									<Select
-										value={microphoneSelectValue}
-										onValueChange={(value) => {
-											if (value === SYSTEM_DEFAULT_MICROPHONE_ID) {
-												setSelectedDeviceId("default");
-												setMicrophoneDeviceId(undefined);
-											} else {
-												setSelectedDeviceId(value);
-												setMicrophoneDeviceId(value);
-											}
-										}}
-										disabled={isLoadingMicrophoneDevices || isRequestingMicrophoneAccess}
-									>
-										<SelectTrigger
-											className={`h-8 w-full rounded-full border-white/15 bg-[#131722] px-3 py-1 text-xs text-slate-100 outline-none ring-0 ring-offset-0 focus:ring-0 focus:ring-offset-0 ${styles.tauriNoDrag}`}
-										>
-											<SelectValue
-												placeholder={
-													isRequestingMicrophoneAccess
-														? "Unlocking microphones..."
-														: isLoadingMicrophoneDevices
-															? "Loading microphones..."
-															: "Select microphone"
+
+									{/* Show Grant/Settings button when mic permission is not granted on macOS */}
+									{!micPermissionGranted && permissionsHook.isMacOS ? (
+										<button
+											onClick={() => {
+												if (micPermissionDeniedOrRestricted) {
+													void permissionsHook.openPermissionSettings("microphone");
+												} else {
+													void permissionsHook.requestMicrophoneAccess();
 												}
-											/>
-										</SelectTrigger>
-										<SelectContent
-											className="z-[100] border-white/15 bg-[#131722] text-slate-100"
-											position="popper"
+											}}
+											className={`h-8 w-full rounded-full border border-white/15 bg-blue-500/20 hover:bg-blue-500/30 px-3 py-1 text-xs text-blue-300 font-medium transition-colors cursor-pointer ${styles.tauriNoDrag}`}
 										>
-											<SelectItem
-												value={SYSTEM_DEFAULT_MICROPHONE_ID}
-												className="text-xs focus:bg-white/10 focus:text-white"
+											{micPermissionDeniedOrRestricted
+												? "Open System Settings"
+												: "Grant Microphone Access"}
+										</button>
+									) : (
+										<Select
+											value={microphoneSelectValue}
+											onValueChange={(value) => {
+												if (value === SYSTEM_DEFAULT_MICROPHONE_ID) {
+													setSelectedDeviceId("default");
+													setMicrophoneDeviceId(undefined);
+												} else {
+													setSelectedDeviceId(value);
+													setMicrophoneDeviceId(value);
+												}
+											}}
+											disabled={isLoadingMicrophoneDevices || isRequestingMicrophoneAccess}
+										>
+											<SelectTrigger
+												className={`h-8 w-full rounded-full border-white/15 bg-[#131722] px-3 py-1 text-xs text-slate-100 outline-none ring-0 ring-offset-0 focus:ring-0 focus:ring-offset-0 ${styles.tauriNoDrag}`}
 											>
-												{microphonePermissionDenied || microphoneDevicesError
-													? "System Default Microphone"
-													: "Default Microphone"}
-											</SelectItem>
-											{devices.map((device) => (
+												<SelectValue
+													placeholder={
+														isRequestingMicrophoneAccess
+															? "Unlocking microphones..."
+															: isLoadingMicrophoneDevices
+																? "Loading microphones..."
+																: "Select microphone"
+													}
+												/>
+											</SelectTrigger>
+											<SelectContent
+												className="z-[100] border-white/15 bg-[#131722] text-slate-100"
+												position="popper"
+											>
 												<SelectItem
-													key={device.deviceId}
-													value={device.deviceId}
+													value={SYSTEM_DEFAULT_MICROPHONE_ID}
 													className="text-xs focus:bg-white/10 focus:text-white"
 												>
-													{device.label}
+													{microphonePermissionDenied || microphoneDevicesError
+														? "System Default Microphone"
+														: "Default Microphone"}
 												</SelectItem>
-											))}
-										</SelectContent>
-									</Select>
+												{devices.map((device) => (
+													<SelectItem
+														key={device.deviceId}
+														value={device.deviceId}
+														className="text-xs focus:bg-white/10 focus:text-white"
+													>
+														{device.label}
+													</SelectItem>
+												))}
+											</SelectContent>
+										</Select>
+									)}
 								</PopoverContent>
 							</Popover>
 

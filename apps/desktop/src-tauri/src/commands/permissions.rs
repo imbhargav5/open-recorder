@@ -1,6 +1,12 @@
 use tauri::AppHandle;
 
 #[cfg(target_os = "macos")]
+#[allow(unused_imports)]
+use objc::{sel, sel_impl};
+
+// ─── Screen Capture (CoreGraphics) ──────────────────────────────────────────
+
+#[cfg(target_os = "macos")]
 #[link(name = "CoreGraphics", kind = "framework")]
 unsafe extern "C" {
     fn CGPreflightScreenCaptureAccess() -> bool;
@@ -42,6 +48,7 @@ pub async fn get_screen_recording_permission_status(app: AppHandle) -> Result<St
 
     #[cfg(not(target_os = "macos"))]
     {
+        let _ = app;
         Ok("granted".to_string())
     }
 }
@@ -55,6 +62,7 @@ pub async fn request_screen_recording_permission(app: AppHandle) -> Result<bool,
 
     #[cfg(not(target_os = "macos"))]
     {
+        let _ = app;
         Ok(true)
     }
 }
@@ -68,6 +76,8 @@ pub async fn open_screen_recording_preferences() -> Result<(), String> {
     }
     Ok(())
 }
+
+// ─── Accessibility ──────────────────────────────────────────────────────────
 
 #[tauri::command]
 pub async fn get_accessibility_permission_status() -> Result<String, String> {
@@ -122,6 +132,96 @@ pub async fn open_accessibility_preferences() -> Result<(), String> {
     Ok(())
 }
 
+// ─── Microphone (AVFoundation) ──────────────────────────────────────────────
+
+#[cfg(target_os = "macos")]
+#[link(name = "AVFoundation", kind = "framework")]
+unsafe extern "C" {
+    static AVMediaTypeAudio: *const std::ffi::c_void;
+    static AVMediaTypeVideo: *const std::ffi::c_void;
+}
+
+/// Map AVAuthorizationStatus (NSInteger) to a human-readable string.
+///   0 = notDetermined, 1 = restricted, 2 = denied, 3 = authorized
+#[cfg(target_os = "macos")]
+fn av_authorization_status_to_string(status: i64) -> &'static str {
+    match status {
+        0 => "not_determined",
+        1 => "restricted",
+        2 => "denied",
+        3 => "granted",
+        _ => "unknown",
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn get_av_capture_authorization_status(media_type: *const std::ffi::c_void) -> &'static str {
+    unsafe {
+        let cls = objc::runtime::Class::get("AVCaptureDevice")
+            .expect("AVCaptureDevice class not found");
+        let status: i64 = objc::msg_send![cls, authorizationStatusForMediaType: media_type];
+        av_authorization_status_to_string(status)
+    }
+}
+
+/// Returns the macOS TCC microphone authorization status.
+/// Possible values: "granted", "denied", "not_determined", "restricted", "unknown".
+/// On non-macOS platforms always returns "granted".
+#[tauri::command]
+pub async fn get_microphone_permission_status() -> Result<String, String> {
+    #[cfg(target_os = "macos")]
+    {
+        let status = get_av_capture_authorization_status(unsafe { AVMediaTypeAudio });
+        Ok(status.to_string())
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        Ok("granted".to_string())
+    }
+}
+
+/// Returns the macOS TCC camera authorization status.
+/// Possible values: "granted", "denied", "not_determined", "restricted", "unknown".
+/// On non-macOS platforms always returns "granted".
+#[tauri::command]
+pub async fn get_camera_permission_status() -> Result<String, String> {
+    #[cfg(target_os = "macos")]
+    {
+        let status = get_av_capture_authorization_status(unsafe { AVMediaTypeVideo });
+        Ok(status.to_string())
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        Ok("granted".to_string())
+    }
+}
+
+/// Open System Settings → Privacy & Security → Microphone.
+#[tauri::command]
+pub async fn open_microphone_preferences() -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        open::that("x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+/// Open System Settings → Privacy & Security → Camera.
+#[tauri::command]
+pub async fn open_camera_preferences() -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        open::that("x-apple.systempreferences:com.apple.preference.security?Privacy_Camera")
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+// ─── Tests ──────────────────────────────────────────────────────────────────
+
 #[cfg(test)]
 mod tests {
     #[allow(unused_imports)]
@@ -149,6 +249,38 @@ mod tests {
         }
     }
 
+    // ==================== AV Authorization Status Mapping ====================
+
+    #[cfg(target_os = "macos")]
+    mod av_status_tests {
+        use super::*;
+
+        #[test]
+        fn test_av_status_not_determined() {
+            assert_eq!(av_authorization_status_to_string(0), "not_determined");
+        }
+
+        #[test]
+        fn test_av_status_restricted() {
+            assert_eq!(av_authorization_status_to_string(1), "restricted");
+        }
+
+        #[test]
+        fn test_av_status_denied() {
+            assert_eq!(av_authorization_status_to_string(2), "denied");
+        }
+
+        #[test]
+        fn test_av_status_granted() {
+            assert_eq!(av_authorization_status_to_string(3), "granted");
+        }
+
+        #[test]
+        fn test_av_status_unknown() {
+            assert_eq!(av_authorization_status_to_string(99), "unknown");
+        }
+    }
+
     // ==================== Platform-Specific Behavior ====================
 
     #[cfg(not(target_os = "macos"))]
@@ -172,6 +304,18 @@ mod tests {
             assert!(result.is_ok());
             assert!(result.unwrap());
         }
+
+        #[test]
+        fn test_non_macos_microphone_always_granted() {
+            let status = "granted".to_string();
+            assert_eq!(status, "granted");
+        }
+
+        #[test]
+        fn test_non_macos_camera_always_granted() {
+            let status = "granted".to_string();
+            assert_eq!(status, "granted");
+        }
     }
 
     // ==================== macOS Preferences URL ====================
@@ -194,6 +338,21 @@ mod tests {
                 "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility";
             assert!(url.starts_with("x-apple.systempreferences:"));
             assert!(url.contains("Privacy_Accessibility"));
+        }
+
+        #[test]
+        fn test_microphone_preferences_url() {
+            let url =
+                "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone";
+            assert!(url.starts_with("x-apple.systempreferences:"));
+            assert!(url.contains("Privacy_Microphone"));
+        }
+
+        #[test]
+        fn test_camera_preferences_url() {
+            let url = "x-apple.systempreferences:com.apple.preference.security?Privacy_Camera";
+            assert!(url.starts_with("x-apple.systempreferences:"));
+            assert!(url.contains("Privacy_Camera"));
         }
 
         #[test]

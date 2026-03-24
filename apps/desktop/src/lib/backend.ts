@@ -198,6 +198,22 @@ export function openAccessibilityPreferences(): Promise<void> {
 	return invoke("open_accessibility_preferences");
 }
 
+export function getMicrophonePermissionStatus(): Promise<string> {
+	return invoke("get_microphone_permission_status");
+}
+
+export function getCameraPermissionStatus(): Promise<string> {
+	return invoke("get_camera_permission_status");
+}
+
+export function openMicrophonePreferences(): Promise<void> {
+	return invoke("open_microphone_preferences");
+}
+
+export function openCameraPreferences(): Promise<void> {
+	return invoke("open_camera_preferences");
+}
+
 // ─── Dialogs ────────────────────────────────────────────────────────────────
 
 export function saveExportedVideo(videoData: Uint8Array, fileName: string): Promise<string | null> {

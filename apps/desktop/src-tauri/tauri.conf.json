@@ -63,7 +63,8 @@
     ],
     "macOS": {
       "entitlements": "Entitlements.plist",
-      "minimumSystemVersion": "12.3"
+      "minimumSystemVersion": "12.3",
+      "infoPlist": "Info.plist"
     },
     "windows": {
       "certificateThumbprint": null,
