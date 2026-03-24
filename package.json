@@ -31,6 +31,9 @@
 		"preview": "vite preview",
 		"release:setup-macos-signing": "zsh scripts/setup-github-macos-signing.zsh",
 		"release:dispatch": "node scripts/dispatch-release-build.mjs",
+		"release:patch": "node scripts/dispatch-release-build.mjs --release-type patch",
+		"release:minor": "node scripts/dispatch-release-build.mjs --release-type minor",
+		"release:major": "node scripts/dispatch-release-build.mjs --release-type major",
 		"i18n:check": "node scripts/i18n-check.mjs",
 		"test": "vitest --run",
 		"test:watch": "vitest"

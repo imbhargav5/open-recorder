@@ -172,11 +172,42 @@ This repo now includes two helper scripts:
 ```bash
 npm run release:setup-macos-signing
 npm run release:dispatch
+npm run release:patch
+npm run release:minor
+npm run release:major
 ```
 
 `release:setup-macos-signing` detects the local `Developer ID Application` identity, exports a `.p12`, and uploads the GitHub secrets.
 
 `release:dispatch` uses an interactive selector to choose patch, minor, or major, calculates the next version from the latest release tag, updates the version files, commits and pushes that bump, and then dispatches the `Release Builds` workflow.
+
+Use the explicit helpers when you already know the release type:
+
+```bash
+npm run release:patch
+npm run release:minor
+npm run release:major
+```
+
+All three scripts call the same dispatcher under the hood and still support extra flags after `--`, for example:
+
+```bash
+npm run release:patch -- --notes "Bug fixes and stability improvements"
+npm run release:minor -- --name "Open Recorder v1.4.0" --yes
+npm run release:major -- --latest false
+```
+
+Internally, the dispatcher:
+
+1. Verifies `gh auth status` works and fetches tags from `origin`.
+2. Refuses to continue if the git worktree is dirty or the current branch does not match `--ref`.
+3. Picks the base version from the latest local `v*` tag, or falls back to `package.json` if there are no release tags yet.
+4. Bumps the version as patch, minor, or major.
+5. Syncs `package.json`, `package-lock.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`, and the `open-recorder` entry inside `src-tauri/Cargo.lock`.
+6. Creates a `Bump version to <version>` commit and pushes the current branch.
+7. Dispatches `.github/workflows/release.yml`, which builds macOS arm64, macOS x64, Windows x64, and Linux x64 artifacts, generates `latest.json` for the updater, and creates or updates the GitHub release.
+
+There is also a project skill at `skills/publish-github-release/` that captures this release flow for compatible agents.
 
 Make sure `gh auth login` succeeds before running the release dispatch flow.
 

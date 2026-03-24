@@ -1,5 +1,5 @@
-use tauri::AppHandle;
 use std::sync::OnceLock;
+use tauri::AppHandle;
 use tokio::sync::Mutex;
 
 use super::sidecar::SidecarProcess;
@@ -24,48 +24,64 @@ pub async fn start_capture(
         .unwrap_or(30)
         .to_string();
 
-    let _source_id = source
-        .get("id")
-        .and_then(|v| v.as_str())
-        .unwrap_or(":0.0");
+    let _source_id = source.get("id").and_then(|v| v.as_str()).unwrap_or(":0.0");
 
     #[cfg(target_os = "linux")]
     let args = vec![
         "-y",
-        "-f", "x11grab",
-        "-framerate", &frame_rate,
-        "-i", _source_id,
-        "-c:v", "libx264",
-        "-preset", "ultrafast",
-        "-crf", "18",
+        "-f",
+        "x11grab",
+        "-framerate",
+        &frame_rate,
+        "-i",
+        _source_id,
+        "-c:v",
+        "libx264",
+        "-preset",
+        "ultrafast",
+        "-crf",
+        "18",
         output_path,
     ];
 
     #[cfg(target_os = "windows")]
     let args = vec![
         "-y",
-        "-f", "gdigrab",
-        "-framerate", &frame_rate,
-        "-i", "desktop",
-        "-c:v", "libx264",
-        "-preset", "ultrafast",
-        "-crf", "18",
+        "-f",
+        "gdigrab",
+        "-framerate",
+        &frame_rate,
+        "-i",
+        "desktop",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "ultrafast",
+        "-crf",
+        "18",
         output_path,
     ];
 
     #[cfg(target_os = "macos")]
     let args = vec![
         "-y",
-        "-f", "avfoundation",
-        "-framerate", &frame_rate,
-        "-i", "1",
-        "-c:v", "libx264",
-        "-preset", "ultrafast",
-        "-crf", "18",
+        "-f",
+        "avfoundation",
+        "-framerate",
+        &frame_rate,
+        "-i",
+        "1",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "ultrafast",
+        "-crf",
+        "18",
         output_path,
     ];
 
-    let process = SidecarProcess::spawn(&ffmpeg_path, &args.iter().map(|s| *s).collect::<Vec<_>>()).await?;
+    let process =
+        SidecarProcess::spawn(&ffmpeg_path, &args.iter().map(|s| *s).collect::<Vec<_>>()).await?;
 
     let mut guard = get_ffmpeg_process().lock().await;
     *guard = Some(process);
@@ -198,20 +214,14 @@ mod tests {
     #[test]
     fn test_ffmpeg_source_id_from_source() {
         let source = serde_json::json!({"id": ":0.0+100,200"});
-        let source_id = source
-            .get("id")
-            .and_then(|v| v.as_str())
-            .unwrap_or(":0.0");
+        let source_id = source.get("id").and_then(|v| v.as_str()).unwrap_or(":0.0");
         assert_eq!(source_id, ":0.0+100,200");
     }
 
     #[test]
     fn test_ffmpeg_source_id_default() {
         let source = serde_json::json!({});
-        let source_id = source
-            .get("id")
-            .and_then(|v| v.as_str())
-            .unwrap_or(":0.0");
+        let source_id = source.get("id").and_then(|v| v.as_str()).unwrap_or(":0.0");
         assert_eq!(source_id, ":0.0");
     }
 
@@ -233,23 +243,56 @@ mod tests {
 
         #[cfg(target_os = "macos")]
         let args = vec![
-            "-y", "-f", "avfoundation", "-framerate", frame_rate,
-            "-i", "1", "-c:v", "libx264", "-preset", "ultrafast",
-            "-crf", "18", output_path,
+            "-y",
+            "-f",
+            "avfoundation",
+            "-framerate",
+            frame_rate,
+            "-i",
+            "1",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-crf",
+            "18",
+            output_path,
         ];
 
         #[cfg(target_os = "linux")]
         let args = vec![
-            "-y", "-f", "x11grab", "-framerate", frame_rate,
-            "-i", ":0.0", "-c:v", "libx264", "-preset", "ultrafast",
-            "-crf", "18", output_path,
+            "-y",
+            "-f",
+            "x11grab",
+            "-framerate",
+            frame_rate,
+            "-i",
+            ":0.0",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-crf",
+            "18",
+            output_path,
         ];
 
         #[cfg(target_os = "windows")]
         let args = vec![
-            "-y", "-f", "gdigrab", "-framerate", frame_rate,
-            "-i", "desktop", "-c:v", "libx264", "-preset", "ultrafast",
-            "-crf", "18", output_path,
+            "-y",
+            "-f",
+            "gdigrab",
+            "-framerate",
+            frame_rate,
+            "-i",
+            "desktop",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-crf",
+            "18",
+            output_path,
         ];
 
         assert_eq!(*args.last().unwrap(), output_path);

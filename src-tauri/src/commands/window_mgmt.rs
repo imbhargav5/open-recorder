@@ -1,8 +1,8 @@
 use std::sync::Mutex;
+use tauri::window::Color;
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder, Window};
 #[cfg(target_os = "macos")]
 use tauri::{LogicalPosition, Position, TitleBarStyle};
-use tauri::window::Color;
 
 use crate::state::AppState;
 

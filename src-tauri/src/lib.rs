@@ -1,10 +1,10 @@
 mod app_paths;
 mod commands;
-pub mod state;
-mod native;
 mod input;
-mod tray;
 mod menu;
+mod native;
+pub mod state;
+mod tray;
 
 use state::AppState;
 use std::sync::Mutex;
@@ -33,10 +33,8 @@ pub fn run() {
                     let scale = monitor.scale_factor();
                     let w = 780.0;
                     let h = 155.0;
-                    let x = monitor_pos.x as f64
-                        + (monitor_size.width as f64 / scale - w) / 2.0;
-                    let y = monitor_pos.y as f64
-                        + (monitor_size.height as f64 / scale - h) - 5.0;
+                    let x = monitor_pos.x as f64 + (monitor_size.width as f64 / scale - w) / 2.0;
+                    let y = monitor_pos.y as f64 + (monitor_size.height as f64 / scale - h) - 5.0;
                     window.set_position(tauri::PhysicalPosition::new(
                         (x * scale) as i32,
                         (y * scale) as i32,
@@ -123,10 +121,7 @@ pub fn run() {
                 if label == "editor" {
                     // Check for unsaved changes before closing
                     let state: tauri::State<'_, Mutex<AppState>> = window.state();
-                    let has_unsaved = state
-                        .lock()
-                        .map(|s| s.has_unsaved_changes)
-                        .unwrap_or(false);
+                    let has_unsaved = state.lock().map(|s| s.has_unsaved_changes).unwrap_or(false);
                     if has_unsaved {
                         api.prevent_close();
                         let _ = window.emit("request-save-before-close", ());

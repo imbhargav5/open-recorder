@@ -95,7 +95,10 @@ fn test_full_recording_lifecycle_state_transitions() {
         let s = state.lock().unwrap();
         assert!(!s.native_screen_recording_active);
         assert!(s.selected_source.is_some());
-        assert_eq!(s.current_video_path.as_deref(), Some("/tmp/recording-test.mov"));
+        assert_eq!(
+            s.current_video_path.as_deref(),
+            Some("/tmp/recording-test.mov")
+        );
         assert!(s.current_recording_session.is_some());
         assert_eq!(s.cursor_telemetry.len(), 100);
         assert!(s.has_unsaved_changes);
@@ -152,7 +155,11 @@ fn test_concurrent_video_path_updates() {
     let s = state.lock().unwrap();
     // One of the threads should have set the path
     assert!(s.current_video_path.is_some());
-    assert!(s.current_video_path.as_ref().unwrap().starts_with("/tmp/video_"));
+    assert!(s
+        .current_video_path
+        .as_ref()
+        .unwrap()
+        .starts_with("/tmp/video_"));
 }
 
 #[test]
@@ -246,8 +253,7 @@ fn test_full_app_state_serialization_pipeline() {
 
     // Serialize the recording session
     let session_json = serde_json::to_string(&state.current_recording_session).unwrap();
-    let session_restored: Option<RecordingSession> =
-        serde_json::from_str(&session_json).unwrap();
+    let session_restored: Option<RecordingSession> = serde_json::from_str(&session_json).unwrap();
     assert_eq!(
         session_restored.as_ref().unwrap().screen_video_path,
         state
@@ -264,8 +270,7 @@ fn test_full_app_state_serialization_pipeline() {
 
     // Serialize shortcuts
     let shortcuts_json = serde_json::to_string(&state.shortcuts).unwrap();
-    let shortcuts_restored: Option<ShortcutConfig> =
-        serde_json::from_str(&shortcuts_json).unwrap();
+    let shortcuts_restored: Option<ShortcutConfig> = serde_json::from_str(&shortcuts_json).unwrap();
     assert_eq!(
         shortcuts_restored.as_ref().unwrap().start_stop_recording,
         state.shortcuts.as_ref().unwrap().start_stop_recording
@@ -395,7 +400,10 @@ fn test_source_list_caching_workflow() {
         let s = state.lock().unwrap();
         assert_eq!(s.cached_window_sources.len(), 2);
         assert_eq!(s.cached_window_sources[0].name, "Terminal");
-        assert_eq!(s.cached_window_sources[1].app_name.as_deref(), Some("Google Chrome"));
+        assert_eq!(
+            s.cached_window_sources[1].app_name.as_deref(),
+            Some("Google Chrome")
+        );
     }
 
     // Update cache with new list
@@ -512,9 +520,12 @@ async fn test_settings_and_shortcuts_persistence_roundtrip() {
     // Save settings
     let settings = serde_json::json!({ "recordingsDirectory": "/custom/path" });
     let settings_path = dir.join("settings.json");
-    tokio::fs::write(&settings_path, serde_json::to_string_pretty(&settings).unwrap())
-        .await
-        .unwrap();
+    tokio::fs::write(
+        &settings_path,
+        serde_json::to_string_pretty(&settings).unwrap(),
+    )
+    .await
+    .unwrap();
 
     // Save shortcuts
     let shortcuts = ShortcutConfig {

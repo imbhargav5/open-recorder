@@ -1,11 +1,11 @@
 use tauri::AppHandle;
 
 #[cfg(target_os = "windows")]
+use super::sidecar::SidecarProcess;
+#[cfg(target_os = "windows")]
 use std::sync::OnceLock;
 #[cfg(target_os = "windows")]
 use tokio::sync::Mutex;
-#[cfg(target_os = "windows")]
-use super::sidecar::SidecarProcess;
 
 #[cfg(target_os = "windows")]
 static WGC_PROCESS: OnceLock<Mutex<Option<SidecarProcess>>> = OnceLock::new();

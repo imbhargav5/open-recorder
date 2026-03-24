@@ -1,10 +1,10 @@
-pub mod platform;
+pub mod cursor;
+pub mod dialogs;
 pub mod files;
+pub mod permissions;
+pub mod platform;
+pub mod recording;
+pub mod screenshot;
 pub mod settings;
 pub mod sources;
-pub mod recording;
-pub mod cursor;
-pub mod permissions;
-pub mod dialogs;
 pub mod window_mgmt;
-pub mod screenshot;

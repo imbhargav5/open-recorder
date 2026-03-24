@@ -23,7 +23,7 @@ unsafe extern "C" {
 #[cfg(target_os = "macos")]
 use std::path::Path;
 #[cfg(target_os = "macos")]
-use tokio::time::{Duration, timeout};
+use tokio::time::{timeout, Duration};
 
 #[derive(Debug, Clone, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -244,7 +244,8 @@ async fn fetch_macos_sources_via_sidecar(
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let mut sources: Vec<SelectedSource> = serde_json::from_str(&stdout).map_err(|e| e.to_string())?;
+    let mut sources: Vec<SelectedSource> =
+        serde_json::from_str(&stdout).map_err(|e| e.to_string())?;
     sources.retain(|source| source_matches_requested_kind(source, wants_screens, wants_windows));
     sources.retain(|source| !source.id.trim().is_empty() && !source.name.trim().is_empty());
     Ok(sources)
@@ -387,11 +388,7 @@ fn fallback_macos_sources() -> Result<Vec<SelectedSource>, String> {
 
     let mut display_ids = vec![0_u32; display_count as usize];
     let status = unsafe {
-        CGGetOnlineDisplayList(
-            display_count,
-            display_ids.as_mut_ptr(),
-            &mut display_count,
-        )
+        CGGetOnlineDisplayList(display_count, display_ids.as_mut_ptr(), &mut display_count)
     };
     if status != CG_ERROR_SUCCESS {
         return Err(format!("Failed to read macOS display list: {}", status));
@@ -785,7 +782,9 @@ mod tests {
         };
         apply_source_filters(&mut sources, Some(&opts));
         assert_eq!(sources.len(), 2);
-        assert!(sources.iter().all(|s| s.source_type.as_deref() == Some("screen")));
+        assert!(sources
+            .iter()
+            .all(|s| s.source_type.as_deref() == Some("screen")));
     }
 
     #[test]

@@ -3,7 +3,7 @@ use std::sync::Mutex;
 
 use crate::app_paths;
 use crate::state::{AppState, RecordingSession};
-use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
+use percent_encoding::{utf8_percent_encode, AsciiSet, CONTROLS};
 use tokio::io::AsyncWriteExt;
 
 const URL_COMPONENT_ENCODE_SET: &AsciiSet = &CONTROLS
@@ -118,10 +118,7 @@ pub async fn prepare_recording_file(
 }
 
 #[tauri::command]
-pub async fn append_recording_data(
-    path: String,
-    data: Vec<u8>,
-) -> Result<(), String> {
+pub async fn append_recording_data(path: String, data: Vec<u8>) -> Result<(), String> {
     let mut file = tokio::fs::OpenOptions::new()
         .create(true)
         .append(true)
@@ -134,10 +131,7 @@ pub async fn append_recording_data(
 }
 
 #[tauri::command]
-pub async fn replace_recording_data(
-    path: String,
-    data: Vec<u8>,
-) -> Result<String, String> {
+pub async fn replace_recording_data(path: String, data: Vec<u8>) -> Result<String, String> {
     tokio::fs::write(&path, &data)
         .await
         .map_err(|e| e.to_string())?;
@@ -204,9 +198,7 @@ pub fn get_current_video_path(
 }
 
 #[tauri::command]
-pub fn clear_current_video_path(
-    state: tauri::State<'_, Mutex<AppState>>,
-) -> Result<(), String> {
+pub fn clear_current_video_path(state: tauri::State<'_, Mutex<AppState>>) -> Result<(), String> {
     let mut s = state.lock().map_err(|e| e.to_string())?;
     s.current_video_path = None;
     Ok(())

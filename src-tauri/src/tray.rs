@@ -42,20 +42,24 @@ pub fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+#[cfg(target_os = "macos")]
 fn tray_icon_image(_app: &tauri::App) -> Result<Image<'static>, Box<dyn std::error::Error>> {
-    #[cfg(target_os = "macos")]
-    {
-        return Ok(Image::new_owned(
-            include_bytes!("../icons/tray-icon.rgba.bin").to_vec(),
-            793,
-            863,
-        ));
-    }
+    Ok(Image::new_owned(
+        include_bytes!("../icons/tray-icon.rgba.bin").to_vec(),
+        793,
+        863,
+    ))
+}
 
-    #[cfg(not(target_os = "macos"))]
-    {
-        Ok(app.default_window_icon().cloned().unwrap())
-    }
+#[cfg(not(target_os = "macos"))]
+fn tray_icon_image(app: &tauri::App) -> Result<Image<'static>, Box<dyn std::error::Error>> {
+    app.default_window_icon().cloned().ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "default window icon is not configured",
+        )
+        .into()
+    })
 }
 
 pub fn update_tray_menu(app: &AppHandle, recording: bool) {

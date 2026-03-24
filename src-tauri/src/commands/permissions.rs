@@ -33,9 +33,7 @@ fn request_screen_capture_access() -> bool {
 }
 
 #[tauri::command]
-pub async fn get_screen_recording_permission_status(
-    app: AppHandle,
-) -> Result<String, String> {
+pub async fn get_screen_recording_permission_status(app: AppHandle) -> Result<String, String> {
     #[cfg(target_os = "macos")]
     {
         let granted = run_on_main_thread(&app, preflight_screen_capture_access)?;
@@ -49,9 +47,7 @@ pub async fn get_screen_recording_permission_status(
 }
 
 #[tauri::command]
-pub async fn request_screen_recording_permission(
-    app: AppHandle,
-) -> Result<bool, String> {
+pub async fn request_screen_recording_permission(app: AppHandle) -> Result<bool, String> {
     #[cfg(target_os = "macos")]
     {
         run_on_main_thread(&app, request_screen_capture_access)
@@ -79,7 +75,10 @@ pub async fn get_accessibility_permission_status() -> Result<String, String> {
     {
         // Use the macOS accessibility API to check status
         let output = tokio::process::Command::new("osascript")
-            .args(["-e", "tell application \"System Events\" to return (exists process 1)"])
+            .args([
+                "-e",
+                "tell application \"System Events\" to return (exists process 1)",
+            ])
             .output()
             .await
             .map_err(|e| e.to_string())?;
@@ -183,14 +182,16 @@ mod tests {
 
         #[test]
         fn test_screen_recording_preferences_url() {
-            let url = "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture";
+            let url =
+                "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture";
             assert!(url.starts_with("x-apple.systempreferences:"));
             assert!(url.contains("Privacy_ScreenCapture"));
         }
 
         #[test]
         fn test_accessibility_preferences_url() {
-            let url = "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility";
+            let url =
+                "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility";
             assert!(url.starts_with("x-apple.systempreferences:"));
             assert!(url.contains("Privacy_Accessibility"));
         }

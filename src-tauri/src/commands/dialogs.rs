@@ -63,9 +63,7 @@ pub async fn save_screenshot_file(
 }
 
 #[tauri::command]
-pub async fn open_video_file_picker(
-    app: AppHandle,
-) -> Result<Option<String>, String> {
+pub async fn open_video_file_picker(app: AppHandle) -> Result<Option<String>, String> {
     let (tx, rx) = tokio::sync::oneshot::channel();
 
     app.dialog()
@@ -153,8 +151,7 @@ pub async fn load_project_file(
             s.has_unsaved_changes = false;
         }
 
-        let project: serde_json::Value =
-            serde_json::from_str(&data).map_err(|e| e.to_string())?;
+        let project: serde_json::Value = serde_json::from_str(&data).map_err(|e| e.to_string())?;
 
         Ok(Some(serde_json::json!({
             "data": project,
@@ -266,7 +263,10 @@ mod tests {
             s.has_unsaved_changes = false;
         }
         let s = state.lock().unwrap();
-        assert_eq!(s.current_project_path.as_deref(), Some("/tmp/project.openrecorder"));
+        assert_eq!(
+            s.current_project_path.as_deref(),
+            Some("/tmp/project.openrecorder")
+        );
         assert!(!s.has_unsaved_changes);
     }
 

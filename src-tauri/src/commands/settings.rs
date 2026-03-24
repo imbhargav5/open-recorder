@@ -31,11 +31,9 @@ pub async fn choose_recordings_directory(
 
     let (tx, rx) = tokio::sync::oneshot::channel();
 
-    app.dialog()
-        .file()
-        .pick_folder(move |path| {
-            let _ = tx.send(path);
-        });
+    app.dialog().file().pick_folder(move |path| {
+        let _ = tx.send(path);
+    });
 
     let folder = rx.await.map_err(|_| "Dialog cancelled".to_string())?;
 
@@ -54,9 +52,12 @@ pub async fn choose_recordings_directory(
             .map_err(|e: std::io::Error| e.to_string())?;
         let settings_path = config_dir.join("settings.json");
         let settings = serde_json::json!({ "recordingsDirectory": path_str });
-        tokio::fs::write(&settings_path, serde_json::to_string_pretty(&settings).unwrap())
-            .await
-            .map_err(|e: std::io::Error| e.to_string())?;
+        tokio::fs::write(
+            &settings_path,
+            serde_json::to_string_pretty(&settings).unwrap(),
+        )
+        .await
+        .map_err(|e: std::io::Error| e.to_string())?;
 
         Ok(Some(path_str))
     } else {
@@ -85,8 +86,7 @@ pub async fn get_shortcuts(
         let data = tokio::fs::read_to_string(&shortcuts_path)
             .await
             .map_err(|e: std::io::Error| e.to_string())?;
-        let shortcuts: ShortcutConfig =
-            serde_json::from_str(&data).map_err(|e| e.to_string())?;
+        let shortcuts: ShortcutConfig = serde_json::from_str(&data).map_err(|e| e.to_string())?;
 
         let mut s = state.lock().map_err(|e| e.to_string())?;
         s.shortcuts = Some(shortcuts.clone());
@@ -180,7 +180,10 @@ mod tests {
         let loaded: ShortcutConfig = serde_json::from_str(&loaded_data).unwrap();
 
         assert_eq!(shortcuts.start_stop_recording, loaded.start_stop_recording);
-        assert_eq!(shortcuts.pause_resume_recording, loaded.pause_resume_recording);
+        assert_eq!(
+            shortcuts.pause_resume_recording,
+            loaded.pause_resume_recording
+        );
         assert_eq!(shortcuts.cancel_recording, loaded.cancel_recording);
 
         let _ = tokio::fs::remove_file(&shortcuts_path).await;
@@ -209,7 +212,11 @@ mod tests {
         let s = state.lock().unwrap();
         assert!(s.shortcuts.is_some());
         assert_eq!(
-            s.shortcuts.as_ref().unwrap().start_stop_recording.as_deref(),
+            s.shortcuts
+                .as_ref()
+                .unwrap()
+                .start_stop_recording
+                .as_deref(),
             Some("F9")
         );
     }
@@ -272,7 +279,10 @@ mod tests {
         }
 
         let s = state.lock().unwrap();
-        assert_eq!(s.custom_recordings_dir.as_deref(), Some("/chosen/directory"));
+        assert_eq!(
+            s.custom_recordings_dir.as_deref(),
+            Some("/chosen/directory")
+        );
     }
 
     #[test]

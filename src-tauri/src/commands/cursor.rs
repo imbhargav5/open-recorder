@@ -3,11 +3,15 @@ use std::sync::Mutex;
 use crate::state::AppState;
 
 #[tauri::command]
-pub async fn get_cursor_telemetry(
-    video_path: String,
-) -> Result<serde_json::Value, String> {
+pub async fn get_cursor_telemetry(video_path: String) -> Result<serde_json::Value, String> {
     // Cursor telemetry is stored as a JSON sidecar next to the video file
-    let telemetry_path = format!("{}.cursor.json", video_path.trim_end_matches(".mov").trim_end_matches(".mp4").trim_end_matches(".webm"));
+    let telemetry_path = format!(
+        "{}.cursor.json",
+        video_path
+            .trim_end_matches(".mov")
+            .trim_end_matches(".mp4")
+            .trim_end_matches(".webm")
+    );
 
     if let Ok(data) = tokio::fs::read_to_string(&telemetry_path).await {
         serde_json::from_str(&data).map_err(|e| e.to_string())
@@ -158,9 +162,12 @@ mod tests {
             "samples": [{"x": 100, "y": 200, "t": 0}],
             "clicks": [{"x": 100, "y": 200, "t": 0, "type": "left"}]
         });
-        tokio::fs::write(&telemetry_path, serde_json::to_string(&telemetry_data).unwrap())
-            .await
-            .unwrap();
+        tokio::fs::write(
+            &telemetry_path,
+            serde_json::to_string(&telemetry_data).unwrap(),
+        )
+        .await
+        .unwrap();
 
         let result = get_cursor_telemetry(video_path.to_string_lossy().to_string()).await;
         let _ = tokio::fs::remove_file(&telemetry_path).await;

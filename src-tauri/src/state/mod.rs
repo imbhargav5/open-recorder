@@ -589,7 +589,10 @@ mod tests {
         let json = serde_json::to_string(&original).unwrap();
         let restored: ShortcutConfig = serde_json::from_str(&json).unwrap();
         assert_eq!(original.start_stop_recording, restored.start_stop_recording);
-        assert_eq!(original.pause_resume_recording, restored.pause_resume_recording);
+        assert_eq!(
+            original.pause_resume_recording,
+            restored.pause_resume_recording
+        );
         assert_eq!(original.cancel_recording, restored.cancel_recording);
     }
 
@@ -636,17 +639,25 @@ mod tests {
     fn test_app_state_cursor_telemetry_append() {
         let mut state = AppState::default();
         state.cursor_telemetry.push(CursorTelemetryPoint {
-            x: 100.0, y: 200.0, timestamp: 1.0,
-            cursor_type: None, click_type: None,
+            x: 100.0,
+            y: 200.0,
+            timestamp: 1.0,
+            cursor_type: None,
+            click_type: None,
         });
         state.cursor_telemetry.push(CursorTelemetryPoint {
-            x: 150.0, y: 250.0, timestamp: 2.0,
+            x: 150.0,
+            y: 250.0,
+            timestamp: 2.0,
             cursor_type: Some("pointer".to_string()),
             click_type: Some("left".to_string()),
         });
         assert_eq!(state.cursor_telemetry.len(), 2);
         assert_eq!(state.cursor_telemetry[0].x, 100.0);
-        assert_eq!(state.cursor_telemetry[1].cursor_type.as_deref(), Some("pointer"));
+        assert_eq!(
+            state.cursor_telemetry[1].cursor_type.as_deref(),
+            Some("pointer")
+        );
     }
 
     #[test]
@@ -686,7 +697,11 @@ mod tests {
             facecam_settings: None,
         });
         assert_eq!(
-            state.current_recording_session.as_ref().unwrap().screen_video_path,
+            state
+                .current_recording_session
+                .as_ref()
+                .unwrap()
+                .screen_video_path,
             "/tmp/screen.mov"
         );
     }
@@ -759,16 +774,22 @@ mod tests {
                 id: "screen:0:0".to_string(),
                 name: "Main".to_string(),
                 source_type: Some("screen".to_string()),
-                thumbnail: None, display_id: Some("0".to_string()),
-                app_icon: None, original_name: None, app_name: None,
-                window_title: None, window_id: None,
+                thumbnail: None,
+                display_id: Some("0".to_string()),
+                app_icon: None,
+                original_name: None,
+                app_name: None,
+                window_title: None,
+                window_id: None,
             },
             SelectedSource {
                 id: "window:1:0".to_string(),
                 name: "Browser".to_string(),
                 source_type: Some("window".to_string()),
-                thumbnail: None, display_id: None,
-                app_icon: None, original_name: None,
+                thumbnail: None,
+                display_id: None,
+                app_icon: None,
+                original_name: None,
                 app_name: Some("Chrome".to_string()),
                 window_title: Some("Google".to_string()),
                 window_id: Some(1),
@@ -784,9 +805,27 @@ mod tests {
     #[test]
     fn test_cursor_telemetry_vec_serialization() {
         let points = vec![
-            CursorTelemetryPoint { x: 0.0, y: 0.0, timestamp: 0.0, cursor_type: None, click_type: None },
-            CursorTelemetryPoint { x: 100.0, y: 100.0, timestamp: 16.67, cursor_type: Some("arrow".to_string()), click_type: None },
-            CursorTelemetryPoint { x: 200.0, y: 200.0, timestamp: 33.33, cursor_type: Some("pointer".to_string()), click_type: Some("left".to_string()) },
+            CursorTelemetryPoint {
+                x: 0.0,
+                y: 0.0,
+                timestamp: 0.0,
+                cursor_type: None,
+                click_type: None,
+            },
+            CursorTelemetryPoint {
+                x: 100.0,
+                y: 100.0,
+                timestamp: 16.67,
+                cursor_type: Some("arrow".to_string()),
+                click_type: None,
+            },
+            CursorTelemetryPoint {
+                x: 200.0,
+                y: 200.0,
+                timestamp: 33.33,
+                cursor_type: Some("pointer".to_string()),
+                click_type: Some("left".to_string()),
+            },
         ];
         let json = serde_json::to_string(&points).unwrap();
         let restored: Vec<CursorTelemetryPoint> = serde_json::from_str(&json).unwrap();

@@ -97,11 +97,7 @@ impl SidecarProcess {
     }
 
     pub async fn wait_for_close(&mut self) -> Result<i32, String> {
-        let status = self
-            .child
-            .wait()
-            .await
-            .map_err(|e| e.to_string())?;
+        let status = self.child.wait().await.map_err(|e| e.to_string())?;
         Ok(status.code().unwrap_or(-1))
     }
 
@@ -139,20 +135,30 @@ pub fn get_sidecar_path(name: &str) -> Result<std::path::PathBuf, String> {
 
 fn get_target_triple() -> &'static str {
     #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-    { "aarch64-apple-darwin" }
+    {
+        "aarch64-apple-darwin"
+    }
     #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
-    { "x86_64-apple-darwin" }
+    {
+        "x86_64-apple-darwin"
+    }
     #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
-    { "x86_64-pc-windows-msvc" }
+    {
+        "x86_64-pc-windows-msvc"
+    }
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-    { "x86_64-unknown-linux-gnu" }
+    {
+        "x86_64-unknown-linux-gnu"
+    }
     #[cfg(not(any(
         all(target_os = "macos", target_arch = "aarch64"),
         all(target_os = "macos", target_arch = "x86_64"),
         all(target_os = "windows", target_arch = "x86_64"),
         all(target_os = "linux", target_arch = "x86_64"),
     )))]
-    { "unknown-unknown-unknown" }
+    {
+        "unknown-unknown-unknown"
+    }
 }
 
 #[cfg(test)]
@@ -232,7 +238,12 @@ mod tests {
         if let Err(err) = result {
             let triple = get_target_triple();
             let expected_name = format!("test-helper-{}", triple);
-            assert!(err.contains(&expected_name), "Error should mention {}: {}", expected_name, err);
+            assert!(
+                err.contains(&expected_name),
+                "Error should mention {}: {}",
+                expected_name,
+                err
+            );
         }
     }
 
@@ -287,8 +298,12 @@ mod tests {
     #[tokio::test]
     async fn test_sidecar_wait_for_stdout_pattern_found() {
         // Use printf to output a line with our pattern
-        let mut proc = SidecarProcess::spawn("echo", &["Recording started"]).await.unwrap();
-        let result = proc.wait_for_stdout_pattern("Recording started", 5000).await;
+        let mut proc = SidecarProcess::spawn("echo", &["Recording started"])
+            .await
+            .unwrap();
+        let result = proc
+            .wait_for_stdout_pattern("Recording started", 5000)
+            .await;
         assert!(result.is_ok());
         assert!(result.unwrap().contains("Recording started"));
     }

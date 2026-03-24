@@ -18,11 +18,20 @@ fn compile_sidecars() {
     let target_triple = get_target_triple();
 
     let helpers = [
-        ("ScreenCaptureKitRecorder.swift", "openscreen-screencapturekit-helper"),
+        (
+            "ScreenCaptureKitRecorder.swift",
+            "openscreen-screencapturekit-helper",
+        ),
         ("ScreenCaptureKitWindowList.swift", "openscreen-window-list"),
         ("SystemCursorAssets.swift", "openscreen-system-cursors"),
-        ("NativeCursorMonitor.swift", "openscreen-native-cursor-monitor"),
-        ("ScreenSelectionFlash.swift", "openscreen-screen-selection-flash"),
+        (
+            "NativeCursorMonitor.swift",
+            "openscreen-native-cursor-monitor",
+        ),
+        (
+            "ScreenSelectionFlash.swift",
+            "openscreen-screen-selection-flash",
+        ),
     ];
 
     println!("cargo:rerun-if-changed={}", native_dir.display());
@@ -30,7 +39,8 @@ fn compile_sidecars() {
 
     for (source_name, output_name) in helpers {
         let source_path = native_dir.join(source_name);
-        let output_path = sidecar_output_path(&binaries_dir, output_name, &target_triple, &target_os);
+        let output_path =
+            sidecar_output_path(&binaries_dir, output_name, &target_triple, &target_os);
 
         if target_os == "macos" && source_path.exists() {
             println!("cargo:rerun-if-changed={}", source_path.display());
@@ -45,7 +55,9 @@ fn compile_sidecars() {
                 .arg("-o")
                 .arg(&output_path)
                 .status()
-                .unwrap_or_else(|error| panic!("failed to spawn swiftc for {}: {}", source_name, error));
+                .unwrap_or_else(|error| {
+                    panic!("failed to spawn swiftc for {}: {}", source_name, error)
+                });
 
             if !status.success() {
                 panic!("failed to compile {}", source_name);
@@ -128,7 +140,6 @@ fn set_executable_if_needed(output_path: &Path) {
             .expect("failed to stat sidecar")
             .permissions();
         permissions.set_mode(0o755);
-        fs::set_permissions(output_path, permissions)
-            .expect("failed to set sidecar permissions");
+        fs::set_permissions(output_path, permissions).expect("failed to set sidecar permissions");
     }
 }

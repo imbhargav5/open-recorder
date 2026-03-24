@@ -49,35 +49,19 @@ pub async fn start_native_screen_recording(
 
     #[cfg(target_os = "macos")]
     {
-        crate::native::macos_capture::start_capture(
-            &app,
-            &source,
-            &options,
-            &output_path_str,
-        )
-        .await?;
+        crate::native::macos_capture::start_capture(&app, &source, &options, &output_path_str)
+            .await?;
     }
 
     #[cfg(target_os = "windows")]
     {
-        crate::native::wgc_capture::start_capture(
-            &app,
-            &source,
-            &options,
-            &output_path_str,
-        )
-        .await?;
+        crate::native::wgc_capture::start_capture(&app, &source, &options, &output_path_str)
+            .await?;
     }
 
     #[cfg(target_os = "linux")]
     {
-        crate::native::ffmpeg::start_capture(
-            &app,
-            &source,
-            &options,
-            &output_path_str,
-        )
-        .await?;
+        crate::native::ffmpeg::start_capture(&app, &source, &options, &output_path_str).await?;
     }
 
     {
@@ -277,11 +261,13 @@ mod tests {
             .join("open_recorder_test_nested")
             .join("recordings")
             .join("2024");
-        let _ = tokio::fs::remove_dir_all(std::env::temp_dir().join("open_recorder_test_nested")).await;
+        let _ =
+            tokio::fs::remove_dir_all(std::env::temp_dir().join("open_recorder_test_nested")).await;
 
         tokio::fs::create_dir_all(&dir).await.unwrap();
         assert!(dir.exists());
 
-        let _ = tokio::fs::remove_dir_all(std::env::temp_dir().join("open_recorder_test_nested")).await;
+        let _ =
+            tokio::fs::remove_dir_all(std::env::temp_dir().join("open_recorder_test_nested")).await;
     }
 }
