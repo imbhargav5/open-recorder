@@ -42,7 +42,12 @@ export default defineConfig({
 				manualChunks: {
 					pixi: ["pixi.js", "pixi.js/unsafe-eval"],
 					"react-vendor": ["react", "react-dom"],
-					"video-processing": ["mediabunny", "mp4box", "@fix-webm-duration/fix"],
+					"video-processing": [
+						"mediabunny",
+						"mp4box",
+						"@fix-webm-duration/fix",
+						"@fix-webm-duration/parser",
+					],
 				},
 			},
 		},
