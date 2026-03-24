@@ -8,7 +8,9 @@ import {
 	Image,
 	LoaderCircle,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Profiler, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
 	Empty,
@@ -18,16 +20,11 @@ import {
 	EmptyTitle,
 } from "@/components/ui/empty";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Switch } from "@/components/ui/switch";
-import { Profiler, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
-import { toast } from "sonner";
-import { UpdateNotification } from "@/components/UpdateNotification";
 import { Toaster } from "@/components/ui/sonner";
+import { Switch } from "@/components/ui/switch";
 import { useShortcuts } from "@/contexts/ShortcutsContext";
 import { getAssetPath } from "@/lib/assetPath";
 import * as backend from "@/lib/backend";
-import { getSuggestedExportFileName } from "@/lib/exportFileName";
 import {
 	calculateOutputDimensions,
 	type ExportFormat,
@@ -41,6 +38,7 @@ import {
 	type GifSizePreset,
 	VideoExporter,
 } from "@/lib/exporter";
+import { getSuggestedExportFileName } from "@/lib/exportFileName";
 import { onRenderProfiler } from "@/lib/perf";
 import {
 	createDefaultFacecamSettings,
@@ -48,8 +46,10 @@ import {
 	normalizeFacecamSettings,
 } from "@/lib/recordingSession";
 import { matchesShortcut } from "@/lib/shortcuts";
+import { cn } from "@/lib/utils";
 import { DEFAULT_WALLPAPER_RELATIVE_PATH, WALLPAPER_PATHS } from "@/lib/wallpapers";
 import { type AspectRatio, getAspectRatioValue } from "@/utils/aspectRatioUtils";
+import { AllShortcutsDialog } from "./AllShortcutsDialog";
 import { ExportDialog } from "./ExportDialog";
 import PlaybackControls from "./PlaybackControls";
 import {
@@ -61,7 +61,6 @@ import {
 	validateProjectData,
 } from "./projectPersistence";
 import { SettingsPanel } from "./SettingsPanel";
-import { AllShortcutsDialog } from "./AllShortcutsDialog";
 import TimelineEditor from "./timeline/TimelineEditor";
 import {
 	detectInteractionCandidates,
@@ -2456,7 +2455,6 @@ export default function VideoEditor() {
 			</div>
 
 			<Toaster theme="dark" className="pointer-events-auto" />
-			<UpdateNotification />
 
 			<AllShortcutsDialog open={showShortcutsDialog} onOpenChange={setShowShortcutsDialog} />
 
