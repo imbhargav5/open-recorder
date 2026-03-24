@@ -29,6 +29,7 @@ jobs:
     name: Build macOS arm64
     runs-on: macos-14
     env:
+      TAURI_TARGET_TRIPLE: aarch64-apple-darwin
       APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE || secrets.CSC_LINK }}
       APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD || secrets.CSC_KEY_PASSWORD }}
       APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY || secrets.CSC_NAME }}
@@ -82,8 +83,9 @@ jobs:
 
   build-macos-x64:
     name: Build macOS x64
-    runs-on: macos-15-intel
+    runs-on: macos-14
     env:
+      TAURI_TARGET_TRIPLE: x86_64-apple-darwin
       APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE || secrets.CSC_LINK }}
       APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD || secrets.CSC_KEY_PASSWORD }}
       APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY || secrets.CSC_NAME }}
