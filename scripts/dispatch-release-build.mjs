@@ -9,6 +9,9 @@ import { fileURLToPath } from "node:url";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
+const desktopAppRoot = resolve(repoRoot, "apps", "desktop");
+const desktopPackageJsonPath = resolve(desktopAppRoot, "package.json");
+const tauriRoot = resolve(desktopAppRoot, "src-tauri");
 
 process.chdir(repoRoot);
 
@@ -49,6 +52,8 @@ function parseArgs(argv) {
 	for (let index = 0; index < argv.length; index += 1) {
 		const arg = argv[index];
 		switch (arg) {
+			case "--":
+				break;
 			case "--release-type":
 				args.releaseType = argv[++index] ?? die("--release-type requires a value");
 				break;
@@ -134,7 +139,7 @@ function resolveRepo() {
 }
 
 function currentVersion() {
-	const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
+	const packageJson = JSON.parse(readFileSync(desktopPackageJsonPath, "utf8"));
 	return packageJson.version;
 }
 
@@ -166,28 +171,26 @@ function updateTextVersion(filePath, pattern, replacement) {
 }
 
 function syncVersionFiles(nextVersion) {
-	updateJsonVersion("package.json", nextVersion, "\t");
-	updateJsonVersion("package-lock.json", nextVersion, "\t");
 	updateTextVersion(
-		"src-tauri/Cargo.toml",
+		resolve(tauriRoot, "Cargo.toml"),
 		/^version = "\d+\.\d+\.\d+"$/m,
 		`version = "${nextVersion}"`,
 	);
-	updateJsonVersion("src-tauri/tauri.conf.json", nextVersion, 2);
+	updateJsonVersion(resolve(tauriRoot, "tauri.conf.json"), nextVersion, 2);
 	updateTextVersion(
-		"src-tauri/Cargo.lock",
+		resolve(tauriRoot, "Cargo.lock"),
 		/(\[\[package\]\]\s+name = "open-recorder"\s+version = ")\d+\.\d+\.\d+(")/m,
 		`$1${nextVersion}$2`,
 	);
+	updateJsonVersion(desktopPackageJsonPath, nextVersion, "\t");
 }
 
 function commitVersionBump(nextVersion) {
 	const versionFiles = [
-		"package.json",
-		"package-lock.json",
-		"src-tauri/Cargo.toml",
-		"src-tauri/tauri.conf.json",
-		"src-tauri/Cargo.lock",
+		"apps/desktop/package.json",
+		"apps/desktop/src-tauri/Cargo.toml",
+		"apps/desktop/src-tauri/tauri.conf.json",
+		"apps/desktop/src-tauri/Cargo.lock",
 	];
 
 	run("git", ["add", ...versionFiles]);
@@ -377,14 +380,14 @@ async function main() {
 	const latestTagVersion = latestSemverTagVersion();
 
 	const baseVersion = latestTagVersion || packageVersion;
-	const versionSource = latestTagVersion ? "git tag" : "package.json";
+	const versionSource = latestTagVersion ? "git tag" : "apps/desktop/package.json";
 
 	const releaseType = args.releaseType || (await chooseReleaseType(baseVersion));
 	const nextVersion = bumpVersion(baseVersion, releaseType);
 	const tag = `v${nextVersion}`;
 	const name = args.name || `Open Recorder v${nextVersion}`;
 
-	console.log(`Current package.json version: ${packageVersion}`);
+	console.log(`Current desktop package version: ${packageVersion}`);
 	console.log(`Latest local release tag: ${latestTagVersion ? `v${latestTagVersion}` : "none"}`);
 	console.log(`Using base version from ${versionSource}: ${baseVersion}`);
 	console.log(`Selected release type: ${releaseType}`);

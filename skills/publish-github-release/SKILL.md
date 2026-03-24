@@ -13,15 +13,15 @@ Use this skill when the user wants to publish an Open Recorder release from this
 Pick the script that matches the release type:
 
 ```bash
-npm run release:patch
-npm run release:minor
-npm run release:major
+pnpm release:patch
+pnpm release:minor
+pnpm release:major
 ```
 
 If the user wants to choose interactively, use:
 
 ```bash
-npm run release:dispatch
+pnpm release:dispatch
 ```
 
 ## Preconditions
@@ -34,7 +34,7 @@ Before running a release command:
 4. If this release needs signed macOS artifacts and secrets are not configured yet, run:
 
 ```bash
-npm run release:setup-macos-signing
+pnpm release:setup-macos-signing
 ```
 
 ## Release type guidance
@@ -45,12 +45,12 @@ npm run release:setup-macos-signing
 
 ## Useful command patterns
 
-You can pass extra flags through npm with `--`:
+You can pass extra flags through pnpm with `--`:
 
 ```bash
-npm run release:patch -- --notes "Bug fixes and stability improvements"
-npm run release:minor -- --name "Open Recorder v1.4.0" --yes
-npm run release:major -- --latest false
+pnpm release:patch -- --notes "Bug fixes and stability improvements"
+pnpm release:minor -- --name "Open Recorder v1.4.0" --yes
+pnpm release:major -- --latest false
 ```
 
 Supported flags come from `scripts/dispatch-release-build.mjs`:
@@ -66,7 +66,7 @@ Supported flags come from `scripts/dispatch-release-build.mjs`:
 
 1. Confirm the intended release type if the user did not already specify patch, minor, or major.
 2. Check the preconditions above.
-3. Run the matching npm script.
+3. Run the matching root workspace script.
 4. Report the calculated version tag and whether the workflow dispatch succeeded.
 5. If the user asks how the release process works or something fails, read [references/release-process.md](references/release-process.md).
 

@@ -30,3 +30,9 @@ dist-ssr
 src-tauri/target/
 src-tauri/binaries/
 src-tauri/gen/
+apps/desktop/src-tauri/target/
+apps/desktop/src-tauri/binaries/
+apps/desktop/src-tauri/gen/
+
+# Turbo
+.turbo/

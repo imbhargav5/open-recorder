@@ -4,10 +4,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = path.resolve(__dirname, '..');
-const sourceIconPath = path.join(repoRoot, 'branding', 'source-assets', 'open-recorder-brand-image.png');
-const tauriIconsDir = path.join(repoRoot, 'src-tauri', 'icons');
-const generatedPngIconsDir = path.join(repoRoot, '.tmp', 'generated-icon-pngs');
+const appRoot = path.resolve(__dirname, '..');
+const sourceIconPath = path.join(appRoot, 'branding', 'source-assets', 'open-recorder-brand-image.png');
+const tauriIconsDir = path.join(appRoot, 'src-tauri', 'icons');
+const generatedPngIconsDir = path.join(appRoot, '.tmp', 'generated-icon-pngs');
 
 const publicIconSizes = [16, 32, 64, 128, 256, 512, 1024];
 const brandAssetSizes = [16, 32, 64, 128, 256, 512, 1024];
@@ -24,10 +24,9 @@ async function copyWithParents(from, to) {
 }
 
 function runTauriCommand(args, errorMessage) {
-  const result = spawnSync('npx', ['@tauri-apps/cli', ...args], {
-    cwd: repoRoot,
+  const result = spawnSync('pnpm', ['exec', 'tauri', ...args], {
+    cwd: appRoot,
     stdio: 'inherit',
-    shell: true,
   });
 
   if (result.error) {
@@ -95,7 +94,7 @@ async function syncGeneratedAssets() {
     copyJobs.push(
       copyWithParents(
         path.join(generatedPngIconsDir, `${size}x${size}.png`),
-        path.join(repoRoot, 'public', 'app-icons', `open-recorder-${size}.png`),
+        path.join(appRoot, 'public', 'app-icons', `open-recorder-${size}.png`),
       ),
     );
   }
@@ -104,7 +103,7 @@ async function syncGeneratedAssets() {
     copyJobs.push(
       copyWithParents(
         path.join(generatedPngIconsDir, `${size}x${size}.png`),
-        path.join(repoRoot, 'branding', 'source-assets', `${size}-mac.png`),
+        path.join(appRoot, 'branding', 'source-assets', `${size}-mac.png`),
       ),
     );
   }
@@ -113,7 +112,7 @@ async function syncGeneratedAssets() {
     copyJobs.push(
       copyWithParents(
         path.join(generatedPngIconsDir, `${size}x${size}.png`),
-        path.join(repoRoot, 'icons', 'icons', 'png', `${size}x${size}.png`),
+        path.join(appRoot, 'icons', 'icons', 'png', `${size}x${size}.png`),
       ),
     );
   }
@@ -121,21 +120,21 @@ async function syncGeneratedAssets() {
   copyJobs.push(
     copyWithParents(
       path.join(tauriIconsDir, 'icon.icns'),
-      path.join(repoRoot, 'icons', 'icons', 'mac', 'icon.icns'),
+      path.join(appRoot, 'icons', 'icons', 'mac', 'icon.icns'),
     ),
   );
 
   copyJobs.push(
     copyWithParents(
       path.join(tauriIconsDir, 'icon.ico'),
-      path.join(repoRoot, 'icons', 'icons', 'win', 'icon.ico'),
+      path.join(appRoot, 'icons', 'icons', 'win', 'icon.ico'),
     ),
   );
 
   copyJobs.push(
     copyWithParents(
       path.join(generatedPngIconsDir, '128x128.png'),
-      path.join(repoRoot, 'public', 'rec-button.png'),
+      path.join(appRoot, 'public', 'rec-button.png'),
     ),
   );
 
@@ -143,7 +142,7 @@ async function syncGeneratedAssets() {
   copyJobs.push(
     copyWithParents(
       sourceIconPath,
-      path.join(repoRoot, 'public', 'openscreen.png'),
+      path.join(appRoot, 'public', 'openscreen.png'),
     ),
   );
 
