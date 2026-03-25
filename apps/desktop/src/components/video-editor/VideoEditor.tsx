@@ -52,6 +52,7 @@ import { cn } from "@/lib/utils";
 import { DEFAULT_WALLPAPER_RELATIVE_PATH, WALLPAPER_PATHS } from "@/lib/wallpapers";
 import { type AspectRatio, getAspectRatioValue } from "@/utils/aspectRatioUtils";
 import { AllShortcutsDialog } from "./AllShortcutsDialog";
+import { normalizeCursorTelemetryPayload } from "./cursorTelemetryPayload";
 import { ExportDialog } from "./ExportDialog";
 import PlaybackControls from "./PlaybackControls";
 import {
@@ -870,7 +871,14 @@ export default function VideoEditor() {
 			try {
 				const result = await backend.getCursorTelemetry(videoSourcePath);
 				if (mounted) {
-					setCursorTelemetry(result?.samples ?? []);
+					const previewVideo = videoPlaybackRef.current?.video;
+					setCursorTelemetry(
+						normalizeCursorTelemetryPayload(result, {
+							videoWidth: previewVideo?.videoWidth,
+							videoHeight: previewVideo?.videoHeight,
+							durationMs: duration > 0 ? Math.round(duration * 1000) : undefined,
+						}),
+					);
 					markVideoEditorTiming("cursor-telemetry-ready");
 				}
 			} catch (telemetryError) {
@@ -886,7 +894,7 @@ export default function VideoEditor() {
 		return () => {
 			mounted = false;
 		};
-	}, [playbackReady, videoSourcePath]);
+	}, [duration, playbackReady, videoSourcePath]);
 
 	const showPlaybackLoadingOverlay = Boolean(videoPath) && !playbackReady && !error;
 

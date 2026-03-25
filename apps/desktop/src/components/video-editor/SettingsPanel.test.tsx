@@ -4,10 +4,6 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@/lib/assetPath", () => ({
-	getAssetPath: vi.fn(async (value: string) => value),
-}));
-
 vi.mock("@/lib/backend", () => ({
 	openExternalUrl: vi.fn(),
 }));
@@ -102,6 +98,9 @@ describe("SettingsPanel", () => {
 		await click(harness.container.querySelector('[aria-label="Background"]'));
 
 		expect(harness.container.textContent).toContain("Upload Custom");
+		expect(harness.container.querySelector('img[alt="Wallpaper 1"]')?.getAttribute("src")).toBe(
+			"/wallpapers/thumbs/wallpaper1.jpg",
+		);
 
 		const gradientTrigger = Array.from(harness.container.querySelectorAll("button")).find(
 			(button) => button.textContent?.trim() === "Gradient",

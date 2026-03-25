@@ -1,41 +1,41 @@
-import { cn } from "@/lib/utils";
-import { memo, useEffect, useMemo, useRef, useState } from "react";
-import { getAssetPath } from "@/lib/assetPath";
-import { openExternalUrl } from "@/lib/backend";
-import { createDefaultFacecamSettings, type FacecamSettings } from "@/lib/recordingSession";
-import { BUILT_IN_WALLPAPERS, WALLPAPER_PATHS, WALLPAPER_RELATIVE_PATHS } from "@/lib/wallpapers";
+import Block from "@uiw/react-color-block";
+import {
+	Bug,
+	Camera,
+	Crop,
+	type LucideIcon,
+	MousePointer2,
+	Palette,
+	SlidersHorizontal,
+	Star,
+	Trash2,
+	Upload,
+	Volume2,
+	X,
+} from "lucide-react";
+import { memo, type ReactNode, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Button } from "@/components/ui/button";
-import Block from "@uiw/react-color-block";
-import {
-	Trash2,
-	Crop,
-	X,
-	Bug,
-	Upload,
-	Star,
-	MousePointer2,
-	Camera,
-	SlidersHorizontal,
-	Palette,
-	Volume2,
-	type LucideIcon,
-} from "lucide-react";
-import { toast } from "sonner";
-import type {
-	ZoomDepth,
-	CropRegion,
-	AnnotationRegion,
-	AnnotationType,
-	PlaybackSpeed,
-} from "./types";
-import { SPEED_OPTIONS } from "./types";
+import { openExternalUrl } from "@/lib/backend";
+import { createDefaultFacecamSettings, type FacecamSettings } from "@/lib/recordingSession";
+import { cn } from "@/lib/utils";
+import { BUILT_IN_WALLPAPERS, type BuiltInWallpaper, WALLPAPER_PATHS } from "@/lib/wallpapers";
+import { type AspectRatio } from "@/utils/aspectRatioUtils";
+import { AnnotationSettingsPanel } from "./AnnotationSettingsPanel";
 import { CropControl } from "./CropControl";
 import { KeyboardShortcutsHelp } from "./KeyboardShortcutsHelp";
-import { AnnotationSettingsPanel } from "./AnnotationSettingsPanel";
-import { type AspectRatio } from "@/utils/aspectRatioUtils";
+import type {
+	AnnotationRegion,
+	AnnotationType,
+	CropRegion,
+	FigureData,
+	PlaybackSpeed,
+	ZoomDepth,
+} from "./types";
+import { SPEED_OPTIONS } from "./types";
 
 const GRADIENTS = [
 	"linear-gradient( 111.6deg,  rgba(114,167,232,1) 9.4%, rgba(253,129,82,1) 43.9%, rgba(253,129,82,1) 54.8%, rgba(249,202,86,1) 86.3% )",
@@ -174,7 +174,7 @@ interface SettingsPanelProps {
 	onAnnotationContentChange?: (id: string, content: string) => void;
 	onAnnotationTypeChange?: (id: string, type: AnnotationType) => void;
 	onAnnotationStyleChange?: (id: string, style: Partial<AnnotationRegion["style"]>) => void;
-	onAnnotationFigureDataChange?: (id: string, figureData: any) => void;
+	onAnnotationFigureDataChange?: (id: string, figureData: FigureData) => void;
 	onAnnotationDelete?: (id: string) => void;
 	selectedSpeedId?: string | null;
 	selectedSpeedValue?: PlaybackSpeed | null;
@@ -190,6 +190,65 @@ const ZOOM_DEPTH_OPTIONS: Array<{ depth: ZoomDepth; label: string }> = [
 	{ depth: 5, label: "3.5×" },
 	{ depth: 6, label: "5×" },
 ];
+
+const normalizeWallpaperValue = (value: string) =>
+	value.replace(/^file:\/\//, "").replace(/^\//, "");
+
+function isBuiltInWallpaperSelected(selectedValue: string, wallpaper: BuiltInWallpaper) {
+	const normalizedSelected = normalizeWallpaperValue(selectedValue);
+
+	return [wallpaper.publicPath, wallpaper.relativePath, wallpaper.thumbnailPublicPath].some(
+		(candidate) => {
+			const normalizedCandidate = normalizeWallpaperValue(candidate);
+			return (
+				normalizedSelected === normalizedCandidate ||
+				normalizedSelected.endsWith(normalizedCandidate) ||
+				normalizedCandidate.endsWith(normalizedSelected)
+			);
+		},
+	);
+}
+
+type WallpaperPreviewTileProps = {
+	label: string;
+	previewSrc: string;
+	isSelected: boolean;
+	onSelect: () => void;
+	children?: ReactNode;
+};
+
+function WallpaperPreviewTile({
+	label,
+	previewSrc,
+	isSelected,
+	onSelect,
+	children,
+}: WallpaperPreviewTileProps) {
+	return (
+		<div
+			className={cn(
+				"aspect-square w-9 h-9 rounded-md border-2 overflow-hidden cursor-pointer transition-all duration-200 relative shadow-sm group",
+				isSelected
+					? "border-[#2563EB] ring-1 ring-[#2563EB]/30"
+					: "border-white/10 hover:border-[#2563EB]/40 opacity-80 hover:opacity-100 bg-white/5",
+			)}
+			aria-label={label}
+			title={label}
+			onClick={onSelect}
+			role="button"
+		>
+			<img
+				src={previewSrc}
+				alt={label}
+				loading="lazy"
+				decoding="async"
+				draggable={false}
+				className="pointer-events-none h-full w-full object-cover"
+			/>
+			{children}
+		</div>
+	);
+}
 
 function SettingsPanelInner({
 	selected,
@@ -247,29 +306,10 @@ function SettingsPanelInner({
 	onSpeedChange,
 	onSpeedDelete,
 }: SettingsPanelProps) {
-	console.log("render <SettingsPanel>");
 	const [activeTab, setActiveTab] = useState<SettingsSidebarTab>("appearance");
 	const [backgroundTab, setBackgroundTab] = useState<"image" | "color" | "gradient">("image");
-	const [wallpaperPreviewPaths, setWallpaperPreviewPaths] = useState<string[]>([]);
 	const [customImages, setCustomImages] = useState<string[]>([]);
 	const fileInputRef = useRef<HTMLInputElement>(null);
-
-	useEffect(() => {
-		let mounted = true;
-		(async () => {
-			try {
-				const resolved = await Promise.all(
-					WALLPAPER_RELATIVE_PATHS.map((path) => getAssetPath(path)),
-				);
-				if (mounted) setWallpaperPreviewPaths(resolved);
-			} catch (err) {
-				if (mounted) setWallpaperPreviewPaths(WALLPAPER_PATHS);
-			}
-		})();
-		return () => {
-			mounted = false;
-		};
-	}, []);
 	const [selectedColor, setSelectedColor] = useState("#ADADAD");
 	const [gradient, setGradient] = useState<string>(GRADIENTS[0]);
 	const [showCropModal, setShowCropModal] = useState(false);
@@ -704,21 +744,12 @@ function SettingsPanelInner({
 									{customImages.map((imageUrl, idx) => {
 										const isSelected = selected === imageUrl;
 										return (
-											<div
+											<WallpaperPreviewTile
 												key={`custom-${idx}`}
-												className={cn(
-													"aspect-square w-9 h-9 rounded-md border-2 overflow-hidden cursor-pointer transition-all duration-200 relative group shadow-sm",
-													isSelected
-														? "border-[#2563EB] ring-1 ring-[#2563EB]/30"
-														: "border-white/10 hover:border-[#2563EB]/40 opacity-80 hover:opacity-100 bg-white/5",
-												)}
-												style={{
-													backgroundImage: `url(${imageUrl})`,
-													backgroundSize: "cover",
-													backgroundPosition: "center",
-												}}
-												onClick={() => onWallpaperChange(imageUrl)}
-												role="button"
+												label={`Custom wallpaper ${idx + 1}`}
+												previewSrc={imageUrl}
+												isSelected={isSelected}
+												onSelect={() => onWallpaperChange(imageUrl)}
 											>
 												<button
 													type="button"
@@ -727,49 +758,21 @@ function SettingsPanelInner({
 												>
 													<X className="w-2 h-2 text-white" />
 												</button>
-											</div>
+											</WallpaperPreviewTile>
 										);
 									})}
 
-									{(wallpaperPreviewPaths.length > 0 ? wallpaperPreviewPaths : WALLPAPER_PATHS).map(
-										(previewPath, index) => {
-											const wallpaper = BUILT_IN_WALLPAPERS[index];
-											const wallpaperValue = WALLPAPER_PATHS[index] ?? previewPath;
-											const isSelected = (() => {
-												if (!selected) return false;
-												if (selected === wallpaperValue || selected === previewPath) return true;
-												try {
-													const clean = (value: string) =>
-														value.replace(/^file:\/\//, "").replace(/^\//, "");
-													if (clean(selected).endsWith(clean(wallpaperValue))) return true;
-													if (clean(wallpaperValue).endsWith(clean(selected))) return true;
-													if (clean(selected).endsWith(clean(previewPath))) return true;
-													if (clean(previewPath).endsWith(clean(selected))) return true;
-												} catch {}
-												return false;
-											})();
-											return (
-												<div
-													key={wallpaperValue}
-													className={cn(
-														"aspect-square w-9 h-9 rounded-md border-2 overflow-hidden cursor-pointer transition-all duration-200 shadow-sm",
-														isSelected
-															? "border-[#2563EB] ring-1 ring-[#2563EB]/30"
-															: "border-white/10 hover:border-[#2563EB]/40 opacity-80 hover:opacity-100 bg-white/5",
-													)}
-													aria-label={wallpaper?.label ?? `Wallpaper ${index + 1}`}
-													title={wallpaper?.label ?? `Wallpaper ${index + 1}`}
-													style={{
-														backgroundImage: `url(${previewPath})`,
-														backgroundSize: "cover",
-														backgroundPosition: "center",
-													}}
-													onClick={() => onWallpaperChange(wallpaperValue)}
-													role="button"
-												/>
-											);
-										},
-									)}
+									{BUILT_IN_WALLPAPERS.map((wallpaper) => (
+										<WallpaperPreviewTile
+											key={wallpaper.id}
+											label={wallpaper.label}
+											previewSrc={wallpaper.thumbnailPublicPath}
+											isSelected={
+												Boolean(selected) && isBuiltInWallpaperSelected(selected, wallpaper)
+											}
+											onSelect={() => onWallpaperChange(wallpaper.publicPath)}
+										/>
+									))}
 								</div>
 							</TabsContent>
 
