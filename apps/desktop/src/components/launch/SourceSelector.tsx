@@ -8,6 +8,7 @@ import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
 import styles from "./SourceSelector.module.css";
+import { getSourceGridColumnClass } from "./sourceGridLayout";
 
 interface DesktopSource {
 	id: string;
@@ -113,13 +114,7 @@ function parseSourceMetadata(source: ProcessedDesktopSource) {
 	};
 }
 
-function SourceGrid({
-	sources,
-	selectedSource,
-	onSelect,
-	type,
-	emptyMessage,
-}: SourceGridProps) {
+function SourceGrid({ sources, selectedSource, onSelect, type, emptyMessage }: SourceGridProps) {
 	if (sources.length === 0) {
 		return (
 			<div className={styles.emptyState}>
@@ -139,7 +134,13 @@ function SourceGrid({
 	}
 
 	return (
-		<div className={cn("grid grid-cols-2 gap-3 pr-1", styles.sourceGridScroll)}>
+		<div
+			className={cn(
+				"grid gap-3 pr-1",
+				getSourceGridColumnClass(type, sources.length),
+				styles.sourceGridScroll,
+			)}
+		>
 			{sources.map((source) => {
 				const isSelected = selectedSource?.id === source.id;
 				const subtitle =
@@ -147,7 +148,7 @@ function SourceGrid({
 						? source.display_id
 							? `Display ${source.display_id}`
 							: "Entire display"
-						: source.appName ?? "Window";
+						: (source.appName ?? "Window");
 
 				return (
 					<Card
@@ -157,11 +158,7 @@ function SourceGrid({
 					>
 						<div className={styles.previewShell}>
 							{source.thumbnail ? (
-								<img
-									src={source.thumbnail}
-									alt={source.name}
-									className={styles.previewImage}
-								/>
+								<img src={source.thumbnail} alt={source.name} className={styles.previewImage} />
 							) : (
 								<div className={styles.previewPlaceholder}>
 									<div className={styles.previewPlaceholderIcon}>
@@ -179,9 +176,7 @@ function SourceGrid({
 								</div>
 							)}
 							<div className={styles.previewOverlay} />
-							<div className={styles.sourceBadge}>
-								{type === "screen" ? "Screen" : "Window"}
-							</div>
+							<div className={styles.sourceBadge}>{type === "screen" ? "Screen" : "Window"}</div>
 							{isSelected && (
 								<div className={styles.selectedBadge}>
 									<MdCheck className="h-3.5 w-3.5" />
@@ -399,9 +394,7 @@ export function SourceSelector() {
 							</TabsTrigger>
 						</TabsList>
 
-						<div className="hidden sm:block text-xs text-white/40">
-							Visible windows only
-						</div>
+						<div className="hidden sm:block text-xs text-white/40">Visible windows only</div>
 					</div>
 
 					<TabsContent value="screens" className={styles.tabContent}>

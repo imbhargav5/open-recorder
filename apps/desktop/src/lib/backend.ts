@@ -276,8 +276,8 @@ export function setCurrentScreenshotPath(path: string | null): Promise<void> {
 
 // ─── Window Management ──────────────────────────────────────────────────────
 
-export function switchToEditor(): Promise<void> {
-	return invoke("switch_to_editor");
+export function switchToEditor(query?: string): Promise<void> {
+	return invoke("switch_to_editor", { query });
 }
 
 export function switchToImageEditor(): Promise<void> {

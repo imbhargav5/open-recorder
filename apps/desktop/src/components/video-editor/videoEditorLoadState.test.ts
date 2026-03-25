@@ -52,6 +52,7 @@ describe("loadInitialVideoEditorState", () => {
 			facecamSourcePath: "/Users/demo/facecam.mov",
 			facecamOffsetMs: 240,
 			facecamSettings: { enabled: true },
+			sourceName: null,
 		});
 	});
 
@@ -66,6 +67,51 @@ describe("loadInitialVideoEditorState", () => {
 		).resolves.toEqual({
 			kind: "video",
 			sourcePath: "/Users/demo/video.mp4",
+			sourceName: null,
+		});
+	});
+
+	it("prefers explicit editor window launch params over shared app state", async () => {
+		await expect(
+			loadInitialVideoEditorState({
+				loadCurrentProjectFile: async () => ({
+					data: { ignored: true },
+					filePath: "/Users/demo/ignored.openrecorder",
+				}),
+				getCurrentVideoPath: async () => "file:///Users/demo/ignored-video.mp4",
+				getCurrentRecordingSession: async () => ({
+					screenVideoPath: "file:///Users/demo/ignored-session.mov",
+				}),
+				search:
+					"?windowType=editor&editorMode=session&videoPath=file%3A%2F%2F%2FUsers%2Fdemo%2Fsession.mov&sourceName=Display%201",
+			}),
+		).resolves.toEqual({
+			kind: "session",
+			sourcePath: "/Users/demo/session.mov",
+			facecamSourcePath: null,
+			facecamOffsetMs: 0,
+			facecamSettings: undefined,
+			sourceName: "Display 1",
+		});
+	});
+
+	it("loads a project from an explicit project path", async () => {
+		await expect(
+			loadInitialVideoEditorState({
+				loadCurrentProjectFile: async () => null,
+				getCurrentVideoPath: async () => null,
+				getCurrentRecordingSession: async () => null,
+				readLocalFile: async () =>
+					new TextEncoder().encode(
+						JSON.stringify({ version: 3, videoPath: "file:///demo.mov", editor: {} }),
+					),
+				search:
+					"?windowType=editor&editorMode=project&projectPath=file%3A%2F%2F%2FUsers%2Fdemo%2Fedit.openrecorder",
+			}),
+		).resolves.toEqual({
+			kind: "project",
+			data: { version: 3, videoPath: "file:///demo.mov", editor: {} },
+			filePath: "/Users/demo/edit.openrecorder",
 		});
 	});
 });

@@ -1,6 +1,7 @@
 import { fixParsedWebmDuration } from "@fix-webm-duration/fix";
 import { WebmFile } from "@fix-webm-duration/parser";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { buildEditorWindowQuery } from "@/components/video-editor/editorWindowParams";
 import * as backend from "@/lib/backend";
 import { createDefaultFacecamSettings, type RecordingSession } from "@/lib/recordingSession";
 
@@ -97,6 +98,28 @@ type UseScreenRecorderReturn = {
 	setCameraDeviceId: (deviceId: string | undefined) => void;
 };
 
+function getSelectedSourceName(source: unknown) {
+	if (!source || typeof source !== "object") {
+		return undefined;
+	}
+
+	const candidate = source as {
+		name?: unknown;
+		windowTitle?: unknown;
+		window_title?: unknown;
+	};
+	if (typeof candidate.name === "string" && candidate.name.trim()) {
+		return candidate.name;
+	}
+	if (typeof candidate.windowTitle === "string" && candidate.windowTitle.trim()) {
+		return candidate.windowTitle;
+	}
+	if (typeof candidate.window_title === "string" && candidate.window_title.trim()) {
+		return candidate.window_title;
+	}
+	return undefined;
+}
+
 export function useScreenRecorder(): UseScreenRecorderReturn {
 	const [recording, setRecording] = useState(false);
 	const [starting, setStarting] = useState(false);
@@ -121,6 +144,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	const wgcRecording = useRef(false);
 	const startInFlight = useRef(false);
 	const hasPromptedForReselect = useRef(false);
+	const selectedSourceName = useRef<string | undefined>(undefined);
 	const recordingSessionId = useRef<string>("");
 	const recordingFilePath = useRef<string | null>(null);
 	const facecamRecordingPath = useRef<string | null>(null);
@@ -216,99 +240,102 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		[resetStagedFileState],
 	);
 
-	const preparePermissions = useCallback(async (options: { startup?: boolean } = {}) => {
-		const platform = await backend.getPlatform();
-		if (platform !== "darwin") {
-			return true;
-		}
+	const preparePermissions = useCallback(
+		async (options: { startup?: boolean } = {}) => {
+			const platform = await backend.getPlatform();
+			if (platform !== "darwin") {
+				return true;
+			}
 
-		// ── Screen Recording (required) ──────────────────────────────────
-		const screenStatus = await backend.getScreenRecordingPermissionStatus();
-		if (screenStatus !== "granted") {
-			const granted = await backend.requestScreenRecordingPermission();
-			if (granted) {
-				// continue to next check
-			} else {
-				const refreshedStatus = await backend.getScreenRecordingPermissionStatus();
-				if (refreshedStatus !== "granted") {
-					await backend.openScreenRecordingPreferences();
+			// ── Screen Recording (required) ──────────────────────────────────
+			const screenStatus = await backend.getScreenRecordingPermissionStatus();
+			if (screenStatus !== "granted") {
+				const granted = await backend.requestScreenRecordingPermission();
+				if (granted) {
+					// continue to next check
+				} else {
+					const refreshedStatus = await backend.getScreenRecordingPermissionStatus();
+					if (refreshedStatus !== "granted") {
+						await backend.openScreenRecordingPreferences();
+						alert(
+							options.startup
+								? "Open Recorder needs Screen Recording permission before you start. System Settings has been opened. After enabling it, quit and reopen Open Recorder."
+								: "Screen Recording permission is still missing. System Settings has been opened again. Enable it, then quit and reopen Open Recorder before recording.",
+						);
+						return false;
+					}
+				}
+			}
+
+			// ── Accessibility (required) ─────────────────────────────────────
+			const accessibilityStatus = await backend.getAccessibilityPermissionStatus();
+			if (accessibilityStatus !== "granted") {
+				const granted = await backend.requestAccessibilityPermission();
+				if (!granted) {
+					await backend.openAccessibilityPreferences();
 					alert(
 						options.startup
-							? "Open Recorder needs Screen Recording permission before you start. System Settings has been opened. After enabling it, quit and reopen Open Recorder."
-							: "Screen Recording permission is still missing. System Settings has been opened again. Enable it, then quit and reopen Open Recorder before recording.",
+							? "Open Recorder also needs Accessibility permission for cursor tracking. System Settings has been opened. After enabling it, quit and reopen Open Recorder."
+							: "Accessibility permission is still missing. System Settings has been opened again. Enable it, then quit and reopen Open Recorder before recording.",
 					);
 					return false;
 				}
 			}
-		}
 
-		// ── Accessibility (required) ─────────────────────────────────────
-		const accessibilityStatus = await backend.getAccessibilityPermissionStatus();
-		if (accessibilityStatus !== "granted") {
-			const granted = await backend.requestAccessibilityPermission();
-			if (!granted) {
-				await backend.openAccessibilityPreferences();
-				alert(
-					options.startup
-						? "Open Recorder also needs Accessibility permission for cursor tracking. System Settings has been opened. After enabling it, quit and reopen Open Recorder."
-						: "Accessibility permission is still missing. System Settings has been opened again. Enable it, then quit and reopen Open Recorder before recording.",
-				);
-				return false;
-			}
-		}
-
-		// ── Microphone (check if enabled and not yet granted) ────────────
-		if (microphoneEnabled) {
-			const micStatus = await backend.getMicrophonePermissionStatus().catch(() => "unknown");
-			if (micStatus === "not_determined") {
-				const granted = isMacOS
-					? await backend.requestMicrophonePermission().catch(() => false)
-					: await navigator.mediaDevices
-							.getUserMedia({ audio: true, video: false })
-							.then((stream) => {
-								stream.getTracks().forEach((track) => track.stop());
-								return true;
-							})
-							.catch(() => false);
-				if (!granted) {
-					console.warn("Microphone permission not granted during pre-recording check.");
+			// ── Microphone (check if enabled and not yet granted) ────────────
+			if (microphoneEnabled) {
+				const micStatus = await backend.getMicrophonePermissionStatus().catch(() => "unknown");
+				if (micStatus === "not_determined") {
+					const granted = isMacOS
+						? await backend.requestMicrophonePermission().catch(() => false)
+						: await navigator.mediaDevices
+								.getUserMedia({ audio: true, video: false })
+								.then((stream) => {
+									stream.getTracks().forEach((track) => track.stop());
+									return true;
+								})
+								.catch(() => false);
+					if (!granted) {
+						console.warn("Microphone permission not granted during pre-recording check.");
+					}
+				} else if (micStatus === "denied" || micStatus === "restricted") {
+					await backend.openMicrophonePreferences();
+					alert(
+						"Microphone access is currently denied. System Settings has been opened. Grant microphone access, then try recording again.",
+					);
+					return false;
 				}
-			} else if (micStatus === "denied" || micStatus === "restricted") {
-				await backend.openMicrophonePreferences();
-				alert(
-					"Microphone access is currently denied. System Settings has been opened. Grant microphone access, then try recording again.",
-				);
-				return false;
 			}
-		}
 
-		// ── Camera (check if enabled and not yet granted) ────────────────
-		if (cameraEnabled) {
-			const camStatus = await backend.getCameraPermissionStatus().catch(() => "unknown");
-			if (camStatus === "not_determined") {
-				const granted = isMacOS
-					? await backend.requestCameraPermission().catch(() => false)
-					: await navigator.mediaDevices
-							.getUserMedia({ audio: false, video: true })
-							.then((stream) => {
-								stream.getTracks().forEach((track) => track.stop());
-								return true;
-							})
-							.catch(() => false);
-				if (!granted) {
-					console.warn("Camera permission not granted during pre-recording check.");
+			// ── Camera (check if enabled and not yet granted) ────────────────
+			if (cameraEnabled) {
+				const camStatus = await backend.getCameraPermissionStatus().catch(() => "unknown");
+				if (camStatus === "not_determined") {
+					const granted = isMacOS
+						? await backend.requestCameraPermission().catch(() => false)
+						: await navigator.mediaDevices
+								.getUserMedia({ audio: false, video: true })
+								.then((stream) => {
+									stream.getTracks().forEach((track) => track.stop());
+									return true;
+								})
+								.catch(() => false);
+					if (!granted) {
+						console.warn("Camera permission not granted during pre-recording check.");
+					}
+				} else if (camStatus === "denied" || camStatus === "restricted") {
+					await backend.openCameraPreferences();
+					alert(
+						"Camera access is currently denied. System Settings has been opened. Grant camera access, then try recording again.",
+					);
+					return false;
 				}
-			} else if (camStatus === "denied" || camStatus === "restricted") {
-				await backend.openCameraPreferences();
-				alert(
-					"Camera access is currently denied. System Settings has been opened. Grant camera access, then try recording again.",
-				);
-				return false;
 			}
-		}
 
-		return true;
-	}, [microphoneEnabled, cameraEnabled]);
+			return true;
+		},
+		[microphoneEnabled, cameraEnabled, isMacOS],
+	);
 
 	const selectMimeType = useCallback(() => {
 		const preferred = [
@@ -373,6 +400,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			...(facecamResult?.path ? { facecamVideoPath: facecamResult.path } : {}),
 			...(facecamResult?.offsetMs !== undefined ? { facecamOffsetMs: facecamResult.offsetMs } : {}),
 			facecamSettings: createDefaultFacecamSettings(Boolean(facecamResult?.path)),
+			...(selectedSourceName.current ? { sourceName: selectedSourceName.current } : {}),
 		}),
 		[],
 	);
@@ -563,9 +591,19 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				}
 
 				const facecamResult = await facecamResultPromise.catch(() => null);
+				const recordingSession = buildRecordingSession(finalPath, facecamResult);
 				await backend.setCurrentVideoPath(finalPath).catch(() => null);
-				await backend.setCurrentRecordingSession(buildRecordingSession(finalPath, facecamResult));
-				await backend.switchToEditor();
+				await backend.setCurrentRecordingSession(recordingSession);
+				await backend.switchToEditor(
+					buildEditorWindowQuery({
+						mode: "session",
+						videoPath: finalPath,
+						facecamVideoPath: recordingSession.facecamVideoPath ?? null,
+						facecamOffsetMs: recordingSession.facecamOffsetMs,
+						facecamSettings: recordingSession.facecamSettings,
+						sourceName: recordingSession.sourceName,
+					}),
+				);
 			})();
 			return;
 		}
@@ -673,6 +711,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 		try {
 			const selectedSource = await backend.getSelectedSource();
+			selectedSourceName.current = getSelectedSourceName(selectedSource);
 			const mediaDevices = navigator.mediaDevices as DesktopCaptureMediaDevices;
 			if (!selectedSource) {
 				alert("Please select a source to record");
@@ -972,11 +1011,19 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 						? await pendingFacecamResult.current
 						: null;
 					pendingFacecamResult.current = null;
+					const recordingSession = buildRecordingSession(storedPath, facecamResult);
 
-					await backend.setCurrentRecordingSession(
-						buildRecordingSession(storedPath, facecamResult),
+					await backend.setCurrentRecordingSession(recordingSession);
+					await backend.switchToEditor(
+						buildEditorWindowQuery({
+							mode: "session",
+							videoPath: storedPath,
+							facecamVideoPath: recordingSession.facecamVideoPath ?? null,
+							facecamOffsetMs: recordingSession.facecamOffsetMs,
+							facecamSettings: recordingSession.facecamSettings,
+							sourceName: recordingSession.sourceName,
+						}),
 					);
-					await backend.switchToEditor();
 				} catch (error) {
 					console.error("Error saving recording:", error);
 					if (recordingFilePath.current) {

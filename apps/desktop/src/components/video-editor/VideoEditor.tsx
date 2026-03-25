@@ -54,6 +54,7 @@ import { type AspectRatio, getAspectRatioValue } from "@/utils/aspectRatioUtils"
 import { AllShortcutsDialog } from "./AllShortcutsDialog";
 import { normalizeCursorTelemetryPayload } from "./cursorTelemetryPayload";
 import { ExportDialog } from "./ExportDialog";
+import { buildVideoEditorNavbarTitle } from "./editorWindowParams";
 import PlaybackControls from "./PlaybackControls";
 import {
 	createProjectData,
@@ -179,6 +180,7 @@ function createHistorySignature(snapshot: Omit<EditorHistorySnapshot, "signature
 export default function VideoEditor() {
 	const [videoPath, setVideoPath] = useState<string | null>(null);
 	const [videoSourcePath, setVideoSourcePath] = useState<string | null>(null);
+	const [sourceName, setSourceName] = useState<string | null>(null);
 	const [facecamVideoPath, setFacecamVideoPath] = useState<string | null>(null);
 	const [facecamPlaybackPath, setFacecamPlaybackPath] = useState<string | null>(null);
 	const [facecamOffsetMs, setFacecamOffsetMs] = useState(0);
@@ -407,6 +409,7 @@ export default function VideoEditor() {
 			resetPlaybackStateForSourceChange();
 			setVideoSourcePath(sourcePath);
 			setVideoPath(resolvedVideoPath);
+			setSourceName(typeof project.sourceName === "string" ? project.sourceName : null);
 			setFacecamVideoPath(normalizedFacecamVideoPath);
 			setFacecamPlaybackPath(resolvedFacecamPath);
 			setFacecamOffsetMs(normalizedFacecamOffsetMs);
@@ -478,6 +481,7 @@ export default function VideoEditor() {
 						{
 							facecamVideoPath: normalizedFacecamVideoPath,
 							facecamOffsetMs: normalizedFacecamOffsetMs,
+							sourceName: typeof project.sourceName === "string" ? project.sourceName : null,
 						},
 					),
 				),
@@ -532,6 +536,7 @@ export default function VideoEditor() {
 				{
 					facecamVideoPath,
 					facecamOffsetMs,
+					sourceName,
 				},
 			),
 		);
@@ -539,6 +544,7 @@ export default function VideoEditor() {
 		videoSourcePath,
 		facecamVideoPath,
 		facecamOffsetMs,
+		sourceName,
 		wallpaper,
 		audioMuted,
 		audioVolume,
@@ -600,28 +606,40 @@ export default function VideoEditor() {
 			lastSavedSnapshot &&
 			currentProjectSnapshot !== lastSavedSnapshot,
 	);
+	const editorNavbarTitle = useMemo(
+		() =>
+			buildVideoEditorNavbarTitle({
+				projectPath: currentProjectPath,
+				videoPath: videoSourcePath,
+				sourceName,
+			}),
+		[currentProjectPath, sourceName, videoSourcePath],
+	);
+
+	useEffect(() => {
+		document.title = editorNavbarTitle;
+	}, [editorNavbarTitle]);
 
 	useEffect(() => {
 		async function loadInitialData() {
 			try {
-				const currentProjectResult = await backend.loadCurrentProjectFile();
-				if (currentProjectResult?.data) {
-					const restored = await applyLoadedProject(
-						currentProjectResult.data,
-						currentProjectResult.filePath ?? null,
-					);
-					if (restored) {
-						markVideoEditorTiming("initial-data-ready");
-						return;
-					}
-				}
-
 				const initialState = await loadInitialVideoEditorState({
-					loadCurrentProjectFile: async () => null,
+					loadCurrentProjectFile: backend.loadCurrentProjectFile,
 					getCurrentVideoPath: backend.getCurrentVideoPath,
 					getCurrentRecordingSession: backend.getCurrentRecordingSession,
+					readLocalFile: backend.readLocalFile,
+					search: window.location.search,
 				});
-				if (initialState.kind === "session") {
+				if (initialState.kind === "project") {
+					const restored = await applyLoadedProject(
+						initialState.data,
+						initialState.filePath ?? null,
+					);
+					if (!restored) {
+						setSourceName(null);
+						setError("Invalid project file format");
+					}
+				} else if (initialState.kind === "session") {
 					const nextFacecamPath = initialState.facecamSourcePath;
 					const { resolvedVideoPath, resolvedFacecamPath } = await resolvePlaybackPaths(
 						initialState.sourcePath,
@@ -630,6 +648,7 @@ export default function VideoEditor() {
 					resetPlaybackStateForSourceChange();
 					setVideoSourcePath(initialState.sourcePath);
 					setVideoPath(resolvedVideoPath);
+					setSourceName(initialState.sourceName);
 					setFacecamVideoPath(nextFacecamPath);
 					setFacecamPlaybackPath(resolvedFacecamPath);
 					setFacecamOffsetMs(initialState.facecamOffsetMs);
@@ -645,6 +664,7 @@ export default function VideoEditor() {
 					resetPlaybackStateForSourceChange();
 					setVideoSourcePath(initialState.sourcePath);
 					setVideoPath(resolvedVideoPath);
+					setSourceName(initialState.sourceName);
 					setFacecamVideoPath(null);
 					setFacecamPlaybackPath(null);
 					setFacecamOffsetMs(0);
@@ -652,6 +672,7 @@ export default function VideoEditor() {
 					setCurrentProjectPath(null);
 					setLastSavedSnapshot(null);
 				} else {
+					setSourceName(null);
 					setError("No video to load. Please record or select a video.");
 				}
 
@@ -713,6 +734,7 @@ export default function VideoEditor() {
 				{
 					facecamVideoPath,
 					facecamOffsetMs,
+					sourceName,
 				},
 			);
 
@@ -743,6 +765,7 @@ export default function VideoEditor() {
 			videoSourcePath,
 			facecamVideoPath,
 			facecamOffsetMs,
+			sourceName,
 			currentProjectPath,
 			wallpaper,
 			audioMuted,
@@ -2127,7 +2150,9 @@ export default function VideoEditor() {
 				className="relative h-10 flex-shrink-0 bg-[#09090b]/80 backdrop-blur-md border-b border-white/5 flex items-center justify-center px-6 z-50"
 				style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
 			>
-				<span className="text-sm font-semibold tracking-tight text-white/90">Open Recorder</span>
+				<span className="text-sm font-semibold tracking-tight text-white/90">
+					{editorNavbarTitle}
+				</span>
 				<div
 					className="absolute right-4 flex items-center gap-2"
 					style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}

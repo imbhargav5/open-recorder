@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PROJECT_VERSION, createProjectData, normalizeProjectEditor } from "./projectPersistence";
+import { createProjectData, normalizeProjectEditor, PROJECT_VERSION } from "./projectPersistence";
 
 describe("projectPersistence", () => {
 	it("defaults audio settings when loading older editor snapshots", () => {
@@ -23,5 +23,17 @@ describe("projectPersistence", () => {
 		expect(project.version).toBe(PROJECT_VERSION);
 		expect(project.editor.audioMuted).toBe(true);
 		expect(project.editor.audioVolume).toBe(0.35);
+	});
+
+	it("persists source metadata for reopened editor titles", () => {
+		const project = createProjectData(
+			"/tmp/demo.mp4",
+			normalizeProjectEditor({ wallpaper: "#000" }),
+			{
+				sourceName: "Display 1",
+			},
+		);
+
+		expect(project.sourceName).toBe("Display 1");
 	});
 });

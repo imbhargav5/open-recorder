@@ -13,6 +13,7 @@ import {
 	MdVolumeUp,
 } from "react-icons/md";
 import { RxDragHandleDots2 } from "react-icons/rx";
+import { buildEditorWindowQuery } from "@/components/video-editor/editorWindowParams";
 import * as backend from "@/lib/backend";
 import { useCameraDevices } from "../../hooks/useCameraDevices";
 import { useMicrophoneDevices } from "../../hooks/useMicrophoneDevices";
@@ -313,13 +314,23 @@ export function LaunchWindow() {
 		const path = await backend.openVideoFilePicker();
 		if (!path) return;
 		await backend.setCurrentVideoPath(path);
-		await backend.switchToEditor();
+		await backend.switchToEditor(
+			buildEditorWindowQuery({
+				mode: "video",
+				videoPath: path,
+			}),
+		);
 	}, []);
 
 	const openProjectFile = useCallback(async () => {
 		const result = await backend.loadProjectFile();
-		if (!result) return;
-		await backend.switchToEditor();
+		if (!result?.filePath) return;
+		await backend.switchToEditor(
+			buildEditorWindowQuery({
+				mode: "project",
+				projectPath: result.filePath,
+			}),
+		);
 	}, []);
 
 	useEffect(() => {

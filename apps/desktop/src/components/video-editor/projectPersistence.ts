@@ -1,25 +1,25 @@
-import { ASPECT_RATIOS, type AspectRatio, isCustomAspectRatio } from "@/utils/aspectRatioUtils";
 import type { ExportFormat, ExportQuality, GifFrameRate, GifSizePreset } from "@/lib/exporter";
 import { fromFileUrl, toFileUrl } from "@/lib/fileUrl";
-import { normalizeFacecamSettings, type FacecamSettings } from "@/lib/recordingSession";
+import { type FacecamSettings, normalizeFacecamSettings } from "@/lib/recordingSession";
 import { WALLPAPER_PATHS } from "@/lib/wallpapers";
+import { ASPECT_RATIOS, type AspectRatio, isCustomAspectRatio } from "@/utils/aspectRatioUtils";
 import {
+	type AnnotationRegion,
+	type CropRegion,
+	DEFAULT_ANNOTATION_POSITION,
+	DEFAULT_ANNOTATION_SIZE,
+	DEFAULT_ANNOTATION_STYLE,
 	DEFAULT_AUDIO_MUTED,
 	DEFAULT_AUDIO_VOLUME,
+	DEFAULT_CROP_REGION,
 	DEFAULT_CURSOR_CLICK_BOUNCE,
 	DEFAULT_CURSOR_MOTION_BLUR,
 	DEFAULT_CURSOR_SIZE,
 	DEFAULT_CURSOR_SMOOTHING,
-	DEFAULT_ANNOTATION_POSITION,
-	DEFAULT_ANNOTATION_SIZE,
-	DEFAULT_ANNOTATION_STYLE,
-	DEFAULT_CROP_REGION,
-	DEFAULT_PLAYBACK_SPEED,
 	DEFAULT_FIGURE_DATA,
+	DEFAULT_PLAYBACK_SPEED,
 	DEFAULT_ZOOM_DEPTH,
 	DEFAULT_ZOOM_MOTION_BLUR,
-	type AnnotationRegion,
-	type CropRegion,
 	type SpeedRegion,
 	type TrimRegion,
 	type ZoomRegion,
@@ -62,6 +62,7 @@ export interface EditorProjectData {
 	videoPath: string;
 	facecamVideoPath?: string;
 	facecamOffsetMs?: number;
+	sourceName?: string;
 	editor: ProjectEditorState;
 }
 
@@ -343,6 +344,7 @@ export function createProjectData(
 	options?: {
 		facecamVideoPath?: string | null;
 		facecamOffsetMs?: number;
+		sourceName?: string | null;
 	},
 ): EditorProjectData {
 	const facecamVideoPath =
@@ -353,12 +355,17 @@ export function createProjectData(
 		typeof options?.facecamOffsetMs === "number" && Number.isFinite(options.facecamOffsetMs)
 			? options.facecamOffsetMs
 			: undefined;
+	const sourceName =
+		typeof options?.sourceName === "string" && options.sourceName.trim()
+			? options.sourceName
+			: undefined;
 
 	return {
 		version: PROJECT_VERSION,
 		videoPath,
 		...(facecamVideoPath ? { facecamVideoPath } : {}),
 		...(facecamOffsetMs !== undefined ? { facecamOffsetMs } : {}),
+		...(sourceName ? { sourceName } : {}),
 		editor,
 	};
 }

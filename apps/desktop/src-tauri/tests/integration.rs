@@ -81,6 +81,7 @@ fn test_full_recording_lifecycle_state_transitions() {
             facecam_video_path: None,
             facecam_offset_ms: None,
             facecam_settings: None,
+            source_name: None,
         });
     }
 
@@ -232,6 +233,7 @@ fn test_full_app_state_serialization_pipeline() {
             border_color: "#ffffff".to_string(),
             margin: 16.0,
         }),
+        source_name: Some("Main Display".to_string()),
     });
 
     state.shortcuts = Some(ShortcutConfig {
@@ -294,6 +296,7 @@ fn test_recording_session_with_facecam_full_pipeline() {
             border_color: "#ff0000".to_string(),
             margin: 20.0,
         }),
+        source_name: None,
     };
 
     // Serialize to JSON

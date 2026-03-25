@@ -1,6 +1,7 @@
 mod recording_state;
 
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -43,6 +44,8 @@ pub struct RecordingSession {
     pub facecam_video_path: Option<String>,
     pub facecam_offset_ms: Option<f64>,
     pub facecam_settings: Option<FacecamSettings>,
+    #[serde(default)]
+    pub source_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -72,6 +75,7 @@ pub struct AppState {
     pub cursor_telemetry: Vec<CursorTelemetryPoint>,
     pub cached_system_cursor_assets: Option<serde_json::Value>,
     pub has_unsaved_changes: bool,
+    pub unsaved_editor_windows: BTreeSet<String>,
     pub cursor_scale: f64,
     pub shortcuts: Option<ShortcutConfig>,
     pub current_screenshot_path: Option<String>,
@@ -90,6 +94,7 @@ impl Default for AppState {
             cursor_telemetry: Vec::new(),
             cached_system_cursor_assets: None,
             has_unsaved_changes: false,
+            unsaved_editor_windows: BTreeSet::new(),
             cursor_scale: 1.0,
             shortcuts: None,
             current_screenshot_path: None,
@@ -161,6 +166,12 @@ mod tests {
     fn test_app_state_default_has_unsaved_changes_is_false() {
         let state = AppState::default();
         assert!(!state.has_unsaved_changes);
+    }
+
+    #[test]
+    fn test_app_state_default_unsaved_editor_windows_is_empty() {
+        let state = AppState::default();
+        assert!(state.unsaved_editor_windows.is_empty());
     }
 
     #[test]
@@ -410,6 +421,7 @@ mod tests {
             facecam_video_path: None,
             facecam_offset_ms: None,
             facecam_settings: None,
+            source_name: None,
         };
         let json = serde_json::to_string(&session).unwrap();
         assert!(json.contains("\"screenVideoPath\":\"/path/to/video.mov\""));
@@ -430,11 +442,13 @@ mod tests {
                 border_color: "#fff".to_string(),
                 margin: 16.0,
             }),
+            source_name: Some("Display 1".to_string()),
         };
         let json = serde_json::to_string(&session).unwrap();
         assert!(json.contains("\"facecamVideoPath\":\"/facecam.mov\""));
         assert!(json.contains("\"facecamOffsetMs\":150.5"));
         assert!(json.contains("\"facecamSettings\""));
+        assert!(json.contains("\"sourceName\":\"Display 1\""));
     }
 
     #[test]
@@ -445,6 +459,7 @@ mod tests {
         assert!(session.facecam_video_path.is_none());
         assert!(session.facecam_offset_ms.is_none());
         assert!(session.facecam_settings.is_none());
+        assert!(session.source_name.is_none());
     }
 
     #[test]
@@ -454,12 +469,14 @@ mod tests {
             facecam_video_path: Some("/videos/cam.mov".to_string()),
             facecam_offset_ms: Some(-200.0),
             facecam_settings: None,
+            source_name: None,
         };
         let json = serde_json::to_string(&original).unwrap();
         let restored: RecordingSession = serde_json::from_str(&json).unwrap();
         assert_eq!(original.screen_video_path, restored.screen_video_path);
         assert_eq!(original.facecam_video_path, restored.facecam_video_path);
         assert_eq!(original.facecam_offset_ms, restored.facecam_offset_ms);
+        assert_eq!(original.source_name, restored.source_name);
     }
 
     #[test]
@@ -469,6 +486,7 @@ mod tests {
             facecam_video_path: None,
             facecam_offset_ms: Some(-500.0),
             facecam_settings: None,
+            source_name: None,
         };
         let json = serde_json::to_string(&session).unwrap();
         let restored: RecordingSession = serde_json::from_str(&json).unwrap();
@@ -695,6 +713,7 @@ mod tests {
             facecam_video_path: None,
             facecam_offset_ms: None,
             facecam_settings: None,
+            source_name: None,
         });
         assert_eq!(
             state

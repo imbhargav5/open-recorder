@@ -6,8 +6,35 @@ use tauri::{LogicalPosition, Position, TitleBarStyle};
 
 use crate::state::AppState;
 
+fn next_editor_window_label(app: &AppHandle) -> String {
+    let mut index = 1;
+    loop {
+        let label = format!("editor-{index}");
+        if app.get_webview_window(&label).is_none() {
+            return label;
+        }
+        index += 1;
+    }
+}
+
+fn build_editor_window_url(query: Option<&str>) -> String {
+    let normalized_query = query
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.trim_start_matches('?').to_string());
+
+    match normalized_query {
+        Some(query) => format!("index.html?{query}"),
+        None => "index.html?windowType=editor".to_string(),
+    }
+}
+
+pub fn is_editor_window_label(label: &str) -> bool {
+    label == "editor" || label.starts_with("editor-")
+}
+
 #[tauri::command]
-pub async fn switch_to_editor(app: AppHandle) -> Result<(), String> {
+pub async fn switch_to_editor(app: AppHandle, query: Option<String>) -> Result<(), String> {
     let app_name = app.package_info().name.clone();
 
     // Close or hide HUD overlay
@@ -21,16 +48,10 @@ pub async fn switch_to_editor(app: AppHandle) -> Result<(), String> {
         let _ = selector.close();
     }
 
-    // Create or focus editor window
-    if let Some(editor) = app.get_webview_window("editor") {
-        let _ = editor.show();
-        let _ = editor.set_focus();
-    } else {
-        let mut builder = WebviewWindowBuilder::new(
-            &app,
-            "editor",
-            WebviewUrl::App("index.html?windowType=editor".into()),
-        )
+    let label = next_editor_window_label(&app);
+    let url = build_editor_window_url(query.as_deref());
+
+    let mut builder = WebviewWindowBuilder::new(&app, &label, WebviewUrl::App(url.into()))
         .title(app_name)
         .inner_size(1200.0, 800.0)
         .min_inner_size(800.0, 600.0)
@@ -38,15 +59,14 @@ pub async fn switch_to_editor(app: AppHandle) -> Result<(), String> {
         .maximized(true)
         .background_color(Color(0, 0, 0, 255));
 
-        #[cfg(target_os = "macos")]
-        {
-            builder = builder
-                .title_bar_style(TitleBarStyle::Overlay)
-                .traffic_light_position(Position::Logical(LogicalPosition::new(12.0, 12.0)));
-        }
-
-        builder.build().map_err(|e: tauri::Error| e.to_string())?;
+    #[cfg(target_os = "macos")]
+    {
+        builder = builder
+            .title_bar_style(TitleBarStyle::Overlay)
+            .traffic_light_position(Position::Logical(LogicalPosition::new(12.0, 12.0)));
     }
+
+    builder.build().map_err(|e: tauri::Error| e.to_string())?;
 
     Ok(())
 }
@@ -114,11 +134,20 @@ pub async fn start_hud_overlay_drag(window: Window) -> Result<(), String> {
 
 #[tauri::command]
 pub fn set_has_unsaved_changes(
+    window: Window,
     state: tauri::State<'_, Mutex<AppState>>,
     has_changes: bool,
 ) -> Result<(), String> {
     let mut s = state.lock().map_err(|e| e.to_string())?;
-    s.has_unsaved_changes = has_changes;
+    let label = window.label().to_string();
+    if is_editor_window_label(&label) {
+        if has_changes {
+            s.unsaved_editor_windows.insert(label);
+        } else {
+            s.unsaved_editor_windows.remove(&label);
+        }
+        s.has_unsaved_changes = !s.unsaved_editor_windows.is_empty();
+    }
     Ok(())
 }
 
@@ -205,8 +234,14 @@ mod tests {
 
     #[test]
     fn test_editor_url() {
-        let url = "index.html?windowType=editor";
-        assert!(url.contains("windowType=editor"));
+        let url = build_editor_window_url(Some("windowType=editor&editorMode=video"));
+        assert_eq!(url, "index.html?windowType=editor&editorMode=video");
+    }
+
+    #[test]
+    fn test_editor_url_defaults_when_query_missing() {
+        let url = build_editor_window_url(None);
+        assert_eq!(url, "index.html?windowType=editor");
     }
 
     #[test]
@@ -222,10 +257,12 @@ mod tests {
         let state = std::sync::Mutex::new(AppState::default());
         {
             let mut s = state.lock().unwrap();
-            s.has_unsaved_changes = true;
+            s.unsaved_editor_windows.insert("editor-1".to_string());
+            s.has_unsaved_changes = !s.unsaved_editor_windows.is_empty();
         }
         let s = state.lock().unwrap();
         assert!(s.has_unsaved_changes);
+        assert!(s.unsaved_editor_windows.contains("editor-1"));
     }
 
     #[test]
@@ -233,20 +270,31 @@ mod tests {
         let state = std::sync::Mutex::new(AppState::default());
         {
             let mut s = state.lock().unwrap();
+            s.unsaved_editor_windows.insert("editor-1".to_string());
             s.has_unsaved_changes = true;
         }
         {
             let mut s = state.lock().unwrap();
-            s.has_unsaved_changes = false;
+            s.unsaved_editor_windows.remove("editor-1");
+            s.has_unsaved_changes = !s.unsaved_editor_windows.is_empty();
         }
         let s = state.lock().unwrap();
         assert!(!s.has_unsaved_changes);
+        assert!(s.unsaved_editor_windows.is_empty());
     }
 
     #[test]
     fn test_unsaved_changes_default_is_false() {
         let state = AppState::default();
         assert!(!state.has_unsaved_changes);
+        assert!(state.unsaved_editor_windows.is_empty());
+    }
+
+    #[test]
+    fn test_editor_window_label_detection() {
+        assert!(is_editor_window_label("editor"));
+        assert!(is_editor_window_label("editor-3"));
+        assert!(!is_editor_window_label("image-editor"));
     }
 
     // ==================== Background Color ====================

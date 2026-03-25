@@ -122,19 +122,33 @@ pub fn run() {
             commands::platform::is_wgc_available,
             commands::platform::mux_wgc_recording,
         ])
-        .on_window_event(|window, event| {
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                let label = window.label();
-                if label == "editor" {
-                    // Check for unsaved changes before closing
+        .on_window_event(|window, event| match event {
+            tauri::WindowEvent::CloseRequested { api, .. } => {
+                let label = window.label().to_string();
+                if commands::window_mgmt::is_editor_window_label(&label) {
                     let state: tauri::State<'_, Mutex<AppState>> = window.state();
-                    let has_unsaved = state.lock().map(|s| s.has_unsaved_changes).unwrap_or(false);
+                    let has_unsaved = state
+                        .lock()
+                        .map(|s| s.unsaved_editor_windows.contains(&label))
+                        .unwrap_or(false);
                     if has_unsaved {
                         api.prevent_close();
                         let _ = window.emit("request-save-before-close", ());
                     }
                 }
             }
+            tauri::WindowEvent::Destroyed => {
+                let label = window.label().to_string();
+                if commands::window_mgmt::is_editor_window_label(&label) {
+                    let state: tauri::State<'_, Mutex<AppState>> = window.state();
+                    let lock_result = state.lock();
+                    if let Ok(mut s) = lock_result {
+                        s.unsaved_editor_windows.remove(&label);
+                        s.has_unsaved_changes = !s.unsaved_editor_windows.is_empty();
+                    }
+                }
+            }
+            _ => {}
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -3,6 +3,22 @@ use tauri::{
     Emitter, Manager,
 };
 
+fn focused_window_with_predicate<F>(
+    app: &tauri::AppHandle,
+    predicate: F,
+) -> Option<tauri::WebviewWindow>
+where
+    F: Fn(&str) -> bool,
+{
+    app.webview_windows().into_iter().find_map(|(_, window)| {
+        let label = window.label().to_string();
+        match (predicate(&label), window.is_focused()) {
+            (true, Ok(true)) => Some(window),
+            _ => None,
+        }
+    })
+}
+
 pub fn setup_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     // App menu (macOS application menu — appears under the app name in the top bar)
     let app_name = app.package_info().name.clone();
@@ -83,28 +99,43 @@ pub fn setup_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             let _ = app.emit("menu-open-video-file", ());
         }
         "menu-load-project" => {
-            let _ = app.emit("menu-load-project", ());
+            if let Some(window) = focused_window_with_predicate(app, |label| {
+                crate::commands::window_mgmt::is_editor_window_label(label)
+                    || label == "hud-overlay"
+            }) {
+                let _ = window.emit("menu-load-project", ());
+            } else {
+                let _ = app.emit("menu-load-project", ());
+            }
         }
         "menu-save-project" => {
-            let _ = app.emit("menu-save-project", ());
+            if let Some(window) = focused_window_with_predicate(app, |label| {
+                crate::commands::window_mgmt::is_editor_window_label(label)
+            }) {
+                let _ = window.emit("menu-save-project", ());
+            }
         }
         "menu-save-project-as" => {
-            let _ = app.emit("menu-save-project-as", ());
+            if let Some(window) = focused_window_with_predicate(app, |label| {
+                crate::commands::window_mgmt::is_editor_window_label(label)
+            }) {
+                let _ = window.emit("menu-save-project-as", ());
+            }
         }
         "menu-check-updates" => {
-            let focused_window = app.webview_windows().into_iter().find_map(|(_, window)| {
-                let label = window.label().to_string();
-                let can_handle_updates = label == "editor" || label == "image-editor";
-
-                match (can_handle_updates, window.is_focused()) {
-                    (true, Ok(true)) => Some(window),
-                    _ => None,
-                }
+            let focused_window = focused_window_with_predicate(app, |label| {
+                crate::commands::window_mgmt::is_editor_window_label(label)
+                    || label == "image-editor"
             });
 
             if let Some(window) = focused_window {
                 let _ = window.emit("menu-check-updates", ());
-            } else if let Some(window) = app.get_webview_window("editor") {
+            } else if let Some(window) =
+                app.webview_windows().into_iter().find_map(|(_, window)| {
+                    let label = window.label().to_string();
+                    crate::commands::window_mgmt::is_editor_window_label(&label).then_some(window)
+                })
+            {
                 let _ = window.emit("menu-check-updates", ());
             } else if let Some(window) = app.get_webview_window("image-editor") {
                 let _ = window.emit("menu-check-updates", ());

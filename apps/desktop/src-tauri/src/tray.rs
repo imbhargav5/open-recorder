@@ -65,7 +65,12 @@ pub fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
                 if let Some(window) = app.get_webview_window("hud-overlay") {
                     let _ = window.show();
                     let _ = window.set_focus();
-                } else if let Some(window) = app.get_webview_window("editor") {
+                } else if let Some(window) =
+                    app.webview_windows().into_iter().find_map(|(_, window)| {
+                        crate::commands::window_mgmt::is_editor_window_label(window.label())
+                            .then_some(window)
+                    })
+                {
                     let _ = window.show();
                     let _ = window.set_focus();
                 }
