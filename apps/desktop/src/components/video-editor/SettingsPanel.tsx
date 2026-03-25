@@ -20,7 +20,11 @@ import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { openExternalUrl } from "@/lib/backend";
-import { createDefaultFacecamSettings, type FacecamSettings } from "@/lib/recordingSession";
+import {
+	createDefaultFacecamSettings,
+	FACECAM_ANCHORS,
+	type FacecamSettings,
+} from "@/lib/recordingSession";
 import { cn } from "@/lib/utils";
 import { BUILT_IN_WALLPAPERS, type BuiltInWallpaper, WALLPAPER_PATHS } from "@/lib/wallpapers";
 import { type AspectRatio } from "@/utils/aspectRatioUtils";
@@ -690,11 +694,89 @@ function SettingsPanelInner({
 										/>
 									</div>
 								)}
+							<div className="p-2 rounded-lg bg-white/5 border border-white/5">
+								<div className="flex items-center justify-between mb-1">
+									<div className="text-[10px] font-medium text-slate-300">Border Width</div>
+									<span className="text-[10px] text-slate-500 font-mono">
+										{facecamSettings.borderWidth.toFixed(0)}px
+									</span>
+								</div>
+								<Slider
+									value={[facecamSettings.borderWidth]}
+									onValueChange={(values) => updateFacecamSettings({ borderWidth: values[0] })}
+									min={0}
+									max={16}
+									step={1}
+									className="w-full [&_[role=slider]]:bg-[#2563EB] [&_[role=slider]]:border-[#2563EB] [&_[role=slider]]:h-3 [&_[role=slider]]:w-3"
+								/>
 							</div>
-						)}
-					</div>
-				);
-			case "background":
+
+							<div className="p-2 rounded-lg bg-white/5 border border-white/5">
+								<div className="text-[10px] font-medium text-slate-300 mb-1.5">Border Color</div>
+								<Block
+									color={facecamSettings.borderColor}
+									colors={COLOR_PALETTE}
+									onChange={(color) => updateFacecamSettings({ borderColor: color.hex })}
+								/>
+							</div>
+
+							<div className="p-2 rounded-lg bg-white/5 border border-white/5">
+								<div className="flex items-center justify-between mb-1">
+									<div className="text-[10px] font-medium text-slate-300">Margin</div>
+									<span className="text-[10px] text-slate-500 font-mono">
+										{facecamSettings.margin.toFixed(0)}%
+									</span>
+								</div>
+								<Slider
+									value={[facecamSettings.margin]}
+									onValueChange={(values) => updateFacecamSettings({ margin: values[0] })}
+									min={0}
+									max={12}
+									step={1}
+									className="w-full [&_[role=slider]]:bg-[#2563EB] [&_[role=slider]]:border-[#2563EB] [&_[role=slider]]:h-3 [&_[role=slider]]:w-3"
+								/>
+							</div>
+
+							<div className="p-2 rounded-lg bg-white/5 border border-white/5">
+								<div className="text-[10px] font-medium text-slate-300 mb-1.5">Position</div>
+								<div className="grid grid-cols-2 gap-1.5">
+									{FACECAM_ANCHORS.map((anchorOption) => {
+										const labels: Record<string, string> = {
+											"top-left": "Top Left",
+											"top-right": "Top Right",
+											"bottom-left": "Bottom Left",
+											"bottom-right": "Bottom Right",
+										};
+										const isActive =
+											facecamSettings.anchor === anchorOption ||
+											(!facecamSettings.anchor && anchorOption === "bottom-right");
+										return (
+											<Button
+												key={anchorOption}
+												type="button"
+												variant="outline"
+												onClick={() => updateFacecamSettings({ anchor: anchorOption, customX: undefined, customY: undefined })}
+												className={cn(
+													"h-7 text-[9px] border-white/10 bg-white/5 text-slate-300 hover:bg-white/10",
+													isActive && "border-[#2563EB]/60 bg-[#2563EB]/15 text-white",
+												)}
+											>
+												{labels[anchorOption] ?? anchorOption}
+											</Button>
+										);
+									})}
+								</div>
+								{facecamSettings.anchor === "custom" && (
+									<div className="mt-1.5 text-[9px] text-slate-500">
+										Drag the bubble in the preview to reposition.
+									</div>
+								)}
+							</div>
+						</div>
+					)}
+				</div>
+			);
+		case "background":
 				return (
 					<Tabs
 						value={backgroundTab}

@@ -44,11 +44,13 @@ import { onRenderProfiler } from "@/lib/perf";
 import { ensurePixiRuntime } from "@/lib/pixiRuntime";
 import {
 	createDefaultFacecamSettings,
+	type FacecamAnchor,
 	type FacecamSettings,
 	normalizeFacecamSettings,
 } from "@/lib/recordingSession";
 import { matchesShortcut } from "@/lib/shortcuts";
 import { cn } from "@/lib/utils";
+import { useWaveformData } from "@/hooks/useWaveformData";
 import { DEFAULT_WALLPAPER_RELATIVE_PATH, WALLPAPER_PATHS } from "@/lib/wallpapers";
 import { type AspectRatio, getAspectRatioValue } from "@/utils/aspectRatioUtils";
 import { AllShortcutsDialog } from "./AllShortcutsDialog";
@@ -238,6 +240,8 @@ export default function VideoEditor() {
 	const nextZoomIdRef = useRef(1);
 	const nextTrimIdRef = useRef(1);
 	const nextSpeedIdRef = useRef(1);
+
+	const { waveformData, isLoading: waveformLoading } = useWaveformData(videoPath, duration);
 
 	const { shortcuts, isMac } = useShortcuts();
 	const nextAnnotationIdRef = useRef(1);
@@ -1449,6 +1453,18 @@ export default function VideoEditor() {
 		);
 	}, []);
 
+	const handleFacecamPositionChange = useCallback(
+		(position: { anchor: FacecamAnchor; customX?: number; customY?: number }) => {
+			setFacecamSettings((prev) => ({
+				...prev,
+				anchor: position.anchor,
+				customX: position.customX,
+				customY: position.customY,
+			}));
+		},
+		[],
+	);
+
 	const handleAnnotationPositionChange = useCallback(
 		(id: string, position: { x: number; y: number }) => {
 			setAnnotationRegions((prev) =>
@@ -2403,6 +2419,7 @@ export default function VideoEditor() {
 												cursorMotionBlur={cursorMotionBlur}
 												cursorClickBounce={cursorClickBounce}
 												onReadyChange={setPlaybackReady}
+												onFacecamPositionChange={handleFacecamPositionChange}
 											/>
 										</Profiler>
 									</div>
@@ -2472,6 +2489,9 @@ export default function VideoEditor() {
 										onSelectAnnotation={handleSelectAnnotation}
 										aspectRatio={aspectRatio}
 										onAspectRatioChange={setAspectRatio}
+										waveformData={waveformData}
+										waveformLoading={waveformLoading}
+										audioMuted={audioMuted}
 									/>
 								</Profiler>
 							</div>

@@ -5,10 +5,12 @@ import { type TimeStore, useTimeValue } from "../useTimeStore";
 import { Plus, Scissors, ZoomIn, MessageSquare, ChevronDown, Check, Gauge, WandSparkles } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import type { WaveformData } from "@/lib/audio/types";
 import TimelineWrapper from "./TimelineWrapper";
 import Row from "./Row";
 import Item from "./Item";
 import KeyframeMarkers from "./KeyframeMarkers";
+import AudioWaveformRow from "./AudioWaveformRow";
 import type { Range, Span } from "dnd-timeline";
 import type { ZoomRegion, TrimRegion, AnnotationRegion, SpeedRegion, CursorTelemetryPoint, ZoomFocus } from "../types";
 import { v4 as uuidv4 } from 'uuid';
@@ -65,6 +67,9 @@ interface TimelineEditorProps {
   onSelectSpeed?: (id: string | null) => void;
   aspectRatio: AspectRatio;
   onAspectRatioChange: (aspectRatio: AspectRatio) => void;
+  waveformData?: WaveformData | null;
+  waveformLoading?: boolean;
+  audioMuted?: boolean;
 }
 
 interface TimelineScaleConfig {
@@ -431,6 +436,9 @@ function Timeline({
   selectedAnnotationId,
   selectedSpeedId,
   keyframes = [],
+  waveformData,
+  waveformLoading = false,
+  audioMuted = false,
 }: {
   items: TimelineRenderItem[];
   videoDurationMs: number;
@@ -445,6 +453,9 @@ function Timeline({
   selectedAnnotationId?: string | null;
   selectedSpeedId?: string | null;
   keyframes?: { id: string; time: number }[];
+  waveformData?: WaveformData | null;
+  waveformLoading?: boolean;
+  audioMuted?: boolean;
 }) {
   const { setTimelineRef, style, sidebarWidth, range, pixelsToValue } = useTimelineContext();
   const localTimelineRef = useRef<HTMLDivElement | null>(null);
@@ -563,6 +574,12 @@ function Timeline({
           </Item>
         ))}
       </Row>
+
+      <AudioWaveformRow
+        waveformData={waveformData ?? null}
+        isLoading={waveformLoading}
+        audioMuted={audioMuted}
+      />
     </div>
   );
 }
@@ -599,6 +616,9 @@ function TimelineEditorInner({
   onSelectSpeed,
   aspectRatio,
   onAspectRatioChange,
+  waveformData,
+  waveformLoading = false,
+  audioMuted = false,
 }: TimelineEditorProps) {
   console.log("render <TimelineEditor>");
   const currentTime = useTimeValue(timeStore);
@@ -1369,6 +1389,9 @@ function TimelineEditorInner({
             selectedAnnotationId={selectedAnnotationId}
             selectedSpeedId={selectedSpeedId}
             keyframes={keyframes}
+            waveformData={waveformData}
+            waveformLoading={waveformLoading}
+            audioMuted={audioMuted}
           />
         </TimelineWrapper>
       </div>

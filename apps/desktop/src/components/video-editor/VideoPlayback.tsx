@@ -15,13 +15,19 @@ import {
 	Application,
 	BlurFilter,
 	Container,
+	type FederatedPointerEvent,
 	Graphics,
 	Sprite,
 	Texture,
 	VideoSource,
 } from "@/lib/pixi";
 import { ensurePixiRuntime } from "@/lib/pixiRuntime";
-import { type FacecamSettings, getFacecamLayout } from "@/lib/recordingSession";
+import {
+	type FacecamAnchor,
+	type FacecamSettings,
+	getFacecamLayout,
+	resolveAnchorFromPosition,
+} from "@/lib/recordingSession";
 import { DEFAULT_WALLPAPER_PATH, DEFAULT_WALLPAPER_RELATIVE_PATH } from "@/lib/wallpapers";
 import { type AspectRatio, formatAspectRatioForCSS } from "@/utils/aspectRatioUtils";
 import { AnnotationOverlay } from "./AnnotationOverlay";
@@ -149,6 +155,11 @@ interface VideoPlaybackProps {
 	cursorMotionBlur?: number;
 	cursorClickBounce?: number;
 	onReadyChange?: (ready: boolean) => void;
+	onFacecamPositionChange?: (position: {
+		anchor: FacecamAnchor;
+		customX?: number;
+		customY?: number;
+	}) => void;
 }
 
 export interface VideoPlaybackRef {
@@ -205,6 +216,7 @@ const VideoPlayback = memo(
 				cursorMotionBlur = DEFAULT_CURSOR_MOTION_BLUR,
 				cursorClickBounce = DEFAULT_CURSOR_CLICK_BOUNCE,
 				onReadyChange,
+				onFacecamPositionChange,
 			},
 			ref,
 		) => {
@@ -836,6 +848,8 @@ const VideoPlayback = memo(
 
 					const facecamContainer = new Container();
 					facecamContainer.visible = false;
+					facecamContainer.eventMode = "static";
+					facecamContainer.cursor = "grab";
 					facecamContainerRef.current = facecamContainer;
 					app.stage.addChild(facecamContainer);
 
@@ -1125,6 +1139,101 @@ const VideoPlayback = memo(
 					facecamBorderRef.current = null;
 				};
 			}, [pixiReady, facecamReady, facecamVideoPath, layoutFacecamOverlay]);
+
+			// Facecam drag interaction
+			useEffect(() => {
+				const facecamContainer = facecamContainerRef.current;
+				if (!facecamContainer || !onFacecamPositionChange) return;
+
+				let isDragging = false;
+				let dragOffsetX = 0;
+				let dragOffsetY = 0;
+
+				const onPointerDown = (event: FederatedPointerEvent) => {
+					if (!facecamContainer.parent) return;
+					isDragging = true;
+					const localPos = facecamContainer.parent.toLocal(event.global);
+					dragOffsetX = localPos.x - facecamContainer.x;
+					dragOffsetY = localPos.y - facecamContainer.y;
+					facecamContainer.cursor = "grabbing";
+					facecamContainer.alpha = 0.85;
+				};
+
+				const onPointerMove = (event: FederatedPointerEvent) => {
+					if (!isDragging || !facecamContainer.parent) return;
+
+					const stageWidth = stageSizeRef.current.width;
+					const stageHeight = stageSizeRef.current.height;
+					if (!stageWidth || !stageHeight) return;
+
+					const localPos = facecamContainer.parent.toLocal(event.global);
+					const settings = facecamSettingsRef.current;
+					if (!settings) return;
+
+					const minDim = Math.min(stageWidth, stageHeight);
+					const size = minDim * (settings.size / 100);
+
+					const newX = Math.max(0, Math.min(localPos.x - dragOffsetX, stageWidth - size));
+					const newY = Math.max(0, Math.min(localPos.y - dragOffsetY, stageHeight - size));
+
+					// Update position directly for immediate visual feedback
+					facecamContainer.x = newX - (facecamContainer.x !== 0 ? 0 : facecamContainer.x);
+					// We need to move all children rather than the container when layout sets absolute positions
+					const facecamSprite = facecamSpriteRef.current;
+					const facecamMask = facecamMaskRef.current;
+					const facecamBorder = facecamBorderRef.current;
+					if (facecamSprite && facecamMask && facecamBorder && settings) {
+						const layout = getFacecamLayout(stageWidth, stageHeight, settings);
+						const dx = newX - layout.x;
+						const dy = newY - layout.y;
+						facecamContainer.position.set(dx, dy);
+					}
+				};
+
+				const onPointerUp = () => {
+					if (!isDragging) return;
+					isDragging = false;
+					facecamContainer.cursor = "grab";
+					facecamContainer.alpha = 1;
+
+					const stageWidth = stageSizeRef.current.width;
+					const stageHeight = stageSizeRef.current.height;
+					const settings = facecamSettingsRef.current;
+					if (!stageWidth || !stageHeight || !settings) return;
+
+					const minDim = Math.min(stageWidth, stageHeight);
+					const size = minDim * (settings.size / 100);
+					const layout = getFacecamLayout(stageWidth, stageHeight, settings);
+
+					// Compute actual pixel position from container offset
+					const pixelX = layout.x + facecamContainer.x;
+					const pixelY = layout.y + facecamContainer.y;
+
+					const newPosition = resolveAnchorFromPosition(
+						pixelX,
+						pixelY,
+						size,
+						stageWidth,
+						stageHeight,
+					);
+
+					// Reset container offset - the layout will handle positioning
+					facecamContainer.position.set(0, 0);
+					onFacecamPositionChange(newPosition);
+				};
+
+				facecamContainer.on("pointerdown", onPointerDown);
+				facecamContainer.on("globalpointermove", onPointerMove);
+				facecamContainer.on("pointerup", onPointerUp);
+				facecamContainer.on("pointerupoutside", onPointerUp);
+
+				return () => {
+					facecamContainer.off("pointerdown", onPointerDown);
+					facecamContainer.off("globalpointermove", onPointerMove);
+					facecamContainer.off("pointerup", onPointerUp);
+					facecamContainer.off("pointerupoutside", onPointerUp);
+				};
+			}, [onFacecamPositionChange]);
 
 			useEffect(() => {
 				if (!previewSceneReady) return;

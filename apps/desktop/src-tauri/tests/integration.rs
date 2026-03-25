@@ -232,6 +232,9 @@ fn test_full_app_state_serialization_pipeline() {
             border_width: 2.0,
             border_color: "#ffffff".to_string(),
             margin: 16.0,
+            anchor: "bottom-right".to_string(),
+            custom_x: None,
+            custom_y: None,
         }),
         source_name: Some("Main Display".to_string()),
     });
@@ -295,6 +298,9 @@ fn test_recording_session_with_facecam_full_pipeline() {
             border_width: 3.0,
             border_color: "#ff0000".to_string(),
             margin: 20.0,
+            anchor: "bottom-right".to_string(),
+            custom_x: None,
+            custom_y: None,
         }),
         source_name: None,
     };

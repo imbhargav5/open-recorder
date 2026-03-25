@@ -35,6 +35,16 @@ pub struct FacecamSettings {
     pub border_width: f64,
     pub border_color: String,
     pub margin: f64,
+    #[serde(default = "default_facecam_anchor")]
+    pub anchor: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub custom_x: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub custom_y: Option<f64>,
+}
+
+fn default_facecam_anchor() -> String {
+    "bottom-right".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -353,11 +363,15 @@ mod tests {
             border_width: 2.0,
             border_color: "#ffffff".to_string(),
             margin: 16.0,
+            anchor: "bottom-right".to_string(),
+            custom_x: None,
+            custom_y: None,
         };
         let json = serde_json::to_string(&settings).unwrap();
         assert!(json.contains("\"cornerRadius\":75"));
         assert!(json.contains("\"borderWidth\":2"));
         assert!(json.contains("\"borderColor\":\"#ffffff\""));
+        assert!(json.contains("\"anchor\":\"bottom-right\""));
     }
 
     #[test]
@@ -371,6 +385,9 @@ mod tests {
         assert_eq!(s.border_width, 1.0);
         assert_eq!(s.border_color, "#000");
         assert_eq!(s.margin, 8.0);
+        assert_eq!(s.anchor, "bottom-right");
+        assert_eq!(s.custom_x, None);
+        assert_eq!(s.custom_y, None);
     }
 
     #[test]
@@ -383,6 +400,9 @@ mod tests {
             border_width: 3.5,
             border_color: "#ff0000".to_string(),
             margin: 20.0,
+            anchor: "bottom-right".to_string(),
+            custom_x: None,
+            custom_y: None,
         };
         let json = serde_json::to_string(&original).unwrap();
         let restored: FacecamSettings = serde_json::from_str(&json).unwrap();
@@ -393,6 +413,9 @@ mod tests {
         assert_eq!(original.border_width, restored.border_width);
         assert_eq!(original.border_color, restored.border_color);
         assert_eq!(original.margin, restored.margin);
+        assert_eq!(original.anchor, restored.anchor);
+        assert_eq!(original.custom_x, restored.custom_x);
+        assert_eq!(original.custom_y, restored.custom_y);
     }
 
     #[test]
@@ -405,6 +428,9 @@ mod tests {
             border_width: 0.0,
             border_color: "".to_string(),
             margin: 0.0,
+            anchor: "bottom-right".to_string(),
+            custom_x: None,
+            custom_y: None,
         };
         let json = serde_json::to_string(&settings).unwrap();
         let restored: FacecamSettings = serde_json::from_str(&json).unwrap();
@@ -441,6 +467,9 @@ mod tests {
                 border_width: 2.0,
                 border_color: "#fff".to_string(),
                 margin: 16.0,
+                anchor: "bottom-right".to_string(),
+                custom_x: None,
+                custom_y: None,
             }),
             source_name: Some("Display 1".to_string()),
         };
