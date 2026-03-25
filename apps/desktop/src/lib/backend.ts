@@ -201,8 +201,16 @@ export function getMicrophonePermissionStatus(): Promise<string> {
 	return invoke("get_microphone_permission_status");
 }
 
+export function requestMicrophonePermission(): Promise<boolean> {
+	return invoke("request_microphone_permission");
+}
+
 export function getCameraPermissionStatus(): Promise<string> {
 	return invoke("get_camera_permission_status");
+}
+
+export function requestCameraPermission(): Promise<boolean> {
+	return invoke("request_camera_permission");
 }
 
 export function openMicrophonePreferences(): Promise<void> {

@@ -15,6 +15,8 @@ vi.mock("@/lib/backend", () => ({
 	getCameraPermissionStatus: vi.fn(),
 	getAccessibilityPermissionStatus: vi.fn(),
 	requestScreenRecordingPermission: vi.fn(),
+	requestMicrophonePermission: vi.fn(),
+	requestCameraPermission: vi.fn(),
 	openScreenRecordingPreferences: vi.fn(),
 	openMicrophonePreferences: vi.fn(),
 	openCameraPreferences: vi.fn(),
@@ -273,18 +275,16 @@ describe("usePermissions", () => {
 	// ==================== requestMicrophoneAccess ====================
 
 	describe("requestMicrophoneAccess", () => {
-		it("calls getUserMedia with audio:true and stops tracks", async () => {
+		it("uses the native request path on macOS", async () => {
 			backend.getPlatform.mockResolvedValue("darwin");
 			backend.getScreenRecordingPermissionStatus.mockResolvedValue("granted");
 			backend.getMicrophonePermissionStatus.mockResolvedValue("not_determined");
 			backend.getCameraPermissionStatus.mockResolvedValue("granted");
 			backend.getAccessibilityPermissionStatus.mockResolvedValue("granted");
-
-			const { stop } = setupMediaDevicesMock();
+			backend.requestMicrophonePermission.mockResolvedValue(true);
 
 			const hook = await mountHook();
 
-			// After requesting, simulate that mic is now granted
 			backend.getMicrophonePermissionStatus.mockResolvedValue("granted");
 
 			let granted!: boolean;
@@ -293,31 +293,24 @@ describe("usePermissions", () => {
 			});
 			await flushEffects();
 
-			expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledWith({
-				audio: true,
-				video: false,
-			});
-			expect(stop).toHaveBeenCalled();
+			expect(backend.requestMicrophonePermission).toHaveBeenCalled();
+			expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();
 			expect(granted).toBe(true);
 			expect(hook.getCurrent().permissions.microphone).toBe("granted");
 
 			await hook.unmount();
 		});
 
-		it("returns false when getUserMedia throws (permission denied)", async () => {
+		it("returns false when the native macOS request is denied", async () => {
 			backend.getPlatform.mockResolvedValue("darwin");
 			backend.getScreenRecordingPermissionStatus.mockResolvedValue("granted");
 			backend.getMicrophonePermissionStatus.mockResolvedValue("not_determined");
 			backend.getCameraPermissionStatus.mockResolvedValue("granted");
 			backend.getAccessibilityPermissionStatus.mockResolvedValue("granted");
-
-			setupMediaDevicesMock(async () => {
-				throw new DOMException("denied", "NotAllowedError");
-			});
+			backend.requestMicrophonePermission.mockResolvedValue(false);
 
 			const hook = await mountHook();
 
-			// After the deny, native status is now "denied"
 			backend.getMicrophonePermissionStatus.mockResolvedValue("denied");
 
 			let granted!: boolean;
@@ -326,6 +319,7 @@ describe("usePermissions", () => {
 			});
 			await flushEffects();
 
+			expect(backend.requestMicrophonePermission).toHaveBeenCalled();
 			expect(granted).toBe(false);
 			expect(hook.getCurrent().permissions.microphone).toBe("denied");
 
@@ -336,14 +330,13 @@ describe("usePermissions", () => {
 	// ==================== requestCameraAccess ====================
 
 	describe("requestCameraAccess", () => {
-		it("calls getUserMedia with video:true and stops tracks on success", async () => {
+		it("uses the native request path on macOS", async () => {
 			backend.getPlatform.mockResolvedValue("darwin");
 			backend.getScreenRecordingPermissionStatus.mockResolvedValue("granted");
 			backend.getMicrophonePermissionStatus.mockResolvedValue("granted");
 			backend.getCameraPermissionStatus.mockResolvedValue("not_determined");
 			backend.getAccessibilityPermissionStatus.mockResolvedValue("granted");
-
-			const { stop } = setupMediaDevicesMock();
+			backend.requestCameraPermission.mockResolvedValue(true);
 
 			const hook = await mountHook();
 
@@ -355,26 +348,20 @@ describe("usePermissions", () => {
 			});
 			await flushEffects();
 
-			expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledWith({
-				audio: false,
-				video: true,
-			});
-			expect(stop).toHaveBeenCalled();
+			expect(backend.requestCameraPermission).toHaveBeenCalled();
+			expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();
 			expect(granted).toBe(true);
 
 			await hook.unmount();
 		});
 
-		it("returns false on camera permission denial", async () => {
+		it("returns false on native camera permission denial", async () => {
 			backend.getPlatform.mockResolvedValue("darwin");
 			backend.getScreenRecordingPermissionStatus.mockResolvedValue("granted");
 			backend.getMicrophonePermissionStatus.mockResolvedValue("granted");
 			backend.getCameraPermissionStatus.mockResolvedValue("not_determined");
 			backend.getAccessibilityPermissionStatus.mockResolvedValue("granted");
-
-			setupMediaDevicesMock(async () => {
-				throw new DOMException("denied", "NotAllowedError");
-			});
+			backend.requestCameraPermission.mockResolvedValue(false);
 
 			const hook = await mountHook();
 
@@ -386,6 +373,7 @@ describe("usePermissions", () => {
 			});
 			await flushEffects();
 
+			expect(backend.requestCameraPermission).toHaveBeenCalled();
 			expect(granted).toBe(false);
 
 			await hook.unmount();

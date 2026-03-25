@@ -98,31 +98,48 @@ export function usePermissions(): UsePermissionsResult {
 		return state;
 	}, []);
 
+	const requestBrowserMediaAccess = useCallback(
+		async (constraints: MediaStreamConstraints, permission: "microphone" | "camera") => {
+			try {
+				const stream = await navigator.mediaDevices.getUserMedia(constraints);
+				stream.getTracks().forEach((track) => track.stop());
+				const state = await refreshPermissions();
+				return state[permission] === "granted";
+			} catch {
+				await refreshPermissions();
+				return false;
+			}
+		},
+		[refreshPermissions],
+	);
+
 	const requestMicrophoneAccess = useCallback(async (): Promise<boolean> => {
-		try {
-			const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-			stream.getTracks().forEach((track) => track.stop());
-			// Refresh status after granting
-			const state = await refreshPermissions();
-			return state.microphone === "granted";
-		} catch {
-			// Permission denied or error — refresh to get accurate status
-			await refreshPermissions();
-			return false;
+		if (isMacOS) {
+			try {
+				const granted = await backend.requestMicrophonePermission();
+				const state = await refreshPermissions();
+				return granted || state.microphone === "granted";
+			} catch {
+				// Fall back to getUserMedia when the native request path is unavailable.
+			}
 		}
-	}, [refreshPermissions]);
+
+		return requestBrowserMediaAccess({ audio: true, video: false }, "microphone");
+	}, [isMacOS, refreshPermissions, requestBrowserMediaAccess]);
 
 	const requestCameraAccess = useCallback(async (): Promise<boolean> => {
-		try {
-			const stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: true });
-			stream.getTracks().forEach((track) => track.stop());
-			const state = await refreshPermissions();
-			return state.camera === "granted";
-		} catch {
-			await refreshPermissions();
-			return false;
+		if (isMacOS) {
+			try {
+				const granted = await backend.requestCameraPermission();
+				const state = await refreshPermissions();
+				return granted || state.camera === "granted";
+			} catch {
+				// Fall back to getUserMedia when the native request path is unavailable.
+			}
 		}
-	}, [refreshPermissions]);
+
+		return requestBrowserMediaAccess({ audio: false, video: true }, "camera");
+	}, [isMacOS, refreshPermissions, requestBrowserMediaAccess]);
 
 	const requestScreenRecordingAccess = useCallback(async (): Promise<boolean> => {
 		const granted = await backend.requestScreenRecordingPermission().catch(() => false);

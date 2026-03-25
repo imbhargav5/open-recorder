@@ -1,38 +1,45 @@
+import { MotionBlurFilter } from "pixi-filters/motion-blur";
 import type React from "react";
 import {
-	memo,
-	useEffect,
-	useRef,
-	useImperativeHandle,
 	forwardRef,
-	useState,
-	useMemo,
+	memo,
 	useCallback,
+	useEffect,
+	useImperativeHandle,
+	useMemo,
+	useRef,
+	useState,
 } from "react";
 import { getAssetPath, getRenderableAssetUrl } from "@/lib/assetPath";
-import { getFacecamLayout, type FacecamSettings } from "@/lib/recordingSession";
-import { DEFAULT_WALLPAPER_PATH, DEFAULT_WALLPAPER_RELATIVE_PATH } from "@/lib/wallpapers";
 import {
 	Application,
-	Container,
-	Sprite,
-	Graphics,
 	BlurFilter,
+	Container,
+	Graphics,
+	Sprite,
 	Texture,
 	VideoSource,
 } from "@/lib/pixi";
 import { ensurePixiRuntime } from "@/lib/pixiRuntime";
-import { MotionBlurFilter } from "pixi-filters/motion-blur";
+import { type FacecamSettings, getFacecamLayout } from "@/lib/recordingSession";
+import { DEFAULT_WALLPAPER_PATH, DEFAULT_WALLPAPER_RELATIVE_PATH } from "@/lib/wallpapers";
+import { type AspectRatio, formatAspectRatioForCSS } from "@/utils/aspectRatioUtils";
+import { AnnotationOverlay } from "./AnnotationOverlay";
 import {
-	ZOOM_DEPTH_SCALES,
-	type ZoomRegion,
-	type ZoomFocus,
-	type ZoomDepth,
-	type TrimRegion,
-	type SpeedRegion,
 	type AnnotationRegion,
 	type CursorTelemetryPoint,
+	DEFAULT_CURSOR_CLICK_BOUNCE,
+	DEFAULT_CURSOR_MOTION_BLUR,
+	DEFAULT_CURSOR_SIZE,
+	DEFAULT_CURSOR_SMOOTHING,
+	type SpeedRegion,
+	type TrimRegion,
+	ZOOM_DEPTH_SCALES,
+	type ZoomDepth,
+	type ZoomFocus,
+	type ZoomRegion,
 } from "./types";
+import { markVideoEditorTiming } from "./videoEditorPerf";
 import {
 	DEFAULT_FOCUS,
 	ZOOM_SCALE_DEADZONE,
@@ -43,11 +50,12 @@ import {
 	PixiCursorOverlay,
 	preloadCursorAssets,
 } from "./videoPlayback/cursorRenderer";
-import { clamp01 } from "./videoPlayback/mathUtils";
-import { findDominantRegion } from "./videoPlayback/zoomRegionUtils";
 import { clampFocusToStage as clampFocusToStageUtil } from "./videoPlayback/focusUtils";
-import { updateOverlayIndicator } from "./videoPlayback/overlayUtils";
 import { layoutVideoContent as layoutVideoContentUtil } from "./videoPlayback/layoutUtils";
+import { clamp01 } from "./videoPlayback/mathUtils";
+import { updateOverlayIndicator } from "./videoPlayback/overlayUtils";
+import { createVideoEventHandlers } from "./videoPlayback/videoEventHandlers";
+import { findDominantRegion } from "./videoPlayback/zoomRegionUtils";
 import {
 	applyZoomTransform,
 	computeFocusFromTransform,
@@ -55,15 +63,6 @@ import {
 	createMotionBlurState,
 	type MotionBlurState,
 } from "./videoPlayback/zoomTransform";
-import { createVideoEventHandlers } from "./videoPlayback/videoEventHandlers";
-import { type AspectRatio, formatAspectRatioForCSS } from "@/utils/aspectRatioUtils";
-import { AnnotationOverlay } from "./AnnotationOverlay";
-import {
-	DEFAULT_CURSOR_CLICK_BOUNCE,
-	DEFAULT_CURSOR_MOTION_BLUR,
-	DEFAULT_CURSOR_SIZE,
-	DEFAULT_CURSOR_SMOOTHING,
-} from "./types";
 
 type PlaybackAnimationState = {
 	scale: number;
@@ -98,6 +97,17 @@ function isDirectlyRenderableWallpaper(wallpaper: string): boolean {
 		wallpaper.startsWith("/")
 	);
 }
+
+const FIRST_FRAME_TIMEOUT_MS = 3_000;
+const OFFSCREEN_MEDIA_SOURCE_STYLE: React.CSSProperties = {
+	position: "absolute",
+	left: 0,
+	top: 0,
+	width: 1,
+	height: 1,
+	opacity: 0,
+	pointerEvents: "none",
+};
 
 interface VideoPlaybackProps {
 	videoPath: string;
@@ -194,7 +204,6 @@ const VideoPlayback = memo(
 			},
 			ref,
 		) => {
-			console.log("render <VideoPlayback>");
 			const videoRef = useRef<HTMLVideoElement | null>(null);
 			const facecamVideoRef = useRef<HTMLVideoElement | null>(null);
 			const containerRef = useRef<HTMLDivElement | null>(null);
@@ -209,7 +218,9 @@ const VideoPlayback = memo(
 			const facecamBorderRef = useRef<Graphics | null>(null);
 			const timeUpdateAnimationRef = useRef<number | null>(null);
 			const [pixiReady, setPixiReady] = useState(false);
-			const [videoReady, setVideoReady] = useState(false);
+			const [metadataReady, setMetadataReady] = useState(false);
+			const [firstFrameReady, setFirstFrameReady] = useState(false);
+			const [cursorOverlayReady, setCursorOverlayReady] = useState(false);
 			const [facecamReady, setFacecamReady] = useState(false);
 			const [, setAnnotationVisibilityTick] = useState(0);
 			const annotationRegionsRef = useRef(annotationRegions);
@@ -240,7 +251,7 @@ const VideoPlayback = memo(
 			const speedRegionsRef = useRef<SpeedRegion[]>([]);
 			const zoomMotionBlurRef = useRef(zoomMotionBlur);
 			const connectZoomsRef = useRef(connectZooms);
-			const videoReadyRafRef = useRef<number | null>(null);
+			const firstFrameTimeoutRef = useRef<number | null>(null);
 			const cursorOverlayRef = useRef<PixiCursorOverlay | null>(null);
 			const cursorTelemetryRef = useRef<CursorTelemetryPoint[]>([]);
 			const showCursorRef = useRef(showCursor);
@@ -252,6 +263,8 @@ const VideoPlayback = memo(
 			const facecamOffsetMsRef = useRef(facecamOffsetMs);
 			const facecamSettingsRef = useRef(facecamSettings);
 			const prevVisibleAnnotationIdsRef = useRef("");
+			const previewSceneReady = pixiReady && metadataReady;
+			const corePreviewReady = pixiReady && firstFrameReady;
 
 			const clampFocusToStage = useCallback((focus: ZoomFocus, depth: ZoomDepth) => {
 				return clampFocusToStageUtil(focus, depth, stageSizeRef.current);
@@ -561,7 +574,9 @@ const VideoPlayback = memo(
 				isDraggingFocusRef.current = false;
 				try {
 					event.currentTarget.releasePointerCapture(event.pointerId);
-				} catch {}
+				} catch {
+					// no-op
+				}
 			};
 
 			const handleOverlayPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -571,6 +586,13 @@ const VideoPlayback = memo(
 			const handleOverlayPointerLeave = (event: React.PointerEvent<HTMLDivElement>) => {
 				endFocusDrag(event);
 			};
+
+			const clearFirstFrameTimeout = useCallback(() => {
+				if (firstFrameTimeoutRef.current !== null) {
+					window.clearTimeout(firstFrameTimeoutRef.current);
+					firstFrameTimeoutRef.current = null;
+				}
+			}, []);
 
 			useEffect(() => {
 				zoomRegionsRef.current = zoomRegions;
@@ -641,7 +663,7 @@ const VideoPlayback = memo(
 			}, [selectedAnnotationId]);
 
 			useEffect(() => {
-				if (!pixiReady || !videoReady) return;
+				if (!previewSceneReady) return;
 
 				const app = appRef.current;
 				const cameraContainer = cameraContainerRef.current;
@@ -705,17 +727,19 @@ const VideoPlayback = memo(
 					requestAnimationFrame(() => {
 						const finalApp = appRef.current;
 						if (wasPlaying && video) {
-							video.play().catch(() => {});
+							video.play().catch(() => {
+								// no-op
+							});
 						}
 						if (tickerWasStarted && finalApp?.ticker) {
 							finalApp.ticker.start();
 						}
 					});
 				});
-			}, [pixiReady, videoReady, layoutVideoContent, cropRegion]);
+			}, [layoutVideoContent, previewSceneReady]);
 
 			useEffect(() => {
-				if (!pixiReady || !videoReady) return;
+				if (!previewSceneReady) return;
 				const container = containerRef.current;
 				if (!container) return;
 
@@ -731,12 +755,12 @@ const VideoPlayback = memo(
 				return () => {
 					observer.disconnect();
 				};
-			}, [pixiReady, videoReady, layoutVideoContent]);
+			}, [layoutVideoContent, previewSceneReady]);
 
 			useEffect(() => {
-				if (!pixiReady || !videoReady) return;
+				if (!corePreviewReady) return;
 				updateOverlayForRegion(selectedZoom);
-			}, [selectedZoom, pixiReady, videoReady, updateOverlayForRegion]);
+			}, [corePreviewReady, selectedZoom, updateOverlayForRegion]);
 
 			useEffect(() => {
 				if (!pixiReady) {
@@ -744,7 +768,7 @@ const VideoPlayback = memo(
 				}
 
 				layoutFacecamOverlay();
-			}, [pixiReady, facecamReady, facecamSettings, facecamVideoPath, layoutFacecamOverlay]);
+			}, [layoutFacecamOverlay, pixiReady]);
 
 			useEffect(() => {
 				const overlayEl = overlayRef.current;
@@ -766,17 +790,6 @@ const VideoPlayback = memo(
 				let app: Application | null = null;
 
 				(async () => {
-					let cursorOverlayEnabled = true;
-					try {
-						await preloadCursorAssets();
-					} catch (error) {
-						cursorOverlayEnabled = false;
-						console.warn(
-							"Native cursor assets are unavailable in preview; continuing without cursor overlay.",
-							error,
-						);
-					}
-
 					await ensurePixiRuntime();
 
 					app = new Application();
@@ -819,22 +832,8 @@ const VideoPlayback = memo(
 					cursorContainerRef.current = cursorContainer;
 					cameraContainer.addChild(cursorContainer);
 
-					// Cursor overlay - rendered above the masked video so it can sit in front
-					// of the content without getting clipped.
-					if (cursorOverlayEnabled) {
-						const cursorOverlay = new PixiCursorOverlay({
-							dotRadius: DEFAULT_CURSOR_CONFIG.dotRadius * cursorSizeRef.current,
-							smoothingFactor: cursorSmoothingRef.current,
-							motionBlur: cursorMotionBlurRef.current,
-							clickBounce: cursorClickBounceRef.current,
-						});
-						cursorOverlayRef.current = cursorOverlay;
-						cursorContainer.addChild(cursorOverlay.container);
-					} else {
-						cursorOverlayRef.current = null;
-					}
-
 					setPixiReady(true);
+					markVideoEditorTiming("pixi-init-complete");
 				})().catch((error) => {
 					console.error("Failed to initialize preview renderer:", error);
 					onError(error instanceof Error ? error.message : "Failed to initialize preview renderer");
@@ -843,10 +842,7 @@ const VideoPlayback = memo(
 				return () => {
 					mounted = false;
 					setPixiReady(false);
-					if (cursorOverlayRef.current) {
-						cursorOverlayRef.current.destroy();
-						cursorOverlayRef.current = null;
-					}
+					setCursorOverlayReady(false);
 					if (app && app.renderer) {
 						app.destroy(true, { children: true, texture: false, textureSource: false });
 					}
@@ -863,20 +859,94 @@ const VideoPlayback = memo(
 			}, [onError]);
 
 			useEffect(() => {
+				if (!pixiReady) {
+					return;
+				}
+
+				let cancelled = false;
+
+				preloadCursorAssets()
+					.then(() => {
+						if (cancelled) {
+							return;
+						}
+
+						const cursorContainer = cursorContainerRef.current;
+						if (!cursorContainer) {
+							return;
+						}
+
+						if (!cursorOverlayRef.current) {
+							const cursorOverlay = new PixiCursorOverlay({
+								dotRadius: DEFAULT_CURSOR_CONFIG.dotRadius * cursorSizeRef.current,
+								smoothingFactor: cursorSmoothingRef.current,
+								motionBlur: cursorMotionBlurRef.current,
+								clickBounce: cursorClickBounceRef.current,
+							});
+							cursorOverlayRef.current = cursorOverlay;
+							cursorContainer.addChild(cursorOverlay.container);
+						}
+
+						setCursorOverlayReady(true);
+					})
+					.catch((error) => {
+						if (cancelled) {
+							return;
+						}
+
+						setCursorOverlayReady(false);
+						console.warn(
+							"Native cursor assets are unavailable in preview; continuing without cursor overlay.",
+							error,
+						);
+					});
+
+				return () => {
+					cancelled = true;
+					setCursorOverlayReady(false);
+					if (cursorOverlayRef.current) {
+						cursorOverlayRef.current.destroy();
+						cursorOverlayRef.current = null;
+					}
+				};
+			}, [pixiReady]);
+
+			useEffect(() => {
+				if (metadataReady) {
+					markVideoEditorTiming("metadata-loaded");
+				}
+			}, [metadataReady]);
+
+			useEffect(() => {
+				if (firstFrameReady) {
+					markVideoEditorTiming("first-frame-ready");
+				}
+			}, [firstFrameReady]);
+
+			useEffect(() => {
+				if (cursorOverlayReady) {
+					markVideoEditorTiming("cursor-assets-ready");
+				}
+			}, [cursorOverlayReady]);
+
+			useEffect(() => {
+				void videoPath;
 				const video = videoRef.current;
 				if (!video) return;
 				video.pause();
 				video.currentTime = 0;
 				allowPlaybackRef.current = false;
+				currentTimeRef.current = 0;
 				lockedVideoDimensionsRef.current = null;
-				setVideoReady(false);
-				if (videoReadyRafRef.current) {
-					cancelAnimationFrame(videoReadyRafRef.current);
-					videoReadyRafRef.current = null;
-				}
-			}, [videoPath]);
+				prevVisibleAnnotationIdsRef.current = "";
+				setMetadataReady(false);
+				setFirstFrameReady(false);
+				clearFirstFrameTimeout();
+				cursorOverlayRef.current?.reset();
+			}, [clearFirstFrameTimeout, videoPath]);
 
 			useEffect(() => {
+				void facecamVideoPath;
 				const video = facecamVideoRef.current;
 				if (!video) {
 					return;
@@ -888,14 +958,13 @@ const VideoPlayback = memo(
 			}, [facecamVideoPath]);
 
 			useEffect(() => {
-				if (!pixiReady || !videoReady) return;
+				if (!previewSceneReady) return;
 
 				const video = videoRef.current;
 				const app = appRef.current;
 				const videoContainer = videoContainerRef.current;
-				const cursorContainer = cursorContainerRef.current;
 
-				if (!video || !app || !videoContainer || !cursorContainer) return;
+				if (!video || !app || !videoContainer) return;
 				if (video.videoWidth === 0 || video.videoHeight === 0) return;
 
 				const source = VideoSource.from(video);
@@ -915,9 +984,6 @@ const VideoPlayback = memo(
 				videoContainer.addChild(maskGraphics);
 				videoContainer.mask = maskGraphics;
 				maskGraphicsRef.current = maskGraphics;
-				if (cursorOverlayRef.current) {
-					cursorContainer.addChild(cursorOverlayRef.current.container);
-				}
 
 				animationStateRef.current = createPlaybackAnimationState();
 
@@ -986,7 +1052,7 @@ const VideoPlayback = memo(
 
 					videoSpriteRef.current = null;
 				};
-			}, [pixiReady, videoReady, onTimeUpdate, updateOverlayForRegion]);
+			}, [layoutVideoContent, onPlayStateChange, onTimeUpdate, previewSceneReady]);
 
 			useEffect(() => {
 				if (!pixiReady || !facecamReady || !facecamVideoPath) {
@@ -1045,7 +1111,7 @@ const VideoPlayback = memo(
 			}, [pixiReady, facecamReady, facecamVideoPath, layoutFacecamOverlay]);
 
 			useEffect(() => {
-				if (!pixiReady || !videoReady) return;
+				if (!previewSceneReady) return;
 
 				const app = appRef.current;
 				const videoSprite = videoSpriteRef.current;
@@ -1233,7 +1299,9 @@ const VideoPlayback = memo(
 								facecamVideo.currentTime = targetTime;
 							}
 							if (facecamVideo.paused) {
-								facecamVideo.play().catch(() => {});
+								facecamVideo.play().catch(() => {
+									// no-op
+								});
 							}
 						}
 					}
@@ -1273,11 +1341,11 @@ const VideoPlayback = memo(
 						app.ticker.remove(ticker);
 					}
 				};
-			}, [pixiReady, videoReady, clampFocusToStage]);
+			}, [facecamVideoPath, previewSceneReady]);
 
 			useEffect(() => {
-				onReadyChange?.(pixiReady && videoReady);
-			}, [pixiReady, videoReady, onReadyChange]);
+				onReadyChange?.(corePreviewReady);
+			}, [corePreviewReady, onReadyChange]);
 
 			useEffect(() => {
 				return () => {
@@ -1305,32 +1373,34 @@ const VideoPlayback = memo(
 				video.pause();
 				allowPlaybackRef.current = false;
 				currentTimeRef.current = 0;
+				setMetadataReady(video.videoWidth > 0 && video.videoHeight > 0);
+				clearFirstFrameTimeout();
 
-				if (videoReadyRafRef.current) {
-					cancelAnimationFrame(videoReadyRafRef.current);
-					videoReadyRafRef.current = null;
+				if (
+					video.videoWidth > 0 &&
+					video.videoHeight > 0 &&
+					video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA
+				) {
+					setFirstFrameReady(true);
+					return;
 				}
 
-				let frameCount = 0;
-				const waitForRenderableFrame = () => {
-					const hasDimensions = video.videoWidth > 0 && video.videoHeight > 0;
-					const hasData = video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA;
-					if (hasDimensions && hasData) {
-						videoReadyRafRef.current = null;
-						setVideoReady(true);
-						return;
+				firstFrameTimeoutRef.current = window.setTimeout(() => {
+					if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+						onError("Timed out while loading the first video frame");
 					}
-					frameCount++;
-					// Safety: if after ~1 second (60 frames) the browser still hasn't
-					// loaded frame data (e.g. preload="metadata" only reached
-					// HAVE_METADATA), nudge it by triggering a load.
-					if (frameCount === 60 && video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
-						video.load();
-					}
-					videoReadyRafRef.current = requestAnimationFrame(waitForRenderableFrame);
-				};
+				}, FIRST_FRAME_TIMEOUT_MS);
+			};
 
-				videoReadyRafRef.current = requestAnimationFrame(waitForRenderableFrame);
+			const handleLoadedData = (e: React.SyntheticEvent<HTMLVideoElement, Event>) => {
+				const video = e.currentTarget;
+				clearFirstFrameTimeout();
+				if (video.videoWidth > 0 && video.videoHeight > 0) {
+					setMetadataReady(true);
+				}
+				if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+					setFirstFrameReady(true);
+				}
 			};
 
 			const handleFacecamLoadedMetadata = () => {
@@ -1385,12 +1455,9 @@ const VideoPlayback = memo(
 
 			useEffect(() => {
 				return () => {
-					if (videoReadyRafRef.current) {
-						cancelAnimationFrame(videoReadyRafRef.current);
-						videoReadyRafRef.current = null;
-					}
+					clearFirstFrameTimeout();
 				};
-			}, []);
+			}, [clearFirstFrameTimeout]);
 
 			const isImageUrl = Boolean(
 				resolvedWallpaper &&
@@ -1442,8 +1509,8 @@ const VideoPlayback = memo(
 									: "none",
 						}}
 					/>
-					{/* Only render overlay after PIXI and video are fully initialized */}
-					{pixiReady && videoReady && (
+					{/* Only render overlay after the first video frame is ready */}
+					{corePreviewReady && (
 						<div
 							ref={overlayRef}
 							className="absolute inset-0 select-none"
@@ -1511,23 +1578,27 @@ const VideoPlayback = memo(
 					<video
 						ref={videoRef}
 						src={videoPath}
-						className="hidden"
 						preload="auto"
 						playsInline
+						style={OFFSCREEN_MEDIA_SOURCE_STYLE}
 						onLoadedMetadata={handleLoadedMetadata}
+						onLoadedData={handleLoadedData}
 						onDurationChange={(e) => {
 							onDurationChange(e.currentTarget.duration);
 						}}
-						onError={() => onError("Failed to load video")}
+						onError={() => {
+							clearFirstFrameTimeout();
+							onError("Failed to load video");
+						}}
 					/>
 					{facecamVideoPath && (
 						<video
 							ref={facecamVideoRef}
 							src={facecamVideoPath}
-							className="hidden"
 							preload="auto"
 							muted
 							playsInline
+							style={OFFSCREEN_MEDIA_SOURCE_STYLE}
 							onLoadedMetadata={handleFacecamLoadedMetadata}
 							onError={() => setFacecamReady(false)}
 						/>

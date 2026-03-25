@@ -1,6 +1,9 @@
 use tauri::AppHandle;
 
 #[cfg(target_os = "macos")]
+use block::ConcreteBlock;
+
+#[cfg(target_os = "macos")]
 #[allow(unused_imports)]
 use objc::{sel, sel_impl};
 
@@ -164,6 +167,43 @@ fn get_av_capture_authorization_status(media_type: *const std::ffi::c_void) -> &
     }
 }
 
+#[cfg(target_os = "macos")]
+#[derive(Clone, Copy)]
+enum AvMediaPermissionKind {
+    Audio,
+    Video,
+}
+
+#[cfg(target_os = "macos")]
+fn request_av_capture_access(
+    app: &AppHandle,
+    media_kind: AvMediaPermissionKind,
+) -> Result<bool, String> {
+    let (tx, rx) = std::sync::mpsc::sync_channel(1);
+
+    app.run_on_main_thread(move || unsafe {
+        let media_type = match media_kind {
+            AvMediaPermissionKind::Audio => AVMediaTypeAudio,
+            AvMediaPermissionKind::Video => AVMediaTypeVideo,
+        };
+        let cls =
+            objc::runtime::Class::get("AVCaptureDevice").expect("AVCaptureDevice class not found");
+        let completion = ConcreteBlock::new(move |granted: bool| {
+            let _ = tx.send(granted);
+        })
+        .copy();
+
+        let _: () = objc::msg_send![
+            cls,
+            requestAccessForMediaType: media_type
+            completionHandler: &*completion
+        ];
+    })
+    .map_err(|e| e.to_string())?;
+
+    rx.recv().map_err(|e| e.to_string())
+}
+
 /// Returns the macOS TCC microphone authorization status.
 /// Possible values: "granted", "denied", "not_determined", "restricted", "unknown".
 /// On non-macOS platforms always returns "granted".
@@ -181,6 +221,20 @@ pub async fn get_microphone_permission_status() -> Result<String, String> {
     }
 }
 
+#[tauri::command]
+pub async fn request_microphone_permission(app: AppHandle) -> Result<bool, String> {
+    #[cfg(target_os = "macos")]
+    {
+        request_av_capture_access(&app, AvMediaPermissionKind::Audio)
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = app;
+        Ok(true)
+    }
+}
+
 /// Returns the macOS TCC camera authorization status.
 /// Possible values: "granted", "denied", "not_determined", "restricted", "unknown".
 /// On non-macOS platforms always returns "granted".
@@ -195,6 +249,20 @@ pub async fn get_camera_permission_status() -> Result<String, String> {
     #[cfg(not(target_os = "macos"))]
     {
         Ok("granted".to_string())
+    }
+}
+
+#[tauri::command]
+pub async fn request_camera_permission(app: AppHandle) -> Result<bool, String> {
+    #[cfg(target_os = "macos")]
+    {
+        request_av_capture_access(&app, AvMediaPermissionKind::Video)
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = app;
+        Ok(true)
     }
 }
 

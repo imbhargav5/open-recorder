@@ -41,6 +41,7 @@ import {
 import { getSuggestedExportFileName } from "@/lib/exportFileName";
 import { fromFileUrl, toFileUrl } from "@/lib/fileUrl";
 import { onRenderProfiler } from "@/lib/perf";
+import { ensurePixiRuntime } from "@/lib/pixiRuntime";
 import {
 	createDefaultFacecamSettings,
 	type FacecamSettings,
@@ -92,6 +93,8 @@ import {
 } from "./types";
 import { useTimeStore } from "./useTimeStore";
 import VideoPlayback, { VideoPlaybackRef } from "./VideoPlayback";
+import { loadInitialVideoEditorState } from "./videoEditorLoadState";
+import { markVideoEditorTiming } from "./videoEditorPerf";
 import {
 	buildLoopedCursorTelemetry,
 	getDisplayedTimelineWindowMs,
@@ -171,7 +174,6 @@ function createHistorySignature(snapshot: Omit<EditorHistorySnapshot, "signature
 }
 
 export default function VideoEditor() {
-	console.log("render <VideoEditor>");
 	const [videoPath, setVideoPath] = useState<string | null>(null);
 	const [videoSourcePath, setVideoSourcePath] = useState<string | null>(null);
 	const [facecamVideoPath, setFacecamVideoPath] = useState<string | null>(null);
@@ -240,6 +242,7 @@ export default function VideoEditor() {
 	const historyCurrentRef = useRef<EditorHistorySnapshot | null>(null);
 	const applyingHistoryRef = useRef(false);
 	const pendingExportSaveRef = useRef<PendingExportSave | null>(null);
+	const playbackOverlayWasVisibleRef = useRef(false);
 
 	const cloneSnapshot = useCallback((snapshot: EditorHistorySnapshot): EditorHistorySnapshot => {
 		return {
@@ -355,6 +358,21 @@ export default function VideoEditor() {
 		[],
 	);
 
+	const resetPlaybackStateForSourceChange = useCallback(() => {
+		try {
+			videoPlaybackRef.current?.pause();
+		} catch {
+			// no-op
+		}
+
+		setIsPlaying(false);
+		timeStore.setTime(0);
+		setDuration(0);
+		setError(null);
+		setPlaybackReady(false);
+		setCursorTelemetry([]);
+	}, [timeStore]);
+
 	const applyLoadedProject = useCallback(
 		async (candidate: unknown, path?: string | null) => {
 			if (!validateProjectData(candidate)) {
@@ -381,16 +399,7 @@ export default function VideoEditor() {
 				normalizedFacecamVideoPath,
 			);
 
-			try {
-				videoPlaybackRef.current?.pause();
-			} catch {
-				// no-op
-			}
-			setIsPlaying(false);
-			timeStore.setTime(0);
-			setDuration(0);
-
-			setError(null);
+			resetPlaybackStateForSourceChange();
 			setVideoSourcePath(sourcePath);
 			setVideoPath(resolvedVideoPath);
 			setFacecamVideoPath(normalizedFacecamVideoPath);
@@ -468,8 +477,13 @@ export default function VideoEditor() {
 			);
 			return true;
 		},
-		[resolvePlaybackPaths, timeStore],
+		[resetPlaybackStateForSourceChange, resolvePlaybackPaths],
 	);
+
+	useEffect(() => {
+		markVideoEditorTiming("editor-mount");
+		void ensurePixiRuntime();
+	}, []);
 
 	const currentProjectSnapshot = useMemo(() => {
 		const sourcePath = videoSourcePath;
@@ -586,37 +600,39 @@ export default function VideoEditor() {
 						currentProjectResult.filePath ?? null,
 					);
 					if (restored) {
+						markVideoEditorTiming("initial-data-ready");
 						return;
 					}
 				}
 
-				const videoPathResult = await backend.getCurrentVideoPath();
-				const session = await backend.getCurrentRecordingSession();
-				if (session?.screenVideoPath) {
-					const sourcePath = fromFileUrl(session.screenVideoPath);
-					const nextFacecamPath = session.facecamVideoPath
-						? fromFileUrl(session.facecamVideoPath)
-						: null;
+				const initialState = await loadInitialVideoEditorState({
+					loadCurrentProjectFile: async () => null,
+					getCurrentVideoPath: backend.getCurrentVideoPath,
+					getCurrentRecordingSession: backend.getCurrentRecordingSession,
+				});
+				if (initialState.kind === "session") {
+					const nextFacecamPath = initialState.facecamSourcePath;
 					const { resolvedVideoPath, resolvedFacecamPath } = await resolvePlaybackPaths(
-						sourcePath,
+						initialState.sourcePath,
 						nextFacecamPath,
 					);
-					setVideoSourcePath(sourcePath);
+					resetPlaybackStateForSourceChange();
+					setVideoSourcePath(initialState.sourcePath);
 					setVideoPath(resolvedVideoPath);
 					setFacecamVideoPath(nextFacecamPath);
 					setFacecamPlaybackPath(resolvedFacecamPath);
-					setFacecamOffsetMs(session.facecamOffsetMs ?? 0);
+					setFacecamOffsetMs(initialState.facecamOffsetMs);
 					setFacecamSettings(
-						normalizeFacecamSettings(session.facecamSettings, {
+						normalizeFacecamSettings(initialState.facecamSettings, {
 							defaultEnabled: Boolean(nextFacecamPath),
 						}),
 					);
 					setCurrentProjectPath(null);
 					setLastSavedSnapshot(null);
-				} else if (videoPathResult) {
-					const sourcePath = fromFileUrl(videoPathResult);
-					const resolvedVideoPath = await backend.resolveMediaPlaybackUrl(sourcePath);
-					setVideoSourcePath(sourcePath);
+				} else if (initialState.kind === "video") {
+					const resolvedVideoPath = await backend.resolveMediaPlaybackUrl(initialState.sourcePath);
+					resetPlaybackStateForSourceChange();
+					setVideoSourcePath(initialState.sourcePath);
 					setVideoPath(resolvedVideoPath);
 					setFacecamVideoPath(null);
 					setFacecamPlaybackPath(null);
@@ -627,6 +643,8 @@ export default function VideoEditor() {
 				} else {
 					setError("No video to load. Please record or select a video.");
 				}
+
+				markVideoEditorTiming("initial-data-ready");
 			} catch (err) {
 				setError("Error loading video: " + String(err));
 			} finally {
@@ -635,7 +653,7 @@ export default function VideoEditor() {
 		}
 
 		loadInitialData();
-	}, [applyLoadedProject, resolvePlaybackPaths]);
+	}, [applyLoadedProject, resetPlaybackStateForSourceChange, resolvePlaybackPaths]);
 
 	const saveProject = useCallback(
 		async (forceSaveAs: boolean) => {
@@ -828,9 +846,9 @@ export default function VideoEditor() {
 		let mounted = true;
 
 		async function loadCursorTelemetry() {
-			if (!videoSourcePath) {
+			if (!videoSourcePath || !playbackReady) {
 				if (mounted) {
-					setCursorTelemetry([]);
+					setCursorTelemetry((current) => (current.length === 0 ? current : []));
 				}
 				return;
 			}
@@ -839,11 +857,12 @@ export default function VideoEditor() {
 				const result = await backend.getCursorTelemetry(videoSourcePath);
 				if (mounted) {
 					setCursorTelemetry(result?.samples ?? []);
+					markVideoEditorTiming("cursor-telemetry-ready");
 				}
 			} catch (telemetryError) {
 				console.warn("Unable to load cursor telemetry:", telemetryError);
 				if (mounted) {
-					setCursorTelemetry([]);
+					setCursorTelemetry((current) => (current.length === 0 ? current : []));
 				}
 			}
 		}
@@ -853,7 +872,21 @@ export default function VideoEditor() {
 		return () => {
 			mounted = false;
 		};
-	}, [videoSourcePath]);
+	}, [playbackReady, videoSourcePath]);
+
+	const showPlaybackLoadingOverlay = Boolean(videoPath) && !playbackReady && !error;
+
+	useEffect(() => {
+		if (showPlaybackLoadingOverlay) {
+			playbackOverlayWasVisibleRef.current = true;
+			return;
+		}
+
+		if (playbackOverlayWasVisibleRef.current && videoPath && playbackReady && !error) {
+			markVideoEditorTiming("overlay-dismissed");
+			playbackOverlayWasVisibleRef.current = false;
+		}
+	}, [error, playbackReady, showPlaybackLoadingOverlay, videoPath]);
 
 	const normalizedCursorTelemetry = useMemo(() => {
 		if (cursorTelemetry.length === 0) {
@@ -2047,8 +2080,6 @@ export default function VideoEditor() {
 		);
 	}
 
-	const showPlaybackLoadingOverlay = Boolean(videoPath) && !playbackReady && !error;
-
 	return (
 		<div className="flex flex-col h-screen bg-[#09090b] text-slate-200 overflow-hidden selection:bg-[#2563EB]/30">
 			{showPlaybackLoadingOverlay && (
@@ -2281,7 +2312,6 @@ export default function VideoEditor() {
 									>
 										<Profiler id="VideoPlayback" onRender={onRenderProfiler}>
 											<VideoPlayback
-												key={videoPath || "no-video"}
 												aspectRatio={aspectRatio}
 												ref={videoPlaybackRef}
 												videoPath={videoPath || ""}

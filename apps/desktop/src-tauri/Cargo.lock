@@ -2755,6 +2755,7 @@ dependencies = [
 name = "open-recorder"
 version = "0.0.13"
 dependencies = [
+ "block",
  "cocoa",
  "dirs 5.0.1",
  "objc",

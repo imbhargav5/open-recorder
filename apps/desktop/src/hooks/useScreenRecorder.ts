@@ -261,12 +261,16 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		if (microphoneEnabled) {
 			const micStatus = await backend.getMicrophonePermissionStatus().catch(() => "unknown");
 			if (micStatus === "not_determined") {
-				// Trigger the system prompt via getUserMedia
-				try {
-					const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-					stream.getTracks().forEach((track) => track.stop());
-				} catch {
-					// User denied or error — recording will proceed without mic
+				const granted = isMacOS
+					? await backend.requestMicrophonePermission().catch(() => false)
+					: await navigator.mediaDevices
+							.getUserMedia({ audio: true, video: false })
+							.then((stream) => {
+								stream.getTracks().forEach((track) => track.stop());
+								return true;
+							})
+							.catch(() => false);
+				if (!granted) {
 					console.warn("Microphone permission not granted during pre-recording check.");
 				}
 			} else if (micStatus === "denied" || micStatus === "restricted") {
@@ -282,10 +286,16 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		if (cameraEnabled) {
 			const camStatus = await backend.getCameraPermissionStatus().catch(() => "unknown");
 			if (camStatus === "not_determined") {
-				try {
-					const stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: true });
-					stream.getTracks().forEach((track) => track.stop());
-				} catch {
+				const granted = isMacOS
+					? await backend.requestCameraPermission().catch(() => false)
+					: await navigator.mediaDevices
+							.getUserMedia({ audio: false, video: true })
+							.then((stream) => {
+								stream.getTracks().forEach((track) => track.stop());
+								return true;
+							})
+							.catch(() => false);
+				if (!granted) {
 					console.warn("Camera permission not granted during pre-recording check.");
 				}
 			} else if (camStatus === "denied" || camStatus === "restricted") {

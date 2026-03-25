@@ -61,6 +61,15 @@ describe("permission backend wrappers", () => {
 		});
 	});
 
+	describe("requestMicrophonePermission", () => {
+		it("invokes the correct command and returns a boolean", async () => {
+			invoke.mockResolvedValue(true);
+			const result = await backend.requestMicrophonePermission();
+			expect(invoke).toHaveBeenCalledWith("request_microphone_permission");
+			expect(result).toBe(true);
+		});
+	});
+
 	// ==================== Camera ====================
 
 	describe("getCameraPermissionStatus", () => {
@@ -77,6 +86,15 @@ describe("permission backend wrappers", () => {
 			invoke.mockResolvedValue(undefined);
 			await backend.openCameraPreferences();
 			expect(invoke).toHaveBeenCalledWith("open_camera_preferences");
+		});
+	});
+
+	describe("requestCameraPermission", () => {
+		it("invokes the correct command and returns a boolean", async () => {
+			invoke.mockResolvedValue(false);
+			const result = await backend.requestCameraPermission();
+			expect(invoke).toHaveBeenCalledWith("request_camera_permission");
+			expect(result).toBe(false);
 		});
 	});
 

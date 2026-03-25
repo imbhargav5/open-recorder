@@ -93,7 +93,9 @@ pub fn run() {
             commands::permissions::request_accessibility_permission,
             commands::permissions::open_accessibility_preferences,
             commands::permissions::get_microphone_permission_status,
+            commands::permissions::request_microphone_permission,
             commands::permissions::get_camera_permission_status,
+            commands::permissions::request_camera_permission,
             commands::permissions::open_microphone_preferences,
             commands::permissions::open_camera_preferences,
             // Dialogs
