@@ -119,6 +119,8 @@ interface VideoPlaybackProps {
 	onPlayStateChange: (playing: boolean) => void;
 	onError: (error: string) => void;
 	wallpaper?: string;
+	audioMuted?: boolean;
+	audioVolume?: number;
 	zoomRegions: ZoomRegion[];
 	selectedZoomId: string | null;
 	onSelectZoom: (id: string | null) => void;
@@ -173,6 +175,8 @@ const VideoPlayback = memo(
 				onPlayStateChange,
 				onError,
 				wallpaper,
+				audioMuted = false,
+				audioVolume = 1,
 				zoomRegions,
 				selectedZoomId,
 				onSelectZoom,
@@ -248,6 +252,18 @@ const VideoPlayback = memo(
 			const layoutVideoContentRef = useRef<(() => void) | null>(null);
 			const layoutFacecamOverlayRef = useRef<(() => void) | null>(null);
 			const trimRegionsRef = useRef<TrimRegion[]>([]);
+
+			useEffect(() => {
+				const video = videoRef.current;
+				if (!video) return;
+				video.muted = audioMuted;
+			}, [audioMuted, videoPath]);
+
+			useEffect(() => {
+				const video = videoRef.current;
+				if (!video) return;
+				video.volume = clamp01(audioVolume);
+			}, [audioVolume, videoPath]);
 			const speedRegionsRef = useRef<SpeedRegion[]>([]);
 			const zoomMotionBlurRef = useRef(zoomMotionBlur);
 			const connectZoomsRef = useRef(connectZooms);
@@ -1579,6 +1595,7 @@ const VideoPlayback = memo(
 						ref={videoRef}
 						src={videoPath}
 						preload="auto"
+						muted={audioMuted}
 						playsInline
 						style={OFFSCREEN_MEDIA_SOURCE_STYLE}
 						onLoadedMetadata={handleLoadedMetadata}

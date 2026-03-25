@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { memo, useEffect, useRef } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { getAssetPath } from "@/lib/assetPath";
 import { openExternalUrl } from "@/lib/backend";
 import { createDefaultFacecamSettings, type FacecamSettings } from "@/lib/recordingSession";
@@ -8,7 +8,6 @@ import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { useState } from "react";
 import Block from "@uiw/react-color-block";
 import {
 	Trash2,
@@ -21,6 +20,8 @@ import {
 	Camera,
 	SlidersHorizontal,
 	Palette,
+	Volume2,
+	type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import type {
@@ -35,12 +36,7 @@ import { CropControl } from "./CropControl";
 import { KeyboardShortcutsHelp } from "./KeyboardShortcutsHelp";
 import { AnnotationSettingsPanel } from "./AnnotationSettingsPanel";
 import { type AspectRatio } from "@/utils/aspectRatioUtils";
-import {
-	Accordion,
-	AccordionContent,
-	AccordionItem,
-	AccordionTrigger,
-} from "@/components/ui/accordion";
+
 const GRADIENTS = [
 	"linear-gradient( 111.6deg,  rgba(114,167,232,1) 9.4%, rgba(253,129,82,1) 43.9%, rgba(253,129,82,1) 54.8%, rgba(249,202,86,1) 86.3% )",
 	"linear-gradient(120deg, #d4fc79 0%, #96e6a1 100%)",
@@ -87,9 +83,55 @@ const COLOR_PALETTE = [
 	"#795548",
 ];
 
+type SettingsSidebarTab = "appearance" | "cursor" | "camera" | "background" | "audio";
+
+type SettingsTabDefinition = {
+	id: SettingsSidebarTab;
+	label: string;
+	description: string;
+	icon: LucideIcon;
+};
+
+const SETTINGS_SIDEBAR_TABS: SettingsTabDefinition[] = [
+	{
+		id: "appearance",
+		label: "Appearance",
+		description: "Frame styling, crop, and composition.",
+		icon: SlidersHorizontal,
+	},
+	{
+		id: "cursor",
+		label: "Cursor",
+		description: "Cursor visibility and motion effects.",
+		icon: MousePointer2,
+	},
+	{
+		id: "camera",
+		label: "Camera",
+		description: "Facecam overlay settings.",
+		icon: Camera,
+	},
+	{
+		id: "background",
+		label: "Background",
+		description: "Wallpaper, colors, and gradients.",
+		icon: Palette,
+	},
+	{
+		id: "audio",
+		label: "Audio",
+		description: "Master preview and MP4 export audio.",
+		icon: Volume2,
+	},
+];
+
 interface SettingsPanelProps {
 	selected: string;
 	onWallpaperChange: (path: string) => void;
+	audioMuted?: boolean;
+	onAudioMutedChange?: (muted: boolean) => void;
+	audioVolume?: number;
+	onAudioVolumeChange?: (volume: number) => void;
 	selectedZoomDepth?: ZoomDepth | null;
 	onZoomDepthChange?: (depth: ZoomDepth) => void;
 	selectedZoomId?: string | null;
@@ -152,6 +194,10 @@ const ZOOM_DEPTH_OPTIONS: Array<{ depth: ZoomDepth; label: string }> = [
 function SettingsPanelInner({
 	selected,
 	onWallpaperChange,
+	audioMuted = false,
+	onAudioMutedChange,
+	audioVolume = 1,
+	onAudioVolumeChange,
 	selectedZoomDepth,
 	onZoomDepthChange,
 	selectedZoomId,
@@ -202,6 +248,8 @@ function SettingsPanelInner({
 	onSpeedDelete,
 }: SettingsPanelProps) {
 	console.log("render <SettingsPanel>");
+	const [activeTab, setActiveTab] = useState<SettingsSidebarTab>("appearance");
+	const [backgroundTab, setBackgroundTab] = useState<"image" | "color" | "gradient">("image");
 	const [wallpaperPreviewPaths, setWallpaperPreviewPaths] = useState<string[]>([]);
 	const [customImages, setCustomImages] = useState<string[]>([]);
 	const fileInputRef = useRef<HTMLInputElement>(null);
@@ -226,6 +274,10 @@ function SettingsPanelInner({
 	const [gradient, setGradient] = useState<string>(GRADIENTS[0]);
 	const [showCropModal, setShowCropModal] = useState(false);
 	const cropSnapshotRef = useRef<CropRegion | null>(null);
+	const activeTabDefinition = useMemo(
+		() => SETTINGS_SIDEBAR_TABS.find((tab) => tab.id === activeTab) ?? SETTINGS_SIDEBAR_TABS[0],
+		[activeTab],
+	);
 
 	const zoomEnabled = Boolean(selectedZoomDepth);
 	const trimEnabled = Boolean(selectedTrimId);
@@ -340,603 +392,686 @@ function SettingsPanelInner({
 		);
 	}
 
-	return (
-		<div className="flex-[2] min-w-0 bg-[#09090b] border border-white/5 rounded-2xl flex flex-col shadow-xl h-full overflow-hidden">
-			<div className="flex-1 overflow-y-auto custom-scrollbar p-4 pb-0">
-				{zoomEnabled && (
-					<div className="mb-3 rounded-xl border border-[#2563EB]/20 border-l-2 border-l-[#2563EB] bg-[#2563EB]/5 p-3">
-						<div className="flex items-center justify-between mb-3">
-							<span className="text-sm font-medium text-slate-200">Zoom Settings</span>
-							<div className="flex items-center gap-2">
-								{selectedZoomDepth && (
-									<span className="text-[10px] uppercase tracking-wider font-medium text-[#2563EB] bg-[#2563EB]/10 px-2 py-0.5 rounded-full">
-										{ZOOM_DEPTH_OPTIONS.find((o) => o.depth === selectedZoomDepth)?.label}
+	const ActiveTabIcon = activeTabDefinition.icon;
+
+	const renderSelectedTabContent = () => {
+		switch (activeTab) {
+			case "appearance":
+				return (
+					<div className="space-y-3">
+						<div className="grid grid-cols-2 gap-2">
+							<div className="p-2 rounded-lg bg-white/5 border border-white/5">
+								<div className="flex items-center justify-between mb-1">
+									<div className="text-[10px] font-medium text-slate-300">Shadow</div>
+									<span className="text-[10px] text-slate-500 font-mono">
+										{Math.round(shadowIntensity * 100)}%
 									</span>
-								)}
-								<KeyboardShortcutsHelp />
+								</div>
+								<Slider
+									value={[shadowIntensity]}
+									onValueChange={(values) => onShadowChange?.(values[0])}
+									min={0}
+									max={1}
+									step={0.01}
+									className="w-full [&_[role=slider]]:bg-[#2563EB] [&_[role=slider]]:border-[#2563EB] [&_[role=slider]]:h-3 [&_[role=slider]]:w-3"
+								/>
+							</div>
+							<div className="p-2 rounded-lg bg-white/5 border border-white/5">
+								<div className="flex items-center justify-between mb-1">
+									<div className="text-[10px] font-medium text-slate-300">Roundness</div>
+									<span className="text-[10px] text-slate-500 font-mono">{borderRadius}px</span>
+								</div>
+								<Slider
+									value={[borderRadius]}
+									onValueChange={(values) => onBorderRadiusChange?.(values[0])}
+									min={0}
+									max={25}
+									step={0.5}
+									className="w-full [&_[role=slider]]:bg-[#2563EB] [&_[role=slider]]:border-[#2563EB] [&_[role=slider]]:h-3 [&_[role=slider]]:w-3"
+								/>
 							</div>
 						</div>
-						<div className="grid grid-cols-6 gap-1.5 mb-3">
-							{ZOOM_DEPTH_OPTIONS.map((option) => {
-								const isActive = selectedZoomDepth === option.depth;
-								return (
-									<Button
-										key={option.depth}
-										type="button"
-										onClick={() => onZoomDepthChange?.(option.depth)}
-										className={cn(
-											"h-auto w-full rounded-lg border px-1 py-2 text-center shadow-sm transition-all",
-											"duration-200 ease-out",
-											"opacity-100 cursor-pointer",
-											isActive
-												? "border-[#2563EB] bg-[#2563EB] text-white shadow-[#2563EB]/20"
-												: "border-white/5 bg-white/5 text-slate-400 hover:bg-white/10 hover:border-white/10 hover:text-slate-200",
-										)}
-									>
-										<span className="text-xs font-semibold">{option.label}</span>
-									</Button>
-								);
-							})}
+						<div className="grid grid-cols-2 gap-2">
+							<div className="p-2 rounded-lg bg-white/5 border border-white/5">
+								<div className="flex items-center justify-between mb-1">
+									<div className="text-[10px] font-medium text-slate-300">Padding</div>
+									<span className="text-[10px] text-slate-500 font-mono">{padding}%</span>
+								</div>
+								<Slider
+									value={[padding]}
+									onValueChange={(values) => onPaddingChange?.(values[0])}
+									min={0}
+									max={100}
+									step={1}
+									className="w-full [&_[role=slider]]:bg-[#2563EB] [&_[role=slider]]:border-[#2563EB] [&_[role=slider]]:h-3 [&_[role=slider]]:w-3"
+								/>
+							</div>
+							<div className="p-2 rounded-lg bg-white/5 border border-white/5">
+								<div className="flex items-center justify-between mb-1">
+									<div className="text-[10px] font-medium text-slate-300">Background Blur</div>
+									<span className="text-[10px] text-slate-500 font-mono">
+										{backgroundBlur.toFixed(1)}px
+									</span>
+								</div>
+								<Slider
+									value={[backgroundBlur]}
+									onValueChange={(values) => onBackgroundBlurChange?.(values[0])}
+									min={0}
+									max={8}
+									step={0.25}
+									className="w-full [&_[role=slider]]:bg-[#2563EB] [&_[role=slider]]:border-[#2563EB] [&_[role=slider]]:h-3 [&_[role=slider]]:w-3"
+								/>
+							</div>
 						</div>
-						<div className="grid grid-cols-2 gap-2 mb-3">
+
+						<Button
+							onClick={handleCropToggle}
+							variant="outline"
+							className="w-full gap-1.5 bg-white/5 text-slate-200 border-white/10 hover:bg-white/10 hover:border-white/20 hover:text-white text-[10px] h-8 transition-all"
+						>
+							<Crop className="w-3 h-3" />
+							Crop Video
+						</Button>
+					</div>
+				);
+			case "cursor":
+				return (
+					<div className="space-y-3">
+						<div className="grid grid-cols-2 gap-2">
+							<div className="flex items-center justify-between p-2 rounded-lg bg-white/5 border border-white/5">
+								<div className="text-[10px] font-medium text-slate-300">Show Cursor</div>
+								<Switch
+									checked={showCursor}
+									onCheckedChange={onShowCursorChange}
+									className="data-[state=checked]:bg-[#2563EB] scale-90"
+								/>
+							</div>
+							<div className="flex items-center justify-between p-2 rounded-lg bg-white/5 border border-white/5">
+								<div className="text-[10px] font-medium text-slate-300">Loop Cursor</div>
+								<Switch
+									checked={loopCursor}
+									onCheckedChange={onLoopCursorChange}
+									className="data-[state=checked]:bg-[#2563EB] scale-90"
+								/>
+							</div>
+						</div>
+						<div className="grid grid-cols-2 gap-2">
+							<div className="p-2 rounded-lg bg-white/5 border border-white/5">
+								<div className="flex items-center justify-between mb-1">
+									<div className="text-[10px] font-medium text-slate-300">Size</div>
+									<span className="text-[10px] text-slate-500 font-mono">
+										{cursorSize.toFixed(2)}×
+									</span>
+								</div>
+								<Slider
+									value={[cursorSize]}
+									onValueChange={(values) => onCursorSizeChange?.(values[0])}
+									min={0.5}
+									max={10}
+									step={0.05}
+									className="w-full [&_[role=slider]]:bg-[#2563EB] [&_[role=slider]]:border-[#2563EB] [&_[role=slider]]:h-3 [&_[role=slider]]:w-3"
+								/>
+							</div>
+							<div className="p-2 rounded-lg bg-white/5 border border-white/5">
+								<div className="flex items-center justify-between mb-1">
+									<div className="text-[10px] font-medium text-slate-300">Smoothing</div>
+									<span className="text-[10px] text-slate-500 font-mono">
+										{cursorSmoothing <= 0 ? "Off" : cursorSmoothing.toFixed(2)}
+									</span>
+								</div>
+								<Slider
+									value={[cursorSmoothing]}
+									onValueChange={(values) => onCursorSmoothingChange?.(values[0])}
+									min={0}
+									max={2}
+									step={0.01}
+									className="w-full [&_[role=slider]]:bg-[#2563EB] [&_[role=slider]]:border-[#2563EB] [&_[role=slider]]:h-3 [&_[role=slider]]:w-3"
+								/>
+							</div>
+						</div>
+						<div className="grid grid-cols-2 gap-2">
 							<div className="p-2 rounded-lg bg-white/5 border border-white/5">
 								<div className="flex items-center justify-between mb-1">
 									<div className="text-[10px] font-medium text-slate-300">Motion Blur</div>
 									<span className="text-[10px] text-slate-500 font-mono">
-										{zoomMotionBlur.toFixed(2)}×
+										{cursorMotionBlur.toFixed(2)}×
 									</span>
 								</div>
 								<Slider
-									value={[zoomMotionBlur]}
-									onValueChange={(values) => onZoomMotionBlurChange?.(values[0])}
+									value={[cursorMotionBlur]}
+									onValueChange={(values) => onCursorMotionBlurChange?.(values[0])}
 									min={0}
 									max={2}
 									step={0.05}
 									className="w-full [&_[role=slider]]:bg-[#2563EB] [&_[role=slider]]:border-[#2563EB] [&_[role=slider]]:h-3 [&_[role=slider]]:w-3"
 								/>
 							</div>
-							<div className="flex items-center justify-between p-2 rounded-lg bg-white/5 border border-white/5">
-								<div className="text-[10px] font-medium text-slate-300">Connect Zooms</div>
-								<Switch
-									checked={connectZooms}
-									onCheckedChange={onConnectZoomsChange}
-									className="data-[state=checked]:bg-[#2563EB] scale-90"
+							<div className="p-2 rounded-lg bg-white/5 border border-white/5">
+								<div className="flex items-center justify-between mb-1">
+									<div className="text-[10px] font-medium text-slate-300">Click Bounce</div>
+									<span className="text-[10px] text-slate-500 font-mono">
+										{cursorClickBounce.toFixed(2)}×
+									</span>
+								</div>
+								<Slider
+									value={[cursorClickBounce]}
+									onValueChange={(values) => onCursorClickBounceChange?.(values[0])}
+									min={0}
+									max={5}
+									step={0.05}
+									className="w-full [&_[role=slider]]:bg-[#2563EB] [&_[role=slider]]:border-[#2563EB] [&_[role=slider]]:h-3 [&_[role=slider]]:w-3"
 								/>
 							</div>
 						</div>
-						<Button
-							onClick={handleDeleteClick}
-							variant="destructive"
-							size="sm"
-							className="mt-3 w-full gap-2 bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 hover:border-red-500/30 transition-all h-8 text-xs"
-						>
-							<Trash2 className="w-3 h-3" />
-							Delete Zoom
-						</Button>
 					</div>
-				)}
-
-				{trimEnabled && (
-					<div className="mb-3 rounded-xl border border-red-500/20 border-l-2 border-l-red-500 bg-red-500/5 p-3">
-						<Button
-							onClick={handleTrimDeleteClick}
-							variant="destructive"
-							size="sm"
-							className="w-full gap-2 bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 hover:border-red-500/30 transition-all h-8 text-xs"
-						>
-							<Trash2 className="w-3 h-3" />
-							Delete Trim Region
-						</Button>
-					</div>
-				)}
-
-				{selectedSpeedId && (
-					<div className="mb-3 rounded-xl border border-[#d97706]/20 border-l-2 border-l-[#d97706] bg-[#d97706]/5 p-3">
-						<div className="flex items-center justify-between mb-3">
-							<span className="text-sm font-medium text-slate-200">Speed Settings</span>
-							{selectedSpeedValue && (
-								<span className="text-[10px] uppercase tracking-wider font-medium text-[#d97706] bg-[#d97706]/10 px-2 py-0.5 rounded-full">
-									{SPEED_OPTIONS.find((o) => o.speed === selectedSpeedValue)?.label ??
-										`${selectedSpeedValue}×`}
-								</span>
-							)}
+				);
+			case "camera":
+				return (
+					<div className="space-y-3">
+						<div className="flex items-center justify-between gap-3 p-2 rounded-lg bg-white/5 border border-white/5">
+							<div>
+								<div className="text-[11px] font-medium text-slate-200">Facecam</div>
+								<div className="text-[10px] text-slate-500">
+									{facecamAvailable
+										? "Show a Loom-style facecam overlay."
+										: "Record with facecam enabled to customize."}
+								</div>
+							</div>
+							<Switch
+								checked={facecamAvailable && facecamSettings.enabled}
+								disabled={!facecamAvailable}
+								onCheckedChange={(checked) =>
+									updateFacecamSettings({ enabled: checked && facecamAvailable })
+								}
+							/>
 						</div>
-						<div className="grid grid-cols-7 gap-1.5 mb-3">
-							{SPEED_OPTIONS.map((option) => {
-								const isActive = selectedSpeedValue === option.speed;
-								return (
+
+						{facecamAvailable && (
+							<div className="space-y-3">
+								<div className="grid grid-cols-2 gap-2">
 									<Button
-										key={option.speed}
 										type="button"
-										onClick={() => onSpeedChange?.(option.speed)}
+										variant="outline"
+										onClick={() => updateFacecamSettings({ shape: "circle" })}
 										className={cn(
-											"h-auto w-full rounded-lg border px-1 py-2 text-center shadow-sm transition-all",
-											"duration-200 ease-out",
-											"opacity-100 cursor-pointer",
-											isActive
-												? "border-[#d97706] bg-[#d97706] text-white shadow-[#d97706]/20"
-												: "border-white/5 bg-white/5 text-slate-400 hover:bg-white/10 hover:border-white/10 hover:text-slate-200",
+											"h-8 text-[10px] border-white/10 bg-white/5 text-slate-300 hover:bg-white/10",
+											facecamSettings.shape === "circle" &&
+												"border-[#2563EB]/60 bg-[#2563EB]/15 text-white",
 										)}
 									>
-										<span className="text-xs font-semibold">{option.label}</span>
+										Circle
 									</Button>
-								);
-							})}
-						</div>
-						<Button
-							onClick={() => selectedSpeedId && onSpeedDelete?.(selectedSpeedId)}
-							variant="destructive"
-							size="sm"
-							className="mt-3 w-full gap-2 bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 hover:border-red-500/30 transition-all h-8 text-xs"
-						>
-							<Trash2 className="w-3 h-3" />
-							Delete Speed Region
-						</Button>
-					</div>
-				)}
+									<Button
+										type="button"
+										variant="outline"
+										onClick={() => updateFacecamSettings({ shape: "square" })}
+										className={cn(
+											"h-8 text-[10px] border-white/10 bg-white/5 text-slate-300 hover:bg-white/10",
+											facecamSettings.shape === "square" &&
+												"border-[#2563EB]/60 bg-[#2563EB]/15 text-white",
+										)}
+									>
+										Square
+									</Button>
+								</div>
 
-				{(zoomEnabled || selectedSpeedId || trimEnabled) && (
-					<div className="border-b border-white/5 mb-3" />
-				)}
-
-				<Accordion
-					type="multiple"
-					defaultValue={["appearance", "background"]}
-					className="space-y-1"
-				>
-					<AccordionItem
-						value="appearance"
-						className="border-white/5 rounded-xl bg-white/[0.02] px-3"
-					>
-						<AccordionTrigger className="py-2.5 hover:no-underline">
-							<div className="flex items-center gap-2">
-								<SlidersHorizontal className="w-4 h-4 text-[#2563EB]" />
-								<span className="text-xs font-medium">Appearance</span>
-							</div>
-						</AccordionTrigger>
-						<AccordionContent className="pb-3">
-							<div className="grid grid-cols-2 gap-2 mb-3">
 								<div className="p-2 rounded-lg bg-white/5 border border-white/5">
 									<div className="flex items-center justify-between mb-1">
-										<div className="text-[10px] font-medium text-slate-300">Shadow</div>
+										<div className="text-[10px] font-medium text-slate-300">Facecam Size</div>
 										<span className="text-[10px] text-slate-500 font-mono">
-											{Math.round(shadowIntensity * 100)}%
+											{facecamSettings.size.toFixed(0)}%
 										</span>
 									</div>
 									<Slider
-										value={[shadowIntensity]}
-										onValueChange={(values) => onShadowChange?.(values[0])}
-										min={0}
-										max={1}
-										step={0.01}
-										className="w-full [&_[role=slider]]:bg-[#2563EB] [&_[role=slider]]:border-[#2563EB] [&_[role=slider]]:h-3 [&_[role=slider]]:w-3"
-									/>
-								</div>
-								<div className="p-2 rounded-lg bg-white/5 border border-white/5">
-									<div className="flex items-center justify-between mb-1">
-										<div className="text-[10px] font-medium text-slate-300">Roundness</div>
-										<span className="text-[10px] text-slate-500 font-mono">{borderRadius}px</span>
-									</div>
-									<Slider
-										value={[borderRadius]}
-										onValueChange={(values) => onBorderRadiusChange?.(values[0])}
-										min={0}
-										max={25}
-										step={0.5}
-										className="w-full [&_[role=slider]]:bg-[#2563EB] [&_[role=slider]]:border-[#2563EB] [&_[role=slider]]:h-3 [&_[role=slider]]:w-3"
-									/>
-								</div>
-							</div>
-							<div className="grid grid-cols-2 gap-2 mb-3">
-								<div className="p-2 rounded-lg bg-white/5 border border-white/5">
-									<div className="flex items-center justify-between mb-1">
-										<div className="text-[10px] font-medium text-slate-300">Padding</div>
-										<span className="text-[10px] text-slate-500 font-mono">{padding}%</span>
-									</div>
-									<Slider
-										value={[padding]}
-										onValueChange={(values) => onPaddingChange?.(values[0])}
-										min={0}
-										max={100}
+										value={[facecamSettings.size]}
+										onValueChange={(values) => updateFacecamSettings({ size: values[0] })}
+										min={12}
+										max={40}
 										step={1}
 										className="w-full [&_[role=slider]]:bg-[#2563EB] [&_[role=slider]]:border-[#2563EB] [&_[role=slider]]:h-3 [&_[role=slider]]:w-3"
 									/>
 								</div>
-								<div className="p-2 rounded-lg bg-white/5 border border-white/5">
-									<div className="flex items-center justify-between mb-1">
-										<div className="text-[10px] font-medium text-slate-300">Background Blur</div>
-										<span className="text-[10px] text-slate-500 font-mono">
-											{backgroundBlur.toFixed(1)}px
-										</span>
-									</div>
-									<Slider
-										value={[backgroundBlur]}
-										onValueChange={(values) => onBackgroundBlurChange?.(values[0])}
-										min={0}
-										max={8}
-										step={0.25}
-										className="w-full [&_[role=slider]]:bg-[#2563EB] [&_[role=slider]]:border-[#2563EB] [&_[role=slider]]:h-3 [&_[role=slider]]:w-3"
-									/>
-								</div>
-							</div>
 
-							<Button
-								onClick={handleCropToggle}
-								variant="outline"
-								className="w-full mt-2 gap-1.5 bg-white/5 text-slate-200 border-white/10 hover:bg-white/10 hover:border-white/20 hover:text-white text-[10px] h-8 transition-all"
-							>
-								<Crop className="w-3 h-3" />
-								Crop Video
-							</Button>
-						</AccordionContent>
-					</AccordionItem>
-
-					<AccordionItem value="cursor" className="border-white/5 rounded-xl bg-white/[0.02] px-3">
-						<AccordionTrigger className="py-2.5 hover:no-underline">
-							<div className="flex items-center gap-2">
-								<MousePointer2 className="w-4 h-4 text-[#2563EB]" />
-								<span className="text-xs font-medium">Cursor</span>
-							</div>
-						</AccordionTrigger>
-						<AccordionContent className="pb-3">
-							<div className="grid grid-cols-2 gap-2 mb-3">
-								<div className="flex items-center justify-between p-2 rounded-lg bg-white/5 border border-white/5">
-									<div className="text-[10px] font-medium text-slate-300">Show Cursor</div>
-									<Switch
-										checked={showCursor}
-										onCheckedChange={onShowCursorChange}
-										className="data-[state=checked]:bg-[#2563EB] scale-90"
-									/>
-								</div>
-								<div className="flex items-center justify-between p-2 rounded-lg bg-white/5 border border-white/5">
-									<div className="text-[10px] font-medium text-slate-300">Loop Cursor</div>
-									<Switch
-										checked={loopCursor}
-										onCheckedChange={onLoopCursorChange}
-										className="data-[state=checked]:bg-[#2563EB] scale-90"
-									/>
-								</div>
-							</div>
-							<div className="grid grid-cols-2 gap-2 mb-3">
-								<div className="p-2 rounded-lg bg-white/5 border border-white/5">
-									<div className="flex items-center justify-between mb-1">
-										<div className="text-[10px] font-medium text-slate-300">Size</div>
-										<span className="text-[10px] text-slate-500 font-mono">
-											{cursorSize.toFixed(2)}×
-										</span>
-									</div>
-									<Slider
-										value={[cursorSize]}
-										onValueChange={(values) => onCursorSizeChange?.(values[0])}
-										min={0.5}
-										max={10}
-										step={0.05}
-										className="w-full [&_[role=slider]]:bg-[#2563EB] [&_[role=slider]]:border-[#2563EB] [&_[role=slider]]:h-3 [&_[role=slider]]:w-3"
-									/>
-								</div>
-								<div className="p-2 rounded-lg bg-white/5 border border-white/5">
-									<div className="flex items-center justify-between mb-1">
-										<div className="text-[10px] font-medium text-slate-300">Smoothing</div>
-										<span className="text-[10px] text-slate-500 font-mono">
-											{cursorSmoothing <= 0 ? "Off" : cursorSmoothing.toFixed(2)}
-										</span>
-									</div>
-									<Slider
-										value={[cursorSmoothing]}
-										onValueChange={(values) => onCursorSmoothingChange?.(values[0])}
-										min={0}
-										max={2}
-										step={0.01}
-										className="w-full [&_[role=slider]]:bg-[#2563EB] [&_[role=slider]]:border-[#2563EB] [&_[role=slider]]:h-3 [&_[role=slider]]:w-3"
-									/>
-								</div>
-							</div>
-							<div className="grid grid-cols-2 gap-2">
-								<div className="p-2 rounded-lg bg-white/5 border border-white/5">
-									<div className="flex items-center justify-between mb-1">
-										<div className="text-[10px] font-medium text-slate-300">Motion Blur</div>
-										<span className="text-[10px] text-slate-500 font-mono">
-											{cursorMotionBlur.toFixed(2)}×
-										</span>
-									</div>
-									<Slider
-										value={[cursorMotionBlur]}
-										onValueChange={(values) => onCursorMotionBlurChange?.(values[0])}
-										min={0}
-										max={2}
-										step={0.05}
-										className="w-full [&_[role=slider]]:bg-[#2563EB] [&_[role=slider]]:border-[#2563EB] [&_[role=slider]]:h-3 [&_[role=slider]]:w-3"
-									/>
-								</div>
-								<div className="p-2 rounded-lg bg-white/5 border border-white/5">
-									<div className="flex items-center justify-between mb-1">
-										<div className="text-[10px] font-medium text-slate-300">Click Bounce</div>
-										<span className="text-[10px] text-slate-500 font-mono">
-											{cursorClickBounce.toFixed(2)}×
-										</span>
-									</div>
-									<Slider
-										value={[cursorClickBounce]}
-										onValueChange={(values) => onCursorClickBounceChange?.(values[0])}
-										min={0}
-										max={5}
-										step={0.05}
-										className="w-full [&_[role=slider]]:bg-[#2563EB] [&_[role=slider]]:border-[#2563EB] [&_[role=slider]]:h-3 [&_[role=slider]]:w-3"
-									/>
-								</div>
-							</div>
-						</AccordionContent>
-					</AccordionItem>
-
-					<AccordionItem value="camera" className="border-white/5 rounded-xl bg-white/[0.02] px-3">
-						<AccordionTrigger className="py-2.5 hover:no-underline">
-							<div className="flex items-center gap-2">
-								<Camera className="w-4 h-4 text-[#2563EB]" />
-								<span className="text-xs font-medium">Camera</span>
-							</div>
-						</AccordionTrigger>
-						<AccordionContent className="pb-3">
-							<div className="flex items-center justify-between gap-3">
-								<div>
-									<div className="text-[11px] font-medium text-slate-200">Facecam</div>
-									<div className="text-[10px] text-slate-500">
-										{facecamAvailable
-											? "Show a Loom-style facecam overlay."
-											: "Record with facecam enabled to customize."}
-									</div>
-								</div>
-								<Switch
-									checked={facecamAvailable && facecamSettings.enabled}
-									disabled={!facecamAvailable}
-									onCheckedChange={(checked) =>
-										updateFacecamSettings({ enabled: checked && facecamAvailable })
-									}
-								/>
-							</div>
-
-							{facecamAvailable && (
-								<div className="mt-3 space-y-2">
-									<div className="grid grid-cols-2 gap-2">
-										<Button
-											type="button"
-											variant="outline"
-											onClick={() => updateFacecamSettings({ shape: "circle" })}
-											className={cn(
-												"h-8 text-[10px] border-white/10 bg-white/5 text-slate-300 hover:bg-white/10",
-												facecamSettings.shape === "circle" &&
-													"border-[#2563EB]/60 bg-[#2563EB]/15 text-white",
-											)}
-										>
-											Circle
-										</Button>
-										<Button
-											type="button"
-											variant="outline"
-											onClick={() => updateFacecamSettings({ shape: "square" })}
-											className={cn(
-												"h-8 text-[10px] border-white/10 bg-white/5 text-slate-300 hover:bg-white/10",
-												facecamSettings.shape === "square" &&
-													"border-[#2563EB]/60 bg-[#2563EB]/15 text-white",
-											)}
-										>
-											Square
-										</Button>
-									</div>
-
+								{facecamSettings.shape === "square" && (
 									<div className="p-2 rounded-lg bg-white/5 border border-white/5">
 										<div className="flex items-center justify-between mb-1">
-											<div className="text-[10px] font-medium text-slate-300">Facecam Size</div>
+											<div className="text-[10px] font-medium text-slate-300">Square Roundness</div>
 											<span className="text-[10px] text-slate-500 font-mono">
-												{facecamSettings.size.toFixed(0)}%
+												{facecamSettings.cornerRadius.toFixed(0)}%
 											</span>
 										</div>
 										<Slider
-											value={[facecamSettings.size]}
-											onValueChange={(values) => updateFacecamSettings({ size: values[0] })}
-											min={12}
-											max={40}
+											value={[facecamSettings.cornerRadius]}
+											onValueChange={(values) => updateFacecamSettings({ cornerRadius: values[0] })}
+											min={0}
+											max={50}
 											step={1}
 											className="w-full [&_[role=slider]]:bg-[#2563EB] [&_[role=slider]]:border-[#2563EB] [&_[role=slider]]:h-3 [&_[role=slider]]:w-3"
 										/>
 									</div>
-
-									{facecamSettings.shape === "square" && (
-										<div className="p-2 rounded-lg bg-white/5 border border-white/5">
-											<div className="flex items-center justify-between mb-1">
-												<div className="text-[10px] font-medium text-slate-300">
-													Square Roundness
-												</div>
-												<span className="text-[10px] text-slate-500 font-mono">
-													{facecamSettings.cornerRadius.toFixed(0)}%
-												</span>
-											</div>
-											<Slider
-												value={[facecamSettings.cornerRadius]}
-												onValueChange={(values) =>
-													updateFacecamSettings({ cornerRadius: values[0] })
-												}
-												min={0}
-												max={50}
-												step={1}
-												className="w-full [&_[role=slider]]:bg-[#2563EB] [&_[role=slider]]:border-[#2563EB] [&_[role=slider]]:h-3 [&_[role=slider]]:w-3"
-											/>
-										</div>
-									)}
-								</div>
-							)}
-						</AccordionContent>
-					</AccordionItem>
-
-					<AccordionItem
-						value="background"
-						className="border-white/5 rounded-xl bg-white/[0.02] px-3"
-					>
-						<AccordionTrigger className="py-2.5 hover:no-underline">
-							<div className="flex items-center gap-2">
-								<Palette className="w-4 h-4 text-[#2563EB]" />
-								<span className="text-xs font-medium">Background</span>
+								)}
 							</div>
-						</AccordionTrigger>
-						<AccordionContent className="pb-3">
-							<Tabs defaultValue="image" className="w-full">
-								<TabsList className="mb-2 bg-white/5 border border-white/5 p-0.5 w-full grid grid-cols-3 h-7 rounded-lg">
-									<TabsTrigger
-										value="image"
-										className="data-[state=active]:bg-[#2563EB] data-[state=active]:text-white text-slate-400 text-[10px] py-1 rounded-md transition-all"
-									>
-										Image
-									</TabsTrigger>
-									<TabsTrigger
-										value="color"
-										className="data-[state=active]:bg-[#2563EB] data-[state=active]:text-white text-slate-400 text-[10px] py-1 rounded-md transition-all"
-									>
-										Color
-									</TabsTrigger>
-									<TabsTrigger
-										value="gradient"
-										className="data-[state=active]:bg-[#2563EB] data-[state=active]:text-white text-slate-400 text-[10px] py-1 rounded-md transition-all"
-									>
-										Gradient
-									</TabsTrigger>
-								</TabsList>
+						)}
+					</div>
+				);
+			case "background":
+				return (
+					<Tabs
+						value={backgroundTab}
+						onValueChange={(value) => setBackgroundTab(value as typeof backgroundTab)}
+						className="w-full"
+					>
+						<TabsList className="mb-2 bg-white/5 border border-white/5 p-0.5 w-full grid grid-cols-3 h-7 rounded-lg">
+							<TabsTrigger
+								value="image"
+								className="data-[state=active]:bg-[#2563EB] data-[state=active]:text-white text-slate-400 text-[10px] py-1 rounded-md transition-all"
+							>
+								Image
+							</TabsTrigger>
+							<TabsTrigger
+								value="color"
+								className="data-[state=active]:bg-[#2563EB] data-[state=active]:text-white text-slate-400 text-[10px] py-1 rounded-md transition-all"
+							>
+								Color
+							</TabsTrigger>
+							<TabsTrigger
+								value="gradient"
+								className="data-[state=active]:bg-[#2563EB] data-[state=active]:text-white text-slate-400 text-[10px] py-1 rounded-md transition-all"
+							>
+								Gradient
+							</TabsTrigger>
+						</TabsList>
 
-								<div className="max-h-[min(200px,25vh)] overflow-y-auto custom-scrollbar">
-									<TabsContent value="image" className="mt-0 space-y-2">
-										<input
-											type="file"
-											ref={fileInputRef}
-											onChange={handleImageUpload}
-											accept=".jpg,.jpeg,image/jpeg"
-											className="hidden"
-										/>
-										<Button
-											onClick={() => fileInputRef.current?.click()}
-											variant="outline"
-											className="w-full gap-2 bg-white/5 text-slate-200 border-white/10 hover:bg-[#2563EB] hover:text-white hover:border-[#2563EB] transition-all h-7 text-[10px]"
-										>
-											<Upload className="w-3 h-3" />
-											Upload Custom
-										</Button>
+						<div className="max-h-[min(200px,25vh)] overflow-y-auto custom-scrollbar">
+							<TabsContent value="image" className="mt-0 space-y-2">
+								<input
+									type="file"
+									ref={fileInputRef}
+									onChange={handleImageUpload}
+									accept=".jpg,.jpeg,image/jpeg"
+									className="hidden"
+								/>
+								<Button
+									onClick={() => fileInputRef.current?.click()}
+									variant="outline"
+									className="w-full gap-2 bg-white/5 text-slate-200 border-white/10 hover:bg-[#2563EB] hover:text-white hover:border-[#2563EB] transition-all h-7 text-[10px]"
+								>
+									<Upload className="w-3 h-3" />
+									Upload Custom
+								</Button>
 
-										<div className="grid grid-cols-7 gap-1.5">
-											{customImages.map((imageUrl, idx) => {
-												const isSelected = selected === imageUrl;
-												return (
-													<div
-														key={`custom-${idx}`}
-														className={cn(
-															"aspect-square w-9 h-9 rounded-md border-2 overflow-hidden cursor-pointer transition-all duration-200 relative group shadow-sm",
-															isSelected
-																? "border-[#2563EB] ring-1 ring-[#2563EB]/30"
-																: "border-white/10 hover:border-[#2563EB]/40 opacity-80 hover:opacity-100 bg-white/5",
-														)}
-														style={{
-															backgroundImage: `url(${imageUrl})`,
-															backgroundSize: "cover",
-															backgroundPosition: "center",
-														}}
-														onClick={() => onWallpaperChange(imageUrl)}
-														role="button"
-													>
-														<button
-															onClick={(e) => handleRemoveCustomImage(imageUrl, e)}
-															className="absolute top-0.5 right-0.5 w-3 h-3 bg-red-500/90 hover:bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10"
-														>
-															<X className="w-2 h-2 text-white" />
-														</button>
-													</div>
-												);
-											})}
-
-											{(wallpaperPreviewPaths.length > 0
-												? wallpaperPreviewPaths
-												: WALLPAPER_PATHS
-											).map((previewPath, index) => {
-												const wallpaper = BUILT_IN_WALLPAPERS[index];
-												const wallpaperValue = WALLPAPER_PATHS[index] ?? previewPath;
-												const isSelected = (() => {
-													if (!selected) return false;
-													if (selected === wallpaperValue || selected === previewPath) return true;
-													try {
-														const clean = (s: string) =>
-															s.replace(/^file:\/\//, "").replace(/^\//, "");
-														if (clean(selected).endsWith(clean(wallpaperValue))) return true;
-														if (clean(wallpaperValue).endsWith(clean(selected))) return true;
-														if (clean(selected).endsWith(clean(previewPath))) return true;
-														if (clean(previewPath).endsWith(clean(selected))) return true;
-													} catch {}
-													return false;
-												})();
-												return (
-													<div
-														key={wallpaperValue}
-														className={cn(
-															"aspect-square w-9 h-9 rounded-md border-2 overflow-hidden cursor-pointer transition-all duration-200 shadow-sm",
-															isSelected
-																? "border-[#2563EB] ring-1 ring-[#2563EB]/30"
-																: "border-white/10 hover:border-[#2563EB]/40 opacity-80 hover:opacity-100 bg-white/5",
-														)}
-														aria-label={wallpaper?.label ?? `Wallpaper ${index + 1}`}
-														title={wallpaper?.label ?? `Wallpaper ${index + 1}`}
-														style={{
-															backgroundImage: `url(${previewPath})`,
-															backgroundSize: "cover",
-															backgroundPosition: "center",
-														}}
-														onClick={() => onWallpaperChange(wallpaperValue)}
-														role="button"
-													/>
-												);
-											})}
-										</div>
-									</TabsContent>
-
-									<TabsContent value="color" className="mt-0">
-										<div className="p-1">
-											<Block
-												color={selectedColor}
-												colors={COLOR_PALETTE}
-												onChange={(color) => {
-													setSelectedColor(color.hex);
-													onWallpaperChange(color.hex);
-												}}
+								<div className="grid grid-cols-7 gap-1.5">
+									{customImages.map((imageUrl, idx) => {
+										const isSelected = selected === imageUrl;
+										return (
+											<div
+												key={`custom-${idx}`}
+												className={cn(
+													"aspect-square w-9 h-9 rounded-md border-2 overflow-hidden cursor-pointer transition-all duration-200 relative group shadow-sm",
+													isSelected
+														? "border-[#2563EB] ring-1 ring-[#2563EB]/30"
+														: "border-white/10 hover:border-[#2563EB]/40 opacity-80 hover:opacity-100 bg-white/5",
+												)}
 												style={{
-													width: "100%",
-													borderRadius: "8px",
+													backgroundImage: `url(${imageUrl})`,
+													backgroundSize: "cover",
+													backgroundPosition: "center",
 												}}
-											/>
-										</div>
-									</TabsContent>
+												onClick={() => onWallpaperChange(imageUrl)}
+												role="button"
+											>
+												<button
+													type="button"
+													onClick={(e) => handleRemoveCustomImage(imageUrl, e)}
+													className="absolute top-0.5 right-0.5 w-3 h-3 bg-red-500/90 hover:bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10"
+												>
+													<X className="w-2 h-2 text-white" />
+												</button>
+											</div>
+										);
+									})}
 
-									<TabsContent value="gradient" className="mt-0">
-										<div className="grid grid-cols-7 gap-1.5">
-											{GRADIENTS.map((g, idx) => (
+									{(wallpaperPreviewPaths.length > 0 ? wallpaperPreviewPaths : WALLPAPER_PATHS).map(
+										(previewPath, index) => {
+											const wallpaper = BUILT_IN_WALLPAPERS[index];
+											const wallpaperValue = WALLPAPER_PATHS[index] ?? previewPath;
+											const isSelected = (() => {
+												if (!selected) return false;
+												if (selected === wallpaperValue || selected === previewPath) return true;
+												try {
+													const clean = (value: string) =>
+														value.replace(/^file:\/\//, "").replace(/^\//, "");
+													if (clean(selected).endsWith(clean(wallpaperValue))) return true;
+													if (clean(wallpaperValue).endsWith(clean(selected))) return true;
+													if (clean(selected).endsWith(clean(previewPath))) return true;
+													if (clean(previewPath).endsWith(clean(selected))) return true;
+												} catch {}
+												return false;
+											})();
+											return (
 												<div
-													key={g}
+													key={wallpaperValue}
 													className={cn(
 														"aspect-square w-9 h-9 rounded-md border-2 overflow-hidden cursor-pointer transition-all duration-200 shadow-sm",
-														gradient === g
+														isSelected
 															? "border-[#2563EB] ring-1 ring-[#2563EB]/30"
 															: "border-white/10 hover:border-[#2563EB]/40 opacity-80 hover:opacity-100 bg-white/5",
 													)}
-													style={{ background: g }}
-													aria-label={`Gradient ${idx + 1}`}
-													onClick={() => {
-														setGradient(g);
-														onWallpaperChange(g);
+													aria-label={wallpaper?.label ?? `Wallpaper ${index + 1}`}
+													title={wallpaper?.label ?? `Wallpaper ${index + 1}`}
+													style={{
+														backgroundImage: `url(${previewPath})`,
+														backgroundSize: "cover",
+														backgroundPosition: "center",
 													}}
+													onClick={() => onWallpaperChange(wallpaperValue)}
 													role="button"
 												/>
-											))}
-										</div>
-									</TabsContent>
+											);
+										},
+									)}
 								</div>
-							</Tabs>
-						</AccordionContent>
-					</AccordionItem>
-				</Accordion>
-			</div>
+							</TabsContent>
 
+							<TabsContent value="color" className="mt-0">
+								<div className="p-1">
+									<Block
+										color={selectedColor}
+										colors={COLOR_PALETTE}
+										onChange={(color) => {
+											setSelectedColor(color.hex);
+											onWallpaperChange(color.hex);
+										}}
+										style={{
+											width: "100%",
+											borderRadius: "8px",
+										}}
+									/>
+								</div>
+							</TabsContent>
+
+							<TabsContent value="gradient" className="mt-0">
+								<div className="grid grid-cols-7 gap-1.5">
+									{GRADIENTS.map((currentGradient, idx) => (
+										<div
+											key={currentGradient}
+											className={cn(
+												"aspect-square w-9 h-9 rounded-md border-2 overflow-hidden cursor-pointer transition-all duration-200 shadow-sm",
+												gradient === currentGradient
+													? "border-[#2563EB] ring-1 ring-[#2563EB]/30"
+													: "border-white/10 hover:border-[#2563EB]/40 opacity-80 hover:opacity-100 bg-white/5",
+											)}
+											style={{ background: currentGradient }}
+											aria-label={`Gradient ${idx + 1}`}
+											onClick={() => {
+												setGradient(currentGradient);
+												onWallpaperChange(currentGradient);
+											}}
+											role="button"
+										/>
+									))}
+								</div>
+							</TabsContent>
+						</div>
+					</Tabs>
+				);
+			case "audio":
+				return (
+					<div className="space-y-3">
+						<div className="flex items-center justify-between gap-3 p-2 rounded-lg bg-white/5 border border-white/5">
+							<div>
+								<div className="text-[11px] font-medium text-slate-200">Mute Audio</div>
+								<div className="text-[10px] text-slate-500">
+									Silence preview playback and MP4 exports.
+								</div>
+							</div>
+							<Switch
+								checked={audioMuted}
+								onCheckedChange={onAudioMutedChange}
+								className="data-[state=checked]:bg-[#2563EB] scale-90"
+							/>
+						</div>
+
+						<div className="p-2 rounded-lg bg-white/5 border border-white/5">
+							<div className="flex items-center justify-between mb-1">
+								<div className="text-[10px] font-medium text-slate-300">Master Volume</div>
+								<span className="text-[10px] text-slate-500 font-mono">
+									{Math.round(audioVolume * 100)}%
+								</span>
+							</div>
+							<Slider
+								value={[audioVolume]}
+								onValueChange={(values) => onAudioVolumeChange?.(values[0])}
+								min={0}
+								max={1}
+								step={0.01}
+								className="w-full [&_[role=slider]]:bg-[#2563EB] [&_[role=slider]]:border-[#2563EB] [&_[role=slider]]:h-3 [&_[role=slider]]:w-3"
+							/>
+						</div>
+
+						<div className="rounded-lg border border-white/5 bg-white/[0.03] p-2 text-[10px] text-slate-500">
+							These controls affect editor playback immediately and apply to MP4 exports.
+						</div>
+					</div>
+				);
+		}
+	};
+
+	return (
+		<div className="flex-[2] min-w-0 bg-[#09090b] border border-white/5 rounded-2xl flex flex-col shadow-xl h-full overflow-hidden">
+			<div className="flex flex-1 min-h-0 overflow-hidden">
+				<div
+					className="flex flex-col items-center gap-2 border-r border-white/5 bg-white/[0.02] px-2 py-3"
+					role="tablist"
+					aria-orientation="vertical"
+				>
+					{SETTINGS_SIDEBAR_TABS.map((tab) => {
+						const TabIcon = tab.icon;
+						const isActive = tab.id === activeTab;
+
+						return (
+							<button
+								key={tab.id}
+								type="button"
+								role="tab"
+								id={`settings-tab-${tab.id}`}
+								aria-selected={isActive}
+								aria-controls={`settings-panel-${tab.id}`}
+								aria-label={tab.label}
+								title={tab.label}
+								onClick={() => setActiveTab(tab.id)}
+								className={cn(
+									"flex h-11 w-11 items-center justify-center rounded-xl border transition-all duration-200",
+									isActive
+										? "border-[#2563EB]/60 bg-[#2563EB]/15 text-white shadow-[0_0_18px_rgba(37,99,235,0.18)]"
+										: "border-transparent bg-white/[0.03] text-slate-500 hover:border-white/10 hover:bg-white/[0.07] hover:text-slate-200",
+								)}
+							>
+								<TabIcon className="h-4 w-4" />
+							</button>
+						);
+					})}
+				</div>
+
+				<div className="flex flex-1 min-h-0 flex-col">
+					<div className="flex-1 overflow-y-auto custom-scrollbar p-4 pb-0">
+						{zoomEnabled && (
+							<div className="mb-3 rounded-xl border border-[#2563EB]/20 border-l-2 border-l-[#2563EB] bg-[#2563EB]/5 p-3">
+								<div className="flex items-center justify-between mb-3">
+									<span className="text-sm font-medium text-slate-200">Zoom Settings</span>
+									<div className="flex items-center gap-2">
+										{selectedZoomDepth && (
+											<span className="text-[10px] uppercase tracking-wider font-medium text-[#2563EB] bg-[#2563EB]/10 px-2 py-0.5 rounded-full">
+												{ZOOM_DEPTH_OPTIONS.find((o) => o.depth === selectedZoomDepth)?.label}
+											</span>
+										)}
+										<KeyboardShortcutsHelp />
+									</div>
+								</div>
+								<div className="grid grid-cols-6 gap-1.5 mb-3">
+									{ZOOM_DEPTH_OPTIONS.map((option) => {
+										const isActive = selectedZoomDepth === option.depth;
+										return (
+											<Button
+												key={option.depth}
+												type="button"
+												onClick={() => onZoomDepthChange?.(option.depth)}
+												className={cn(
+													"h-auto w-full rounded-lg border px-1 py-2 text-center shadow-sm transition-all",
+													"duration-200 ease-out",
+													"opacity-100 cursor-pointer",
+													isActive
+														? "border-[#2563EB] bg-[#2563EB] text-white shadow-[#2563EB]/20"
+														: "border-white/5 bg-white/5 text-slate-400 hover:bg-white/10 hover:border-white/10 hover:text-slate-200",
+												)}
+											>
+												<span className="text-xs font-semibold">{option.label}</span>
+											</Button>
+										);
+									})}
+								</div>
+								<div className="grid grid-cols-2 gap-2 mb-3">
+									<div className="p-2 rounded-lg bg-white/5 border border-white/5">
+										<div className="flex items-center justify-between mb-1">
+											<div className="text-[10px] font-medium text-slate-300">Motion Blur</div>
+											<span className="text-[10px] text-slate-500 font-mono">
+												{zoomMotionBlur.toFixed(2)}×
+											</span>
+										</div>
+										<Slider
+											value={[zoomMotionBlur]}
+											onValueChange={(values) => onZoomMotionBlurChange?.(values[0])}
+											min={0}
+											max={2}
+											step={0.05}
+											className="w-full [&_[role=slider]]:bg-[#2563EB] [&_[role=slider]]:border-[#2563EB] [&_[role=slider]]:h-3 [&_[role=slider]]:w-3"
+										/>
+									</div>
+									<div className="flex items-center justify-between p-2 rounded-lg bg-white/5 border border-white/5">
+										<div className="text-[10px] font-medium text-slate-300">Connect Zooms</div>
+										<Switch
+											checked={connectZooms}
+											onCheckedChange={onConnectZoomsChange}
+											className="data-[state=checked]:bg-[#2563EB] scale-90"
+										/>
+									</div>
+								</div>
+								<Button
+									onClick={handleDeleteClick}
+									variant="destructive"
+									size="sm"
+									className="mt-3 w-full gap-2 bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 hover:border-red-500/30 transition-all h-8 text-xs"
+								>
+									<Trash2 className="w-3 h-3" />
+									Delete Zoom
+								</Button>
+							</div>
+						)}
+
+						{trimEnabled && (
+							<div className="mb-3 rounded-xl border border-red-500/20 border-l-2 border-l-red-500 bg-red-500/5 p-3">
+								<Button
+									onClick={handleTrimDeleteClick}
+									variant="destructive"
+									size="sm"
+									className="w-full gap-2 bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 hover:border-red-500/30 transition-all h-8 text-xs"
+								>
+									<Trash2 className="w-3 h-3" />
+									Delete Trim Region
+								</Button>
+							</div>
+						)}
+
+						{selectedSpeedId && (
+							<div className="mb-3 rounded-xl border border-[#d97706]/20 border-l-2 border-l-[#d97706] bg-[#d97706]/5 p-3">
+								<div className="flex items-center justify-between mb-3">
+									<span className="text-sm font-medium text-slate-200">Speed Settings</span>
+									{selectedSpeedValue && (
+										<span className="text-[10px] uppercase tracking-wider font-medium text-[#d97706] bg-[#d97706]/10 px-2 py-0.5 rounded-full">
+											{SPEED_OPTIONS.find((o) => o.speed === selectedSpeedValue)?.label ??
+												`${selectedSpeedValue}×`}
+										</span>
+									)}
+								</div>
+								<div className="grid grid-cols-7 gap-1.5 mb-3">
+									{SPEED_OPTIONS.map((option) => {
+										const isActive = selectedSpeedValue === option.speed;
+										return (
+											<Button
+												key={option.speed}
+												type="button"
+												onClick={() => onSpeedChange?.(option.speed)}
+												className={cn(
+													"h-auto w-full rounded-lg border px-1 py-2 text-center shadow-sm transition-all",
+													"duration-200 ease-out",
+													"opacity-100 cursor-pointer",
+													isActive
+														? "border-[#d97706] bg-[#d97706] text-white shadow-[#d97706]/20"
+														: "border-white/5 bg-white/5 text-slate-400 hover:bg-white/10 hover:border-white/10 hover:text-slate-200",
+												)}
+											>
+												<span className="text-xs font-semibold">{option.label}</span>
+											</Button>
+										);
+									})}
+								</div>
+								<Button
+									onClick={() => selectedSpeedId && onSpeedDelete?.(selectedSpeedId)}
+									variant="destructive"
+									size="sm"
+									className="mt-3 w-full gap-2 bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 hover:border-red-500/30 transition-all h-8 text-xs"
+								>
+									<Trash2 className="w-3 h-3" />
+									Delete Speed Region
+								</Button>
+							</div>
+						)}
+
+						<div
+							role="tabpanel"
+							id={`settings-panel-${activeTabDefinition.id}`}
+							aria-labelledby={`settings-tab-${activeTabDefinition.id}`}
+							className="rounded-xl border border-white/5 bg-white/[0.02] p-4"
+						>
+							<div className="mb-4">
+								<div className="flex items-center gap-2">
+									<ActiveTabIcon className="h-4 w-4 text-[#2563EB]" />
+									<h3 className="text-sm font-medium text-slate-200">
+										{activeTabDefinition.label}
+									</h3>
+								</div>
+								<p className="mt-1 text-[10px] text-slate-500">{activeTabDefinition.description}</p>
+							</div>
+							{renderSelectedTabContent()}
+						</div>
+					</div>
+
+					<div className="flex-shrink-0 p-4 pt-3 border-t border-white/5 bg-[#09090b]">
+						<div className="flex gap-2">
+							<button
+								type="button"
+								onClick={() => {
+									openExternalUrl("https://github.com/imbhargav5/open-recorder/issues/new/choose");
+								}}
+								className="flex-1 flex items-center justify-center gap-1.5 text-[10px] text-slate-500 hover:text-slate-300 py-1.5 transition-colors"
+							>
+								<Bug className="w-3 h-3 text-[#2563EB]" />
+								Report Bug
+							</button>
+							<button
+								type="button"
+								onClick={() => {
+									openExternalUrl("https://github.com/imbhargav5/open-recorder");
+								}}
+								className="flex-1 flex items-center justify-center gap-1.5 text-[10px] text-slate-500 hover:text-slate-300 py-1.5 transition-colors"
+							>
+								<Star className="w-3 h-3 text-yellow-400" />
+								Star on GitHub
+							</button>
+						</div>
+					</div>
+				</div>
+			</div>
 			{showCropModal && cropRegion && onCropChange && (
 				<>
 					<div
@@ -978,31 +1113,6 @@ function SettingsPanelInner({
 					</div>
 				</>
 			)}
-
-			<div className="flex-shrink-0 p-4 pt-3 border-t border-white/5 bg-[#09090b]">
-				<div className="flex gap-2">
-					<button
-						type="button"
-						onClick={() => {
-							openExternalUrl("https://github.com/imbhargav5/open-recorder/issues/new/choose");
-						}}
-						className="flex-1 flex items-center justify-center gap-1.5 text-[10px] text-slate-500 hover:text-slate-300 py-1.5 transition-colors"
-					>
-						<Bug className="w-3 h-3 text-[#2563EB]" />
-						Report Bug
-					</button>
-					<button
-						type="button"
-						onClick={() => {
-							openExternalUrl("https://github.com/imbhargav5/open-recorder");
-						}}
-						className="flex-1 flex items-center justify-center gap-1.5 text-[10px] text-slate-500 hover:text-slate-300 py-1.5 transition-colors"
-					>
-						<Star className="w-3 h-3 text-yellow-400" />
-						Star on GitHub
-					</button>
-				</div>
-			</div>
 		</div>
 	);
 }

@@ -6,6 +6,54 @@ const AUDIO_BITRATE = 128_000;
 const DECODE_BACKPRESSURE_LIMIT = 20;
 const MIN_SPEED_REGION_DELTA_MS = 0.0001;
 
+export interface AudioExportOptions {
+	audioMuted?: boolean;
+	audioVolume?: number;
+}
+
+function clampAudioVolume(value: number | undefined) {
+	return Math.min(1, Math.max(0, value ?? 1));
+}
+
+export function applyAudioGainToBuffer(buffer: ArrayBuffer, format: string, gain: number) {
+	if (gain === 1) return;
+
+	if (format === "f32" || format === "f32-planar") {
+		const view = new Float32Array(buffer);
+		for (let index = 0; index < view.length; index++) {
+			view[index] = Math.max(-1, Math.min(1, view[index] * gain));
+		}
+		return;
+	}
+
+	if (format === "s16" || format === "s16-planar") {
+		const view = new Int16Array(buffer);
+		for (let index = 0; index < view.length; index++) {
+			view[index] = Math.max(-32_768, Math.min(32_767, Math.round(view[index] * gain)));
+		}
+		return;
+	}
+
+	if (format === "s32" || format === "s32-planar") {
+		const view = new Int32Array(buffer);
+		for (let index = 0; index < view.length; index++) {
+			view[index] = Math.max(
+				-2_147_483_648,
+				Math.min(2_147_483_647, Math.round(view[index] * gain)),
+			);
+		}
+		return;
+	}
+
+	if (format === "u8" || format === "u8-planar") {
+		const view = new Uint8Array(buffer);
+		for (let index = 0; index < view.length; index++) {
+			const centered = (view[index] - 128) * gain + 128;
+			view[index] = Math.max(0, Math.min(255, Math.round(centered)));
+		}
+	}
+}
+
 export class AudioProcessor {
 	private cancelled = false;
 
@@ -21,7 +69,14 @@ export class AudioProcessor {
 		trimRegions?: TrimRegion[],
 		speedRegions?: SpeedRegion[],
 		readEndSec?: number,
+		options: AudioExportOptions = {},
 	): Promise<void> {
+		const audioMuted = options.audioMuted ?? false;
+		const audioVolume = clampAudioVolume(options.audioVolume);
+		if (audioMuted || audioVolume <= 0) {
+			return;
+		}
+
 		const sortedTrims = trimRegions ? [...trimRegions].sort((a, b) => a.startMs - b.startMs) : [];
 		const sortedSpeedRegions = speedRegions
 			? [...speedRegions]
@@ -36,12 +91,13 @@ export class AudioProcessor {
 				sortedTrims,
 				sortedSpeedRegions,
 				muxer,
+				audioVolume,
 			);
 			return;
 		}
 
 		// No speed edits: keep the original demux/decode/encode path with trim timestamp remap.
-		await this.processTrimOnlyAudio(demuxer, muxer, sortedTrims, readEndSec);
+		await this.processTrimOnlyAudio(demuxer, muxer, sortedTrims, readEndSec, audioVolume);
 	}
 
 	// Legacy trim-only path used when no speed regions are configured.
@@ -50,6 +106,7 @@ export class AudioProcessor {
 		muxer: VideoMuxer,
 		sortedTrims: TrimRegion[],
 		readEndSec?: number,
+		audioVolume: number = 1,
 	): Promise<void> {
 		let audioConfig: AudioDecoderConfig;
 		try {
@@ -137,7 +194,11 @@ export class AudioProcessor {
 			const trimOffsetMs = this.computeTrimOffset(timestampMs, sortedTrims);
 			const adjustedTimestampUs = audioData.timestamp - trimOffsetMs * 1000;
 
-			const adjusted = this.cloneWithTimestamp(audioData, Math.max(0, adjustedTimestampUs));
+			const adjusted = this.cloneWithTimestamp(
+				audioData,
+				Math.max(0, adjustedTimestampUs),
+				audioVolume,
+			);
 			audioData.close();
 
 			encoder.encode(adjusted);
@@ -163,6 +224,7 @@ export class AudioProcessor {
 		trimRegions: TrimRegion[],
 		speedRegions: SpeedRegion[],
 		muxer: VideoMuxer,
+		audioVolume: number = 1,
 	): Promise<void> {
 		const media = document.createElement("audio");
 		media.src = videoUrl;
@@ -184,11 +246,14 @@ export class AudioProcessor {
 
 		const audioContext = new AudioContext();
 		const sourceNode = audioContext.createMediaElementSource(media);
+		const gainNode = audioContext.createGain();
+		gainNode.gain.value = audioVolume;
 		const processorNode = audioContext.createScriptProcessor(4096);
 		const silentGainNode = audioContext.createGain();
 		silentGainNode.gain.value = 0;
 
-		sourceNode.connect(processorNode);
+		sourceNode.connect(gainNode);
+		gainNode.connect(processorNode);
 		processorNode.connect(silentGainNode);
 		silentGainNode.connect(audioContext.destination);
 
@@ -355,6 +420,7 @@ export class AudioProcessor {
 			media.pause();
 			processorNode.onaudioprocess = null;
 			sourceNode.disconnect();
+			gainNode.disconnect();
 			processorNode.disconnect();
 			silentGainNode.disconnect();
 			if (encoder.state !== "closed") {
@@ -445,7 +511,7 @@ export class AudioProcessor {
 		);
 	}
 
-	private cloneWithTimestamp(src: AudioData, newTimestamp: number): AudioData {
+	private cloneWithTimestamp(src: AudioData, newTimestamp: number, gain: number = 1): AudioData {
 		const isPlanar = src.format?.includes("planar") ?? false;
 		const numPlanes = isPlanar ? src.numberOfChannels : 1;
 
@@ -461,6 +527,10 @@ export class AudioProcessor {
 			const planeSize = src.allocationSize({ planeIndex });
 			src.copyTo(new Uint8Array(buffer, offset, planeSize), { planeIndex });
 			offset += planeSize;
+		}
+
+		if (src.format) {
+			applyAudioGainToBuffer(buffer, src.format, gain);
 		}
 
 		return new AudioData({

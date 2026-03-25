@@ -467,4 +467,24 @@ describe("VideoPlayback", () => {
 		expect(onReadyChange).toHaveBeenLastCalledWith(true);
 		await harness.unmount();
 	});
+
+	it("applies mute and volume updates to the primary preview video", async () => {
+		const harness = await renderPlayback({
+			audioMuted: true,
+			audioVolume: 0.35,
+		});
+		const video = getPrimaryVideo(harness.container);
+
+		expect(video.muted).toBe(true);
+		expect(video.volume).toBeCloseTo(0.35);
+
+		await harness.rerender({
+			audioMuted: false,
+			audioVolume: 0.8,
+		});
+
+		expect(video.muted).toBe(false);
+		expect(video.volume).toBeCloseTo(0.8);
+		await harness.unmount();
+	});
 });

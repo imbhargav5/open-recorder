@@ -74,6 +74,8 @@ import {
 	DEFAULT_ANNOTATION_POSITION,
 	DEFAULT_ANNOTATION_SIZE,
 	DEFAULT_ANNOTATION_STYLE,
+	DEFAULT_AUDIO_MUTED,
+	DEFAULT_AUDIO_VOLUME,
 	DEFAULT_CROP_REGION,
 	DEFAULT_CURSOR_CLICK_BOUNCE,
 	DEFAULT_CURSOR_MOTION_BLUR,
@@ -187,6 +189,8 @@ export default function VideoEditor() {
 	const timeStore = useTimeStore();
 	const [duration, setDuration] = useState(0);
 	const [wallpaper, setWallpaper] = useState<string>(WALLPAPER_PATHS[0]);
+	const [audioMuted, setAudioMuted] = useState(DEFAULT_AUDIO_MUTED);
+	const [audioVolume, setAudioVolume] = useState(DEFAULT_AUDIO_VOLUME);
 	const [shadowIntensity, setShadowIntensity] = useState(0.67);
 	const [backgroundBlur, setBackgroundBlur] = useState(0);
 	const [zoomMotionBlur, setZoomMotionBlur] = useState(DEFAULT_ZOOM_MOTION_BLUR);
@@ -408,6 +412,8 @@ export default function VideoEditor() {
 			setCurrentProjectPath(path ?? null);
 
 			setWallpaper(normalizedEditor.wallpaper);
+			setAudioMuted(normalizedEditor.audioMuted);
+			setAudioVolume(normalizedEditor.audioVolume);
 			setShadowIntensity(normalizedEditor.shadowIntensity);
 			setBackgroundBlur(normalizedEditor.backgroundBlur);
 			setZoomMotionBlur(normalizedEditor.zoomMotionBlur);
@@ -495,6 +501,8 @@ export default function VideoEditor() {
 				sourcePath,
 				{
 					wallpaper,
+					audioMuted,
+					audioVolume,
 					shadowIntensity,
 					backgroundBlur,
 					zoomMotionBlur,
@@ -531,6 +539,8 @@ export default function VideoEditor() {
 		facecamVideoPath,
 		facecamOffsetMs,
 		wallpaper,
+		audioMuted,
+		audioVolume,
 		shadowIntensity,
 		backgroundBlur,
 		zoomMotionBlur,
@@ -672,6 +682,8 @@ export default function VideoEditor() {
 				sourcePath,
 				{
 					wallpaper,
+					audioMuted,
+					audioVolume,
 					shadowIntensity,
 					backgroundBlur,
 					zoomMotionBlur,
@@ -732,6 +744,8 @@ export default function VideoEditor() {
 			facecamOffsetMs,
 			currentProjectPath,
 			wallpaper,
+			audioMuted,
+			audioVolume,
 			shadowIntensity,
 			backgroundBlur,
 			zoomMotionBlur,
@@ -1834,6 +1848,8 @@ export default function VideoEditor() {
 						bitrate,
 						codec: "avc1.640033",
 						wallpaper,
+						audioMuted,
+						audioVolume,
 						facecamVideoUrl: facecamSourceUrl,
 						facecamOffsetMs,
 						trimRegions,
@@ -1911,6 +1927,8 @@ export default function VideoEditor() {
 			facecamVideoPath,
 			facecamOffsetMs,
 			wallpaper,
+			audioMuted,
+			audioVolume,
 			trimRegions,
 			speedRegions,
 			shadowIntensity,
@@ -2323,6 +2341,8 @@ export default function VideoEditor() {
 												onPlayStateChange={setIsPlaying}
 												onError={setError}
 												wallpaper={wallpaper}
+												audioMuted={audioMuted}
+												audioVolume={audioVolume}
 												zoomRegions={effectiveZoomRegions}
 												selectedZoomId={selectedZoomId}
 												onSelectZoom={handleSelectZoom}
@@ -2431,6 +2451,10 @@ export default function VideoEditor() {
 					<SettingsPanel
 						selected={wallpaper}
 						onWallpaperChange={setWallpaper}
+						audioMuted={audioMuted}
+						onAudioMutedChange={setAudioMuted}
+						audioVolume={audioVolume}
+						onAudioVolumeChange={setAudioVolume}
 						selectedZoomDepth={selectedZoomDepth}
 						onZoomDepthChange={handleZoomDepthChange}
 						selectedZoomId={selectedZoomId}
