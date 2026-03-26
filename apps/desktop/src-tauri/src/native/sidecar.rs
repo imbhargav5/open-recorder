@@ -335,6 +335,75 @@ mod tests {
         let _ = proc.kill().await;
     }
 
+    // ==================== Target triple format ====================
+
+    #[test]
+    fn test_get_target_triple_contains_two_hyphens() {
+        let triple = get_target_triple();
+        let hyphen_count = triple.chars().filter(|&c| c == '-').count();
+        assert!(
+            hyphen_count >= 2,
+            "Triple '{}' should contain at least 2 hyphens (arch-vendor-os), found {}",
+            triple,
+            hyphen_count
+        );
+    }
+
+    #[test]
+    fn test_get_target_triple_no_whitespace() {
+        let triple = get_target_triple();
+        assert!(
+            !triple.contains(' ') && !triple.contains('\t') && !triple.contains('\n'),
+            "Triple should not contain whitespace: '{}'",
+            triple
+        );
+    }
+
+    #[test]
+    fn test_get_target_triple_all_lowercase() {
+        let triple = get_target_triple();
+        assert_eq!(
+            triple,
+            triple.to_lowercase(),
+            "Triple should be all lowercase: '{}'",
+            triple
+        );
+    }
+
+    // ==================== get_sidecar_path error details ====================
+
+    #[test]
+    fn test_get_sidecar_path_error_mentions_both_paths() {
+        let result = get_sidecar_path("nonexistent-test-binary");
+        if let Err(err) = result {
+            // Should mention the triple-suffixed path
+            let triple = get_target_triple();
+            assert!(
+                err.contains(&format!("nonexistent-test-binary-{}", triple)),
+                "Error should mention triple-suffixed path: {}",
+                err
+            );
+            // Should also mention the plain fallback path
+            assert!(
+                err.contains("nonexistent-test-binary"),
+                "Error should mention plain fallback path: {}",
+                err
+            );
+        }
+    }
+
+    #[test]
+    fn test_get_sidecar_path_error_with_special_chars_in_name() {
+        let result = get_sidecar_path("my-app_v2.0");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.contains("my-app_v2.0"),
+            "Error should contain the exact sidecar name: {}",
+            err
+        );
+    }
+
     #[tokio::test]
     async fn test_sidecar_write_stdin_then_read_pattern() {
         let mut proc = SidecarProcess::spawn("cat", &[]).await.unwrap();
