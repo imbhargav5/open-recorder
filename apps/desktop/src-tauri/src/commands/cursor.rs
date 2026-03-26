@@ -178,6 +178,69 @@ mod tests {
         assert_eq!(value["samples"].as_array().unwrap().len(), 1);
     }
 
+    // ==================== Extension stripping edge cases ====================
+
+    #[test]
+    fn test_telemetry_path_reverse_order_mov_mp4() {
+        // .mov appears before .mp4 in the string — only .mp4 is stripped
+        let path = telemetry_path_for_video("/path/to/file.mov.mp4");
+        assert_eq!(path, "/path/to/file.mov.cursor.json");
+    }
+
+    #[test]
+    fn test_telemetry_path_uppercase_extension_not_stripped() {
+        // trim_end_matches is case-sensitive
+        let path = telemetry_path_for_video("/path/to/recording.MOV");
+        assert_eq!(path, "/path/to/recording.MOV.cursor.json");
+    }
+
+    #[test]
+    fn test_telemetry_path_uppercase_mp4_not_stripped() {
+        let path = telemetry_path_for_video("/path/to/recording.MP4");
+        assert_eq!(path, "/path/to/recording.MP4.cursor.json");
+    }
+
+    #[test]
+    fn test_telemetry_path_double_mp4_extension() {
+        // trim_end_matches strips repeatedly for the same suffix
+        let path = telemetry_path_for_video("/path/to/file.mp4.mp4");
+        assert_eq!(path, "/path/to/file.cursor.json");
+    }
+
+    #[test]
+    fn test_telemetry_path_all_three_extensions_chained() {
+        // .webm stripped first (innermost), then .mp4, then .mov
+        let path = telemetry_path_for_video("/path/to/file.webm.mp4.mov");
+        assert_eq!(path, "/path/to/file.cursor.json");
+    }
+
+    #[test]
+    fn test_telemetry_path_dots_in_directory() {
+        // Dots in directory components should be unaffected
+        let path = telemetry_path_for_video("/path/to/my.project/recording.mov");
+        assert_eq!(path, "/path/to/my.project/recording.cursor.json");
+    }
+
+    #[test]
+    fn test_telemetry_path_mixed_case_partial_match() {
+        let path = telemetry_path_for_video("/path/to/recording.Mov");
+        assert_eq!(path, "/path/to/recording.Mov.cursor.json");
+    }
+
+    #[test]
+    fn test_telemetry_path_webm_then_mov() {
+        // .mov stripped, then .webm is at end → stripped too
+        let path = telemetry_path_for_video("/path/to/file.mov.webm");
+        // Chain: trim .mov (doesn't end with .mov — ends with .webm) → no-op
+        //        trim .mp4 → no-op
+        //        trim .webm → strips .webm → "file.mov"
+        // Wait, the chain is: trim_end_matches(".mov").trim_end_matches(".mp4").trim_end_matches(".webm")
+        // "file.mov.webm" → trim ".mov" → "file.mov.webm" (ends with .webm, not .mov) → no change
+        //                  → trim ".mp4" → no change
+        //                  → trim ".webm" → "file.mov"
+        assert_eq!(path, "/path/to/file.mov.cursor.json");
+    }
+
     #[tokio::test]
     async fn test_get_cursor_telemetry_invalid_json_returns_error() {
         let dir = std::env::temp_dir();
