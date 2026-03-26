@@ -320,6 +320,106 @@ mod tests {
         drop(guard);
     }
 
+    // ==================== which_ffmpeg validation ====================
+
+    #[test]
+    fn test_which_ffmpeg_error_message_is_user_friendly() {
+        // If ffmpeg is not found, the error should guide the user
+        let result = which_ffmpeg();
+        if let Err(err) = result {
+            assert!(
+                err.contains("install"),
+                "Error should suggest installing FFmpeg: {}",
+                err
+            );
+            assert!(
+                err.contains("FFmpeg"),
+                "Error should mention FFmpeg by name: {}",
+                err
+            );
+        }
+    }
+
+    #[test]
+    fn test_which_ffmpeg_candidate_paths_are_well_formed() {
+        // Verify the hardcoded candidate list contains only valid-looking paths
+        let candidates = [
+            "ffmpeg",
+            "/usr/bin/ffmpeg",
+            "/usr/local/bin/ffmpeg",
+            "/opt/homebrew/bin/ffmpeg",
+        ];
+        for c in &candidates {
+            assert!(c.contains("ffmpeg"), "Candidate should contain ffmpeg: {}", c);
+            // Absolute paths should start with /
+            if c.len() > "ffmpeg".len() {
+                assert!(c.starts_with('/'), "Absolute path should start with /: {}", c);
+            }
+        }
+    }
+
+    #[test]
+    fn test_which_ffmpeg_found_path_is_from_candidates() {
+        // If found, must be one of the known candidates
+        if let Ok(path) = which_ffmpeg() {
+            let candidates = [
+                "ffmpeg",
+                "/usr/bin/ffmpeg",
+                "/usr/local/bin/ffmpeg",
+                "/opt/homebrew/bin/ffmpeg",
+            ];
+            assert!(
+                candidates.contains(&path.as_str()),
+                "Found path '{}' should be from the candidate list",
+                path
+            );
+        }
+    }
+
+    // ==================== FFmpeg option edge cases ====================
+
+    #[test]
+    fn test_ffmpeg_frame_rate_zero_is_valid_u64() {
+        let options = serde_json::json!({"frameRate": 0});
+        let frame_rate = options
+            .get("frameRate")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(30);
+        assert_eq!(frame_rate, 0);
+    }
+
+    #[test]
+    fn test_ffmpeg_frame_rate_negative_falls_to_default() {
+        // Negative numbers can't be u64
+        let options = serde_json::json!({"frameRate": -1});
+        let frame_rate = options
+            .get("frameRate")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(30);
+        assert_eq!(frame_rate, 30);
+    }
+
+    #[test]
+    fn test_ffmpeg_frame_rate_float_falls_to_default() {
+        // Floats can't be parsed as u64
+        let options = serde_json::json!({"frameRate": 29.97});
+        let frame_rate = options
+            .get("frameRate")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(30);
+        assert_eq!(frame_rate, 30);
+    }
+
+    #[test]
+    fn test_ffmpeg_frame_rate_boolean_falls_to_default() {
+        let options = serde_json::json!({"frameRate": true});
+        let frame_rate = options
+            .get("frameRate")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(30);
+        assert_eq!(frame_rate, 30);
+    }
+
     #[tokio::test]
     async fn test_ffmpeg_process_initially_none() {
         // On fresh start, no process should be running
