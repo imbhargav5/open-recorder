@@ -63,4 +63,92 @@ mod tests {
     fn test_default_screenshots_dir_ends_with_app_name() {
         assert!(default_screenshots_dir().ends_with(app_dir_name()));
     }
+
+    // ==================== Path validity ====================
+
+    #[test]
+    fn test_default_recordings_dir_is_not_empty() {
+        let dir = default_recordings_dir();
+        assert!(
+            dir.as_os_str().len() > 0,
+            "Recordings dir should not be empty"
+        );
+    }
+
+    #[test]
+    fn test_default_recordings_dir_is_absolute() {
+        let dir = default_recordings_dir();
+        assert!(
+            dir.is_absolute(),
+            "Recordings dir should be absolute: {:?}",
+            dir
+        );
+    }
+
+    #[test]
+    fn test_default_screenshots_dir_is_not_empty() {
+        let dir = default_screenshots_dir();
+        assert!(
+            dir.as_os_str().len() > 0,
+            "Screenshots dir should not be empty"
+        );
+    }
+
+    #[test]
+    fn test_default_screenshots_dir_is_absolute() {
+        let dir = default_screenshots_dir();
+        assert!(
+            dir.is_absolute(),
+            "Screenshots dir should be absolute: {:?}",
+            dir
+        );
+    }
+
+    #[test]
+    fn test_recordings_and_screenshots_dirs_differ() {
+        let rec = default_recordings_dir();
+        let scr = default_screenshots_dir();
+        assert_ne!(
+            rec, scr,
+            "Recordings and screenshots should use different directories"
+        );
+    }
+
+    // ==================== App dir name constants ====================
+
+    #[test]
+    fn test_prod_app_dir_name_not_empty() {
+        assert!(!PROD_APP_DIR_NAME.is_empty());
+    }
+
+    #[test]
+    fn test_dev_app_dir_name_not_empty() {
+        assert!(!DEV_APP_DIR_NAME.is_empty());
+    }
+
+    #[test]
+    fn test_prod_and_dev_app_dir_names_differ() {
+        assert_ne!(PROD_APP_DIR_NAME, DEV_APP_DIR_NAME);
+    }
+
+    #[test]
+    fn test_dev_app_dir_name_contains_dev() {
+        assert!(
+            DEV_APP_DIR_NAME.contains("Dev"),
+            "Dev dir name should contain 'Dev': {}",
+            DEV_APP_DIR_NAME
+        );
+    }
+
+    // ==================== Determinism ====================
+
+    #[test]
+    fn test_default_recordings_dir_is_deterministic() {
+        assert_eq!(default_recordings_dir(), default_recordings_dir());
+    }
+
+    #[test]
+    fn test_default_screenshots_dir_is_deterministic() {
+        assert_eq!(default_screenshots_dir(), default_screenshots_dir());
+    }
 }
