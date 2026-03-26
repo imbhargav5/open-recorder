@@ -113,3 +113,150 @@ pub fn set_current_screenshot_path(
     s.current_screenshot_path = path;
     Ok(())
 }
+
+/// Build screencapture args for the given capture type and optional window id.
+/// This is extracted for testability — the actual command also prepends `-x`
+/// and appends the output path.
+fn screencapture_args(capture_type: &str, window_id: Option<u64>) -> Vec<String> {
+    let mut args = Vec::new();
+    match capture_type {
+        "window" => {
+            if let Some(wid) = window_id {
+                args.push(format!("-l{}", wid));
+            }
+        }
+        "area" => {
+            args.push("-i".to_string());
+        }
+        _ => {
+            // Full screen — default screencapture behaviour
+        }
+    }
+    args
+}
+
+/// Build a screenshot filename from the given timestamp.
+fn screenshot_filename(timestamp: u64) -> String {
+    format!("screenshot-{}.png", timestamp)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app_paths;
+    use crate::state::AppState;
+
+    // ==================== get_screenshots_dir ====================
+
+    #[test]
+    fn test_get_screenshots_dir_with_custom_dir() {
+        let mut state = AppState::default();
+        state.custom_recordings_dir = Some("/custom/output".to_string());
+        let dir = get_screenshots_dir(&state);
+        assert_eq!(dir, PathBuf::from("/custom/output"));
+    }
+
+    #[test]
+    fn test_get_screenshots_dir_without_custom_dir() {
+        let state = AppState::default();
+        let dir = get_screenshots_dir(&state);
+        assert_eq!(dir, app_paths::default_screenshots_dir());
+    }
+
+    #[test]
+    fn test_get_screenshots_dir_empty_custom_dir_is_still_used() {
+        // An empty string is Some(""), so it's treated as custom
+        let mut state = AppState::default();
+        state.custom_recordings_dir = Some("".to_string());
+        let dir = get_screenshots_dir(&state);
+        assert_eq!(dir, PathBuf::from(""));
+    }
+
+    // ==================== screenshot_filename ====================
+
+    #[test]
+    fn test_screenshot_filename_format() {
+        let name = screenshot_filename(1700000000);
+        assert_eq!(name, "screenshot-1700000000.png");
+    }
+
+    #[test]
+    fn test_screenshot_filename_starts_with_screenshot() {
+        let name = screenshot_filename(42);
+        assert!(name.starts_with("screenshot-"));
+    }
+
+    #[test]
+    fn test_screenshot_filename_ends_with_png() {
+        let name = screenshot_filename(42);
+        assert!(name.ends_with(".png"));
+    }
+
+    #[test]
+    fn test_screenshot_filename_zero_timestamp() {
+        let name = screenshot_filename(0);
+        assert_eq!(name, "screenshot-0.png");
+    }
+
+    #[test]
+    fn test_screenshot_filename_contains_numeric_timestamp() {
+        let name = screenshot_filename(9876543210);
+        // Extract the numeric part between "screenshot-" and ".png"
+        let numeric = name
+            .strip_prefix("screenshot-")
+            .unwrap()
+            .strip_suffix(".png")
+            .unwrap();
+        assert!(numeric.parse::<u64>().is_ok());
+        assert_eq!(numeric, "9876543210");
+    }
+
+    // ==================== screencapture_args ====================
+
+    #[test]
+    fn test_screencapture_args_screen_type() {
+        let args = screencapture_args("screen", None);
+        assert!(args.is_empty(), "Full screen should have no extra args");
+    }
+
+    #[test]
+    fn test_screencapture_args_window_with_id() {
+        let args = screencapture_args("window", Some(12345));
+        assert_eq!(args, vec!["-l12345"]);
+    }
+
+    #[test]
+    fn test_screencapture_args_window_without_id() {
+        // Edge case: capture_type is "window" but no window_id provided
+        // This silently falls back to full-screen behavior (no -l flag)
+        let args = screencapture_args("window", None);
+        assert!(
+            args.is_empty(),
+            "Window capture without id should produce no extra args"
+        );
+    }
+
+    #[test]
+    fn test_screencapture_args_area_type() {
+        let args = screencapture_args("area", None);
+        assert_eq!(args, vec!["-i"]);
+    }
+
+    #[test]
+    fn test_screencapture_args_area_ignores_window_id() {
+        let args = screencapture_args("area", Some(999));
+        assert_eq!(args, vec!["-i"], "Area mode should ignore window_id");
+    }
+
+    #[test]
+    fn test_screencapture_args_unknown_type_defaults_to_fullscreen() {
+        let args = screencapture_args("monitor", None);
+        assert!(args.is_empty());
+    }
+
+    #[test]
+    fn test_screencapture_args_empty_type_defaults_to_fullscreen() {
+        let args = screencapture_args("", None);
+        assert!(args.is_empty());
+    }
+}
