@@ -297,6 +297,111 @@ mod tests {
         assert!(!is_editor_window_label("image-editor"));
     }
 
+    // ==================== is_editor_window_label edge cases ====================
+
+    #[test]
+    fn test_editor_label_with_trailing_hyphen() {
+        // "editor-" starts_with "editor-", so this should match
+        assert!(is_editor_window_label("editor-"));
+    }
+
+    #[test]
+    fn test_editor_label_zero_index() {
+        assert!(is_editor_window_label("editor-0"));
+    }
+
+    #[test]
+    fn test_editor_label_large_index() {
+        assert!(is_editor_window_label("editor-999"));
+    }
+
+    #[test]
+    fn test_editor_label_case_sensitive_uppercase() {
+        assert!(!is_editor_window_label("Editor"));
+    }
+
+    #[test]
+    fn test_editor_label_case_sensitive_all_caps() {
+        assert!(!is_editor_window_label("EDITOR"));
+    }
+
+    #[test]
+    fn test_editor_label_empty_string() {
+        assert!(!is_editor_window_label(""));
+    }
+
+    #[test]
+    fn test_editor_label_no_hyphen_suffix() {
+        // "editor1" does NOT start with "editor-" and is not == "editor"
+        assert!(!is_editor_window_label("editor1"));
+    }
+
+    #[test]
+    fn test_editor_label_plural() {
+        assert!(!is_editor_window_label("editors"));
+    }
+
+    #[test]
+    fn test_editor_label_hud_overlay() {
+        assert!(!is_editor_window_label("hud-overlay"));
+    }
+
+    #[test]
+    fn test_editor_label_source_selector() {
+        assert!(!is_editor_window_label("source-selector"));
+    }
+
+    #[test]
+    fn test_editor_label_image_editor() {
+        assert!(!is_editor_window_label("image-editor"));
+    }
+
+    // ==================== build_editor_window_url edge cases ====================
+
+    #[test]
+    fn test_editor_url_empty_string_falls_to_default() {
+        let url = build_editor_window_url(Some(""));
+        assert_eq!(url, "index.html?windowType=editor");
+    }
+
+    #[test]
+    fn test_editor_url_whitespace_only_falls_to_default() {
+        let url = build_editor_window_url(Some("   "));
+        assert_eq!(url, "index.html?windowType=editor");
+    }
+
+    #[test]
+    fn test_editor_url_strips_leading_question_mark() {
+        let url = build_editor_window_url(Some("?windowType=editor"));
+        assert_eq!(url, "index.html?windowType=editor");
+    }
+
+    #[test]
+    fn test_editor_url_strips_all_leading_question_marks() {
+        // trim_start_matches strips ALL leading '?' characters
+        let url = build_editor_window_url(Some("??double"));
+        assert_eq!(url, "index.html?double");
+    }
+
+    #[test]
+    fn test_editor_url_trims_whitespace_and_strips_question_mark() {
+        let url = build_editor_window_url(Some("  ?windowType=editor  "));
+        assert_eq!(url, "index.html?windowType=editor");
+    }
+
+    #[test]
+    fn test_editor_url_preserves_ampersands_and_params() {
+        let url = build_editor_window_url(Some("windowType=editor&mode=video&id=123"));
+        assert_eq!(url, "index.html?windowType=editor&mode=video&id=123");
+    }
+
+    #[test]
+    fn test_editor_url_only_question_mark_falls_to_default() {
+        // "?" → trim → "?" → not empty → trim_start_matches('?') → "" → format → "index.html?"
+        let url = build_editor_window_url(Some("?"));
+        assert_eq!(url, "index.html?");
+    }
+
     // ==================== Background Color ====================
 
     #[test]
