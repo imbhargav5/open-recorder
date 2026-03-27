@@ -1,13 +1,11 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { AppWindow, CheckCircle2, Loader2, Monitor } from "lucide-react";
+import { AppWindow, Loader2, Monitor } from "lucide-react";
 import { useEffect, useState } from "react";
 import { MdCheck } from "react-icons/md";
 import { flashSelectedScreen, getSources, selectSource } from "@/lib/backend";
 import { cn } from "@/lib/utils";
 import { Button } from "../ui/button";
-import { Card } from "../ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
-import styles from "./SourceSelector.module.css";
 import { getSourceGridColumnClass } from "./sourceGridLayout";
 
 interface DesktopSource {
@@ -117,97 +115,66 @@ function parseSourceMetadata(source: ProcessedDesktopSource) {
 function SourceGrid({ sources, selectedSource, onSelect, type, emptyMessage }: SourceGridProps) {
 	if (sources.length === 0) {
 		return (
-			<div className={styles.emptyState}>
-				<div className={styles.emptyIcon}>
-					{type === "screen" ? <Monitor className="h-4 w-4" /> : <AppWindow className="h-4 w-4" />}
-				</div>
-				<div className="space-y-1 text-center">
-					<p className="text-sm font-medium text-white/80">{emptyMessage}</p>
-					<p className="text-xs text-white/40">
-						{type === "screen"
-							? "Try reconnecting a display or reopening the picker."
-							: "Only visible windows can be shared."}
-					</p>
-				</div>
+			<div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-border bg-muted/50 py-12">
+				{type === "screen" ? <Monitor className="h-5 w-5 text-muted-foreground" /> : <AppWindow className="h-5 w-5 text-muted-foreground" />}
+				<p className="text-sm text-muted-foreground">{emptyMessage}</p>
 			</div>
 		);
 	}
 
+	const isWindow = type === "window";
+
 	return (
 		<div
 			className={cn(
-				"grid gap-3 pr-1",
-				getSourceGridColumnClass(type, sources.length),
-				styles.sourceGridScroll,
+				"grid gap-2",
+				isWindow ? "grid-cols-3" : getSourceGridColumnClass(type, sources.length),
 			)}
 		>
 			{sources.map((source) => {
 				const isSelected = selectedSource?.id === source.id;
-				const subtitle =
-					type === "screen"
-						? source.display_id
-							? `Display ${source.display_id}`
-							: "Entire display"
-						: (source.appName ?? "Window");
 
 				return (
-					<Card
+					<button
+						type="button"
 						key={source.id}
-						className={cn(styles.sourceCard, isSelected && styles.selected)}
+						className={cn(
+							"rounded-lg border bg-card text-left transition-colors hover:bg-accent",
+							isWindow ? "p-1.5" : "p-2",
+							isSelected
+								? "border-primary ring-2 ring-primary/30"
+								: "border-border",
+						)}
 						onClick={() => onSelect(source)}
 					>
-						<div className={styles.previewShell}>
+						<div className={cn(
+							"relative overflow-hidden rounded-md bg-muted",
+							isWindow ? "mb-1 aspect-[16/10]" : "mb-2 aspect-video",
+						)}>
 							{source.thumbnail ? (
-								<img src={source.thumbnail} alt={source.name} className={styles.previewImage} />
+								<img src={source.thumbnail} alt={source.name} className="h-full w-full object-cover" />
 							) : (
-								<div className={styles.previewPlaceholder}>
-									<div className={styles.previewPlaceholderIcon}>
-										{type === "screen" ? (
-											<Monitor className="h-4 w-4" />
-										) : source.appIcon ? (
-											<img src={source.appIcon} alt="" className="h-4 w-4 rounded-sm" />
-										) : (
-											<AppWindow className="h-4 w-4" />
-										)}
-									</div>
-									<span className={styles.previewLabel}>
-										{type === "screen" ? "Display" : "Window"}
-									</span>
+								<div className="flex h-full w-full items-center justify-center text-muted-foreground">
+									{type === "screen" ? (
+										<Monitor className={isWindow ? "h-4 w-4" : "h-5 w-5"} />
+									) : source.appIcon ? (
+										<img src={source.appIcon} alt="" className={cn("rounded-sm", isWindow ? "h-4 w-4" : "h-5 w-5")} />
+									) : (
+										<AppWindow className={isWindow ? "h-4 w-4" : "h-5 w-5"} />
+									)}
 								</div>
 							)}
-							<div className={styles.previewOverlay} />
-							<div className={styles.sourceBadge}>{type === "screen" ? "Screen" : "Window"}</div>
 							{isSelected && (
-								<div className={styles.selectedBadge}>
-									<MdCheck className="h-3.5 w-3.5" />
+								<div className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-primary-foreground">
+									<MdCheck className="h-2.5 w-2.5" />
 								</div>
 							)}
 						</div>
-
-						<div className="space-y-1">
-							<div className="flex items-start gap-2">
-								{type === "window" && source.appIcon ? (
-									<img
-										src={source.appIcon}
-										alt=""
-										className="mt-0.5 h-4 w-4 rounded-sm opacity-90"
-									/>
-								) : (
-									<div className={styles.titleIcon}>
-										{type === "screen" ? (
-											<Monitor className="h-3.5 w-3.5" />
-										) : (
-											<AppWindow className="h-3.5 w-3.5" />
-										)}
-									</div>
-								)}
-								<div className="min-w-0 flex-1">
-									<div className={styles.sourceName}>{source.name}</div>
-									<div className={styles.sourceMeta}>{subtitle}</div>
-								</div>
-							</div>
-						</div>
-					</Card>
+						<p className={cn(
+							"truncate font-medium",
+							isWindow ? "text-xs" : "text-sm",
+						)}>{source.name}</p>
+					</button>
 				);
 			})}
 		</div>
@@ -217,7 +184,11 @@ function SourceGrid({ sources, selectedSource, onSelect, type, emptyMessage }: S
 export function SourceSelector() {
 	const [sources, setSources] = useState<DesktopSource[]>([]);
 	const [selectedSource, setSelectedSource] = useState<DesktopSource | null>(null);
-	const [activeTab, setActiveTab] = useState<"screens" | "windows">("screens");
+	const [activeTab, setActiveTab] = useState<"screens" | "windows">(() => {
+		const params = new URLSearchParams(window.location.search);
+		const tab = params.get("tab");
+		return tab === "windows" ? "windows" : "screens";
+	});
 	const [loading, setLoading] = useState(true);
 	const [windowsLoading, setWindowsLoading] = useState(true);
 
@@ -337,117 +308,73 @@ export function SourceSelector() {
 
 	if (loading) {
 		return (
-			<div className="min-h-screen flex items-center justify-center px-5 py-6">
-				<div className={styles.loadingPanel}>
-					<div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/5">
-						<Loader2 className="h-5 w-5 animate-spin text-[#7fb3ff]" />
-					</div>
-					<div className="space-y-1 text-center">
-						<p className="text-sm font-semibold text-white">Finding shareable sources</p>
-						<p className="text-xs text-white/50">
-							Loading displays first, then live window previews.
-						</p>
-					</div>
+			<div className="rounded-2xl border border-border bg-background p-6 shadow-xl">
+				<div className="flex flex-col items-center gap-3">
+					<Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+					<p className="text-sm text-muted-foreground">Finding sources...</p>
 				</div>
 			</div>
 		);
 	}
 
 	return (
-		<div className="min-h-screen flex items-center justify-center px-5 py-6">
-			<div className={styles.panel}>
-				<div className={styles.panelHeader}>
-					<div className="space-y-1">
-						<p className={styles.eyebrow}>Source Picker</p>
-						<h1 className="text-lg font-semibold tracking-tight text-white">
-							Choose what to share
-						</h1>
-						<p className="text-sm text-white/50">
-							Pick a full display or switch to a single app window.
-						</p>
-					</div>
-					<div className={styles.statusPill}>
-						<CheckCircle2 className="h-3.5 w-3.5 text-[#8dc2ff]" />
-						<span>{selectedSource ? "1 selected" : "Nothing selected"}</span>
-					</div>
-				</div>
+		<div className="rounded-2xl border border-border bg-background p-4 shadow-xl">
+			<h1 className="mb-4 text-lg font-semibold">Choose what to share</h1>
 
-				<Tabs
-					value={activeTab}
-					onValueChange={(value) => setActiveTab(value as "screens" | "windows")}
-					className="flex min-h-0 flex-1 flex-col"
+			<Tabs
+				value={activeTab}
+				onValueChange={(value) => setActiveTab(value as "screens" | "windows")}
+			>
+				<TabsList>
+					<TabsTrigger value="screens" className="gap-1.5">
+						<Monitor className="h-3.5 w-3.5" />
+						Screens
+						<span className="ml-0.5 rounded-full bg-foreground/10 px-1.5 py-0.5 text-xs leading-none">{screenSources.length}</span>
+					</TabsTrigger>
+					<TabsTrigger value="windows" className="gap-1.5">
+						<AppWindow className="h-3.5 w-3.5" />
+						Windows
+						<span className="ml-0.5 rounded-full bg-foreground/10 px-1.5 py-0.5 text-xs leading-none">
+							{windowSources.length}
+							{windowsLoading ? "..." : ""}
+						</span>
+					</TabsTrigger>
+				</TabsList>
+
+				<TabsContent value="screens" className="mt-3">
+					<SourceGrid
+						sources={screenSources}
+						selectedSource={selectedSource}
+						onSelect={handleSourceSelect}
+						type="screen"
+						emptyMessage="No screens available"
+					/>
+				</TabsContent>
+
+				<TabsContent value="windows" className="mt-3">
+					<SourceGrid
+						sources={windowSources}
+						selectedSource={selectedSource}
+						onSelect={handleSourceSelect}
+						type="window"
+						emptyMessage="No windows available"
+					/>
+				</TabsContent>
+			</Tabs>
+
+			<div className="mt-4 flex justify-end gap-2 border-t border-border pt-4">
+				<Button
+					variant="outline"
+					onClick={() => getCurrentWindow().close()}
 				>
-					<div className="flex items-center justify-between gap-3">
-						<TabsList className={styles.tabsList}>
-							<TabsTrigger value="screens" className={styles.tabsTrigger}>
-								<Monitor className="h-3.5 w-3.5" />
-								<span>Screens</span>
-								<span className={styles.triggerCount}>{screenSources.length}</span>
-							</TabsTrigger>
-							<TabsTrigger value="windows" className={styles.tabsTrigger}>
-								<AppWindow className="h-3.5 w-3.5" />
-								<span>Windows</span>
-								<span className={styles.triggerCount}>
-									{windowSources.length}
-									{windowsLoading ? "…" : ""}
-								</span>
-							</TabsTrigger>
-						</TabsList>
-
-						<div className="hidden sm:block text-xs text-white/40">Visible windows only</div>
-					</div>
-
-					<TabsContent value="screens" className={styles.tabContent}>
-						<SourceGrid
-							sources={screenSources}
-							selectedSource={selectedSource}
-							onSelect={handleSourceSelect}
-							type="screen"
-							emptyMessage="No screens available"
-						/>
-					</TabsContent>
-
-					<TabsContent value="windows" className={styles.tabContent}>
-						<div className="mb-3 rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2 text-xs text-white/45">
-							Only visible, non-minimized windows can be recorded.
-						</div>
-						<SourceGrid
-							sources={windowSources}
-							selectedSource={selectedSource}
-							onSelect={handleSourceSelect}
-							type="window"
-							emptyMessage="No windows available"
-						/>
-					</TabsContent>
-				</Tabs>
-
-				<div className={styles.footer}>
-					<div className="min-w-0">
-						<p className="text-xs font-medium uppercase tracking-[0.18em] text-white/35">
-							Selected
-						</p>
-						<p className="truncate text-sm font-medium text-white/80">
-							{selectedSource ? selectedSource.name : "Choose a source to enable sharing"}
-						</p>
-					</div>
-
-					<div className="flex items-center gap-2">
-						<Button
-							variant="outline"
-							onClick={() => getCurrentWindow().close()}
-							className={styles.cancelButton}
-						>
-							Cancel
-						</Button>
-						<Button
-							onClick={() => void handleShare()}
-							disabled={!selectedSource}
-							className={styles.shareButton}
-						>
-							Share Source
-						</Button>
-					</div>
-				</div>
+					Cancel
+				</Button>
+				<Button
+					onClick={() => void handleShare()}
+					disabled={!selectedSource}
+				>
+					Share Source
+				</Button>
 			</div>
 		</div>
 	);

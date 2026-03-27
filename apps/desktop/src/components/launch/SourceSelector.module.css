@@ -1,6 +1,5 @@
 .panel {
   width: min(100%, 720px);
-  min-height: min(78vh, 520px);
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -99,34 +98,9 @@
 
 .tabContent {
   margin-top: 14px !important;
-  min-height: 0;
-  flex: 1;
-  overflow: hidden;
 }
 
 .sourceGridScroll {
-  height: 100%;
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(96, 165, 250, 0.55) rgba(15, 23, 42, 0.38);
-}
-
-.sourceGridScroll::-webkit-scrollbar {
-  width: 9px;
-}
-
-.sourceGridScroll::-webkit-scrollbar-track {
-  background: rgba(15, 23, 42, 0.34);
-  border-radius: 999px;
-}
-
-.sourceGridScroll::-webkit-scrollbar-thumb {
-  background: rgba(96, 165, 250, 0.42);
-  border-radius: 999px;
-}
-
-.sourceGridScroll::-webkit-scrollbar-thumb:hover {
-  background: rgba(96, 165, 250, 0.62);
 }
 
 .sourceCard {

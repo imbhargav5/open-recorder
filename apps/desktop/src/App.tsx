@@ -24,6 +24,7 @@ export default function App() {
 			document.body.style.background = "transparent";
 			document.documentElement.style.background = "transparent";
 			document.getElementById("root")?.style.setProperty("background", "transparent");
+			document.documentElement.classList.add("dark");
 		}
 
 		// Load custom fonts on app initialization

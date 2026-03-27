@@ -67,7 +67,7 @@ pub fn get_selected_source(
     state: tauri::State<'_, Mutex<AppState>>,
 ) -> Result<Option<SelectedSource>, String> {
     let s = state.lock().map_err(|e| e.to_string())?;
-    Ok(s.selected_source.clone())
+    Ok(s.selected_source.clone().or_else(default_selected_source))
 }
 
 #[tauri::command]
@@ -354,6 +354,25 @@ fn fallback_sources() -> Vec<SelectedSource> {
         window_title: None,
         window_id: None,
     }]
+}
+
+fn default_selected_source() -> Option<SelectedSource> {
+    #[cfg(target_os = "macos")]
+    {
+        fallback_macos_sources()
+            .ok()
+            .and_then(|sources| {
+                sources
+                    .into_iter()
+                    .find(|source| source.name == "Main Display")
+                    .or_else(|| fallback_sources().into_iter().next())
+            })
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        fallback_sources().into_iter().next()
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -871,6 +890,14 @@ mod tests {
         assert!(sources[0].display_id.is_some());
     }
 
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn test_default_selected_source_uses_main_display_fallback() {
+        let source = default_selected_source().expect("default source should exist");
+        assert_eq!(source.name, "Main Display");
+        assert_eq!(source.source_type.as_deref(), Some("screen"));
+    }
+
     // ==================== ThumbnailSize deserialization ====================
 
     #[test]
@@ -923,6 +950,13 @@ mod tests {
     #[cfg(target_os = "macos")]
     mod macos_tests {
         use super::*;
+
+        #[test]
+        fn test_default_selected_source_returns_screen_source() {
+            let source = default_selected_source().expect("default source should exist");
+            assert_eq!(source.source_type.as_deref(), Some("screen"));
+            assert!(!source.id.is_empty());
+        }
 
         #[test]
         fn test_parse_display_id_valid_screen_id() {

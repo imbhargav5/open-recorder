@@ -284,8 +284,12 @@ export function switchToImageEditor(): Promise<void> {
 	return invoke("switch_to_image_editor");
 }
 
-export function openSourceSelector(): Promise<void> {
-	return invoke("open_source_selector");
+export function openSourceSelector(tab?: "screens" | "windows"): Promise<void> {
+	return invoke("open_source_selector", { tab });
+}
+
+export function closeSourceSelector(): Promise<void> {
+	return invoke("close_source_selector");
 }
 
 export function hudOverlayShow(): Promise<void> {

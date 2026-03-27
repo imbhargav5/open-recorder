@@ -264,8 +264,8 @@ export function LaunchWindow() {
 	};
 
 	// Source tracking
-	const [selectedSource, setSelectedSource] = useState("Screen");
-	const [hasSelectedSource, setHasSelectedSource] = useState(false);
+	const [selectedSource, setSelectedSource] = useState("Main Display");
+	const [hasSelectedSource, setHasSelectedSource] = useState(true);
 	useEffect(() => {
 		const checkSelectedSource = async () => {
 			try {
@@ -274,8 +274,8 @@ export function LaunchWindow() {
 					setSelectedSource(source.name);
 					setHasSelectedSource(true);
 				} else {
-					setSelectedSource("Screen");
-					setHasSelectedSource(false);
+					setSelectedSource("Main Display");
+					setHasSelectedSource(true);
 				}
 			} catch {
 				// ignore
@@ -287,7 +287,7 @@ export function LaunchWindow() {
 		return () => clearInterval(interval);
 	}, []);
 
-	const openSourceSelector = useCallback(async () => {
+	const openSourceSelector = useCallback(async (tab?: "screens" | "windows") => {
 		const screenStatus = await backend.getScreenRecordingPermissionStatus().catch(() => "unknown");
 		if (screenStatus !== "granted") {
 			const granted = await backend.requestScreenRecordingPermission().catch(() => false);
@@ -305,7 +305,7 @@ export function LaunchWindow() {
 		const permissionsReady = await preparePermissions();
 		if (!permissionsReady) return;
 
-		backend.openSourceSelector().catch(() => {
+		backend.openSourceSelector(tab).catch(() => {
 			// Ignore selector launch failures because the permissions flow already handled the user-facing error.
 		});
 	}, [preparePermissions]);
@@ -408,11 +408,10 @@ export function LaunchWindow() {
 	const handleScreenshotModeSelect = async (mode: ScreenshotMode) => {
 		setScreenshotMode(mode);
 		if (mode === "area") {
-			// Immediately enter area selection mode
+			backend.closeSourceSelector().catch(() => {});
 			await handleAreaCapture();
 		} else {
-			// Open source selector for screen/window selection
-			await openSourceSelector();
+			await openSourceSelector(mode === "window" ? "windows" : "screens");
 		}
 	};
 

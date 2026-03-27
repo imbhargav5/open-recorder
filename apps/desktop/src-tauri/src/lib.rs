@@ -137,6 +137,7 @@ pub fn run() {
             commands::window_mgmt::switch_to_editor,
             commands::window_mgmt::switch_to_image_editor,
             commands::window_mgmt::open_source_selector,
+            commands::window_mgmt::close_source_selector,
             commands::window_mgmt::hud_overlay_show,
             commands::window_mgmt::hud_overlay_hide,
             commands::window_mgmt::hud_overlay_close,
