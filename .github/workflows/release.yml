@@ -77,7 +77,6 @@ jobs:
       APPLE_ID: ${{ secrets.APPLE_ID }}
       APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
     steps:
       - name: Checkout code
@@ -112,15 +111,18 @@ jobs:
       - name: Build sidecars
         run: pnpm --filter @open-recorder/desktop build:sidecars
 
-      - name: Ensure signing key has comment header
+      - name: Write signing key file
         shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: |
-          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
-            DECODED=$(echo "$TAURI_SIGNING_PRIVATE_KEY" | base64 -d 2>/dev/null || echo "$TAURI_SIGNING_PRIVATE_KEY")
-            if [[ "$DECODED" != untrusted\ comment:* ]]; then
-              printf 'TAURI_SIGNING_PRIVATE_KEY=untrusted comment: rsign encrypted secret key\n%s' "$DECODED" >> "$GITHUB_ENV"
-            fi
+          KEY_FILE="$RUNNER_TEMP/tauri_signing_key.txt"
+          echo "$TAURI_SIGNING_PRIVATE_KEY" > "$KEY_FILE"
+          if ! head -1 "$KEY_FILE" | grep -q "^untrusted comment:"; then
+            CONTENT=$(cat "$KEY_FILE")
+            printf 'untrusted comment: rsign encrypted secret key\n%s\n' "$CONTENT" > "$KEY_FILE"
           fi
+          echo "TAURI_SIGNING_PRIVATE_KEY_PATH=$KEY_FILE" >> "$GITHUB_ENV"
 
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
@@ -153,7 +155,6 @@ jobs:
       APPLE_ID: ${{ secrets.APPLE_ID }}
       APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
     steps:
       - name: Checkout code
@@ -188,15 +189,18 @@ jobs:
       - name: Build sidecars
         run: pnpm --filter @open-recorder/desktop build:sidecars
 
-      - name: Ensure signing key has comment header
+      - name: Write signing key file
         shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: |
-          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
-            DECODED=$(echo "$TAURI_SIGNING_PRIVATE_KEY" | base64 -d 2>/dev/null || echo "$TAURI_SIGNING_PRIVATE_KEY")
-            if [[ "$DECODED" != untrusted\ comment:* ]]; then
-              printf 'TAURI_SIGNING_PRIVATE_KEY=untrusted comment: rsign encrypted secret key\n%s' "$DECODED" >> "$GITHUB_ENV"
-            fi
+          KEY_FILE="$RUNNER_TEMP/tauri_signing_key.txt"
+          echo "$TAURI_SIGNING_PRIVATE_KEY" > "$KEY_FILE"
+          if ! head -1 "$KEY_FILE" | grep -q "^untrusted comment:"; then
+            CONTENT=$(cat "$KEY_FILE")
+            printf 'untrusted comment: rsign encrypted secret key\n%s\n' "$CONTENT" > "$KEY_FILE"
           fi
+          echo "TAURI_SIGNING_PRIVATE_KEY_PATH=$KEY_FILE" >> "$GITHUB_ENV"
 
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
@@ -222,7 +226,6 @@ jobs:
     if: needs.resolve-release.outputs.should_release == 'true'
     runs-on: windows-latest
     env:
-      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
     steps:
       - name: Checkout code
@@ -255,15 +258,18 @@ jobs:
       - name: Build sidecars
         run: pnpm --filter @open-recorder/desktop build:sidecars
 
-      - name: Ensure signing key has comment header
+      - name: Write signing key file
         shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: |
-          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
-            DECODED=$(echo "$TAURI_SIGNING_PRIVATE_KEY" | base64 -d 2>/dev/null || echo "$TAURI_SIGNING_PRIVATE_KEY")
-            if [[ "$DECODED" != untrusted\ comment:* ]]; then
-              printf 'TAURI_SIGNING_PRIVATE_KEY=untrusted comment: rsign encrypted secret key\n%s' "$DECODED" >> "$GITHUB_ENV"
-            fi
+          KEY_FILE="$RUNNER_TEMP/tauri_signing_key.txt"
+          echo "$TAURI_SIGNING_PRIVATE_KEY" > "$KEY_FILE"
+          if ! head -1 "$KEY_FILE" | grep -q "^untrusted comment:"; then
+            CONTENT=$(cat "$KEY_FILE")
+            printf 'untrusted comment: rsign encrypted secret key\n%s\n' "$CONTENT" > "$KEY_FILE"
           fi
+          echo "TAURI_SIGNING_PRIVATE_KEY_PATH=$KEY_FILE" >> "$GITHUB_ENV"
 
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
@@ -288,7 +294,6 @@ jobs:
     if: needs.resolve-release.outputs.should_release == 'true'
     runs-on: ubuntu-22.04
     env:
-      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
     steps:
       - name: Checkout code
@@ -323,15 +328,18 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Ensure signing key has comment header
+      - name: Write signing key file
         shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: |
-          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
-            DECODED=$(echo "$TAURI_SIGNING_PRIVATE_KEY" | base64 -d 2>/dev/null || echo "$TAURI_SIGNING_PRIVATE_KEY")
-            if [[ "$DECODED" != untrusted\ comment:* ]]; then
-              printf 'TAURI_SIGNING_PRIVATE_KEY=untrusted comment: rsign encrypted secret key\n%s' "$DECODED" >> "$GITHUB_ENV"
-            fi
+          KEY_FILE="$RUNNER_TEMP/tauri_signing_key.txt"
+          echo "$TAURI_SIGNING_PRIVATE_KEY" > "$KEY_FILE"
+          if ! head -1 "$KEY_FILE" | grep -q "^untrusted comment:"; then
+            CONTENT=$(cat "$KEY_FILE")
+            printf 'untrusted comment: rsign encrypted secret key\n%s\n' "$CONTENT" > "$KEY_FILE"
           fi
+          echo "TAURI_SIGNING_PRIVATE_KEY_PATH=$KEY_FILE" >> "$GITHUB_ENV"
 
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
