@@ -246,10 +246,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: windows-x64
-          path: |
-            apps/desktop/src-tauri/target/release/bundle/nsis/*.exe
-            apps/desktop/src-tauri/target/release/bundle/nsis/*.nsis.zip
-            apps/desktop/src-tauri/target/release/bundle/nsis/*.nsis.zip.sig
+          path: "apps/desktop/src-tauri/target/release/bundle/nsis/*"
           if-no-files-found: error
 
   build-linux-x64:
@@ -305,9 +302,7 @@ jobs:
         with:
           name: linux-x64
           path: |
-            apps/desktop/src-tauri/target/release/bundle/appimage/*.AppImage
-            apps/desktop/src-tauri/target/release/bundle/appimage/*.AppImage.tar.gz
-            apps/desktop/src-tauri/target/release/bundle/appimage/*.AppImage.tar.gz.sig
+            apps/desktop/src-tauri/target/release/bundle/appimage/*
             apps/desktop/src-tauri/target/release/bundle/deb/*.deb
           if-no-files-found: error
 
