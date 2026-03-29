@@ -80,7 +80,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDc4NzYwQjNGRUM1RUUzNEQKUldSTjQxN3NQd3QyZUVjcGwrSlRvWEVjclo2cG9LMGNSQU9tc2VyQ3JjTXJsV01kOWJ6UC9JY08K",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEFCNzQ2RTcyNDJFNkUzRTkKUldUcDQrWkNjbTUwcTdYNytlei9vWWFFajRoOG4vRm4rVnM3TXM4eEdFY2ZoVjlwbENhZThPZ2kK",
       "endpoints": [
         "https://github.com/imbhargav5/open-recorder/releases/latest/download/latest.json"
       ],
