@@ -113,7 +113,12 @@ jobs:
         run: pnpm --filter @open-recorder/desktop build:sidecars
 
       - name: Build Tauri app
-        run: pnpm --filter @open-recorder/desktop tauri build -- --target aarch64-apple-darwin
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: apps/desktop
+          args: --target aarch64-apple-darwin
 
       - name: Upload macOS arm64 artifact
         uses: actions/upload-artifact@v4
@@ -174,7 +179,12 @@ jobs:
         run: pnpm --filter @open-recorder/desktop build:sidecars
 
       - name: Build Tauri app
-        run: pnpm --filter @open-recorder/desktop tauri build -- --target x86_64-apple-darwin
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: apps/desktop
+          args: --target x86_64-apple-darwin
 
       - name: Upload macOS x64 artifact
         uses: actions/upload-artifact@v4
