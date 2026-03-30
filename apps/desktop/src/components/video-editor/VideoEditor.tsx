@@ -39,7 +39,7 @@ import {
 	VideoExporter,
 } from "@/lib/exporter";
 import { getSuggestedExportFileName } from "@/lib/exportFileName";
-import { fromFileUrl, toFileUrl } from "@/lib/fileUrl";
+import { fromFileUrl } from "@/lib/fileUrl";
 import { onRenderProfiler } from "@/lib/perf";
 import { ensurePixiRuntime } from "@/lib/pixiRuntime";
 import {
@@ -1739,8 +1739,8 @@ export default function VideoEditor() {
 				const containerElement = playbackRef?.containerRef?.current;
 				const previewWidth = containerElement?.clientWidth || 1920;
 				const previewHeight = containerElement?.clientHeight || 1080;
-				const sourceVideoUrl = toFileUrl(sourcePath);
-				const facecamSourceUrl = facecamVideoPath ? toFileUrl(facecamVideoPath) : undefined;
+				const sourceVideoUrl = await backend.resolveMediaPlaybackUrl(sourcePath);
+				const facecamSourceUrl = facecamVideoPath ? await backend.resolveMediaPlaybackUrl(facecamVideoPath) : undefined;
 
 				if (settings.format === "gif" && settings.gifConfig) {
 					// GIF Export
