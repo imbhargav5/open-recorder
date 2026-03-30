@@ -5,6 +5,47 @@ use crate::app_paths;
 use crate::state::AppState;
 
 #[tauri::command]
+pub async fn select_screen_area() -> Result<Option<serde_json::Value>, String> {
+    #[cfg(target_os = "macos")]
+    {
+        let sidecar_path =
+            crate::native::sidecar::get_sidecar_path("openscreen-area-selector")?;
+        let output = tokio::process::Command::new(&sidecar_path)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .output()
+            .await
+            .map_err(|e| format!("Failed to run area selector: {}", e))?;
+
+        if !output.status.success() {
+            return Err("Area selection failed or was cancelled".to_string());
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if stdout.is_empty() || stdout == "{}" {
+            return Ok(None); // User cancelled
+        }
+
+        let rect: serde_json::Value =
+            serde_json::from_str(&stdout).map_err(|e| format!("Invalid area selection: {}", e))?;
+
+        // Validate the rect has required fields
+        if rect.get("width").and_then(|v| v.as_f64()).unwrap_or(0.0) < 4.0
+            || rect.get("height").and_then(|v| v.as_f64()).unwrap_or(0.0) < 4.0
+        {
+            return Ok(None);
+        }
+
+        Ok(Some(rect))
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        Err("Area selection is currently only supported on macOS".to_string())
+    }
+}
+
+#[tauri::command]
 pub fn set_recording_state(
     app: AppHandle,
     state: tauri::State<'_, Mutex<AppState>>,

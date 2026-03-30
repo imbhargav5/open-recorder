@@ -109,6 +109,7 @@ pub fn run() {
             commands::recording::set_recording_state,
             commands::recording::start_native_screen_recording,
             commands::recording::stop_native_screen_recording,
+            commands::recording::select_screen_area,
             // Cursor
             commands::cursor::get_cursor_telemetry,
             commands::cursor::set_cursor_scale,

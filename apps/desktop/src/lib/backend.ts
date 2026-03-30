@@ -157,6 +157,10 @@ export function stopNativeScreenRecording(): Promise<string> {
 	return invoke("stop_native_screen_recording");
 }
 
+export function selectScreenArea(): Promise<{ x: number; y: number; width: number; height: number; displayId: number } | null> {
+	return invoke("select_screen_area");
+}
+
 // ─── Cursor ─────────────────────────────────────────────────────────────────
 
 export function getCursorTelemetry(videoPath: string): Promise<any> {

@@ -667,7 +667,7 @@ export function LaunchWindow() {
 									variant="link"
 									size="sm"
 									className={`gap-1 text-white/60 bg-transparent hover:bg-transparent px-0 text-xs ${styles.tauriNoDrag}`}
-									onClick={openSourceSelector}
+									onClick={() => openSourceSelector()}
 									title={selectedSource}
 								>
 									<MdMonitor size={14} className="text-white/60" />
@@ -733,7 +733,7 @@ export function LaunchWindow() {
 							variant="link"
 							size="sm"
 							className={`gap-1 text-white/80 bg-transparent hover:bg-transparent px-0 text-xs ${styles.tauriNoDrag}`}
-							onClick={openSourceSelector}
+							onClick={() => openSourceSelector()}
 							disabled={recording}
 							title={selectedSource}
 						>
@@ -905,7 +905,7 @@ export function LaunchWindow() {
 						<Button
 							variant="link"
 							size="sm"
-							onClick={hasSelectedSource ? toggleRecording : openSourceSelector}
+							onClick={hasSelectedSource ? toggleRecording : () => openSourceSelector()}
 							disabled={!hasSelectedSource && !recording}
 							className={`gap-1 text-white bg-transparent hover:bg-transparent px-0 text-xs ${styles.tauriNoDrag}`}
 						>

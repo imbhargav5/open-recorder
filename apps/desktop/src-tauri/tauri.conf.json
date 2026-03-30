@@ -5,7 +5,7 @@
   "identifier": "dev.openrecorder.app",
   "build": {
     "beforeDevCommand": "pnpm exec vite",
-    "devUrl": "http://localhost:5173",
+    "devUrl": "http://localhost:5789",
     "beforeBuildCommand": "pnpm exec vite build",
     "frontendDist": "../dist"
   },
@@ -56,7 +56,8 @@
       "binaries/openscreen-window-list",
       "binaries/openscreen-system-cursors",
       "binaries/openscreen-native-cursor-monitor",
-      "binaries/openscreen-screen-selection-flash"
+      "binaries/openscreen-screen-selection-flash",
+      "binaries/openscreen-area-selector"
     ],
     "resources": [
       "../public/wallpapers/**/*",

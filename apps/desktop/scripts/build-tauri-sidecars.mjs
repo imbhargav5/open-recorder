@@ -114,6 +114,10 @@ if (process.platform === 'darwin') {
       source: 'ScreenSelectionFlash.swift',
       output: 'openscreen-screen-selection-flash',
     },
+    {
+      source: 'AreaSelector.swift',
+      output: 'openscreen-area-selector',
+    },
   ];
 
   for (const helper of helpers) {

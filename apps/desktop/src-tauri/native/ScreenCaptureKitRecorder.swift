@@ -27,6 +27,13 @@ struct FlexibleUInt32: Codable {
 	}
 }
 
+struct CropRect: Codable {
+	let x: Double
+	let y: Double
+	let width: Double
+	let height: Double
+}
+
 struct CaptureConfig: Codable {
 	let fps: Int?
 	let displayId: FlexibleUInt32?
@@ -37,6 +44,7 @@ struct CaptureConfig: Codable {
 	let capturesMicrophone: Bool?
 	let microphoneDeviceId: String?
 	let microphoneOutputPath: String?
+	let cropRect: CropRect?
 }
 
 let targetCaptureFPS = 60
@@ -167,10 +175,20 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 			}
 
 			filter = SCContentFilter(display: display, excludingApplications: [], exceptingWindows: [])
-			let displayBounds = CGDisplayBounds(display.displayID)
 			let scaleFactor = ScreenCaptureRecorder.scaleFactor(for: display.displayID)
-			outputWidth = max(2, Int(displayBounds.width) * scaleFactor)
-			outputHeight = max(2, Int(displayBounds.height) * scaleFactor)
+
+			if let crop = config.cropRect, crop.width >= 4, crop.height >= 4 {
+				// Area capture: set sourceRect to crop region (in display points)
+				let sourceRect = CGRect(x: crop.x, y: crop.y, width: crop.width, height: crop.height)
+				streamConfig.sourceRect = sourceRect
+				streamConfig.destinationRect = CGRect(origin: .zero, size: sourceRect.size)
+				outputWidth = max(2, Int(crop.width) * scaleFactor)
+				outputHeight = max(2, Int(crop.height) * scaleFactor)
+			} else {
+				let displayBounds = CGDisplayBounds(display.displayID)
+				outputWidth = max(2, Int(displayBounds.width) * scaleFactor)
+				outputHeight = max(2, Int(displayBounds.height) * scaleFactor)
+			}
 			streamConfig.width = outputWidth
 			streamConfig.height = outputHeight
 		}

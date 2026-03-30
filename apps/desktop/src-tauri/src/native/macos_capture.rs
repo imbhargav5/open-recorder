@@ -76,6 +76,10 @@ pub async fn start_capture(
     let shows_cursor = read_bool(options, &["showsCursor", "captureCursor"], false);
     let microphone_device_id = read_string(options, &["microphoneDeviceId"]);
     let fps = read_u64(options, &["fps", "frameRate"]).unwrap_or(60);
+    let crop_rect = options
+        .get("cropRect")
+        .or_else(|| options.get("crop_rect"))
+        .cloned();
 
     let display_id_num: u64 = display_id.parse().unwrap_or(0);
 
@@ -88,6 +92,7 @@ pub async fn start_capture(
         "capturesSystemAudio": captures_system_audio,
         "capturesMicrophone": captures_microphone,
         "microphoneDeviceId": microphone_device_id,
+        "cropRect": crop_rect,
     });
 
     let config_str = serde_json::to_string(&config).map_err(|e| e.to_string())?;

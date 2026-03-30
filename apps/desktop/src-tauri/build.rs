@@ -32,6 +32,7 @@ fn compile_sidecars() {
             "ScreenSelectionFlash.swift",
             "openscreen-screen-selection-flash",
         ),
+        ("AreaSelector.swift", "openscreen-area-selector"),
     ];
 
     println!("cargo:rerun-if-changed={}", native_dir.display());
