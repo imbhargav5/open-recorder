@@ -338,22 +338,20 @@ jobs:
             fi
           }
 
-          copy_match "release-assets/macos-arm64" "*.dmg" "OpenRecorder-arm64.dmg"
-          copy_match "release-assets/macos-arm64" "*.app.tar.gz" "OpenRecorder-arm64.app.tar.gz"
-          copy_match "release-assets/macos-arm64" "*.app.tar.gz.sig" "OpenRecorder-arm64.app.tar.gz.sig"
+          copy_match "release-assets/macos-arm64" "*.dmg" "open-recorder-macos-arm64.dmg"
+          copy_match "release-assets/macos-arm64" "*.app.tar.gz" "open-recorder-macos-arm64.app.tar.gz"
+          copy_match "release-assets/macos-arm64" "*.app.tar.gz.sig" "open-recorder-macos-arm64.app.tar.gz.sig"
 
-          copy_match "release-assets/macos-x64" "*.dmg" "OpenRecorder-x64.dmg"
-          copy_match "release-assets/macos-x64" "*.app.tar.gz" "OpenRecorder-x64.app.tar.gz"
-          copy_match "release-assets/macos-x64" "*.app.tar.gz.sig" "OpenRecorder-x64.app.tar.gz.sig"
+          copy_match "release-assets/macos-x64" "*.dmg" "open-recorder-macos-x64.dmg"
+          copy_match "release-assets/macos-x64" "*.app.tar.gz" "open-recorder-macos-x64.app.tar.gz"
+          copy_match "release-assets/macos-x64" "*.app.tar.gz.sig" "open-recorder-macos-x64.app.tar.gz.sig"
 
-          copy_match "release-assets/windows-x64" "*setup.exe" "OpenRecorder-windows-x64.exe"
-          copy_match "release-assets/windows-x64" "*.nsis.zip" "OpenRecorder-windows-x64.nsis.zip"
-          copy_match "release-assets/windows-x64" "*.nsis.zip.sig" "OpenRecorder-windows-x64.nsis.zip.sig"
+          copy_match "release-assets/windows-x64" "*setup.exe" "open-recorder-windows-x64-setup.exe"
+          copy_match "release-assets/windows-x64" "*setup.exe.sig" "open-recorder-windows-x64-setup.exe.sig"
 
-          copy_match "release-assets/linux-x64" "*.AppImage" "OpenRecorder-linux-x64.AppImage"
-          copy_match "release-assets/linux-x64" "*.AppImage.tar.gz" "OpenRecorder-linux-x64.AppImage.tar.gz"
-          copy_match "release-assets/linux-x64" "*.AppImage.tar.gz.sig" "OpenRecorder-linux-x64.AppImage.tar.gz.sig"
-          copy_match "release-assets/linux-x64" "*.deb" "OpenRecorder-linux-x64.deb"
+          copy_match "release-assets/linux-x64" "*.AppImage" "open-recorder-linux-x64.appimage"
+          copy_match "release-assets/linux-x64" "*.AppImage.sig" "open-recorder-linux-x64.appimage.sig"
+          copy_match "release-assets/linux-x64" "*.deb" "open-recorder-linux-x64.deb"
 
           require_file() {
             local file_path="$1"
@@ -363,14 +361,14 @@ jobs:
             fi
           }
 
-          require_file "release-upload/OpenRecorder-arm64.app.tar.gz"
-          require_file "release-upload/OpenRecorder-arm64.app.tar.gz.sig"
-          require_file "release-upload/OpenRecorder-x64.app.tar.gz"
-          require_file "release-upload/OpenRecorder-x64.app.tar.gz.sig"
-          require_file "release-upload/OpenRecorder-windows-x64.nsis.zip"
-          require_file "release-upload/OpenRecorder-windows-x64.nsis.zip.sig"
-          require_file "release-upload/OpenRecorder-linux-x64.AppImage.tar.gz"
-          require_file "release-upload/OpenRecorder-linux-x64.AppImage.tar.gz.sig"
+          require_file "release-upload/open-recorder-macos-arm64.app.tar.gz"
+          require_file "release-upload/open-recorder-macos-arm64.app.tar.gz.sig"
+          require_file "release-upload/open-recorder-macos-x64.app.tar.gz"
+          require_file "release-upload/open-recorder-macos-x64.app.tar.gz.sig"
+          require_file "release-upload/open-recorder-windows-x64-setup.exe"
+          require_file "release-upload/open-recorder-windows-x64-setup.exe.sig"
+          require_file "release-upload/open-recorder-linux-x64.appimage"
+          require_file "release-upload/open-recorder-linux-x64.appimage.sig"
 
           find release-upload -type f | sort
 
@@ -397,14 +395,14 @@ jobs:
             cat "$file_path"
           }
 
-          MAC_ARM64_SIG=$(read_required_file "release-upload/OpenRecorder-arm64.app.tar.gz.sig")
-          MAC_ARM64_FILE="OpenRecorder-arm64.app.tar.gz"
-          MAC_X64_SIG=$(read_required_file "release-upload/OpenRecorder-x64.app.tar.gz.sig")
-          MAC_X64_FILE="OpenRecorder-x64.app.tar.gz"
-          WIN_SIG=$(read_required_file "release-upload/OpenRecorder-windows-x64.nsis.zip.sig")
-          WIN_FILE="OpenRecorder-windows-x64.nsis.zip"
-          LINUX_SIG=$(read_required_file "release-upload/OpenRecorder-linux-x64.AppImage.tar.gz.sig")
-          LINUX_FILE="OpenRecorder-linux-x64.AppImage.tar.gz"
+          MAC_ARM64_SIG=$(read_required_file "release-upload/open-recorder-macos-arm64.app.tar.gz.sig")
+          MAC_ARM64_FILE="open-recorder-macos-arm64.app.tar.gz"
+          MAC_X64_SIG=$(read_required_file "release-upload/open-recorder-macos-x64.app.tar.gz.sig")
+          MAC_X64_FILE="open-recorder-macos-x64.app.tar.gz"
+          WIN_SIG=$(read_required_file "release-upload/open-recorder-windows-x64-setup.exe.sig")
+          WIN_FILE="open-recorder-windows-x64-setup.exe"
+          LINUX_SIG=$(read_required_file "release-upload/open-recorder-linux-x64.appimage.sig")
+          LINUX_FILE="open-recorder-linux-x64.appimage"
 
           cat > release-upload/latest.json << MANIFEST
           {
