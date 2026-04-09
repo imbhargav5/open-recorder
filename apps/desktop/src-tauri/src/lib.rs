@@ -112,6 +112,8 @@ pub fn run() {
             commands::recording::select_screen_area,
             // Cursor
             commands::cursor::get_cursor_telemetry,
+            commands::cursor::start_cursor_telemetry_capture,
+            commands::cursor::stop_cursor_telemetry_capture,
             commands::cursor::set_cursor_scale,
             commands::cursor::get_system_cursor_assets,
             // Permissions

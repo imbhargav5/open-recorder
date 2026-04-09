@@ -2,6 +2,8 @@ mod recording_state;
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
+use std::sync::{atomic::AtomicBool, Arc, Mutex};
+use std::thread::JoinHandle;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -67,6 +69,12 @@ pub struct CursorTelemetryPoint {
     pub click_type: Option<String>,
 }
 
+pub struct CursorTelemetryCapture {
+    pub stop: Arc<AtomicBool>,
+    pub samples: Arc<Mutex<Vec<CursorTelemetryPoint>>>,
+    pub handle: Option<JoinHandle<()>>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ShortcutConfig {
     pub start_stop_recording: Option<String>,
@@ -83,6 +91,7 @@ pub struct AppState {
     pub custom_recordings_dir: Option<String>,
     pub native_screen_recording_active: bool,
     pub cursor_telemetry: Vec<CursorTelemetryPoint>,
+    pub cursor_telemetry_capture: Option<CursorTelemetryCapture>,
     pub cached_system_cursor_assets: Option<serde_json::Value>,
     pub has_unsaved_changes: bool,
     pub unsaved_editor_windows: BTreeSet<String>,
@@ -102,6 +111,7 @@ impl Default for AppState {
             custom_recordings_dir: None,
             native_screen_recording_active: false,
             cursor_telemetry: Vec::new(),
+            cursor_telemetry_capture: None,
             cached_system_cursor_assets: None,
             has_unsaved_changes: false,
             unsaved_editor_windows: BTreeSet::new(),
@@ -164,6 +174,12 @@ mod tests {
     fn test_app_state_default_cursor_telemetry_is_empty() {
         let state = AppState::default();
         assert!(state.cursor_telemetry.is_empty());
+    }
+
+    #[test]
+    fn test_app_state_default_cursor_telemetry_capture_is_none() {
+        let state = AppState::default();
+        assert!(state.cursor_telemetry_capture.is_none());
     }
 
     #[test]

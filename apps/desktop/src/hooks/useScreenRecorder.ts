@@ -142,6 +142,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	const startTime = useRef<number>(0);
 	const nativeScreenRecording = useRef(false);
 	const wgcRecording = useRef(false);
+	const linuxCursorTelemetryCaptureActive = useRef(false);
 	const startInFlight = useRef(false);
 	const hasPromptedForReselect = useRef(false);
 	const selectedSourceName = useRef<string | undefined>(undefined);
@@ -239,6 +240,20 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		},
 		[resetStagedFileState],
 	);
+
+	const stopLinuxCursorTelemetryCapture = useCallback(async (videoPath?: string | null) => {
+		if (!linuxCursorTelemetryCaptureActive.current) {
+			return;
+		}
+
+		linuxCursorTelemetryCaptureActive.current = false;
+
+		try {
+			await backend.stopCursorTelemetryCapture(videoPath ?? null);
+		} catch (error) {
+			console.warn("Failed to persist Linux cursor telemetry:", error);
+		}
+	}, []);
 
 	const preparePermissions = useCallback(
 		async (options: { startup?: boolean } = {}) => {
@@ -649,6 +664,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			.onRecordingInterrupted(() => {
 				setRecording(false);
 				nativeScreenRecording.current = false;
+				void stopLinuxCursorTelemetryCapture(null);
 				cleanupCapturedMedia();
 				void backend.setRecordingState(false);
 			})
@@ -787,6 +803,16 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				}
 			}
 
+			if (platform === "linux") {
+				try {
+					await backend.startCursorTelemetryCapture();
+					linuxCursorTelemetryCaptureActive.current = true;
+				} catch (error) {
+					linuxCursorTelemetryCaptureActive.current = false;
+					console.warn("Linux cursor telemetry capture is unavailable:", error);
+				}
+			}
+
 			const wantsAudioCapture = microphoneEnabled || systemAudioEnabled;
 
 			try {
@@ -910,7 +936,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 						width: { ideal: TARGET_WIDTH, max: TARGET_WIDTH },
 						height: { ideal: TARGET_HEIGHT, max: TARGET_HEIGHT },
 						frameRate: { ideal: TARGET_FRAME_RATE, max: TARGET_FRAME_RATE },
-						cursor: "never",
+						cursor: linuxCursorTelemetryCaptureActive.current ? "never" : "always",
 					},
 					selfBrowserSurface: "exclude",
 					surfaceSwitching: "exclude",
@@ -1003,10 +1029,12 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 					);
 					if (!storedPath) {
 						console.error("Failed to store video");
+						await stopLinuxCursorTelemetryCapture(null);
 						return;
 					}
 
 					await backend.setCurrentVideoPath(storedPath).catch(() => null);
+					await stopLinuxCursorTelemetryCapture(storedPath);
 					const facecamResult = pendingFacecamResult.current
 						? await pendingFacecamResult.current
 						: null;
@@ -1026,6 +1054,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 					);
 				} catch (error) {
 					console.error("Error saving recording:", error);
+					await stopLinuxCursorTelemetryCapture(null);
 					if (recordingFilePath.current) {
 						await backend.deleteRecordingFile(recordingFilePath.current).catch(() => null);
 					}
@@ -1053,6 +1082,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			);
 			setRecording(false);
 			const facecamResultPromise = stopFacecamCapture();
+			await stopLinuxCursorTelemetryCapture(recordingFilePath.current);
 			cleanupCapturedMedia();
 			if (recordingFilePath.current) {
 				await backend.deleteRecordingFile(recordingFilePath.current).catch(() => null);

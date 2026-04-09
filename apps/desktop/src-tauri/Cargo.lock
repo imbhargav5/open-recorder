@@ -2776,6 +2776,7 @@ dependencies = [
  "tauri-plugin-updater",
  "tokio",
  "uuid",
+ "x11rb",
 ]
 
 [[package]]
