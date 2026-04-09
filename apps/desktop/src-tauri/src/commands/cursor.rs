@@ -280,6 +280,12 @@ mod tests {
     }
 
     #[test]
+    fn test_telemetry_path_without_known_extension() {
+        let path = telemetry_path_for_video("/path/to/recording.avi");
+        assert_eq!(path, "/path/to/recording.avi.cursor.json");
+    }
+
+    #[test]
     fn test_cursor_telemetry_payload_structure() {
         let payload = cursor_telemetry_payload(vec![CursorTelemetryPoint {
             x: 12.5,
@@ -345,5 +351,37 @@ mod tests {
         let _ = tokio::fs::remove_file(&telemetry_path).await;
 
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_write_cursor_telemetry_sidecar_persists_samples() {
+        let dir = std::env::temp_dir();
+        let video_path = dir.join("open_recorder_test_write_cursor.mov");
+        let telemetry_path = dir.join("open_recorder_test_write_cursor.cursor.json");
+
+        let samples = vec![CursorTelemetryPoint {
+            x: 320.0,
+            y: 200.0,
+            timestamp: 16.7,
+            cursor_type: Some("arrow".to_string()),
+            click_type: None,
+        }];
+
+        let result = write_cursor_telemetry_sidecar(
+            video_path.to_string_lossy().as_ref(),
+            &samples,
+        )
+        .await;
+        assert!(result.is_ok());
+
+        let written = tokio::fs::read_to_string(&telemetry_path).await.unwrap();
+        let payload: serde_json::Value = serde_json::from_str(&written).unwrap();
+        assert_eq!(
+            payload["samples"].as_array().map(|entries| entries.len()),
+            Some(1)
+        );
+        assert_eq!(payload["clicks"], serde_json::json!([]));
+
+        let _ = tokio::fs::remove_file(&telemetry_path).await;
     }
 }
