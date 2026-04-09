@@ -10,7 +10,7 @@ import {
 	useRef,
 	useState,
 } from "react";
-import { getAssetPath, getRenderableAssetUrl } from "@/lib/assetPath";
+import { getAssetPath, getRenderableAssetUrl, isRenderableAssetUrl } from "@/lib/assetPath";
 import {
 	Application,
 	BlurFilter,
@@ -97,10 +97,7 @@ function isDirectlyRenderableWallpaper(wallpaper: string): boolean {
 		wallpaper.startsWith("#") ||
 		wallpaper.startsWith("linear-gradient") ||
 		wallpaper.startsWith("radial-gradient") ||
-		wallpaper.startsWith("data:") ||
-		wallpaper.startsWith("http") ||
-		wallpaper.startsWith("file://") ||
-		wallpaper.startsWith("/")
+		isRenderableAssetUrl(wallpaper)
 	);
 }
 
@@ -1584,13 +1581,7 @@ const VideoPlayback = memo(
 				};
 			}, [clearFirstFrameTimeout]);
 
-			const isImageUrl = Boolean(
-				resolvedWallpaper &&
-					(resolvedWallpaper.startsWith("file://") ||
-						resolvedWallpaper.startsWith("http") ||
-						resolvedWallpaper.startsWith("/") ||
-						resolvedWallpaper.startsWith("data:")),
-			);
+			const isImageUrl = Boolean(resolvedWallpaper && isRenderableAssetUrl(resolvedWallpaper));
 			const backgroundStyle = isImageUrl
 				? { backgroundImage: `url(${resolvedWallpaper || ""})` }
 				: { background: resolvedWallpaper || "" };

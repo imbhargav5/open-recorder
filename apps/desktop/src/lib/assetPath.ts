@@ -1,47 +1,63 @@
-import { convertFileToSrc } from '@/lib/backend'
+import { convertFileToSrc } from "@/lib/backend";
+
+const RENDERABLE_ASSET_PROTOCOL =
+	/^(data:|asset:|https?:\/\/asset\.localhost\/|https?:|file:\/\/|\/)/i;
 
 function encodeRelativeAssetPath(relativePath: string): string {
-  return relativePath
-    .replace(/^\/+/, '')
-    .split('/')
-    .filter(Boolean)
-    .map((part) => encodeURIComponent(part))
-    .join('/')
+	return relativePath
+		.replace(/^\/+/, "")
+		.split("/")
+		.filter(Boolean)
+		.map((part) => encodeURIComponent(part))
+		.join("/");
 }
 
 export async function getAssetPath(relativePath: string): Promise<string> {
-  const encodedRelativePath = encodeRelativeAssetPath(relativePath)
-  return `/${encodedRelativePath}`
+	const encodedRelativePath = encodeRelativeAssetPath(relativePath);
+	return `/${encodedRelativePath}`;
+}
+
+export function isRenderableAssetUrl(asset: string): boolean {
+	return RENDERABLE_ASSET_PROTOCOL.test(asset);
 }
 
 function toLocalFilePath(resourceUrl: string) {
-  if (!resourceUrl.startsWith('file://')) {
-    return null
-  }
+	if (!resourceUrl.startsWith("file://")) {
+		return null;
+	}
 
-  const decodedPath = decodeURIComponent(resourceUrl.replace(/^file:\/\//, ''))
-  if (/^\/[A-Za-z]:/.test(decodedPath)) {
-    return decodedPath.slice(1)
-  }
+	const decodedPath = decodeURIComponent(resourceUrl.replace(/^file:\/\//, ""));
+	if (/^\/[A-Za-z]:/.test(decodedPath)) {
+		return decodedPath.slice(1);
+	}
 
-  return decodedPath
+	return decodedPath;
 }
 
 export async function getRenderableAssetUrl(asset: string): Promise<string> {
-  if (!asset || asset.startsWith('data:') || asset.startsWith('http') || asset.startsWith('#') || asset.startsWith('linear-gradient') || asset.startsWith('radial-gradient')) {
-    return asset
-  }
+	if (
+		!asset ||
+		asset.startsWith("data:") ||
+		asset.startsWith("asset:") ||
+		asset.startsWith("http") ||
+		asset.startsWith("#") ||
+		asset.startsWith("linear-gradient") ||
+		asset.startsWith("radial-gradient")
+	) {
+		return asset;
+	}
 
-  const resolvedAsset = asset.startsWith('/') && !asset.startsWith('//')
-    ? await getAssetPath(asset.replace(/^\//, ''))
-    : asset
+	const resolvedAsset =
+		asset.startsWith("/") && !asset.startsWith("//")
+			? await getAssetPath(asset.replace(/^\//, ""))
+			: asset;
 
-  const localFilePath = toLocalFilePath(resolvedAsset)
-  if (localFilePath) {
-    return convertFileToSrc(localFilePath)
-  }
+	const localFilePath = toLocalFilePath(resolvedAsset);
+	if (localFilePath) {
+		return convertFileToSrc(localFilePath);
+	}
 
-  return resolvedAsset
+	return resolvedAsset;
 }
 
 export default getAssetPath;
