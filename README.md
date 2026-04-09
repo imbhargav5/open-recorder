@@ -338,7 +338,7 @@ Open Recorder is a **desktop video editor with a renderer-driven motion pipeline
 - Tauri orchestrates recording
 - macOS uses native ScreenCaptureKit helpers for capture and cursor telemetry
 - Windows uses native WGC for screen capture
-- Linux uses FFmpeg-based capture with browser fallback
+- Linux uses FFmpeg-based capture with browser fallback and cursor telemetry sampling
 
 **Motion**
 - Zoom regions
@@ -376,7 +376,7 @@ Open Recorder bypasses slow browser-based capture APIs wherever possible by usin
 
 - **macOS**: Uses Apple's **ScreenCaptureKit** framework directly via a native Swift sidecar, delivering hardware-optimized screen capture with cursor telemetry at minimal CPU cost
 - **Windows**: Uses the native **Windows.Graphics.Capture (WGC)** API through a dedicated sidecar for display and app-window capture, plus native **WASAPI** for system and microphone audio
-- **Linux**: FFmpeg-based capture pipeline with browser fallback
+- **Linux**: FFmpeg-based capture pipeline with browser fallback and cursor telemetry sampling
 
 These native capture paths run outside the main application process as lightweight sidecar binaries, keeping the UI thread responsive during recording.
 

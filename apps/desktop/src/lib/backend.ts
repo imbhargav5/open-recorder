@@ -157,6 +157,14 @@ export function stopNativeScreenRecording(): Promise<string> {
 	return invoke("stop_native_screen_recording");
 }
 
+export function startCursorTelemetryCapture(): Promise<void> {
+	return invoke("start_cursor_telemetry_capture");
+}
+
+export function stopCursorTelemetryCapture(videoPath?: string | null): Promise<void> {
+	return invoke("stop_cursor_telemetry_capture", { videoPath });
+}
+
 export function selectScreenArea(): Promise<{ x: number; y: number; width: number; height: number; displayId: number } | null> {
 	return invoke("select_screen_area");
 }
