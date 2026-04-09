@@ -49,6 +49,7 @@ type ChromeDesktopVideoConstraints = {
 		maxHeight: number;
 		maxFrameRate: number;
 		minFrameRate: number;
+		cursor?: "always" | "motion" | "never";
 	};
 };
 
@@ -690,6 +691,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				cameraRecorder.current.stop();
 			}
 
+			void stopLinuxCursorTelemetryCapture(null);
 			cleanupCapturedMedia();
 			if (recordingFilePath.current) {
 				void backend.deleteRecordingFile(recordingFilePath.current).catch(() => null);
@@ -710,7 +712,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				facecamHasData,
 			);
 		};
-	}, [cleanupCapturedMedia, resetStagedFileState, stopRecording]);
+	}, [cleanupCapturedMedia, resetStagedFileState, stopLinuxCursorTelemetryCapture, stopRecording]);
 
 	const startRecording = async () => {
 		if (startInFlight.current) {
@@ -814,6 +816,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			}
 
 			const wantsAudioCapture = microphoneEnabled || systemAudioEnabled;
+			const shouldHideSourceCursor = linuxCursorTelemetryCaptureActive.current;
 
 			try {
 				await backend.hideCursor();
@@ -833,6 +836,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 						maxHeight: TARGET_HEIGHT,
 						maxFrameRate: TARGET_FRAME_RATE,
 						minFrameRate: MIN_FRAME_RATE,
+						cursor: shouldHideSourceCursor ? "never" : "always",
 					},
 				};
 
@@ -936,7 +940,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 						width: { ideal: TARGET_WIDTH, max: TARGET_WIDTH },
 						height: { ideal: TARGET_HEIGHT, max: TARGET_HEIGHT },
 						frameRate: { ideal: TARGET_FRAME_RATE, max: TARGET_FRAME_RATE },
-						cursor: linuxCursorTelemetryCaptureActive.current ? "never" : "always",
+						cursor: shouldHideSourceCursor ? "never" : "always",
 					},
 					selfBrowserSurface: "exclude",
 					surfaceSwitching: "exclude",
