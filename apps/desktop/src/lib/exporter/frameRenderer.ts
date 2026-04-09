@@ -10,7 +10,7 @@ import type {
 } from "@/components/video-editor/types";
 import { getFacecamLayout, type FacecamSettings } from "@/lib/recordingSession";
 import { ZOOM_DEPTH_SCALES } from "@/components/video-editor/types";
-import { getAssetPath, getRenderableAssetUrl } from "@/lib/assetPath";
+import { getAssetPath, getRenderableAssetUrl, isRenderableAssetUrl } from "@/lib/assetPath";
 import { findDominantRegion } from "@/components/video-editor/videoPlayback/zoomRegionUtils";
 import {
 	applyZoomTransform,
@@ -236,12 +236,7 @@ export class FrameRenderer {
 
 		try {
 			// Render background based on type
-			if (
-				wallpaper.startsWith("file://") ||
-				wallpaper.startsWith("data:") ||
-				wallpaper.startsWith("/") ||
-				wallpaper.startsWith("http")
-			) {
+			if (isRenderableAssetUrl(wallpaper)) {
 				// Image background
 				const img = new Image();
 				const imageUrl = await this.resolveWallpaperImageUrl(wallpaper);
@@ -346,15 +341,9 @@ export class FrameRenderer {
 	}
 
 	private async resolveWallpaperImageUrl(wallpaper: string): Promise<string> {
-		if (
-			wallpaper.startsWith("file://") ||
-			wallpaper.startsWith("data:") ||
-			wallpaper.startsWith("http")
-		) {
-			return wallpaper;
-		}
-
-		const resolved = await getAssetPath(wallpaper.replace(/^\/+/, ""));
+		const resolved = wallpaper.startsWith("/")
+			? await getAssetPath(wallpaper.replace(/^\/+/, ""))
+			: await getRenderableAssetUrl(wallpaper);
 		if (resolved.startsWith("/") && window.location.protocol.startsWith("http")) {
 			return `${window.location.origin}${resolved}`;
 		}

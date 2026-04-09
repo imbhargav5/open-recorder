@@ -174,6 +174,14 @@ const mockState = vi.hoisted(() => {
 		updateOverlayIndicator: vi.fn(),
 		getAssetPath: vi.fn(async () => "/wallpaper.png"),
 		getRenderableAssetUrl: vi.fn(async (value: string) => value),
+		isRenderableAssetUrl: vi.fn(
+			(value: string) =>
+				value.startsWith("data:") ||
+				value.startsWith("asset:") ||
+				value.startsWith("http") ||
+				value.startsWith("file://") ||
+				value.startsWith("/"),
+		),
 	};
 });
 
@@ -234,6 +242,7 @@ vi.mock("./videoPlayback/overlayUtils", () => ({
 vi.mock("@/lib/assetPath", () => ({
 	getAssetPath: mockState.getAssetPath,
 	getRenderableAssetUrl: mockState.getRenderableAssetUrl,
+	isRenderableAssetUrl: mockState.isRenderableAssetUrl,
 }));
 
 vi.mock("./AnnotationOverlay", () => ({
