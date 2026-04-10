@@ -1,25 +1,21 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { AppWindow, Loader2, Monitor } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useAtom } from "jotai";
+import { useEffect } from "react";
+import {
+	selectedDesktopSourceAtom,
+	sourceSelectorTabAtom,
+	sourcesAtom,
+	sourcesLoadingAtom,
+	windowsLoadingAtom,
+	type DesktopSource,
+} from "@/atoms/sourceSelector";
 import { MdCheck } from "react-icons/md";
 import { flashSelectedScreen, getSources, selectSource } from "@/lib/backend";
 import { cn } from "@/lib/utils";
 import { Button } from "../ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
 import { getSourceGridColumnClass } from "./sourceGridLayout";
-
-interface DesktopSource {
-	id: string;
-	name: string;
-	thumbnail: string | null;
-	display_id: string;
-	appIcon: string | null;
-	originalName: string;
-	sourceType: "screen" | "window";
-	appName?: string;
-	windowTitle?: string;
-	windowId?: number;
-}
 
 interface SourceGridProps {
 	sources: DesktopSource[];
@@ -182,15 +178,11 @@ function SourceGrid({ sources, selectedSource, onSelect, type, emptyMessage }: S
 }
 
 export function SourceSelector() {
-	const [sources, setSources] = useState<DesktopSource[]>([]);
-	const [selectedSource, setSelectedSource] = useState<DesktopSource | null>(null);
-	const [activeTab, setActiveTab] = useState<"screens" | "windows">(() => {
-		const params = new URLSearchParams(window.location.search);
-		const tab = params.get("tab");
-		return tab === "windows" ? "windows" : "screens";
-	});
-	const [loading, setLoading] = useState(true);
-	const [windowsLoading, setWindowsLoading] = useState(true);
+	const [sources, setSources] = useAtom(sourcesAtom);
+	const [selectedSource, setSelectedSource] = useAtom(selectedDesktopSourceAtom);
+	const [activeTab, setActiveTab] = useAtom(sourceSelectorTabAtom);
+	const [loading, setLoading] = useAtom(sourcesLoadingAtom);
+	const [windowsLoading, setWindowsLoading] = useAtom(windowsLoadingAtom);
 
 	useEffect(() => {
 		let cancelled = false;
