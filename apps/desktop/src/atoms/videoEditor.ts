@@ -1,0 +1,90 @@
+import { atom } from 'jotai'
+import {
+  type AnnotationRegion,
+  type CropRegion,
+  type CursorTelemetryPoint,
+  DEFAULT_AUDIO_MUTED,
+  DEFAULT_AUDIO_VOLUME,
+  DEFAULT_CROP_REGION,
+  DEFAULT_CURSOR_CLICK_BOUNCE,
+  DEFAULT_CURSOR_MOTION_BLUR,
+  DEFAULT_CURSOR_SIZE,
+  DEFAULT_CURSOR_SMOOTHING,
+  DEFAULT_ZOOM_MOTION_BLUR,
+  type SpeedRegion,
+  type TrimRegion,
+  type ZoomRegion,
+} from '@/components/video-editor/types'
+import type { ExportFormat, ExportProgress, ExportQuality, GifFrameRate, GifSizePreset } from '@/lib/exporter'
+import {
+  createDefaultFacecamSettings,
+  type FacecamSettings,
+} from '@/lib/recordingSession'
+import type { AspectRatio } from '@/utils/aspectRatioUtils'
+import { DEFAULT_WALLPAPER_PATH } from '@/lib/wallpapers'
+
+// --- Video source ---
+export const videoPathAtom = atom<string | null>(null)
+export const videoSourcePathAtom = atom<string | null>(null)
+export const sourceNameAtom = atom<string | null>(null)
+export const facecamVideoPathAtom = atom<string | null>(null)
+export const facecamPlaybackPathAtom = atom<string | null>(null)
+export const facecamOffsetMsAtom = atom<number>(0)
+export const currentProjectPathAtom = atom<string | null>(null)
+
+// --- Loading/error state ---
+export const videoLoadingAtom = atom<boolean>(true)
+export const playbackReadyAtom = atom<boolean>(false)
+export const videoErrorAtom = atom<string | null>(null)
+
+// --- Playback state ---
+export const isPlayingAtom = atom<boolean>(false)
+export const durationAtom = atom<number>(0)
+
+// --- Appearance settings ---
+export const videoWallpaperAtom = atom<string>(DEFAULT_WALLPAPER_PATH)
+export const audioMutedAtom = atom<boolean>(DEFAULT_AUDIO_MUTED)
+export const audioVolumeAtom = atom<number>(DEFAULT_AUDIO_VOLUME)
+export const shadowIntensityAtom = atom<number>(0.67)
+export const backgroundBlurAtom = atom<number>(0)
+export const zoomMotionBlurAtom = atom<number>(DEFAULT_ZOOM_MOTION_BLUR)
+export const connectZoomsAtom = atom<boolean>(true)
+export const showCursorAtom = atom<boolean>(true)
+export const loopCursorAtom = atom<boolean>(false)
+export const cursorSizeAtom = atom<number>(DEFAULT_CURSOR_SIZE)
+export const cursorSmoothingAtom = atom<number>(DEFAULT_CURSOR_SMOOTHING)
+export const cursorMotionBlurAtom = atom<number>(DEFAULT_CURSOR_MOTION_BLUR)
+export const cursorClickBounceAtom = atom<number>(DEFAULT_CURSOR_CLICK_BOUNCE)
+export const borderRadiusAtom = atom<number>(12.5)
+export const paddingAtom = atom<number>(50)
+
+// --- Crop / Facecam ---
+export const cropRegionAtom = atom<CropRegion>(DEFAULT_CROP_REGION)
+export const facecamSettingsAtom = atom<FacecamSettings>(createDefaultFacecamSettings())
+
+// --- Zoom / Trim / Speed / Annotation regions ---
+export const zoomRegionsAtom = atom<ZoomRegion[]>([])
+export const cursorTelemetryAtom = atom<CursorTelemetryPoint[]>([])
+export const selectedZoomIdAtom = atom<string | null>(null)
+export const trimRegionsAtom = atom<TrimRegion[]>([])
+export const selectedTrimIdAtom = atom<string | null>(null)
+export const speedRegionsAtom = atom<SpeedRegion[]>([])
+export const selectedSpeedIdAtom = atom<string | null>(null)
+export const annotationRegionsAtom = atom<AnnotationRegion[]>([])
+export const selectedAnnotationIdAtom = atom<string | null>(null)
+
+// --- Export state ---
+export const isExportingAtom = atom<boolean>(false)
+export const exportProgressAtom = atom<ExportProgress | null>(null)
+export const exportErrorAtom = atom<string | null>(null)
+export const showExportDialogAtom = atom<boolean>(false)
+export const showShortcutsDialogAtom = atom<boolean>(false)
+export const aspectRatioAtom = atom<AspectRatio>('16:9')
+export const exportQualityAtom = atom<ExportQuality>('good')
+export const exportFormatAtom = atom<ExportFormat>('mp4')
+export const gifFrameRateAtom = atom<GifFrameRate>(15)
+export const gifLoopAtom = atom<boolean>(true)
+export const gifSizePresetAtom = atom<GifSizePreset>('medium')
+export const exportedFilePathAtom = atom<string | undefined>(undefined)
+export const hasPendingExportSaveAtom = atom<boolean>(false)
+export const lastSavedSnapshotAtom = atom<string | null>(null)
