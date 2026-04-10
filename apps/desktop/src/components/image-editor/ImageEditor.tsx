@@ -1,6 +1,22 @@
 import Block from "@uiw/react-color-block";
 import { ArrowLeft, Check, ClipboardCopy, Download, Palette } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useAtom } from "jotai";
+import { useCallback, useEffect, useRef } from "react";
+import {
+	imageBackgroundTypeAtom,
+	imageBorderRadiusAtom,
+	imageExportingAtom,
+	imageGradientAtom,
+	imageNaturalHeightAtom,
+	imageNaturalWidthAtom,
+	imagePaddingAtom,
+	imageShadowIntensityAtom,
+	imageSolidColorAtom,
+	imageSrcAtom,
+	imageWallpaperAtom,
+	imageWallpaperPreviewPathsAtom,
+	type ImageBackgroundType,
+} from "@/atoms/imageEditor";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
@@ -55,30 +71,28 @@ const COLOR_PALETTE = [
 	"#795548",
 ];
 
-type BackgroundType = "wallpaper" | "gradient" | "color" | "transparent";
-
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export default function ImageEditor() {
 	// Image state
-	const [imageSrc, setImageSrc] = useState<string | null>(null);
-	const [imageNaturalWidth, setImageNaturalWidth] = useState(0);
-	const [imageNaturalHeight, setImageNaturalHeight] = useState(0);
+	const [imageSrc, setImageSrc] = useAtom(imageSrcAtom);
+	const [imageNaturalWidth, setImageNaturalWidth] = useAtom(imageNaturalWidthAtom);
+	const [imageNaturalHeight, setImageNaturalHeight] = useAtom(imageNaturalHeightAtom);
 
 	// Settings
-	const [backgroundType, setBackgroundType] = useState<BackgroundType>("wallpaper");
-	const [wallpaper, setWallpaper] = useState(WALLPAPER_PATHS[0]);
-	const [gradient, setGradient] = useState(GRADIENTS[0]);
-	const [solidColor, setSolidColor] = useState("#2563EB");
-	const [padding, setPadding] = useState(48);
-	const [borderRadius, setBorderRadius] = useState(12);
-	const [shadowIntensity, setShadowIntensity] = useState(0.6);
+	const [backgroundType, setBackgroundType] = useAtom(imageBackgroundTypeAtom);
+	const [wallpaper, setWallpaper] = useAtom(imageWallpaperAtom);
+	const [gradient, setGradient] = useAtom(imageGradientAtom);
+	const [solidColor, setSolidColor] = useAtom(imageSolidColorAtom);
+	const [padding, setPadding] = useAtom(imagePaddingAtom);
+	const [borderRadius, setBorderRadius] = useAtom(imageBorderRadiusAtom);
+	const [shadowIntensity, setShadowIntensity] = useAtom(imageShadowIntensityAtom);
 
 	// Wallpaper previews
-	const [wallpaperPreviewPaths, setWallpaperPreviewPaths] = useState<string[]>([]);
+	const [wallpaperPreviewPaths, setWallpaperPreviewPaths] = useAtom(imageWallpaperPreviewPathsAtom);
 
 	// Export state
-	const [exporting, setExporting] = useState(false);
+	const [exporting, setExporting] = useAtom(imageExportingAtom);
 
 	const imageRef = useRef<HTMLImageElement | null>(null);
 
@@ -445,7 +459,7 @@ export default function ImageEditor() {
 						</div>
 						<Tabs
 							value={backgroundType}
-							onValueChange={(v) => setBackgroundType(v as BackgroundType)}
+							onValueChange={(v) => setBackgroundType(v as ImageBackgroundType)}
 						>
 							<TabsList className="grid grid-cols-4 bg-white/5 rounded-lg mb-3 h-7">
 								<TabsTrigger
