@@ -1,6 +1,6 @@
 [package]
 name = "open-recorder"
-version = "0.0.20"
+version = "0.0.21"
 description = "A free, creator-focused screen recorder"
 authors = ["imbhargav5"]
 edition = "2021"
