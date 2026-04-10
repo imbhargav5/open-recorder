@@ -1,5 +1,6 @@
 import { getName } from "@tauri-apps/api/app";
-import { useEffect, useState } from "react";
+import { useAtom } from "jotai";
+import { useEffect } from "react";
 import { AppUpdaterDialog } from "./components/AppUpdaterDialog";
 import ImageEditor from "./components/image-editor/ImageEditor";
 import { LaunchWindow } from "./components/launch/LaunchWindow";
@@ -9,10 +10,11 @@ import VideoEditor from "./components/video-editor/VideoEditor";
 import { useI18n } from "./contexts/I18nContext";
 import { ShortcutsProvider } from "./contexts/ShortcutsContext";
 import { loadAllCustomFonts } from "./lib/customFonts";
+import { appNameAtom, windowTypeAtom } from "./atoms/app";
 
 export default function App() {
-	const [windowType, setWindowType] = useState("");
-	const [appName, setAppName] = useState("Open Recorder");
+	const [windowType, setWindowType] = useAtom(windowTypeAtom);
+	const [appName, setAppName] = useAtom(appNameAtom);
 	const { t } = useI18n();
 
 	useEffect(() => {
@@ -37,7 +39,7 @@ export default function App() {
 			.catch(() => {
 				setAppName("Open Recorder");
 			});
-	}, []);
+	}, [setWindowType, setAppName]);
 
 	useEffect(() => {
 		document.title = windowType === "editor" ? `${appName} Editor` : appName;
