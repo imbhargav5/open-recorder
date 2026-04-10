@@ -1,6 +1,7 @@
 import { useActor } from "@xstate/react";
+import { useAtom } from "jotai";
 import { AppWindow, BoxSelect, Camera, ChevronLeft, Monitor, Video } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { BsRecordCircle } from "react-icons/bs";
 import { FaRegStopCircle } from "react-icons/fa";
 import {
@@ -15,12 +16,21 @@ import {
 import { RxDragHandleDots2 } from "react-icons/rx";
 import { buildEditorWindowQuery } from "@/components/video-editor/editorWindowParams";
 import * as backend from "@/lib/backend";
+import {
+	hasSelectedSourceAtom,
+	isCapturingAtom,
+	launchViewAtom,
+	recordingElapsedAtom,
+	recordingStartAtom,
+	screenshotModeAtom,
+	selectedSourceAtom,
+} from "@/atoms/launch";
 import { useCameraDevices } from "../../hooks/useCameraDevices";
 import { useMicrophoneDevices } from "../../hooks/useMicrophoneDevices";
 import { usePermissions } from "../../hooks/usePermissions";
 import { useScreenRecorder } from "../../hooks/useScreenRecorder";
 import { microphoneMachine } from "../../machines/microphoneMachine";
-import { isOnboardingComplete, PermissionOnboarding } from "../onboarding/PermissionOnboarding";
+import { PermissionOnboarding } from "../onboarding/PermissionOnboarding";
 import { Button } from "../ui/button";
 import { ContentClamp } from "../ui/content-clamp";
 import { Popover, PopoverAnchor, PopoverContent } from "../ui/popover";
@@ -29,9 +39,6 @@ import { Switch } from "../ui/switch";
 import styles from "./LaunchWindow.module.css";
 
 const SYSTEM_DEFAULT_MICROPHONE_ID = "__system_default_microphone__";
-
-type View = "onboarding" | "choice" | "screenshot" | "recording";
-type ScreenshotMode = "screen" | "window" | "area";
 
 // ─── Mode Button ────────────────────────────────────────────────────────────
 
@@ -87,9 +94,9 @@ const dialogStyle: React.CSSProperties = {
 // ─── LaunchWindow ───────────────────────────────────────────────────────────
 
 export function LaunchWindow() {
-	const [view, setView] = useState<View>(() => (isOnboardingComplete() ? "choice" : "onboarding"));
-	const [screenshotMode, setScreenshotMode] = useState<ScreenshotMode | null>(null);
-	const [isCapturing, setIsCapturing] = useState(false);
+	const [view, setView] = useAtom(launchViewAtom);
+	const [screenshotMode, setScreenshotMode] = useAtom(screenshotModeAtom);
+	const [isCapturing, setIsCapturing] = useAtom(isCapturingAtom);
 
 	const permissionsHook = usePermissions();
 
@@ -108,8 +115,8 @@ export function LaunchWindow() {
 		setCameraDeviceId,
 	} = useScreenRecorder();
 
-	const [recordingStart, setRecordingStart] = useState<number | null>(null);
-	const [elapsed, setElapsed] = useState(0);
+	const [recordingStart, setRecordingStart] = useAtom(recordingStartAtom);
+	const [elapsed, setElapsed] = useAtom(recordingElapsedAtom);
 	const showCameraPreview = cameraEnabled && !recording && view === "recording";
 
 	const setMicEnabledRef = useRef(setMicrophoneEnabled);
@@ -264,8 +271,8 @@ export function LaunchWindow() {
 	};
 
 	// Source tracking
-	const [selectedSource, setSelectedSource] = useState("Main Display");
-	const [hasSelectedSource, setHasSelectedSource] = useState(true);
+	const [selectedSource, setSelectedSource] = useAtom(selectedSourceAtom);
+	const [hasSelectedSource, setHasSelectedSource] = useAtom(hasSelectedSourceAtom);
 	useEffect(() => {
 		const checkSelectedSource = async () => {
 			try {
