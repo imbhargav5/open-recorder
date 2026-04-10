@@ -1,4 +1,13 @@
+import { useAtom } from "jotai";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type WheelEvent } from "react";
+import {
+  timelineCustomAspectHeightAtom,
+  timelineCustomAspectWidthAtom,
+  timelineKeyframesAtom,
+  timelineRangeAtom,
+  timelineScrollLabelsAtom,
+  timelineSelectedKeyframeIdAtom,
+} from "@/atoms/timeline";
 import { useTimelineContext } from "dnd-timeline";
 import { Button } from "@/components/ui/button";
 import { type TimeStore, useTimeValue } from "../useTimeStore";
@@ -630,15 +639,12 @@ function TimelineEditorInner({
     [timelineScale.minItemDurationMs, totalMs],
   );
 
-  const [range, setRange] = useState<Range>(() => createInitialRange(totalMs));
-  const [keyframes, setKeyframes] = useState<{ id: string; time: number }[]>([]);
-  const [selectedKeyframeId, setSelectedKeyframeId] = useState<string | null>(null);
-  const [customAspectWidth, setCustomAspectWidth] = useState('16');
-  const [customAspectHeight, setCustomAspectHeight] = useState('9');
-  const [scrollLabels, setScrollLabels] = useState({
-    pan: 'Shift + Ctrl + Scroll',
-    zoom: 'Ctrl + Scroll'
-  });
+  const [range, setRange] = useAtom(timelineRangeAtom);
+  const [keyframes, setKeyframes] = useAtom(timelineKeyframesAtom);
+  const [selectedKeyframeId, setSelectedKeyframeId] = useAtom(timelineSelectedKeyframeIdAtom);
+  const [customAspectWidth, setCustomAspectWidth] = useAtom(timelineCustomAspectWidthAtom);
+  const [customAspectHeight, setCustomAspectHeight] = useAtom(timelineCustomAspectHeightAtom);
+  const [scrollLabels, setScrollLabels] = useAtom(timelineScrollLabelsAtom);
   const timelineContainerRef = useRef<HTMLDivElement>(null);
   const { shortcuts: keyShortcuts, isMac } = useShortcuts();
 
