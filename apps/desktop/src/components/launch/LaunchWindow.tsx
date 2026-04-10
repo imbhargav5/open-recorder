@@ -24,6 +24,7 @@ import {
 	recordingStartAtom,
 	screenshotModeAtom,
 	selectedSourceAtom,
+	type ScreenshotMode,
 } from "@/atoms/launch";
 import { useCameraDevices } from "../../hooks/useCameraDevices";
 import { useMicrophoneDevices } from "../../hooks/useMicrophoneDevices";

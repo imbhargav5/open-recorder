@@ -8,7 +8,62 @@ import {
 	Image,
 	LoaderCircle,
 } from "lucide-react";
-import { Profiler, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useAtom } from "jotai";
+import { Profiler, useCallback, useEffect, useMemo, useRef } from "react";
+import {
+	annotationRegionsAtom,
+	aspectRatioAtom,
+	audioMutedAtom,
+	audioVolumeAtom,
+	backgroundBlurAtom,
+	borderRadiusAtom,
+	connectZoomsAtom,
+	cropRegionAtom,
+	cursorClickBounceAtom,
+	cursorMotionBlurAtom,
+	cursorSizeAtom,
+	cursorSmoothingAtom,
+	cursorTelemetryAtom,
+	currentProjectPathAtom,
+	durationAtom,
+	exportErrorAtom,
+	exportFormatAtom,
+	exportProgressAtom,
+	exportQualityAtom,
+	exportedFilePathAtom,
+	facecamOffsetMsAtom,
+	facecamPlaybackPathAtom,
+	facecamSettingsAtom,
+	facecamVideoPathAtom,
+	gifFrameRateAtom,
+	gifLoopAtom,
+	gifSizePresetAtom,
+	hasPendingExportSaveAtom,
+	isExportingAtom,
+	isPlayingAtom,
+	lastSavedSnapshotAtom,
+	loopCursorAtom,
+	paddingAtom,
+	playbackReadyAtom,
+	selectedAnnotationIdAtom,
+	selectedSpeedIdAtom,
+	selectedTrimIdAtom,
+	selectedZoomIdAtom,
+	shadowIntensityAtom,
+	showCursorAtom,
+	showExportDialogAtom,
+	showShortcutsDialogAtom,
+	sourceNameAtom,
+	speedRegionsAtom,
+	trimRegionsAtom,
+	videoErrorAtom,
+	videoLoadingAtom,
+	videoPathAtom,
+	videoSourcePathAtom,
+	videoWallpaperAtom,
+	zoomMotionBlurAtom,
+	zoomRegionsAtom,
+} from "@/atoms/videoEditor";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -27,14 +82,11 @@ import { getAssetPath } from "@/lib/assetPath";
 import * as backend from "@/lib/backend";
 import {
 	calculateOutputDimensions,
-	type ExportFormat,
 	type ExportProgress,
-	type ExportQuality,
 	type ExportSettings,
 	GIF_FRAME_RATES,
 	GIF_SIZE_PRESETS,
 	GifExporter,
-	type GifFrameRate,
 	type GifSizePreset,
 	VideoExporter,
 } from "@/lib/exporter";
@@ -45,14 +97,13 @@ import { ensurePixiRuntime } from "@/lib/pixiRuntime";
 import {
 	createDefaultFacecamSettings,
 	type FacecamAnchor,
-	type FacecamSettings,
 	normalizeFacecamSettings,
 } from "@/lib/recordingSession";
 import { matchesShortcut } from "@/lib/shortcuts";
 import { cn } from "@/lib/utils";
 import { useWaveformData } from "@/hooks/useWaveformData";
 import { DEFAULT_WALLPAPER_RELATIVE_PATH, WALLPAPER_PATHS } from "@/lib/wallpapers";
-import { type AspectRatio, getAspectRatioValue } from "@/utils/aspectRatioUtils";
+import { getAspectRatioValue } from "@/utils/aspectRatioUtils";
 import { AllShortcutsDialog } from "./AllShortcutsDialog";
 import { normalizeCursorTelemetryPayload } from "./cursorTelemetryPayload";
 import { ExportDialog } from "./ExportDialog";
@@ -72,23 +123,14 @@ import {
 } from "./timeline/zoomSuggestionUtils";
 import {
 	type AnnotationRegion,
-	type CropRegion,
 	type CursorTelemetryPoint,
 	clampFocusToDepth,
 	DEFAULT_ANNOTATION_POSITION,
 	DEFAULT_ANNOTATION_SIZE,
 	DEFAULT_ANNOTATION_STYLE,
-	DEFAULT_AUDIO_MUTED,
-	DEFAULT_AUDIO_VOLUME,
-	DEFAULT_CROP_REGION,
-	DEFAULT_CURSOR_CLICK_BOUNCE,
-	DEFAULT_CURSOR_MOTION_BLUR,
-	DEFAULT_CURSOR_SIZE,
-	DEFAULT_CURSOR_SMOOTHING,
 	DEFAULT_FIGURE_DATA,
 	DEFAULT_PLAYBACK_SPEED,
 	DEFAULT_ZOOM_DEPTH,
-	DEFAULT_ZOOM_MOTION_BLUR,
 	type FigureData,
 	type PlaybackSpeed,
 	type SpeedRegion,
@@ -180,61 +222,59 @@ function createHistorySignature(snapshot: Omit<EditorHistorySnapshot, "signature
 }
 
 export default function VideoEditor() {
-	const [videoPath, setVideoPath] = useState<string | null>(null);
-	const [videoSourcePath, setVideoSourcePath] = useState<string | null>(null);
-	const [sourceName, setSourceName] = useState<string | null>(null);
-	const [facecamVideoPath, setFacecamVideoPath] = useState<string | null>(null);
-	const [facecamPlaybackPath, setFacecamPlaybackPath] = useState<string | null>(null);
-	const [facecamOffsetMs, setFacecamOffsetMs] = useState(0);
-	const [currentProjectPath, setCurrentProjectPath] = useState<string | null>(null);
-	const [loading, setLoading] = useState(true);
-	const [playbackReady, setPlaybackReady] = useState(false);
-	const [error, setError] = useState<string | null>(null);
-	const [isPlaying, setIsPlaying] = useState(false);
+	const [videoPath, setVideoPath] = useAtom(videoPathAtom);
+	const [videoSourcePath, setVideoSourcePath] = useAtom(videoSourcePathAtom);
+	const [sourceName, setSourceName] = useAtom(sourceNameAtom);
+	const [facecamVideoPath, setFacecamVideoPath] = useAtom(facecamVideoPathAtom);
+	const [facecamPlaybackPath, setFacecamPlaybackPath] = useAtom(facecamPlaybackPathAtom);
+	const [facecamOffsetMs, setFacecamOffsetMs] = useAtom(facecamOffsetMsAtom);
+	const [currentProjectPath, setCurrentProjectPath] = useAtom(currentProjectPathAtom);
+	const [loading, setLoading] = useAtom(videoLoadingAtom);
+	const [playbackReady, setPlaybackReady] = useAtom(playbackReadyAtom);
+	const [error, setError] = useAtom(videoErrorAtom);
+	const [isPlaying, setIsPlaying] = useAtom(isPlayingAtom);
 	const timeStore = useTimeStore();
-	const [duration, setDuration] = useState(0);
-	const [wallpaper, setWallpaper] = useState<string>(WALLPAPER_PATHS[0]);
-	const [audioMuted, setAudioMuted] = useState(DEFAULT_AUDIO_MUTED);
-	const [audioVolume, setAudioVolume] = useState(DEFAULT_AUDIO_VOLUME);
-	const [shadowIntensity, setShadowIntensity] = useState(0.67);
-	const [backgroundBlur, setBackgroundBlur] = useState(0);
-	const [zoomMotionBlur, setZoomMotionBlur] = useState(DEFAULT_ZOOM_MOTION_BLUR);
-	const [connectZooms, setConnectZooms] = useState(true);
-	const [showCursor, setShowCursor] = useState(true);
-	const [loopCursor, setLoopCursor] = useState(false);
-	const [cursorSize, setCursorSize] = useState(DEFAULT_CURSOR_SIZE);
-	const [cursorSmoothing, setCursorSmoothing] = useState(DEFAULT_CURSOR_SMOOTHING);
-	const [cursorMotionBlur, setCursorMotionBlur] = useState(DEFAULT_CURSOR_MOTION_BLUR);
-	const [cursorClickBounce, setCursorClickBounce] = useState(DEFAULT_CURSOR_CLICK_BOUNCE);
-	const [borderRadius, setBorderRadius] = useState(12.5);
-	const [padding, setPadding] = useState(50);
-	const [cropRegion, setCropRegion] = useState<CropRegion>(DEFAULT_CROP_REGION);
-	const [facecamSettings, setFacecamSettings] = useState<FacecamSettings>(
-		createDefaultFacecamSettings(false),
-	);
-	const [zoomRegions, setZoomRegions] = useState<ZoomRegion[]>([]);
-	const [cursorTelemetry, setCursorTelemetry] = useState<CursorTelemetryPoint[]>([]);
-	const [selectedZoomId, setSelectedZoomId] = useState<string | null>(null);
-	const [trimRegions, setTrimRegions] = useState<TrimRegion[]>([]);
-	const [selectedTrimId, setSelectedTrimId] = useState<string | null>(null);
-	const [speedRegions, setSpeedRegions] = useState<SpeedRegion[]>([]);
-	const [selectedSpeedId, setSelectedSpeedId] = useState<string | null>(null);
-	const [annotationRegions, setAnnotationRegions] = useState<AnnotationRegion[]>([]);
-	const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
-	const [isExporting, setIsExporting] = useState(false);
-	const [exportProgress, setExportProgress] = useState<ExportProgress | null>(null);
-	const [exportError, setExportError] = useState<string | null>(null);
-	const [showExportDialog, setShowExportDialog] = useState(false);
-	const [showShortcutsDialog, setShowShortcutsDialog] = useState(false);
-	const [aspectRatio, setAspectRatio] = useState<AspectRatio>("16:9");
-	const [exportQuality, setExportQuality] = useState<ExportQuality>("good");
-	const [exportFormat, setExportFormat] = useState<ExportFormat>("mp4");
-	const [gifFrameRate, setGifFrameRate] = useState<GifFrameRate>(15);
-	const [gifLoop, setGifLoop] = useState(true);
-	const [gifSizePreset, setGifSizePreset] = useState<GifSizePreset>("medium");
-	const [exportedFilePath, setExportedFilePath] = useState<string | undefined>(undefined);
-	const [hasPendingExportSave, setHasPendingExportSave] = useState(false);
-	const [lastSavedSnapshot, setLastSavedSnapshot] = useState<string | null>(null);
+	const [duration, setDuration] = useAtom(durationAtom);
+	const [wallpaper, setWallpaper] = useAtom(videoWallpaperAtom);
+	const [audioMuted, setAudioMuted] = useAtom(audioMutedAtom);
+	const [audioVolume, setAudioVolume] = useAtom(audioVolumeAtom);
+	const [shadowIntensity, setShadowIntensity] = useAtom(shadowIntensityAtom);
+	const [backgroundBlur, setBackgroundBlur] = useAtom(backgroundBlurAtom);
+	const [zoomMotionBlur, setZoomMotionBlur] = useAtom(zoomMotionBlurAtom);
+	const [connectZooms, setConnectZooms] = useAtom(connectZoomsAtom);
+	const [showCursor, setShowCursor] = useAtom(showCursorAtom);
+	const [loopCursor, setLoopCursor] = useAtom(loopCursorAtom);
+	const [cursorSize, setCursorSize] = useAtom(cursorSizeAtom);
+	const [cursorSmoothing, setCursorSmoothing] = useAtom(cursorSmoothingAtom);
+	const [cursorMotionBlur, setCursorMotionBlur] = useAtom(cursorMotionBlurAtom);
+	const [cursorClickBounce, setCursorClickBounce] = useAtom(cursorClickBounceAtom);
+	const [borderRadius, setBorderRadius] = useAtom(borderRadiusAtom);
+	const [padding, setPadding] = useAtom(paddingAtom);
+	const [cropRegion, setCropRegion] = useAtom(cropRegionAtom);
+	const [facecamSettings, setFacecamSettings] = useAtom(facecamSettingsAtom);
+	const [zoomRegions, setZoomRegions] = useAtom(zoomRegionsAtom);
+	const [cursorTelemetry, setCursorTelemetry] = useAtom(cursorTelemetryAtom);
+	const [selectedZoomId, setSelectedZoomId] = useAtom(selectedZoomIdAtom);
+	const [trimRegions, setTrimRegions] = useAtom(trimRegionsAtom);
+	const [selectedTrimId, setSelectedTrimId] = useAtom(selectedTrimIdAtom);
+	const [speedRegions, setSpeedRegions] = useAtom(speedRegionsAtom);
+	const [selectedSpeedId, setSelectedSpeedId] = useAtom(selectedSpeedIdAtom);
+	const [annotationRegions, setAnnotationRegions] = useAtom(annotationRegionsAtom);
+	const [selectedAnnotationId, setSelectedAnnotationId] = useAtom(selectedAnnotationIdAtom);
+	const [isExporting, setIsExporting] = useAtom(isExportingAtom);
+	const [exportProgress, setExportProgress] = useAtom(exportProgressAtom);
+	const [exportError, setExportError] = useAtom(exportErrorAtom);
+	const [showExportDialog, setShowExportDialog] = useAtom(showExportDialogAtom);
+	const [showShortcutsDialog, setShowShortcutsDialog] = useAtom(showShortcutsDialogAtom);
+	const [aspectRatio, setAspectRatio] = useAtom(aspectRatioAtom);
+	const [exportQuality, setExportQuality] = useAtom(exportQualityAtom);
+	const [exportFormat, setExportFormat] = useAtom(exportFormatAtom);
+	const [gifFrameRate, setGifFrameRate] = useAtom(gifFrameRateAtom);
+	const [gifLoop, setGifLoop] = useAtom(gifLoopAtom);
+	const [gifSizePreset, setGifSizePreset] = useAtom(gifSizePresetAtom);
+	const [exportedFilePath, setExportedFilePath] = useAtom(exportedFilePathAtom);
+	const [hasPendingExportSave, setHasPendingExportSave] = useAtom(hasPendingExportSaveAtom);
+	const [lastSavedSnapshot, setLastSavedSnapshot] = useAtom(lastSavedSnapshotAtom);
 
 	const videoPlaybackRef = useRef<VideoPlaybackRef>(null);
 	const nextZoomIdRef = useRef(1);
