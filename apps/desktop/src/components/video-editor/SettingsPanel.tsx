@@ -13,7 +13,17 @@ import {
 	Volume2,
 	X,
 } from "lucide-react";
-import { memo, type ReactNode, useMemo, useRef, useState } from "react";
+import { useAtom } from "jotai";
+import { memo, type ReactNode, useMemo, useRef } from "react";
+import {
+	settingsActiveTabAtom,
+	settingsBackgroundTabAtom,
+	settingsCustomImagesAtom,
+	settingsGradientAtom,
+	settingsSelectedColorAtom,
+	settingsShowCropModalAtom,
+	type SettingsSidebarTab,
+} from "@/atoms/settingsPanel";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
@@ -87,7 +97,6 @@ const COLOR_PALETTE = [
 	"#795548",
 ];
 
-type SettingsSidebarTab = "appearance" | "cursor" | "camera" | "background" | "audio";
 
 type SettingsTabDefinition = {
 	id: SettingsSidebarTab;
@@ -310,13 +319,13 @@ function SettingsPanelInner({
 	onSpeedChange,
 	onSpeedDelete,
 }: SettingsPanelProps) {
-	const [activeTab, setActiveTab] = useState<SettingsSidebarTab>("appearance");
-	const [backgroundTab, setBackgroundTab] = useState<"image" | "color" | "gradient">("image");
-	const [customImages, setCustomImages] = useState<string[]>([]);
+	const [activeTab, setActiveTab] = useAtom(settingsActiveTabAtom);
+	const [backgroundTab, setBackgroundTab] = useAtom(settingsBackgroundTabAtom);
+	const [customImages, setCustomImages] = useAtom(settingsCustomImagesAtom);
 	const fileInputRef = useRef<HTMLInputElement>(null);
-	const [selectedColor, setSelectedColor] = useState("#ADADAD");
-	const [gradient, setGradient] = useState<string>(GRADIENTS[0]);
-	const [showCropModal, setShowCropModal] = useState(false);
+	const [selectedColor, setSelectedColor] = useAtom(settingsSelectedColorAtom);
+	const [gradient, setGradient] = useAtom(settingsGradientAtom);
+	const [showCropModal, setShowCropModal] = useAtom(settingsShowCropModalAtom);
 	const cropSnapshotRef = useRef<CropRegion | null>(null);
 	const activeTabDefinition = useMemo(
 		() => SETTINGS_SIDEBAR_TABS.find((tab) => tab.id === activeTab) ?? SETTINGS_SIDEBAR_TABS[0],
