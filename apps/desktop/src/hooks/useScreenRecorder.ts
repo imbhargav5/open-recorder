@@ -1,9 +1,19 @@
 import { fixParsedWebmDuration } from "@fix-webm-duration/fix";
 import { WebmFile } from "@fix-webm-duration/parser";
+import { useAtom } from "jotai";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { buildEditorWindowQuery } from "@/components/video-editor/editorWindowParams";
 import * as backend from "@/lib/backend";
 import { createDefaultFacecamSettings, type RecordingSession } from "@/lib/recordingSession";
+import { isMacOSAtom } from "@/atoms/app";
+import {
+	cameraDeviceIdAtom,
+	cameraEnabledAtom,
+	microphoneDeviceIdAtom,
+	microphoneEnabledAtom,
+	recordingActiveAtom,
+	systemAudioEnabledAtom,
+} from "@/atoms/recording";
 
 const TARGET_FRAME_RATE = 60;
 const TARGET_WIDTH = 3840;
@@ -122,14 +132,14 @@ function getSelectedSourceName(source: unknown) {
 }
 
 export function useScreenRecorder(): UseScreenRecorderReturn {
-	const [recording, setRecording] = useState(false);
-	const [starting, setStarting] = useState(false);
-	const [isMacOS, setIsMacOS] = useState(false);
-	const [microphoneEnabled, setMicrophoneEnabled] = useState(false);
-	const [microphoneDeviceId, setMicrophoneDeviceId] = useState<string | undefined>(undefined);
-	const [systemAudioEnabled, setSystemAudioEnabled] = useState(false);
-	const [cameraEnabled, setCameraEnabled] = useState(false);
-	const [cameraDeviceId, setCameraDeviceId] = useState<string | undefined>(undefined);
+	const [recording, setRecording] = useAtom(recordingActiveAtom);
+	const [starting, setStarting] = useState(false); // internal guard – not shared
+	const [isMacOS, setIsMacOS] = useAtom(isMacOSAtom);
+	const [microphoneEnabled, setMicrophoneEnabled] = useAtom(microphoneEnabledAtom);
+	const [microphoneDeviceId, setMicrophoneDeviceId] = useAtom(microphoneDeviceIdAtom);
+	const [systemAudioEnabled, setSystemAudioEnabled] = useAtom(systemAudioEnabledAtom);
+	const [cameraEnabled, setCameraEnabled] = useAtom(cameraEnabledAtom);
+	const [cameraDeviceId, setCameraDeviceId] = useAtom(cameraDeviceIdAtom);
 	const mediaRecorder = useRef<MediaRecorder | null>(null);
 	const stream = useRef<MediaStream | null>(null);
 	const screenStream = useRef<MediaStream | null>(null);
