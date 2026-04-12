@@ -1,9 +1,8 @@
 import { getIdentifier } from "@tauri-apps/api/app";
-import { useAtom } from "jotai";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { check, type Update } from "@tauri-apps/plugin-updater";
+import { useAtom } from "jotai";
 import { useCallback, useEffect, useRef, useState } from "react";
-import * as backend from "@/lib/backend";
 import {
 	type UpdateStatus,
 	updaterDialogOpenAtom,
@@ -13,6 +12,8 @@ import {
 	updaterStatusAtom,
 	updaterVersionAtom,
 } from "@/atoms/updater";
+import * as backend from "@/lib/backend";
+
 export type { UpdateStatus } from "@/atoms/updater";
 
 const AUTO_CHECK_DELAY_MS = 10_000;
@@ -135,7 +136,16 @@ export function useAppUpdater({
 				setIsDialogOpen(showDialog);
 			}
 		},
-		[status, updatesEnabled],
+		[
+			status,
+			updatesEnabled,
+			setIsDialogOpen,
+			setVersion,
+			setReleaseNotes,
+			setDownloadProgress,
+			setError,
+			setStatus,
+		],
 	);
 
 	const downloadAndInstall = useCallback(async () => {
@@ -174,7 +184,7 @@ export function useAppUpdater({
 			setError(getErrorMessage(err, "Failed to download update"));
 			setStatus("error");
 		}
-	}, [status]);
+	}, [status, setIsDialogOpen, setStatus, setDownloadProgress, setError]);
 
 	const restartApp = useCallback(async () => {
 		await relaunch();
@@ -188,7 +198,7 @@ export function useAppUpdater({
 		setDownloadProgress(0);
 		setError(null);
 		updateRef.current = null;
-	}, []);
+	}, [setIsDialogOpen, setStatus, setVersion, setReleaseNotes, setDownloadProgress, setError]);
 
 	useEffect(() => {
 		if (import.meta.env.DEV) {

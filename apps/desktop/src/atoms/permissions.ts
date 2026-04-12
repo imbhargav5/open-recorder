@@ -1,4 +1,4 @@
-import { atom } from 'jotai'
+import { atom } from "jotai";
 
 export type PermissionStatus =
 	| "granted"
@@ -22,5 +22,5 @@ const INITIAL_PERMISSIONS: PermissionState = {
 	accessibility: "checking",
 };
 
-export const permissionsAtom = atom<PermissionState>(INITIAL_PERMISSIONS)
-export const isCheckingPermissionsAtom = atom<boolean>(true)
+export const permissionsAtom = atom<PermissionState>(INITIAL_PERMISSIONS);
+export const isCheckingPermissionsAtom = atom<boolean>(true);
