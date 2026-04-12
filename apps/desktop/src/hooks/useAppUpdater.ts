@@ -1,19 +1,21 @@
 import { getIdentifier } from "@tauri-apps/api/app";
+import { useAtom } from "jotai";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as backend from "@/lib/backend";
+import {
+	type UpdateStatus,
+	updaterDialogOpenAtom,
+	updaterDownloadProgressAtom,
+	updaterErrorAtom,
+	updaterReleaseNotesAtom,
+	updaterStatusAtom,
+	updaterVersionAtom,
+} from "@/atoms/updater";
+export type { UpdateStatus } from "@/atoms/updater";
 
 const AUTO_CHECK_DELAY_MS = 10_000;
-
-export type UpdateStatus =
-	| "idle"
-	| "checking"
-	| "up-to-date"
-	| "available"
-	| "downloading"
-	| "ready"
-	| "error";
 
 type CheckForUpdateOptions = {
 	showDialog?: boolean;
@@ -71,13 +73,13 @@ function getErrorMessage(error: unknown, fallback: string): string {
 export function useAppUpdater({
 	enableAutoCheck = true,
 }: UseAppUpdaterOptions = {}): UseAppUpdaterReturn {
-	const [updatesEnabled, setUpdatesEnabled] = useState(!import.meta.env.DEV);
-	const [status, setStatus] = useState<UpdateStatus>("idle");
-	const [isDialogOpen, setIsDialogOpen] = useState(false);
-	const [version, setVersion] = useState<string | null>(null);
-	const [releaseNotes, setReleaseNotes] = useState<string | null>(null);
-	const [downloadProgress, setDownloadProgress] = useState(0);
-	const [error, setError] = useState<string | null>(null);
+	const [updatesEnabled, setUpdatesEnabled] = useState(!import.meta.env.DEV); // internal only
+	const [status, setStatus] = useAtom(updaterStatusAtom);
+	const [isDialogOpen, setIsDialogOpen] = useAtom(updaterDialogOpenAtom);
+	const [version, setVersion] = useAtom(updaterVersionAtom);
+	const [releaseNotes, setReleaseNotes] = useAtom(updaterReleaseNotesAtom);
+	const [downloadProgress, setDownloadProgress] = useAtom(updaterDownloadProgressAtom);
+	const [error, setError] = useAtom(updaterErrorAtom);
 	const updateRef = useRef<Update | null>(null);
 
 	const checkForUpdate = useCallback(
