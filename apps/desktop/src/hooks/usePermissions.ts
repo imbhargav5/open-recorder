@@ -7,17 +7,18 @@
  * transparently via getUserMedia / getDisplayMedia prompts).
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useAtom } from "jotai";
+import { useCallback, useEffect, useRef } from "react";
 import * as backend from "@/lib/backend";
+import { isMacOSAtom } from "@/atoms/app";
+import {
+	type PermissionState,
+	type PermissionStatus,
+	isCheckingPermissionsAtom,
+	permissionsAtom,
+} from "@/atoms/permissions";
 
-export type PermissionStatus = "granted" | "denied" | "not_determined" | "restricted" | "unknown" | "checking";
-
-export interface PermissionState {
-	screenRecording: PermissionStatus;
-	microphone: PermissionStatus;
-	camera: PermissionStatus;
-	accessibility: PermissionStatus;
-}
+export type { PermissionState, PermissionStatus } from "@/atoms/permissions";
 
 export interface UsePermissionsResult {
 	permissions: PermissionState;
@@ -39,17 +40,10 @@ export interface UsePermissionsResult {
 	allPermissionsGranted: boolean;
 }
 
-const INITIAL_STATE: PermissionState = {
-	screenRecording: "checking",
-	microphone: "checking",
-	camera: "checking",
-	accessibility: "checking",
-};
-
 export function usePermissions(): UsePermissionsResult {
-	const [permissions, setPermissions] = useState<PermissionState>(INITIAL_STATE);
-	const [isMacOS, setIsMacOS] = useState(false);
-	const [isChecking, setIsChecking] = useState(true);
+	const [permissions, setPermissions] = useAtom(permissionsAtom);
+	const [isMacOS, setIsMacOS] = useAtom(isMacOSAtom);
+	const [isChecking, setIsChecking] = useAtom(isCheckingPermissionsAtom);
 	const mountedRef = useRef(true);
 
 	const refreshPermissions = useCallback(async (): Promise<PermissionState> => {
