@@ -2,9 +2,6 @@ import { fixParsedWebmDuration } from "@fix-webm-duration/fix";
 import { WebmFile } from "@fix-webm-duration/parser";
 import { useAtom } from "jotai";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { buildEditorWindowQuery } from "@/components/video-editor/editorWindowParams";
-import * as backend from "@/lib/backend";
-import { createDefaultFacecamSettings, type RecordingSession } from "@/lib/recordingSession";
 import { isMacOSAtom } from "@/atoms/app";
 import {
 	cameraDeviceIdAtom,
@@ -14,6 +11,9 @@ import {
 	recordingActiveAtom,
 	systemAudioEnabledAtom,
 } from "@/atoms/recording";
+import { buildEditorWindowQuery } from "@/components/video-editor/editorWindowParams";
+import * as backend from "@/lib/backend";
+import { createDefaultFacecamSettings, type RecordingSession } from "@/lib/recordingSession";
 
 const TARGET_FRAME_RATE = 60;
 const TARGET_WIDTH = 3840;
@@ -575,6 +575,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			queueRecordingChunkWrite,
 			resetStagedFileState,
 			selectMimeType,
+			setCameraEnabled,
 		],
 	);
 
@@ -641,14 +642,14 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			setRecording(false);
 			void backend.setRecordingState(false);
 		}
-	}, [buildRecordingSession, cleanupCapturedMedia, stopFacecamCapture]);
+	}, [buildRecordingSession, cleanupCapturedMedia, stopFacecamCapture, setRecording]);
 
 	useEffect(() => {
 		void (async () => {
 			const platform = await backend.getPlatform();
 			setIsMacOS(platform === "darwin");
 		})();
-	}, []);
+	}, [setIsMacOS]);
 
 	useEffect(() => {
 		let unlistenTray: (() => void) | undefined;
@@ -722,7 +723,13 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				facecamHasData,
 			);
 		};
-	}, [cleanupCapturedMedia, resetStagedFileState, stopLinuxCursorTelemetryCapture, stopRecording]);
+	}, [
+		cleanupCapturedMedia,
+		resetStagedFileState,
+		stopLinuxCursorTelemetryCapture,
+		stopRecording,
+		setRecording,
+	]);
 
 	const startRecording = async () => {
 		if (startInFlight.current) {

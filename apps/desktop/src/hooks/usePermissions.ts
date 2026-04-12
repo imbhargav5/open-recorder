@@ -9,14 +9,14 @@
 
 import { useAtom } from "jotai";
 import { useCallback, useEffect, useRef } from "react";
-import * as backend from "@/lib/backend";
 import { isMacOSAtom } from "@/atoms/app";
 import {
+	isCheckingPermissionsAtom,
 	type PermissionState,
 	type PermissionStatus,
-	isCheckingPermissionsAtom,
 	permissionsAtom,
 } from "@/atoms/permissions";
+import * as backend from "@/lib/backend";
 
 export type { PermissionState, PermissionStatus } from "@/atoms/permissions";
 
@@ -90,7 +90,7 @@ export function usePermissions(): UsePermissionsResult {
 		}
 
 		return state;
-	}, []);
+	}, [setIsMacOS, setPermissions, setIsChecking]);
 
 	const requestBrowserMediaAccess = useCallback(
 		async (constraints: MediaStreamConstraints, permission: "microphone" | "camera") => {
