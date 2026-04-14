@@ -14,18 +14,18 @@ import {
 	MdVolumeUp,
 } from "react-icons/md";
 import { RxDragHandleDots2 } from "react-icons/rx";
-import { buildEditorWindowQuery } from "@/components/video-editor/editorWindowParams";
-import * as backend from "@/lib/backend";
 import {
 	hasSelectedSourceAtom,
 	isCapturingAtom,
 	launchViewAtom,
 	recordingElapsedAtom,
 	recordingStartAtom,
+	type ScreenshotMode,
 	screenshotModeAtom,
 	selectedSourceAtom,
-	type ScreenshotMode,
 } from "@/atoms/launch";
+import { buildEditorWindowQuery } from "@/components/video-editor/editorWindowParams";
+import * as backend from "@/lib/backend";
 import { useCameraDevices } from "../../hooks/useCameraDevices";
 import { useMicrophoneDevices } from "../../hooks/useMicrophoneDevices";
 import { usePermissions } from "../../hooks/usePermissions";
@@ -38,6 +38,7 @@ import { Popover, PopoverAnchor, PopoverContent } from "../ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
 import styles from "./LaunchWindow.module.css";
+import { resolveSelectedSourceState } from "./launchWindowState";
 
 const SYSTEM_DEFAULT_MICROPHONE_ID = "__system_default_microphone__";
 
@@ -184,7 +185,7 @@ export function LaunchWindow() {
 			setScreenshotMode(null);
 		}
 		prevRecording.current = recording;
-	}, [recording, micSend]);
+	}, [recording, micSend, setView, setScreenshotMode]);
 
 	// Facecam preview
 	useEffect(() => {
@@ -261,7 +262,7 @@ export function LaunchWindow() {
 		return () => {
 			if (timer) clearInterval(timer);
 		};
-	}, [recording, recordingStart]);
+	}, [recording, recordingStart, setElapsed, setRecordingStart]);
 
 	const formatTime = (seconds: number) => {
 		const m = Math.floor(seconds / 60)
@@ -278,13 +279,9 @@ export function LaunchWindow() {
 		const checkSelectedSource = async () => {
 			try {
 				const source = await backend.getSelectedSource();
-				if (source) {
-					setSelectedSource(source.name);
-					setHasSelectedSource(true);
-				} else {
-					setSelectedSource("Main Display");
-					setHasSelectedSource(true);
-				}
+				const nextState = resolveSelectedSourceState(source);
+				setSelectedSource(nextState.selectedSource);
+				setHasSelectedSource(nextState.hasSelectedSource);
 			} catch {
 				// ignore
 			}
@@ -293,30 +290,35 @@ export function LaunchWindow() {
 		void checkSelectedSource();
 		const interval = setInterval(checkSelectedSource, 500);
 		return () => clearInterval(interval);
-	}, []);
+	}, [setHasSelectedSource, setSelectedSource]);
 
-	const openSourceSelector = useCallback(async (tab?: "screens" | "windows") => {
-		const screenStatus = await backend.getScreenRecordingPermissionStatus().catch(() => "unknown");
-		if (screenStatus !== "granted") {
-			const granted = await backend.requestScreenRecordingPermission().catch(() => false);
-			if (!granted) {
-				await backend.openScreenRecordingPreferences().catch(() => {
-					// Ignore preference-opening failures and keep showing the permission alert.
-				});
-				alert(
-					"Open Recorder needs Screen Recording permission to show live screen and window previews. System Settings has been opened. After enabling it, quit and reopen Open Recorder.",
-				);
-				return;
+	const openSourceSelector = useCallback(
+		async (tab?: "screens" | "windows") => {
+			const screenStatus = await backend
+				.getScreenRecordingPermissionStatus()
+				.catch(() => "unknown");
+			if (screenStatus !== "granted") {
+				const granted = await backend.requestScreenRecordingPermission().catch(() => false);
+				if (!granted) {
+					await backend.openScreenRecordingPreferences().catch(() => {
+						// Ignore preference-opening failures and keep showing the permission alert.
+					});
+					alert(
+						"Open Recorder needs Screen Recording permission to show live screen and window previews. System Settings has been opened. After enabling it, quit and reopen Open Recorder.",
+					);
+					return;
+				}
 			}
-		}
 
-		const permissionsReady = await preparePermissions();
-		if (!permissionsReady) return;
+			const permissionsReady = await preparePermissions();
+			if (!permissionsReady) return;
 
-		backend.openSourceSelector(tab).catch(() => {
-			// Ignore selector launch failures because the permissions flow already handled the user-facing error.
-		});
-	}, [preparePermissions]);
+			backend.openSourceSelector(tab).catch(() => {
+				// Ignore selector launch failures because the permissions flow already handled the user-facing error.
+			});
+		},
+		[preparePermissions],
+	);
 
 	const openVideoFile = useCallback(async () => {
 		const path = await backend.openVideoFilePicker();
@@ -416,7 +418,7 @@ export function LaunchWindow() {
 	const handleScreenshotModeSelect = async (mode: ScreenshotMode) => {
 		setScreenshotMode(mode);
 		if (mode === "area") {
-			backend.closeSourceSelector().catch(() => {});
+			backend.closeSourceSelector().catch(() => undefined);
 			await handleAreaCapture();
 		} else {
 			await openSourceSelector(mode === "window" ? "windows" : "screens");
