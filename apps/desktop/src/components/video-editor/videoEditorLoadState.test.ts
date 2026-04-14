@@ -14,6 +14,114 @@ function createDeferred<T>() {
 }
 
 describe("loadInitialVideoEditorState", () => {
+	it("returns the explicit project when the launch params include a readable project file", async () => {
+		const readLocalFile = vi.fn(async () =>
+			new TextEncoder().encode(
+				JSON.stringify({ version: 3, videoPath: "file:///demo.mp4", editor: {} }),
+			),
+		);
+		const loadCurrentProjectFile = vi.fn(async () => ({
+			data: { ignored: true },
+			filePath: "/tmp/ignored",
+		}));
+		const getCurrentVideoPath = vi.fn(async () => "file:///ignored.mp4");
+		const getCurrentRecordingSession = vi.fn(async () => ({
+			screenVideoPath: "file:///ignored-session.mov",
+		}));
+
+		await expect(
+			loadInitialVideoEditorState({
+				loadCurrentProjectFile,
+				getCurrentVideoPath,
+				getCurrentRecordingSession,
+				readLocalFile,
+				search:
+					"?windowType=editor&editorMode=project&projectPath=file%3A%2F%2F%2Fdemo.openrecorder",
+			}),
+		).resolves.toEqual({
+			kind: "project",
+			data: { version: 3, videoPath: "file:///demo.mp4", editor: {} },
+			filePath: "/demo.openrecorder",
+		});
+
+		expect(readLocalFile).toHaveBeenCalledTimes(1);
+		expect(loadCurrentProjectFile).not.toHaveBeenCalled();
+		expect(getCurrentVideoPath).not.toHaveBeenCalled();
+		expect(getCurrentRecordingSession).not.toHaveBeenCalled();
+	});
+
+	it("falls back to shared state when an explicit project cannot be read", async () => {
+		const loadCurrentProjectFile = vi.fn(async () => ({
+			data: { version: 3, videoPath: "file:///shared.mp4", editor: { wallpaper: "#111" } },
+			filePath: "/tmp/shared.openrecorder",
+		}));
+		const readLocalFile = vi.fn(async () => {
+			throw new Error("boom");
+		});
+
+		await expect(
+			loadInitialVideoEditorState({
+				loadCurrentProjectFile,
+				getCurrentVideoPath: async () => null,
+				getCurrentRecordingSession: async () => null,
+				readLocalFile,
+				search:
+					"?windowType=editor&editorMode=project&projectPath=file%3A%2F%2F%2Fbroken.openrecorder",
+			}),
+		).resolves.toEqual({
+			kind: "project",
+			data: { version: 3, videoPath: "file:///shared.mp4", editor: { wallpaper: "#111" } },
+			filePath: "/tmp/shared.openrecorder",
+		});
+	});
+
+	it("prefers explicit session launch params over shared state", async () => {
+		const loadCurrentProjectFile = vi.fn(async () => ({ data: { ignored: true }, filePath: null }));
+		const getCurrentVideoPath = vi.fn(async () => "file:///ignored-video.mp4");
+		const getCurrentRecordingSession = vi.fn(async () => ({
+			screenVideoPath: "file:///ignored-session.mov",
+		}));
+
+		await expect(
+			loadInitialVideoEditorState({
+				loadCurrentProjectFile,
+				getCurrentVideoPath,
+				getCurrentRecordingSession,
+				search:
+					"?windowType=editor&editorMode=session&videoPath=file%3A%2F%2F%2FUsers%2Fdemo%2Fsession.mov&facecamVideoPath=file%3A%2F%2F%2FUsers%2Fdemo%2Ffacecam.mov&facecamOffsetMs=240&sourceName=Display%201",
+			}),
+		).resolves.toEqual({
+			kind: "session",
+			sourcePath: "/Users/demo/session.mov",
+			facecamSourcePath: "/Users/demo/facecam.mov",
+			facecamOffsetMs: 240,
+			facecamSettings: undefined,
+			sourceName: "Display 1",
+		});
+
+		expect(loadCurrentProjectFile).not.toHaveBeenCalled();
+		expect(getCurrentVideoPath).not.toHaveBeenCalled();
+		expect(getCurrentRecordingSession).not.toHaveBeenCalled();
+	});
+
+	it("prefers explicit video launch params over shared state", async () => {
+		await expect(
+			loadInitialVideoEditorState({
+				loadCurrentProjectFile: async () => ({ data: { ignored: true }, filePath: "/tmp/ignored" }),
+				getCurrentVideoPath: async () => "file:///shared.mp4",
+				getCurrentRecordingSession: async () => ({
+					screenVideoPath: "file:///shared-session.mov",
+				}),
+				search:
+					"?windowType=editor&editorMode=video&videoPath=file%3A%2F%2F%2FUsers%2Fdemo%2Fvideo.mp4&sourceName=Display%201",
+			}),
+		).resolves.toEqual({
+			kind: "video",
+			sourcePath: "/Users/demo/video.mp4",
+			sourceName: "Display 1",
+		});
+	});
+
 	it("starts the session and current-video lookups in parallel after the project-file branch is skipped", async () => {
 		const videoPathDeferred = createDeferred<string | null>();
 		const sessionDeferred = createDeferred<{
@@ -71,47 +179,15 @@ describe("loadInitialVideoEditorState", () => {
 		});
 	});
 
-	it("prefers explicit editor window launch params over shared app state", async () => {
-		await expect(
-			loadInitialVideoEditorState({
-				loadCurrentProjectFile: async () => ({
-					data: { ignored: true },
-					filePath: "/Users/demo/ignored.openrecorder",
-				}),
-				getCurrentVideoPath: async () => "file:///Users/demo/ignored-video.mp4",
-				getCurrentRecordingSession: async () => ({
-					screenVideoPath: "file:///Users/demo/ignored-session.mov",
-				}),
-				search:
-					"?windowType=editor&editorMode=session&videoPath=file%3A%2F%2F%2FUsers%2Fdemo%2Fsession.mov&sourceName=Display%201",
-			}),
-		).resolves.toEqual({
-			kind: "session",
-			sourcePath: "/Users/demo/session.mov",
-			facecamSourcePath: null,
-			facecamOffsetMs: 0,
-			facecamSettings: undefined,
-			sourceName: "Display 1",
-		});
-	});
-
-	it("loads a project from an explicit project path", async () => {
+	it("returns empty when no project, session, or video is available", async () => {
 		await expect(
 			loadInitialVideoEditorState({
 				loadCurrentProjectFile: async () => null,
 				getCurrentVideoPath: async () => null,
 				getCurrentRecordingSession: async () => null,
-				readLocalFile: async () =>
-					new TextEncoder().encode(
-						JSON.stringify({ version: 3, videoPath: "file:///demo.mov", editor: {} }),
-					),
-				search:
-					"?windowType=editor&editorMode=project&projectPath=file%3A%2F%2F%2FUsers%2Fdemo%2Fedit.openrecorder",
 			}),
 		).resolves.toEqual({
-			kind: "project",
-			data: { version: 3, videoPath: "file:///demo.mov", editor: {} },
-			filePath: "/Users/demo/edit.openrecorder",
+			kind: "empty",
 		});
 	});
 });

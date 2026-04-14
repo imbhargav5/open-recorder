@@ -1,21 +1,21 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { AppWindow, Loader2, Monitor } from "lucide-react";
 import { useAtom } from "jotai";
+import { AppWindow, Loader2, Monitor } from "lucide-react";
 import { useEffect } from "react";
+import { MdCheck } from "react-icons/md";
 import {
 	selectedDesktopSourceAtom,
 	sourceSelectorTabAtom,
 	sourcesAtom,
 	sourcesLoadingAtom,
 	windowsLoadingAtom,
-	type DesktopSource,
 } from "@/atoms/sourceSelector";
-import { MdCheck } from "react-icons/md";
 import { flashSelectedScreen, getSources, selectSource } from "@/lib/backend";
 import { cn } from "@/lib/utils";
 import { Button } from "../ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
 import { getSourceGridColumnClass } from "./sourceGridLayout";
+import { type DesktopSource, mapSources, mergeSources } from "./sourceSelectorState";
 
 interface SourceGridProps {
 	sources: DesktopSource[];
@@ -25,94 +25,15 @@ interface SourceGridProps {
 	emptyMessage: string;
 }
 
-function mapSources(rawSources: ProcessedDesktopSource[]): DesktopSource[] {
-	return rawSources.map((source) => {
-		const metadata = parseSourceMetadata(source);
-
-		return {
-			id: source.id,
-			name: metadata.displayName,
-			thumbnail: source.thumbnail ?? null,
-			display_id: source.display_id ?? source.displayId ?? "",
-			appIcon: source.appIcon ?? source.app_icon ?? null,
-			originalName: source.name,
-			sourceType: metadata.sourceType,
-			appName: metadata.appName,
-			windowTitle: metadata.windowTitle,
-			windowId: source.windowId ?? source.window_id,
-		};
-	});
-}
-
-function mergeSources(
-	existingSources: DesktopSource[],
-	incomingSources: DesktopSource[],
-): DesktopSource[] {
-	const incomingById = new Map(incomingSources.map((source) => [source.id, source]));
-	const mergedSources = existingSources.map((source) => {
-		const incoming = incomingById.get(source.id);
-		if (!incoming) return source;
-		return {
-			...source,
-			...incoming,
-			thumbnail: incoming.thumbnail ?? source.thumbnail,
-			appIcon: incoming.appIcon ?? source.appIcon,
-		};
-	});
-
-	for (const source of incomingSources) {
-		if (!existingSources.some((existing) => existing.id === source.id)) {
-			mergedSources.push(source);
-		}
-	}
-
-	return mergedSources;
-}
-
-function parseSourceMetadata(source: ProcessedDesktopSource) {
-	const sourceType: "screen" | "window" =
-		source.sourceType ??
-		(source.source_type as "screen" | "window" | undefined) ??
-		(source.id.startsWith("window:") ? "window" : "screen");
-
-	const appName = source.appName ?? source.app_name;
-	const windowTitle = source.windowTitle ?? source.window_title;
-
-	if (sourceType === "window" && (appName || windowTitle)) {
-		return {
-			sourceType,
-			appName,
-			windowTitle: windowTitle ?? source.name,
-			displayName: windowTitle ?? source.name,
-		};
-	}
-
-	if (sourceType === "window") {
-		const [appNamePart, ...windowTitleParts] = source.name.split(" — ");
-		const parsedAppName = appNamePart?.trim() || undefined;
-		const parsedWindowTitle = windowTitleParts.join(" — ").trim() || source.name.trim();
-
-		return {
-			sourceType,
-			appName: parsedAppName,
-			windowTitle: parsedWindowTitle,
-			displayName: parsedWindowTitle,
-		};
-	}
-
-	return {
-		sourceType,
-		appName: undefined,
-		windowTitle: undefined,
-		displayName: source.name,
-	};
-}
-
 function SourceGrid({ sources, selectedSource, onSelect, type, emptyMessage }: SourceGridProps) {
 	if (sources.length === 0) {
 		return (
 			<div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-border bg-muted/50 py-12">
-				{type === "screen" ? <Monitor className="h-5 w-5 text-muted-foreground" /> : <AppWindow className="h-5 w-5 text-muted-foreground" />}
+				{type === "screen" ? (
+					<Monitor className="h-5 w-5 text-muted-foreground" />
+				) : (
+					<AppWindow className="h-5 w-5 text-muted-foreground" />
+				)}
 				<p className="text-sm text-muted-foreground">{emptyMessage}</p>
 			</div>
 		);
@@ -137,24 +58,32 @@ function SourceGrid({ sources, selectedSource, onSelect, type, emptyMessage }: S
 						className={cn(
 							"rounded-lg border bg-card text-left transition-colors hover:bg-accent",
 							isWindow ? "p-1.5" : "p-2",
-							isSelected
-								? "border-primary ring-2 ring-primary/30"
-								: "border-border",
+							isSelected ? "border-primary ring-2 ring-primary/30" : "border-border",
 						)}
 						onClick={() => onSelect(source)}
 					>
-						<div className={cn(
-							"relative overflow-hidden rounded-md bg-muted",
-							isWindow ? "mb-1 aspect-[16/10]" : "mb-2 aspect-video",
-						)}>
+						<div
+							className={cn(
+								"relative overflow-hidden rounded-md bg-muted",
+								isWindow ? "mb-1 aspect-[16/10]" : "mb-2 aspect-video",
+							)}
+						>
 							{source.thumbnail ? (
-								<img src={source.thumbnail} alt={source.name} className="h-full w-full object-cover" />
+								<img
+									src={source.thumbnail}
+									alt={source.name}
+									className="h-full w-full object-cover"
+								/>
 							) : (
 								<div className="flex h-full w-full items-center justify-center text-muted-foreground">
 									{type === "screen" ? (
 										<Monitor className={isWindow ? "h-4 w-4" : "h-5 w-5"} />
 									) : source.appIcon ? (
-										<img src={source.appIcon} alt="" className={cn("rounded-sm", isWindow ? "h-4 w-4" : "h-5 w-5")} />
+										<img
+											src={source.appIcon}
+											alt=""
+											className={cn("rounded-sm", isWindow ? "h-4 w-4" : "h-5 w-5")}
+										/>
 									) : (
 										<AppWindow className={isWindow ? "h-4 w-4" : "h-5 w-5"} />
 									)}
@@ -166,10 +95,9 @@ function SourceGrid({ sources, selectedSource, onSelect, type, emptyMessage }: S
 								</div>
 							)}
 						</div>
-						<p className={cn(
-							"truncate font-medium",
-							isWindow ? "text-xs" : "text-sm",
-						)}>{source.name}</p>
+						<p className={cn("truncate font-medium", isWindow ? "text-xs" : "text-sm")}>
+							{source.name}
+						</p>
 					</button>
 				);
 			})}
@@ -260,7 +188,7 @@ export function SourceSelector() {
 		return () => {
 			cancelled = true;
 		};
-	}, []);
+	}, [setLoading, setSources, setWindowsLoading]);
 
 	const screenSources = sources.filter((source) => source.sourceType === "screen");
 	const windowSources = sources.filter((source) => source.sourceType === "window");
@@ -278,7 +206,7 @@ export function SourceSelector() {
 		if (windowSources.length === 0 && screenSources.length > 0) {
 			setActiveTab("screens");
 		}
-	}, [loading, screenSources.length, windowSources.length]);
+	}, [loading, screenSources.length, windowSources.length, setActiveTab]);
 
 	const handleSourceSelect = (source: DesktopSource) => {
 		setSelectedSource(source);
@@ -321,7 +249,9 @@ export function SourceSelector() {
 					<TabsTrigger value="screens" className="gap-1.5">
 						<Monitor className="h-3.5 w-3.5" />
 						Screens
-						<span className="ml-0.5 rounded-full bg-foreground/10 px-1.5 py-0.5 text-xs leading-none">{screenSources.length}</span>
+						<span className="ml-0.5 rounded-full bg-foreground/10 px-1.5 py-0.5 text-xs leading-none">
+							{screenSources.length}
+						</span>
 					</TabsTrigger>
 					<TabsTrigger value="windows" className="gap-1.5">
 						<AppWindow className="h-3.5 w-3.5" />
@@ -355,16 +285,10 @@ export function SourceSelector() {
 			</Tabs>
 
 			<div className="mt-4 flex justify-end gap-2 border-t border-border pt-4">
-				<Button
-					variant="outline"
-					onClick={() => getCurrentWindow().close()}
-				>
+				<Button variant="outline" onClick={() => getCurrentWindow().close()}>
 					Cancel
 				</Button>
-				<Button
-					onClick={() => void handleShare()}
-					disabled={!selectedSource}
-				>
+				<Button onClick={() => void handleShare()} disabled={!selectedSource}>
 					Share Source
 				</Button>
 			</div>

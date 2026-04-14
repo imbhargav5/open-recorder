@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 
+import { Provider } from "jotai";
+import { createStore } from "jotai/vanilla";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -45,6 +47,7 @@ async function flushEffects() {
 async function mountHook(): Promise<HookHarnessResult> {
 	const container = document.createElement("div");
 	const root: Root = createRoot(container);
+	const store = createStore();
 	let currentValue!: UsePermissionsResult;
 
 	function Harness() {
@@ -53,7 +56,11 @@ async function mountHook(): Promise<HookHarnessResult> {
 	}
 
 	await act(async () => {
-		root.render(<Harness />);
+		root.render(
+			<Provider store={store}>
+				<Harness />
+			</Provider>,
+		);
 	});
 	await flushEffects();
 
@@ -69,12 +76,9 @@ async function mountHook(): Promise<HookHarnessResult> {
 
 // ─── Setup / Teardown ────────────────────────────────────────────────────────
 
-function setupMediaDevicesMock(
-	getUserMediaImpl?: () => Promise<MediaStream>,
-) {
+function setupMediaDevicesMock(getUserMediaImpl?: () => Promise<MediaStream>) {
 	const stop = vi.fn();
-	const defaultImpl = async () =>
-		({ getTracks: () => [{ stop }] }) as unknown as MediaStream;
+	const defaultImpl = async () => ({ getTracks: () => [{ stop }] }) as unknown as MediaStream;
 
 	Object.defineProperty(navigator, "mediaDevices", {
 		configurable: true,
