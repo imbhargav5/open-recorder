@@ -18,3 +18,4 @@ export const recordingStartAtom = atom<number | null>(null);
 export const recordingElapsedAtom = atom<number>(0);
 export const selectedSourceAtom = atom<string>("Main Display");
 export const hasSelectedSourceAtom = atom<boolean>(true);
+export const sourceCheckErrorAtom = atom<Error | null>(null);
