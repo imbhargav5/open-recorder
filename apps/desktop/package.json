@@ -32,7 +32,8 @@
 		"preview": "vite preview",
 		"i18n:check": "node scripts/i18n-check.mjs",
 		"test": "vitest --run",
-		"test:watch": "vitest"
+		"test:watch": "vitest",
+		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
 		"@fix-webm-duration/fix": "^1.0.1",

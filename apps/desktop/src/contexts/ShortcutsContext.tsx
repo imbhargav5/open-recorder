@@ -1,6 +1,6 @@
 import { useAtom } from 'jotai'
 import { createContext, useCallback, useContext, useEffect, useMemo, type ReactNode } from 'react'
-import { DEFAULT_SHORTCUTS, mergeWithDefaults, type ShortcutsConfig } from '@/lib/shortcuts'
+import { mergeWithDefaults, type ShortcutsConfig } from '@/lib/shortcuts'
 import { isMac as getIsMac } from '@/utils/platformUtils'
 import { getShortcuts as backendGetShortcuts, saveShortcuts as backendSaveShortcuts } from '@/lib/backend'
 import { isMacOSAtom } from '@/atoms/app'

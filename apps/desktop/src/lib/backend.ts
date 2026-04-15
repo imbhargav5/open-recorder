@@ -5,6 +5,28 @@
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { resolveMediaPlaybackUrl as resolveMediaPlaybackAssetUrl } from "@/lib/mediaPlaybackUrl";
+import type { RecordingSession } from "./recordingSession";
+import type { ShortcutsConfig } from "./shortcuts";
+import type { DesktopSource } from "../components/launch/sourceSelectorState";
+
+// ─── Source List Options ─────────────────────────────────────────────────────
+
+export interface SourceListOptions {
+	types?: string[];
+	thumbnailSize?: { width?: number; height?: number };
+	withThumbnails?: boolean;
+	timeoutMs?: number;
+}
+
+// ─── Native Recording Options ────────────────────────────────────────────────
+
+export interface NativeRecordingOptions {
+	captureCursor?: boolean;
+	capturesSystemAudio?: boolean;
+	capturesMicrophone?: boolean;
+	microphoneDeviceId?: string;
+	microphoneLabel?: string;
+}
 
 export type { UnlistenFn };
 
@@ -99,11 +121,11 @@ export function clearCurrentVideoPath(): Promise<void> {
 
 // ─── Recording Session ──────────────────────────────────────────────────────
 
-export function getCurrentRecordingSession(): Promise<any | null> {
+export function getCurrentRecordingSession(): Promise<RecordingSession | null> {
 	return invoke("get_current_recording_session");
 }
 
-export function setCurrentRecordingSession(session: any): Promise<void> {
+export function setCurrentRecordingSession(session: RecordingSession): Promise<void> {
 	return invoke("set_current_recording_session", { session });
 }
 
@@ -117,29 +139,29 @@ export function chooseRecordingsDirectory(): Promise<string | null> {
 	return invoke("choose_recordings_directory");
 }
 
-export function getShortcuts(): Promise<any | null> {
+export function getShortcuts(): Promise<ShortcutsConfig | null> {
 	return invoke("get_shortcuts");
 }
 
-export function saveShortcuts(shortcuts: any): Promise<void> {
+export function saveShortcuts(shortcuts: ShortcutsConfig): Promise<void> {
 	return invoke("save_shortcuts", { shortcuts });
 }
 
 // ─── Sources ────────────────────────────────────────────────────────────────
 
-export function selectSource(source: any): Promise<void> {
+export function selectSource(source: DesktopSource): Promise<void> {
 	return invoke("select_source", { source });
 }
 
-export function flashSelectedScreen(source: any): Promise<void> {
+export function flashSelectedScreen(source: DesktopSource): Promise<void> {
 	return invoke("flash_selected_screen", { source });
 }
 
-export function getSelectedSource(): Promise<any | null> {
+export function getSelectedSource(): Promise<DesktopSource | null> {
 	return invoke("get_selected_source");
 }
 
-export function getSources(opts?: any): Promise<any[]> {
+export function getSources(opts?: SourceListOptions): Promise<ProcessedDesktopSource[]> {
 	return invoke("get_sources", { opts });
 }
 
@@ -149,7 +171,10 @@ export function setRecordingState(recording: boolean): Promise<void> {
 	return invoke("set_recording_state", { recording });
 }
 
-export function startNativeScreenRecording(source: any, options: any): Promise<string> {
+export function startNativeScreenRecording(
+	source: DesktopSource,
+	options: NativeRecordingOptions,
+): Promise<string> {
 	return invoke("start_native_screen_recording", { source, options });
 }
 
