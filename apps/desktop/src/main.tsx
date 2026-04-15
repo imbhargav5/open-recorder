@@ -1,5 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
+import { Provider, createStore } from "jotai";
 import App from "./App.tsx";
 import { I18nProvider } from "./contexts/I18nContext.tsx";
 import { ensurePixiRuntime } from "./lib/pixiRuntime.ts";
@@ -10,11 +11,15 @@ async function bootstrap() {
 
 	await ensurePixiRuntime();
 
+	const store = createStore();
+
 	ReactDOM.createRoot(document.getElementById("root")!).render(
 		<React.StrictMode>
-			<I18nProvider>
-				<App />
-			</I18nProvider>
+			<Provider store={store}>
+				<I18nProvider>
+					<App />
+				</I18nProvider>
+			</Provider>
 		</React.StrictMode>,
 	);
 }
