@@ -249,10 +249,9 @@ export function LaunchWindow() {
 		let timer: NodeJS.Timeout | null = null;
 		if (recording) {
 			if (!recordingStart) setRecordingStart(Date.now());
+			const startTime = recordingStart || Date.now();
 			timer = setInterval(() => {
-				if (recordingStart) {
-					setElapsed(Math.floor((Date.now() - recordingStart) / 1000));
-				}
+				setElapsed(Math.floor((Date.now() - startTime) / 1000));
 			}, 1000);
 		} else {
 			setRecordingStart(null);
