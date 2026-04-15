@@ -3,7 +3,8 @@ import { createContext, useCallback, useContext, useEffect, useMemo, type ReactN
 import { DEFAULT_SHORTCUTS, mergeWithDefaults, type ShortcutsConfig } from '@/lib/shortcuts'
 import { isMac as getIsMac } from '@/utils/platformUtils'
 import { getShortcuts as backendGetShortcuts, saveShortcuts as backendSaveShortcuts } from '@/lib/backend'
-import { isMacAtom, isShortcutsConfigOpenAtom, shortcutsAtom } from '@/atoms/shortcuts'
+import { isMacOSAtom } from '@/atoms/app'
+import { isShortcutsConfigOpenAtom, shortcutsAtom } from '@/atoms/shortcuts'
 
 interface ShortcutsContextValue {
   shortcuts: ShortcutsConfig
@@ -25,7 +26,7 @@ export function useShortcuts(): ShortcutsContextValue {
 
 export function ShortcutsProvider({ children }: { children: ReactNode }) {
   const [shortcuts, setShortcuts] = useAtom(shortcutsAtom)
-  const [isMac, setIsMac] = useAtom(isMacAtom)
+  const [isMac, setIsMac] = useAtom(isMacOSAtom)
   const [isConfigOpen, setIsConfigOpen] = useAtom(isShortcutsConfigOpenAtom)
 
   useEffect(() => {
