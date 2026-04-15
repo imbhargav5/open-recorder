@@ -11,11 +11,13 @@ export class SyncedVideoProvider {
   private currentFrame: QueuedFrame | null = null
   private queueWaiters: Array<(frame: QueuedFrame | null) => void> = []
   private done = false
+  private destroyed = false
   private error: Error | null = null
 
   async initialize(videoUrl: string, targetFrameRate: number): Promise<void> {
     this.destroy()
     this.done = false
+    this.destroyed = false
     this.error = null
 
     this.decoder = new StreamingVideoDecoder()
@@ -26,7 +28,12 @@ export class SyncedVideoProvider {
       undefined,
       undefined,
       async (frame, _exportTimestampUs, sourceTimestampMs) => {
+        if (this.destroyed) {
+          frame.close()
+          return
+        }
         const clonedFrame = frame.clone()
+        frame.close()
         this.enqueueFrame({
           frame: clonedFrame,
           timeMs: sourceTimestampMs,
@@ -78,6 +85,8 @@ export class SyncedVideoProvider {
   }
 
   destroy(): void {
+    if (this.destroyed) return
+    this.destroyed = true
     this.done = true
 
     if (this.currentFrame) {
