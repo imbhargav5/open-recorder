@@ -23,6 +23,16 @@ import {
 import type { AspectRatio } from '@/utils/aspectRatioUtils'
 import { DEFAULT_WALLPAPER_PATH } from '@/lib/wallpapers'
 
+// --- Composite types ---
+export type CursorSettings = {
+  showCursor: boolean
+  loopCursor: boolean
+  cursorSize: number
+  cursorSmoothing: number
+  cursorMotionBlur: number
+  cursorClickBounce: number
+}
+
 // --- Video source ---
 export const videoPathAtom = atom<string | null>(null)
 export const videoSourcePathAtom = atom<string | null>(null)
@@ -49,14 +59,18 @@ export const shadowIntensityAtom = atom<number>(0.67)
 export const backgroundBlurAtom = atom<number>(0)
 export const zoomMotionBlurAtom = atom<number>(DEFAULT_ZOOM_MOTION_BLUR)
 export const connectZoomsAtom = atom<boolean>(true)
-export const showCursorAtom = atom<boolean>(true)
-export const loopCursorAtom = atom<boolean>(false)
-export const cursorSizeAtom = atom<number>(DEFAULT_CURSOR_SIZE)
-export const cursorSmoothingAtom = atom<number>(DEFAULT_CURSOR_SMOOTHING)
-export const cursorMotionBlurAtom = atom<number>(DEFAULT_CURSOR_MOTION_BLUR)
-export const cursorClickBounceAtom = atom<number>(DEFAULT_CURSOR_CLICK_BOUNCE)
 export const borderRadiusAtom = atom<number>(12.5)
 export const paddingAtom = atom<number>(50)
+
+// --- Cursor settings (composite) ---
+export const cursorSettingsAtom = atom<CursorSettings>({
+  showCursor: true,
+  loopCursor: false,
+  cursorSize: DEFAULT_CURSOR_SIZE,
+  cursorSmoothing: DEFAULT_CURSOR_SMOOTHING,
+  cursorMotionBlur: DEFAULT_CURSOR_MOTION_BLUR,
+  cursorClickBounce: DEFAULT_CURSOR_CLICK_BOUNCE,
+})
 
 // --- Crop / Facecam ---
 export const cropRegionAtom = atom<CropRegion>(DEFAULT_CROP_REGION)
