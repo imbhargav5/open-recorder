@@ -362,19 +362,33 @@ export function LaunchWindow() {
 	}, []);
 
 	useEffect(() => {
-		const unlistenVideo = backend.onMenuOpenVideoFile(() => {
-			void openVideoFile();
-		});
-		const unlistenProject = backend.onMenuLoadProject(() => {
-			void openProjectFile();
-		});
-		const unlistenNewRecording = backend.onNewRecordingFromTray(() => {
-			void openSourceSelector();
-		});
+		let mounted = true;
+		const cleanups: Array<() => void> = [];
+
+		void (async () => {
+			const [unlistenVideo, unlistenProject, unlistenNewRecording] = await Promise.all([
+				backend.onMenuOpenVideoFile(() => {
+					void openVideoFile();
+				}),
+				backend.onMenuLoadProject(() => {
+					void openProjectFile();
+				}),
+				backend.onNewRecordingFromTray(() => {
+					void openSourceSelector();
+				}),
+			]);
+			if (!mounted) {
+				unlistenVideo();
+				unlistenProject();
+				unlistenNewRecording();
+				return;
+			}
+			cleanups.push(unlistenVideo, unlistenProject, unlistenNewRecording);
+		})();
+
 		return () => {
-			void unlistenVideo.then((fn) => fn());
-			void unlistenProject.then((fn) => fn());
-			void unlistenNewRecording.then((fn) => fn());
+			mounted = false;
+			cleanups.forEach((fn) => fn());
 		};
 	}, [openProjectFile, openSourceSelector, openVideoFile]);
 
