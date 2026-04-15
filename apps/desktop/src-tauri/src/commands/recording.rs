@@ -91,18 +91,31 @@ pub async fn start_native_screen_recording(
     #[cfg(target_os = "macos")]
     {
         crate::native::macos_capture::start_capture(&app, &source, &options, &output_path_str)
-            .await?;
+            .await
+            .map_err(|e| {
+                eprintln!("[start_native_screen_recording] Failed to start recording: {}", e);
+                e
+            })?;
     }
 
     #[cfg(target_os = "windows")]
     {
         crate::native::wgc_capture::start_capture(&app, &source, &options, &output_path_str)
-            .await?;
+            .await
+            .map_err(|e| {
+                eprintln!("[start_native_screen_recording] Failed to start recording: {}", e);
+                e
+            })?;
     }
 
     #[cfg(target_os = "linux")]
     {
-        crate::native::ffmpeg::start_capture(&app, &source, &options, &output_path_str).await?;
+        crate::native::ffmpeg::start_capture(&app, &source, &options, &output_path_str)
+            .await
+            .map_err(|e| {
+                eprintln!("[start_native_screen_recording] Failed to start recording: {}", e);
+                e
+            })?;
     }
 
     {
@@ -281,6 +294,48 @@ mod tests {
             s.current_video_path.clone().unwrap_or_default()
         };
         assert_eq!(output_path, "");
+    }
+
+    // ==================== Error Logging / Propagation ====================
+
+    /// Mirrors the map_err closure used in `start_native_screen_recording` so the
+    /// error-propagation logic can be tested without a live Tauri AppHandle.
+    ///
+    /// NOTE: The `eprintln!` side-effect is intentionally exercised here to prove
+    /// the closure compiles and runs, but Rust's standard test runner captures
+    /// stderr by default, so we cannot assert on the logged text in a unit test.
+    /// Integration / end-to-end tests would be required to verify the log output.
+    fn log_and_propagate_capture_error(result: Result<(), String>) -> Result<(), String> {
+        result.map_err(|e| {
+            eprintln!("[start_native_screen_recording] Failed to start recording: {}", e);
+            e
+        })
+    }
+
+    #[test]
+    fn test_capture_error_is_returned_unchanged() {
+        let msg = "Permission denied: screen capture not authorized".to_string();
+        let result = log_and_propagate_capture_error(Err(msg.clone()));
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), msg);
+    }
+
+    #[test]
+    fn test_capture_error_contains_original_message() {
+        let msg = "capture device unavailable".to_string();
+        let result = log_and_propagate_capture_error(Err(msg.clone()));
+        let err_str = result.unwrap_err();
+        assert!(
+            err_str.contains("capture device unavailable"),
+            "error string should contain original message, got: {}",
+            err_str
+        );
+    }
+
+    #[test]
+    fn test_capture_success_passes_through() {
+        let result = log_and_propagate_capture_error(Ok(()));
+        assert!(result.is_ok());
     }
 
     // ==================== Directory Creation ====================
