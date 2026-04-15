@@ -273,6 +273,15 @@ export function LaunchWindow() {
 		};
 	}, [recording, recordingStart, setElapsed, setRecordingStart]);
 
+	// Reset recording state atoms on unmount so the HUD never inherits stale
+	// elapsed time or a stale start timestamp when the window is reopened.
+	useEffect(() => {
+		return () => {
+			setRecordingStart(null);
+			setElapsed(0);
+		};
+	}, [setRecordingStart, setElapsed]);
+
 	const formatTime = (seconds: number) => {
 		const m = Math.floor(seconds / 60)
 			.toString()
