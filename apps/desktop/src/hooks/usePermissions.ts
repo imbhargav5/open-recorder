@@ -54,42 +54,40 @@ export function usePermissions(): UsePermissionsResult {
 			setIsMacOS(mac);
 		}
 
+		let result: PermissionState;
+
 		if (!mac) {
 			// On non-macOS, all permissions are implicitly granted
-			const granted: PermissionState = {
+			result = {
 				screenRecording: "granted",
 				microphone: "granted",
 				camera: "granted",
 				accessibility: "granted",
 			};
-			if (mountedRef.current) {
-				setPermissions(granted);
-				setIsChecking(false);
-			}
-			return granted;
+		} else {
+			// Fetch all statuses in parallel on macOS
+			const [screenStatus, micStatus, camStatus, accessStatus] = await Promise.all([
+				backend.getScreenRecordingPermissionStatus().catch(() => "unknown"),
+				backend.getMicrophonePermissionStatus().catch(() => "unknown"),
+				backend.getCameraPermissionStatus().catch(() => "unknown"),
+				backend.getAccessibilityPermissionStatus().catch(() => "unknown"),
+			]);
+
+			result = {
+				screenRecording: screenStatus as PermissionStatus,
+				microphone: micStatus as PermissionStatus,
+				camera: camStatus as PermissionStatus,
+				accessibility: accessStatus as PermissionStatus,
+			};
 		}
 
-		// Fetch all statuses in parallel on macOS
-		const [screenStatus, micStatus, camStatus, accessStatus] = await Promise.all([
-			backend.getScreenRecordingPermissionStatus().catch(() => "unknown"),
-			backend.getMicrophonePermissionStatus().catch(() => "unknown"),
-			backend.getCameraPermissionStatus().catch(() => "unknown"),
-			backend.getAccessibilityPermissionStatus().catch(() => "unknown"),
-		]);
-
-		const state: PermissionState = {
-			screenRecording: screenStatus as PermissionStatus,
-			microphone: micStatus as PermissionStatus,
-			camera: camStatus as PermissionStatus,
-			accessibility: accessStatus as PermissionStatus,
-		};
-
+		// Single atomic commit regardless of which code path ran above
 		if (mountedRef.current) {
-			setPermissions(state);
+			setPermissions(result);
 			setIsChecking(false);
 		}
 
-		return state;
+		return result;
 	}, [setIsMacOS, setPermissions, setIsChecking]);
 
 	const requestBrowserMediaAccess = useCallback(
