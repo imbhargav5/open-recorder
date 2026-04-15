@@ -129,8 +129,14 @@ function waitForFont(fontFamily: string, timeout = 5000): Promise<void> {
         });
     } else {
       // Fallback for browsers without Font Loading API
-      // Wait a bit and hope for the best
-      setTimeout(() => resolve(), 1000);
+      // After waiting, verify the font loaded if the API is now available
+      setTimeout(() => {
+        if ('fonts' in document && !document.fonts.check(`16px "${fontFamily}"`)) {
+          reject(new Error(`Font "${fontFamily}" failed to load`));
+        } else {
+          resolve();
+        }
+      }, 1000);
     }
   });
 }
@@ -138,9 +144,7 @@ function waitForFont(fontFamily: string, timeout = 5000): Promise<void> {
 // Load all stored custom fonts on app initialization
 export function loadAllCustomFonts(): Promise<void[]> {
   const fonts = getCustomFonts();
-  return Promise.all(fonts.map(font => loadFont(font).catch(err => {
-    console.error('Failed to load custom font:', font.name, err);
-  })));
+  return Promise.all(fonts.map(font => loadFont(font)));
 }
 
 // Generate a unique ID for a font
