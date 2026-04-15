@@ -53,14 +53,15 @@ export function ExportDialog({
   }, [isOpen, isExporting, progress]);
 
   useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
     if (!isExporting && progress && progress.percentage >= 100 && !error) {
       setShowSuccess(true);
-      const timer = setTimeout(() => {
+      timer = setTimeout(() => {
         setShowSuccess(false);
         onClose();
       }, 2000);
-      return () => clearTimeout(timer);
     }
+    return () => clearTimeout(timer);
   }, [isExporting, progress, error, onClose]);
 
   if (!isOpen) return null;

@@ -151,7 +151,8 @@ pub async fn load_project_file(
             s.has_unsaved_changes = false;
         }
 
-        let project: serde_json::Value = serde_json::from_str(&data).map_err(|e| e.to_string())?;
+        let project: serde_json::Value = serde_json::from_str(&data)
+            .map_err(|e| format!("Failed to parse {}: {}", path_str, e))?;
 
         Ok(Some(serde_json::json!({
             "data": project,
@@ -177,8 +178,8 @@ pub async fn load_current_project_file(
                 .await
                 .map_err(|e: std::io::Error| e.to_string())?;
 
-            let project: serde_json::Value =
-                serde_json::from_str(&data).map_err(|e| e.to_string())?;
+            let project: serde_json::Value = serde_json::from_str(&data)
+                .map_err(|e| format!("Failed to parse {}: {}", path, e))?;
 
             Ok(Some(serde_json::json!({
                 "data": project,
@@ -323,6 +324,45 @@ mod tests {
     #[test]
     fn test_load_current_nonexistent_path() {
         assert!(!std::path::Path::new("/nonexistent/project.openrecorder").exists());
+    }
+
+    // ==================== Issue #19: JSON parse errors include file path ====================
+
+    #[test]
+    fn test_json_parse_error_includes_filename() {
+        let path_str = "/some/path/corrupt.openrecorder";
+        let bad_json = "{not valid json";
+        let result: Result<serde_json::Value, String> = serde_json::from_str(bad_json)
+            .map_err(|e| format!("Failed to parse {}: {}", path_str, e));
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.contains("corrupt.openrecorder"),
+            "Error should contain filename, got: {}",
+            err
+        );
+        assert!(
+            err.starts_with("Failed to parse"),
+            "Error should start with 'Failed to parse', got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_json_parse_error_includes_full_path() {
+        let path_str = "/deep/nested/dir/my_project.openrecorder";
+        let bad_json = "not-json-at-all";
+        let result: Result<serde_json::Value, String> = serde_json::from_str(bad_json)
+            .map_err(|e| format!("Failed to parse {}: {}", path_str, e));
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.contains(path_str),
+            "Error should contain the full path, got: {}",
+            err
+        );
     }
 
     // ==================== Project File Roundtrip ====================

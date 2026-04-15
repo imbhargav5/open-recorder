@@ -186,11 +186,17 @@ export function getSystemCursorAssets(): Promise<any> {
 // ─── Permissions ────────────────────────────────────────────────────────────
 
 export function getScreenRecordingPermissionStatus(): Promise<string> {
-	return invoke("get_screen_recording_permission_status");
+	return invoke("get_screen_recording_permission_status").catch((err) => {
+		console.error("[backend] getScreenRecordingPermissionStatus failed:", err);
+		return "unknown";
+	});
 }
 
 export function requestScreenRecordingPermission(): Promise<boolean> {
-	return invoke("request_screen_recording_permission");
+	return invoke("request_screen_recording_permission").catch((err) => {
+		console.error("[backend] requestScreenRecordingPermission failed:", err);
+		return false;
+	});
 }
 
 export function openScreenRecordingPreferences(): Promise<void> {
@@ -198,11 +204,17 @@ export function openScreenRecordingPreferences(): Promise<void> {
 }
 
 export function getAccessibilityPermissionStatus(): Promise<string> {
-	return invoke("get_accessibility_permission_status");
+	return invoke("get_accessibility_permission_status").catch((err) => {
+		console.error("[backend] getAccessibilityPermissionStatus failed:", err);
+		return "unknown";
+	});
 }
 
 export function requestAccessibilityPermission(): Promise<boolean> {
-	return invoke("request_accessibility_permission");
+	return invoke("request_accessibility_permission").catch((err) => {
+		console.error("[backend] requestAccessibilityPermission failed:", err);
+		return false;
+	});
 }
 
 export function openAccessibilityPreferences(): Promise<void> {
@@ -210,19 +222,31 @@ export function openAccessibilityPreferences(): Promise<void> {
 }
 
 export function getMicrophonePermissionStatus(): Promise<string> {
-	return invoke("get_microphone_permission_status");
+	return invoke("get_microphone_permission_status").catch((err) => {
+		console.error("[backend] getMicrophonePermissionStatus failed:", err);
+		return "unknown";
+	});
 }
 
 export function requestMicrophonePermission(): Promise<boolean> {
-	return invoke("request_microphone_permission");
+	return invoke("request_microphone_permission").catch((err) => {
+		console.error("[backend] requestMicrophonePermission failed:", err);
+		return false;
+	});
 }
 
 export function getCameraPermissionStatus(): Promise<string> {
-	return invoke("get_camera_permission_status");
+	return invoke("get_camera_permission_status").catch((err) => {
+		console.error("[backend] getCameraPermissionStatus failed:", err);
+		return "unknown";
+	});
 }
 
 export function requestCameraPermission(): Promise<boolean> {
-	return invoke("request_camera_permission");
+	return invoke("request_camera_permission").catch((err) => {
+		console.error("[backend] requestCameraPermission failed:", err);
+		return false;
+	});
 }
 
 export function openMicrophonePreferences(): Promise<void> {

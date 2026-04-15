@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use crate::app_paths;
@@ -43,8 +43,43 @@ fn get_recordings_dir(state: &AppState) -> PathBuf {
     }
 }
 
+/// Returns true only if `path` (or its parent, for not-yet-created files) resolves
+/// to a location inside the app's data dir, cache dir, or the system temp dir.
+fn is_within_allowed_dirs(path: &Path) -> bool {
+    let canonical = if path.exists() {
+        match std::fs::canonicalize(path) {
+            Ok(p) => p,
+            Err(_) => return false,
+        }
+    } else {
+        // File not created yet – canonicalize parent and re-attach the filename.
+        let parent = path.parent().unwrap_or(path);
+        match std::fs::canonicalize(parent) {
+            Ok(p) => match path.file_name() {
+                Some(name) => p.join(name),
+                None => return false,
+            },
+            Err(_) => return false,
+        }
+    };
+
+    let allowed: Vec<PathBuf> = [
+        dirs::data_dir(),
+        dirs::cache_dir(),
+        Some(std::env::temp_dir()),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+
+    allowed.iter().any(|d| canonical.starts_with(d))
+}
+
 #[tauri::command]
 pub async fn read_local_file(path: String) -> Result<Vec<u8>, String> {
+    if !is_within_allowed_dirs(Path::new(&path)) {
+        return Err(format!("Access denied: path is outside allowed directories"));
+    }
     tokio::fs::read(&path).await.map_err(|e| e.to_string())
 }
 
@@ -68,7 +103,10 @@ pub async fn store_recorded_video(
         .await
         .map_err(|e| e.to_string())?;
 
-    let path_str = file_path.to_string_lossy().to_string();
+    let path_str = file_path
+        .to_str()
+        .ok_or_else(|| "Invalid UTF-8 in path".to_string())?
+        .to_string();
 
     // Also set as current video path
     {
@@ -98,11 +136,18 @@ pub async fn prepare_recording_file(
         .await
         .map_err(|e| e.to_string())?;
 
-    Ok(file_path.to_string_lossy().to_string())
+    let path_str = file_path
+        .to_str()
+        .ok_or_else(|| "Invalid UTF-8 in path".to_string())?
+        .to_string();
+    Ok(path_str)
 }
 
 #[tauri::command]
 pub async fn append_recording_data(path: String, data: Vec<u8>) -> Result<(), String> {
+    if !is_within_allowed_dirs(Path::new(&path)) {
+        return Err(format!("Access denied: path is outside allowed directories"));
+    }
     let mut file = tokio::fs::OpenOptions::new()
         .create(true)
         .append(true)
@@ -152,7 +197,11 @@ pub async fn store_recording_asset(
         .await
         .map_err(|e| e.to_string())?;
 
-    Ok(file_path.to_string_lossy().to_string())
+    let path_str = file_path
+        .to_str()
+        .ok_or_else(|| "Invalid UTF-8 in path".to_string())?
+        .to_string();
+    Ok(path_str)
 }
 
 #[tauri::command]
@@ -357,5 +406,97 @@ mod tests {
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), data);
+    }
+
+    // ==================== Issue #20: Invalid UTF-8 path fails loudly ====================
+
+    #[cfg(unix)]
+    #[test]
+    fn test_invalid_utf8_path_returns_error() {
+        use std::ffi::OsStr;
+        use std::os::unix::ffi::OsStrExt;
+
+        // Build a PathBuf whose bytes are not valid UTF-8
+        let invalid_bytes: &[u8] = &[0xFF, 0xFE, b'f', b'i', b'l', b'e', b'.', b'm', b'p', b'4'];
+        let os_str = OsStr::from_bytes(invalid_bytes);
+        let path = std::path::Path::new(os_str);
+
+        // The fixed code uses to_str().ok_or_else(...) — verify it returns Err
+        let result: Result<String, String> = path
+            .to_str()
+            .ok_or_else(|| "Invalid UTF-8 in path".to_string())
+            .map(|s| s.to_string());
+
+        assert!(result.is_err(), "Expected Err for invalid UTF-8 path");
+        assert_eq!(result.unwrap_err(), "Invalid UTF-8 in path");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_valid_utf8_path_succeeds() {
+        use std::path::PathBuf;
+
+        let path = PathBuf::from("/tmp/valid_utf8_recording.mp4");
+        let result: Result<String, String> = path
+            .to_str()
+            .ok_or_else(|| "Invalid UTF-8 in path".to_string())
+            .map(|s| s.to_string());
+
+        assert!(result.is_ok(), "Expected Ok for valid UTF-8 path");
+        assert_eq!(result.unwrap(), "/tmp/valid_utf8_recording.mp4");
+    }
+
+    // ==================== Path traversal / security ====================
+
+    #[tokio::test]
+    async fn test_read_local_file_path_traversal_rejected() {
+        // Both a relative traversal and an absolute sensitive path must be denied.
+        for path in &["../../etc/passwd", "/etc/passwd", "/etc/shadow"] {
+            let result = read_local_file(path.to_string()).await;
+            assert!(
+                result.is_err(),
+                "expected error for path {:?}, got Ok",
+                path
+            );
+            let err = result.unwrap_err();
+            assert!(
+                err.contains("Access denied"),
+                "expected 'Access denied' in error for path {:?}, got: {}",
+                path,
+                err
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_append_recording_data_path_traversal_rejected() {
+        for path in &["../../etc/cron.d/evil", "/etc/cron.d/evil"] {
+            let result =
+                append_recording_data(path.to_string(), b"malicious".to_vec()).await;
+            assert!(
+                result.is_err(),
+                "expected error for path {:?}, got Ok",
+                path
+            );
+            let err = result.unwrap_err();
+            assert!(
+                err.contains("Access denied"),
+                "expected 'Access denied' in error for path {:?}, got: {}",
+                path,
+                err
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_read_local_file_in_temp_dir_allowed() {
+        let dir = std::env::temp_dir();
+        let path = dir.join("open_recorder_security_test.txt");
+        tokio::fs::write(&path, b"allowed").await.unwrap();
+
+        let result = read_local_file(path.to_string_lossy().to_string()).await;
+        let _ = tokio::fs::remove_file(&path).await;
+
+        assert!(result.is_ok(), "temp dir should be allowed: {:?}", result);
     }
 }

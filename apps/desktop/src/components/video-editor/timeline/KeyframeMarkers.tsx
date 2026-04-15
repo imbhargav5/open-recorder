@@ -32,7 +32,12 @@ const KeyframeMarkers: React.FC<KeyframeMarkersProps> = ({
     const handleMouseMove = (e: MouseEvent) => {
       if (!timelineRef.current) return;
 
-      const rect = timelineRef.current.getBoundingClientRect();
+      let rect: DOMRect;
+      try {
+        rect = timelineRef.current.getBoundingClientRect();
+      } catch {
+        return;
+      }
       const clickX = e.clientX - rect.left - sidebarWidth;
       const relativeMs = pixelsToValue(clickX);
       const absoluteMs = Math.max(0, Math.min(range.start + relativeMs, videoDurationMs));

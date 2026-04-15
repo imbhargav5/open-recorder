@@ -16,6 +16,21 @@ const HUD_HEIGHT: f64 = 155.0;
 /// Bottom margin (logical pixels) between the HUD and the screen edge.
 const HUD_BOTTOM_MARGIN: f64 = 5.0;
 
+/// Checks whether a recording is currently active and, if so, clears the flag
+/// so state does not dangle after the window is gone.
+///
+/// Returns `true` when recording was active (the caller should emit a
+/// `"recording-interrupted"` event so that any surviving renderer can
+/// finalise the session gracefully).
+fn check_recording_on_window_destroy(state: &mut AppState) -> bool {
+    if state.native_screen_recording_active {
+        state.native_screen_recording_active = false;
+        true
+    } else {
+        false
+    }
+}
+
 /// Compute the physical pixel position for the HUD overlay so it sits at the
 /// bottom-center of the monitor.
 ///
@@ -171,10 +186,16 @@ pub fn run() {
             }
             tauri::WindowEvent::Destroyed => {
                 let label = window.label().to_string();
-                if commands::window_mgmt::is_editor_window_label(&label) {
-                    let state: tauri::State<'_, Mutex<AppState>> = window.state();
-                    let lock_result = state.lock();
-                    if let Ok(mut s) = lock_result {
+                let state: tauri::State<'_, Mutex<AppState>> = window.state();
+                let lock_result = state.lock();
+                if let Ok(mut s) = lock_result {
+                    // If a recording was active when this window was destroyed,
+                    // clear the flag and notify any surviving renderers so they
+                    // can finalise the session rather than silently losing data.
+                    if check_recording_on_window_destroy(&mut s) {
+                        let _ = window.app_handle().emit("recording-interrupted", ());
+                    }
+                    if commands::window_mgmt::is_editor_window_label(&label) {
                         s.unsaved_editor_windows.remove(&label);
                         s.has_unsaved_changes = !s.unsaved_editor_windows.is_empty();
                     }
@@ -294,5 +315,93 @@ mod tests {
             hud_center,
             monitor_center
         );
+    }
+
+    // ==================== check_recording_on_window_destroy ====================
+
+    #[test]
+    fn test_recording_interrupted_when_active() {
+        let mut state = AppState::default();
+        state.native_screen_recording_active = true;
+
+        let interrupted = check_recording_on_window_destroy(&mut state);
+
+        assert!(
+            interrupted,
+            "should signal interruption when recording was active"
+        );
+        assert!(
+            !state.native_screen_recording_active,
+            "recording flag must be cleared after interruption"
+        );
+    }
+
+    #[test]
+    fn test_no_interrupt_when_not_recording() {
+        let mut state = AppState::default();
+        assert!(!state.native_screen_recording_active);
+
+        let interrupted = check_recording_on_window_destroy(&mut state);
+
+        assert!(!interrupted, "must not signal interruption when not recording");
+        assert!(!state.native_screen_recording_active);
+    }
+
+    #[test]
+    fn test_window_destroy_clears_recording_flag_via_mutex() {
+        // Simulate the full Destroyed-handler path: lock state, call helper,
+        // assert the returned bool drives the "emit" decision correctly.
+        let state_mutex = std::sync::Mutex::new(AppState::default());
+
+        // Arrange: recording is active with a video path
+        {
+            let mut s = state_mutex.lock().unwrap();
+            s.native_screen_recording_active = true;
+            s.current_video_path = Some("/tmp/recording.mov".to_string());
+        }
+
+        // Act: simulate what the Destroyed handler now does
+        let should_emit = {
+            let mut s = state_mutex.lock().unwrap();
+            check_recording_on_window_destroy(&mut s)
+        };
+
+        // Assert: the handler should have decided to emit the event …
+        assert!(should_emit, "expected interrupt signal for active recording");
+
+        // … and the recording flag is cleared so state does not dangle
+        let s = state_mutex.lock().unwrap();
+        assert!(
+            !s.native_screen_recording_active,
+            "recording flag should be cleared after window destroy"
+        );
+        // The video path is intentionally preserved for potential recovery
+        assert_eq!(s.current_video_path.as_deref(), Some("/tmp/recording.mov"));
+    }
+
+    #[test]
+    fn test_window_destroy_no_emit_when_idle() {
+        let state_mutex = std::sync::Mutex::new(AppState::default());
+
+        let should_emit = {
+            let mut s = state_mutex.lock().unwrap();
+            check_recording_on_window_destroy(&mut s)
+        };
+
+        assert!(!should_emit, "no interrupt expected when recording is idle");
+    }
+
+    #[test]
+    fn test_check_recording_idempotent_when_called_twice() {
+        // Calling the helper twice on the same state must not re-signal after
+        // the first call has already cleared the flag.
+        let mut state = AppState::default();
+        state.native_screen_recording_active = true;
+
+        let first = check_recording_on_window_destroy(&mut state);
+        let second = check_recording_on_window_destroy(&mut state);
+
+        assert!(first, "first call should detect active recording");
+        assert!(!second, "second call must not re-signal after flag cleared");
     }
 }

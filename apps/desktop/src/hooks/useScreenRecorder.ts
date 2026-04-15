@@ -167,6 +167,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	const recordingHasData = useRef(false);
 	const facecamHasData = useRef(false);
 	const facecamPendingWrites = useRef<Promise<void>[]>([]);
+	const mountedRef = useRef(true);
 
 	const resetStagedFileState = useCallback(
 		(
@@ -603,13 +604,17 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				} catch (error) {
 					console.error("Error stopping native screen recording:", error);
 				}
+				if (!mountedRef.current) return;
+
 				await backend.setRecordingState(false).catch(() => null);
+				if (!mountedRef.current) return;
 
 				cleanupCapturedMedia();
 
 				if (!stoppedPath) {
 					console.error("Failed to stop native screen recording");
 					await facecamResultPromise.catch(() => null);
+					if (!mountedRef.current) return;
 					await backend.switchToEditor();
 					return;
 				}
@@ -619,6 +624,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				if (isWgc) {
 					try {
 						const muxPath = await backend.muxWgcRecording();
+						if (!mountedRef.current) return;
 						finalPath = muxPath ?? stoppedPath;
 					} catch {
 						// use original path
@@ -626,9 +632,15 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				}
 
 				const facecamResult = await facecamResultPromise.catch(() => null);
+				if (!mountedRef.current) return;
+
 				const recordingSession = buildRecordingSession(finalPath, facecamResult);
 				await backend.setCurrentVideoPath(finalPath).catch(() => null);
+				if (!mountedRef.current) return;
+
 				await backend.setCurrentRecordingSession(recordingSession);
+				if (!mountedRef.current) return;
+
 				await backend.switchToEditor(
 					buildEditorWindowQuery({
 						mode: "session",
@@ -693,6 +705,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			});
 
 		return () => {
+			mountedRef.current = false;
 			unlistenTray?.();
 			unlistenState?.();
 			unlistenInterrupted?.();

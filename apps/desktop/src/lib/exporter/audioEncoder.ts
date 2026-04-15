@@ -446,11 +446,18 @@ export class AudioProcessor {
 		}
 
 		return new Promise<void>((resolve, reject) => {
+			const timeoutId = setTimeout(() => {
+				cleanup();
+				reject(new Error("Metadata load timed out after 30s"));
+			}, 30_000);
+
 			const onLoaded = () => {
+				clearTimeout(timeoutId);
 				cleanup();
 				resolve();
 			};
 			const onError = () => {
+				clearTimeout(timeoutId);
 				cleanup();
 				reject(new Error("Failed to load media metadata for speed-adjusted audio"));
 			};
