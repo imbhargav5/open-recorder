@@ -20,4 +20,4 @@ export function getInitialLocale(): AppLocale {
 	return normalizeLocale(window.navigator.language);
 }
 
-export const localeAtom = atomWithStorage<AppLocale>(LOCALE_STORAGE_KEY, getInitialLocale());
+export const localeAtom = atomWithStorage<AppLocale>(LOCALE_STORAGE_KEY, DEFAULT_LOCALE);

@@ -113,6 +113,13 @@ export function SourceSelector() {
 	const [windowsLoading, setWindowsLoading] = useAtom(windowsLoadingAtom);
 
 	useEffect(() => {
+		const params = new URLSearchParams(window.location.search);
+		if (params.get("tab") === "windows") {
+			setActiveTab("windows");
+		}
+	}, [setActiveTab]);
+
+	useEffect(() => {
 		let cancelled = false;
 
 		async function fetchSources() {
