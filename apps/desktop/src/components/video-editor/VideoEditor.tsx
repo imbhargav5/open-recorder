@@ -8,7 +8,7 @@ import {
 	Image,
 	LoaderCircle,
 } from "lucide-react";
-import { useAtom } from "jotai";
+import { useAtom, useSetAtom } from "jotai";
 import { Profiler, useCallback, useEffect, useMemo, useRef } from "react";
 import {
 	annotationRegionsAtom,
@@ -19,10 +19,8 @@ import {
 	borderRadiusAtom,
 	connectZoomsAtom,
 	cropRegionAtom,
-	cursorClickBounceAtom,
-	cursorMotionBlurAtom,
-	cursorSizeAtom,
-	cursorSmoothingAtom,
+	type CursorSettings,
+	cursorSettingsAtom,
 	cursorTelemetryAtom,
 	currentProjectPathAtom,
 	durationAtom,
@@ -42,7 +40,6 @@ import {
 	isExportingAtom,
 	isPlayingAtom,
 	lastSavedSnapshotAtom,
-	loopCursorAtom,
 	paddingAtom,
 	playbackReadyAtom,
 	selectedAnnotationIdAtom,
@@ -50,7 +47,6 @@ import {
 	selectedTrimIdAtom,
 	selectedZoomIdAtom,
 	shadowIntensityAtom,
-	showCursorAtom,
 	showExportDialogAtom,
 	showShortcutsDialogAtom,
 	sourceNameAtom,
@@ -242,12 +238,8 @@ export default function VideoEditor() {
 	const [backgroundBlur, setBackgroundBlur] = useAtom(backgroundBlurAtom);
 	const [zoomMotionBlur, setZoomMotionBlur] = useAtom(zoomMotionBlurAtom);
 	const [connectZooms, setConnectZooms] = useAtom(connectZoomsAtom);
-	const [showCursor, setShowCursor] = useAtom(showCursorAtom);
-	const [loopCursor, setLoopCursor] = useAtom(loopCursorAtom);
-	const [cursorSize, setCursorSize] = useAtom(cursorSizeAtom);
-	const [cursorSmoothing, setCursorSmoothing] = useAtom(cursorSmoothingAtom);
-	const [cursorMotionBlur, setCursorMotionBlur] = useAtom(cursorMotionBlurAtom);
-	const [cursorClickBounce, setCursorClickBounce] = useAtom(cursorClickBounceAtom);
+	const [cursorSettings, setCursorSettings] = useAtom(cursorSettingsAtom);
+	const { showCursor, loopCursor, cursorSize, cursorSmoothing, cursorMotionBlur, cursorClickBounce } = cursorSettings;
 	const [borderRadius, setBorderRadius] = useAtom(borderRadiusAtom);
 	const [padding, setPadding] = useAtom(paddingAtom);
 	const [cropRegion, setCropRegion] = useAtom(cropRegionAtom);
@@ -261,18 +253,20 @@ export default function VideoEditor() {
 	const [selectedSpeedId, setSelectedSpeedId] = useAtom(selectedSpeedIdAtom);
 	const [annotationRegions, setAnnotationRegions] = useAtom(annotationRegionsAtom);
 	const [selectedAnnotationId, setSelectedAnnotationId] = useAtom(selectedAnnotationIdAtom);
-	const [isExporting, setIsExporting] = useAtom(isExportingAtom);
-	const [exportProgress, setExportProgress] = useAtom(exportProgressAtom);
-	const [exportError, setExportError] = useAtom(exportErrorAtom);
-	const [showExportDialog, setShowExportDialog] = useAtom(showExportDialogAtom);
-	const [showShortcutsDialog, setShowShortcutsDialog] = useAtom(showShortcutsDialogAtom);
+	// Bug #7: these values are only read by child dialogs — use useSetAtom so VideoEditor
+	// does not re-render when export progress, errors, or dialog visibility change.
+	const setIsExporting = useSetAtom(isExportingAtom);
+	const setExportProgress = useSetAtom(exportProgressAtom);
+	const setExportError = useSetAtom(exportErrorAtom);
+	const setShowExportDialog = useSetAtom(showExportDialogAtom);
+	const setShowShortcutsDialog = useSetAtom(showShortcutsDialogAtom);
 	const [aspectRatio, setAspectRatio] = useAtom(aspectRatioAtom);
 	const [exportQuality, setExportQuality] = useAtom(exportQualityAtom);
 	const [exportFormat, setExportFormat] = useAtom(exportFormatAtom);
 	const [gifFrameRate, setGifFrameRate] = useAtom(gifFrameRateAtom);
 	const [gifLoop, setGifLoop] = useAtom(gifLoopAtom);
 	const [gifSizePreset, setGifSizePreset] = useAtom(gifSizePresetAtom);
-	const [exportedFilePath, setExportedFilePath] = useAtom(exportedFilePathAtom);
+	const setExportedFilePath = useSetAtom(exportedFilePathAtom);
 	const [hasPendingExportSave, setHasPendingExportSave] = useAtom(hasPendingExportSaveAtom);
 	const [lastSavedSnapshot, setLastSavedSnapshot] = useAtom(lastSavedSnapshotAtom);
 
@@ -466,12 +460,14 @@ export default function VideoEditor() {
 			setBackgroundBlur(normalizedEditor.backgroundBlur);
 			setZoomMotionBlur(normalizedEditor.zoomMotionBlur);
 			setConnectZooms(normalizedEditor.connectZooms);
-			setShowCursor(normalizedEditor.showCursor);
-			setLoopCursor(normalizedEditor.loopCursor);
-			setCursorSize(normalizedEditor.cursorSize);
-			setCursorSmoothing(normalizedEditor.cursorSmoothing);
-			setCursorMotionBlur(normalizedEditor.cursorMotionBlur);
-			setCursorClickBounce(normalizedEditor.cursorClickBounce);
+			setCursorSettings({
+				showCursor: normalizedEditor.showCursor,
+				loopCursor: normalizedEditor.loopCursor,
+				cursorSize: normalizedEditor.cursorSize,
+				cursorSmoothing: normalizedEditor.cursorSmoothing,
+				cursorMotionBlur: normalizedEditor.cursorMotionBlur,
+				cursorClickBounce: normalizedEditor.cursorClickBounce,
+			});
 			setBorderRadius(normalizedEditor.borderRadius);
 			setPadding(normalizedEditor.padding);
 			setCropRegion(normalizedEditor.cropRegion);
@@ -596,12 +592,7 @@ export default function VideoEditor() {
 		backgroundBlur,
 		zoomMotionBlur,
 		connectZooms,
-		showCursor,
-		loopCursor,
-		cursorSize,
-		cursorSmoothing,
-		cursorMotionBlur,
-		cursorClickBounce,
+		cursorSettings,
 		borderRadius,
 		padding,
 		cropRegion,
@@ -818,12 +809,7 @@ export default function VideoEditor() {
 			backgroundBlur,
 			zoomMotionBlur,
 			connectZooms,
-			showCursor,
-			loopCursor,
-			cursorSize,
-			cursorSmoothing,
-			cursorMotionBlur,
-			cursorClickBounce,
+			cursorSettings,
 			borderRadius,
 			padding,
 			cropRegion,
@@ -1170,6 +1156,32 @@ export default function VideoEditor() {
 		if (!video) return;
 		video.currentTime = time;
 	}, []);
+
+	// Stable per-field cursor setters (needed because SettingsPanel is memo'd)
+	const setShowCursor = useCallback(
+		(v: CursorSettings["showCursor"]) => setCursorSettings((p) => ({ ...p, showCursor: v })),
+		[setCursorSettings],
+	);
+	const setLoopCursor = useCallback(
+		(v: CursorSettings["loopCursor"]) => setCursorSettings((p) => ({ ...p, loopCursor: v })),
+		[setCursorSettings],
+	);
+	const setCursorSize = useCallback(
+		(v: CursorSettings["cursorSize"]) => setCursorSettings((p) => ({ ...p, cursorSize: v })),
+		[setCursorSettings],
+	);
+	const setCursorSmoothing = useCallback(
+		(v: CursorSettings["cursorSmoothing"]) => setCursorSettings((p) => ({ ...p, cursorSmoothing: v })),
+		[setCursorSettings],
+	);
+	const setCursorMotionBlur = useCallback(
+		(v: CursorSettings["cursorMotionBlur"]) => setCursorSettings((p) => ({ ...p, cursorMotionBlur: v })),
+		[setCursorSettings],
+	);
+	const setCursorClickBounce = useCallback(
+		(v: CursorSettings["cursorClickBounce"]) => setCursorSettings((p) => ({ ...p, cursorClickBounce: v })),
+		[setCursorSettings],
+	);
 
 	// Derived values for SettingsPanel — memoized to keep props stable
 	const selectedZoomDepth = useMemo(() => {
@@ -2022,13 +2034,9 @@ export default function VideoEditor() {
 			backgroundBlur,
 			zoomMotionBlur,
 			connectZooms,
-			showCursor,
+			cursorSettings,
 			effectiveCursorTelemetry,
 			effectiveZoomRegions,
-			cursorSize,
-			cursorSmoothing,
-			cursorMotionBlur,
-			cursorClickBounce,
 			borderRadius,
 			padding,
 			cropRegion,
@@ -2602,19 +2610,14 @@ export default function VideoEditor() {
 
 			<Toaster theme="dark" className="pointer-events-auto" />
 
-			<AllShortcutsDialog open={showShortcutsDialog} onOpenChange={setShowShortcutsDialog} />
+			<AllShortcutsDialog />
 
 			<ExportDialog
-				isOpen={showExportDialog}
 				onClose={handleExportDialogClose}
-				progress={exportProgress}
-				isExporting={isExporting}
-				error={exportError}
 				onCancel={handleCancelExport}
 				onRetrySave={handleRetrySaveExport}
 				canRetrySave={hasPendingExportSave}
 				exportFormat={exportFormat}
-				exportedFilePath={exportedFilePath}
 			/>
 		</div>
 	);

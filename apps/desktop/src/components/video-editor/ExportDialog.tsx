@@ -1,37 +1,41 @@
 import { useEffect, useState } from 'react';
 import { X, Download, Loader2 } from 'lucide-react';
+import { useAtomValue } from 'jotai';
 import { Button } from '@/components/ui/button';
-import type { ExportProgress } from '@/lib/exporter';
 import { toast } from 'sonner';
 import { revealInFolder } from '@/lib/backend';
+import {
+  exportedFilePathAtom,
+  exportErrorAtom,
+  exportProgressAtom,
+  isExportingAtom,
+  showExportDialogAtom,
+} from '@/atoms/videoEditor';
 
 
 interface ExportDialogProps {
-  isOpen: boolean;
   onClose: () => void;
-  progress: ExportProgress | null;
-  isExporting: boolean;
-  error: string | null;
   onCancel?: () => void;
   onRetrySave?: () => void;
   canRetrySave?: boolean;
   exportFormat?: 'mp4' | 'gif';
-  exportedFilePath?: string;
 }
 
 export function ExportDialog({
-  isOpen,
   onClose,
-  progress,
-  isExporting,
-  error,
   onCancel,
   onRetrySave,
   canRetrySave = false,
   exportFormat = 'mp4',
-  exportedFilePath, // Add this line
 }: ExportDialogProps) {
   console.log("render <ExportDialog>");
+  // Bug #7: subscribe directly so VideoEditor doesn't re-render on export state changes
+  const isOpen = useAtomValue(showExportDialogAtom);
+  const isExporting = useAtomValue(isExportingAtom);
+  const progress = useAtomValue(exportProgressAtom);
+  const error = useAtomValue(exportErrorAtom);
+  const exportedFilePath = useAtomValue(exportedFilePathAtom);
+
   const [showSuccess, setShowSuccess] = useState(false);
 
   // Reset showSuccess when a new export starts or dialog reopens
@@ -62,12 +66,12 @@ export function ExportDialog({
   if (!isOpen) return null;
 
   const formatLabel = exportFormat === 'gif' ? 'GIF' : 'Video';
-  
+
   // Determine if we're in the compiling phase (frames done but still exporting)
   const isCompiling = isExporting && progress && progress.percentage >= 100 && exportFormat === 'gif';
   const isFinalizing = progress?.phase === 'finalizing';
   const renderProgress = progress?.renderProgress;
-  
+
   // Get status message based on phase
   const getStatusMessage = () => {
     if (error) return 'Please try again';
@@ -101,7 +105,7 @@ export function ExportDialog({
 
   return (
     <>
-      <div 
+      <div
         className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 animate-in fade-in duration-200"
         onClick={isExporting ? undefined : onClose}
       />
@@ -215,7 +219,7 @@ export function ExportDialog({
                     />
                   ) : (
                     <div className="h-full w-full relative overflow-hidden">
-                      <div 
+                      <div
                         className="absolute h-full w-1/3 bg-[#2563EB] shadow-[0_0_10px_rgba(37,99,235,0.3)]"
                         style={{
                           animation: 'indeterminate 1.5s ease-in-out infinite',
@@ -280,4 +284,3 @@ export function ExportDialog({
     </>
   );
 }
-

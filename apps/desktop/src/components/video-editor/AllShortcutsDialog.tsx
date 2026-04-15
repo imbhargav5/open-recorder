@@ -1,3 +1,4 @@
+import { useAtom } from "jotai";
 import { useShortcuts } from "@/contexts/ShortcutsContext";
 import { formatBinding, SHORTCUT_ACTIONS, SHORTCUT_LABELS } from "@/lib/shortcuts";
 import {
@@ -7,11 +8,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-
-interface AllShortcutsDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-}
+import { showShortcutsDialogAtom } from "@/atoms/videoEditor";
 
 interface ShortcutEntry {
   label: string;
@@ -19,7 +16,9 @@ interface ShortcutEntry {
   other: string;
 }
 
-export function AllShortcutsDialog({ open, onOpenChange }: AllShortcutsDialogProps) {
+// Bug #7: subscribe directly so VideoEditor doesn't re-render on dialog open/close.
+export function AllShortcutsDialog() {
+  const [open, setOpen] = useAtom(showShortcutsDialogAtom);
   const { shortcuts, isMac } = useShortcuts();
 
   const fileShortcuts: ShortcutEntry[] = [
@@ -63,7 +62,7 @@ export function AllShortcutsDialog({ open, onOpenChange }: AllShortcutsDialogPro
   ];
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent className="max-w-md bg-[#09090b] border-white/10 text-slate-200">
         <DialogHeader>
           <DialogTitle className="text-sm font-semibold text-slate-100">
