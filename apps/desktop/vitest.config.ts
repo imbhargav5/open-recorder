@@ -8,6 +8,7 @@ export default defineConfig({
 		globals: true,
 		environment: "node",
 		include: ["src/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}"],
+		exclude: ["e2e/**"],
 		setupFiles: ["./src/test-setup.ts"],
 	},
 	resolve: {

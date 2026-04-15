@@ -33,3 +33,34 @@ jobs:
 
       - name: Run tests
         run: pnpm --filter @open-recorder/desktop exec npx vitest run --reporter=verbose
+
+  e2e:
+    name: Playwright E2E
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.17.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        run: pnpm --filter @open-recorder/desktop exec playwright install chromium --with-deps
+
+      - name: Run E2E tests
+        run: pnpm --filter @open-recorder/desktop e2e
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: apps/desktop/e2e-results/

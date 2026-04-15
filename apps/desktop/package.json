@@ -33,7 +33,9 @@
 		"i18n:check": "node scripts/i18n-check.mjs",
 		"test": "vitest --run",
 		"test:watch": "vitest",
-		"typecheck": "tsc --noEmit"
+		"typecheck": "tsc --noEmit",
+		"e2e": "playwright test --config e2e/playwright.config.ts",
+		"e2e:ui": "playwright test --config e2e/playwright.config.ts --ui"
 	},
 	"dependencies": {
 		"@fix-webm-duration/fix": "^1.0.1",
@@ -96,6 +98,7 @@
 		"xstate": "^5.28.0"
 	},
 	"devDependencies": {
+		"@playwright/test": "^1.52.0",
 		"@biomejs/biome": "2.3.13",
 		"@tauri-apps/cli": "^2",
 		"@testing-library/jest-dom": "^6.9.1",
