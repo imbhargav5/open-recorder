@@ -166,6 +166,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	const facecamWriteError = useRef<Error | null>(null);
 	const recordingHasData = useRef(false);
 	const facecamHasData = useRef(false);
+	const facecamPendingWrites = useRef<Promise<void>[]>([]);
 
 	const resetStagedFileState = useCallback(
 		(
@@ -482,6 +483,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				facecamWriteError,
 				facecamHasData,
 			);
+			facecamPendingWrites.current = [];
 			facecamRecordingPath.current = await backend.prepareRecordingFile(
 				`${RECORDING_FILE_PREFIX}${sessionId}${FACECAM_FILE_SUFFIX}`,
 			);
@@ -510,13 +512,14 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 				recorder.ondataavailable = (event) => {
 					if (event.data && event.data.size > 0) {
-						void queueRecordingChunkWrite(
+						const writePromise = queueRecordingChunkWrite(
 							facecamRecordingPath,
 							facecamWriteChain,
 							facecamWriteError,
 							facecamHasData,
 							event.data,
 						);
+						facecamPendingWrites.current.push(writePromise);
 					}
 				};
 
@@ -527,6 +530,11 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 				recorder.onstop = async () => {
 					cameraRecorder.current = null;
+
+					// Drain all in-flight chunk writes before finalizing to prevent
+					// data loss when the component unmounts mid-recording.
+					await Promise.all(facecamPendingWrites.current);
+					facecamPendingWrites.current = [];
 
 					try {
 						const startedAt = cameraRecordingStartedAt.current ?? Date.now();
