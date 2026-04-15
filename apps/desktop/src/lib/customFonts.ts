@@ -111,22 +111,39 @@ function waitForFont(fontFamily: string, timeout = 5000): Promise<void> {
   return new Promise((resolve, reject) => {
     // Use CSS Font Loading API if available
     if ('fonts' in document) {
-      Promise.race([
-        document.fonts.load(`16px "${fontFamily}"`),
-        new Promise((_, rej) => setTimeout(() => rej(new Error('Font load timeout')), timeout))
-      ])
-        .then(() => {
-          // Verify the font actually loaded by checking if it's available
-          const isAvailable = document.fonts.check(`16px "${fontFamily}"`);
-          if (isAvailable) {
-            resolve();
-          } else {
-            reject(new Error(`Font "${fontFamily}" failed to load`));
+      // Avoid Promise.race so neither the timeout nor the font-load promise
+      // can escape as an unhandled rejection when the other side wins.
+      let settled = false;
+
+      const timeoutId = setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          reject(new Error('Font load timeout'));
+        }
+      }, timeout);
+
+      document.fonts.load(`16px "${fontFamily}"`).then(
+        () => {
+          if (!settled) {
+            clearTimeout(timeoutId);
+            settled = true;
+            // Verify the font actually loaded by checking if it's available
+            const isAvailable = document.fonts.check(`16px "${fontFamily}"`);
+            if (isAvailable) {
+              resolve();
+            } else {
+              reject(new Error(`Font "${fontFamily}" failed to load`));
+            }
           }
-        })
-        .catch((error) => {
-          reject(error);
-        });
+        },
+        (err: unknown) => {
+          if (!settled) {
+            clearTimeout(timeoutId);
+            settled = true;
+            reject(err);
+          }
+        }
+      );
     } else {
       // Fallback for browsers without Font Loading API
       // After waiting, verify the font loaded if the API is now available

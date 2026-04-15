@@ -62,6 +62,10 @@ describe("customFonts", () => {
 
 			const font = makeTestFont();
 			const promise = loadFont(font);
+			// Attach a no-op rejection handler before advancing timers so that
+			// Vitest's unhandled-rejection detector doesn't fire while
+			// vi.advanceTimersByTimeAsync runs (the expect() handler is added after).
+			promise.catch(() => {});
 
 			// Advance past the 5 000 ms timeout inside waitForFont
 			await vi.advanceTimersByTimeAsync(6000);

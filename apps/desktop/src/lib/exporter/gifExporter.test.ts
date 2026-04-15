@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import * as fc from 'fast-check';
-import { calculateOutputDimensions } from './gifExporter';
+import { calculateOutputDimensions } from './gifDimensions';
 import { GIF_SIZE_PRESETS, GifSizePreset } from './types';
 
 /**
