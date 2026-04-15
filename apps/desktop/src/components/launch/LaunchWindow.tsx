@@ -235,9 +235,11 @@ export function LaunchWindow() {
 				}
 
 				cameraPreviewRef.current.srcObject = previewStream;
-				await cameraPreviewRef.current.play().catch(() => {
-					// Ignore autoplay races for the preview element.
-				});
+				if (cameraPreviewRef.current) {
+					await cameraPreviewRef.current.play().catch((err) => {
+						console.warn("Camera preview play() failed:", err);
+					});
+				}
 			} catch (error) {
 				console.error("Failed to load facecam preview:", error);
 			}
