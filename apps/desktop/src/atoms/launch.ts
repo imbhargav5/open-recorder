@@ -11,7 +11,7 @@ export function getInitialLaunchView(): LaunchView {
 	}
 }
 
-export const launchViewAtom = atom<LaunchView>(getInitialLaunchView());
+export const launchViewAtom = atom<LaunchView>("choice");
 export const screenshotModeAtom = atom<ScreenshotMode | null>(null);
 export const isCapturingAtom = atom<boolean>(false);
 export const recordingStartAtom = atom<number | null>(null);

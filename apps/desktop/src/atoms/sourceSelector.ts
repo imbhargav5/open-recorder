@@ -15,6 +15,6 @@ export function getInitialTab(): SourceSelectorTab {
 
 export const sourcesAtom = atom<DesktopSource[]>([]);
 export const selectedDesktopSourceAtom = atom<DesktopSource | null>(null);
-export const sourceSelectorTabAtom = atom<SourceSelectorTab>(getInitialTab());
+export const sourceSelectorTabAtom = atom<SourceSelectorTab>("screens");
 export const sourcesLoadingAtom = atom<boolean>(true);
 export const windowsLoadingAtom = atom<boolean>(true);

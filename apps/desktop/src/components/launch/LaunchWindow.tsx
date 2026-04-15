@@ -100,6 +100,16 @@ export function LaunchWindow() {
 	const [screenshotMode, setScreenshotMode] = useAtom(screenshotModeAtom);
 	const [isCapturing, setIsCapturing] = useAtom(isCapturingAtom);
 
+	useEffect(() => {
+		try {
+			if (localStorage.getItem("open-recorder-onboarding-v1") !== "true") {
+				setView("onboarding");
+			}
+		} catch {
+			// ignore
+		}
+	}, [setView]);
+
 	const permissionsHook = usePermissions();
 
 	const {
