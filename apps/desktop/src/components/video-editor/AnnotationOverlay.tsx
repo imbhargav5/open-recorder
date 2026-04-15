@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { Rnd } from "react-rnd";
 import type { AnnotationRegion } from "./types";
 import { cn } from "@/lib/utils";
@@ -33,6 +33,13 @@ export function AnnotationOverlay({
   const height = (annotation.size.height / 100) * containerHeight;
 
   const isDraggingRef = useRef(false);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   const renderArrow = () => {
     const direction = annotation.figureData?.arrowDirection || 'right';
@@ -128,9 +135,16 @@ export function AnnotationOverlay({
         const yPercent = (d.y / containerHeight) * 100;
         onPositionChange(annotation.id, { x: xPercent, y: yPercent });
         
-        // Reset dragging flag after a short delay to prevent click event
+        // Reset dragging flag after a short delay to prevent click event.
+        // Guard against component unmount before the timeout fires.
         setTimeout(() => {
-          isDraggingRef.current = false;
+          try {
+            if (isMountedRef.current && isDraggingRef.current !== null) {
+              isDraggingRef.current = false;
+            }
+          } catch (err) {
+            console.error("[AnnotationOverlay] Error in drag reset callback:", err);
+          }
         }, 100);
       }}
       onResizeStop={(_e, _direction, ref, _delta, position) => {

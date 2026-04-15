@@ -31,7 +31,10 @@ export default function App() {
 
 		// Load custom fonts on app initialization
 		loadAllCustomFonts().catch((error) => {
-			console.error("Failed to load custom fonts:", error);
+			console.warn(
+				"Some custom fonts failed to load — text appearance may differ from expected.",
+				error,
+			);
 		});
 
 		getName()

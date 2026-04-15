@@ -23,6 +23,7 @@ import {
 	type ScreenshotMode,
 	screenshotModeAtom,
 	selectedSourceAtom,
+	sourceCheckErrorAtom,
 } from "@/atoms/launch";
 import { buildEditorWindowQuery } from "@/components/video-editor/editorWindowParams";
 import * as backend from "@/lib/backend";
@@ -293,6 +294,7 @@ export function LaunchWindow() {
 	// Source tracking
 	const [selectedSource, setSelectedSource] = useAtom(selectedSourceAtom);
 	const [hasSelectedSource, setHasSelectedSource] = useAtom(hasSelectedSourceAtom);
+	const [, setSourceCheckError] = useAtom(sourceCheckErrorAtom);
 	useEffect(() => {
 		const checkSelectedSource = async () => {
 			try {
@@ -300,15 +302,18 @@ export function LaunchWindow() {
 				const nextState = resolveSelectedSourceState(source);
 				setSelectedSource(nextState.selectedSource);
 				setHasSelectedSource(nextState.hasSelectedSource);
-			} catch {
-				// ignore
+				setSourceCheckError(null);
+			} catch (err) {
+				const error = err instanceof Error ? err : new Error(String(err));
+				console.warn("[LaunchWindow] source check failed:", error);
+				setSourceCheckError(error);
 			}
 		};
 
 		void checkSelectedSource();
 		const interval = setInterval(checkSelectedSource, 500);
 		return () => clearInterval(interval);
-	}, [setHasSelectedSource, setSelectedSource]);
+	}, [setHasSelectedSource, setSelectedSource, setSourceCheckError]);
 
 	const openSourceSelector = useCallback(
 		async (tab?: "screens" | "windows") => {
@@ -362,19 +367,33 @@ export function LaunchWindow() {
 	}, []);
 
 	useEffect(() => {
-		const unlistenVideo = backend.onMenuOpenVideoFile(() => {
-			void openVideoFile();
-		});
-		const unlistenProject = backend.onMenuLoadProject(() => {
-			void openProjectFile();
-		});
-		const unlistenNewRecording = backend.onNewRecordingFromTray(() => {
-			void openSourceSelector();
-		});
+		let mounted = true;
+		const cleanups: Array<() => void> = [];
+
+		void (async () => {
+			const [unlistenVideo, unlistenProject, unlistenNewRecording] = await Promise.all([
+				backend.onMenuOpenVideoFile(() => {
+					void openVideoFile();
+				}),
+				backend.onMenuLoadProject(() => {
+					void openProjectFile();
+				}),
+				backend.onNewRecordingFromTray(() => {
+					void openSourceSelector();
+				}),
+			]);
+			if (!mounted) {
+				unlistenVideo();
+				unlistenProject();
+				unlistenNewRecording();
+				return;
+			}
+			cleanups.push(unlistenVideo, unlistenProject, unlistenNewRecording);
+		})();
+
 		return () => {
-			void unlistenVideo.then((fn) => fn());
-			void unlistenProject.then((fn) => fn());
-			void unlistenNewRecording.then((fn) => fn());
+			mounted = false;
+			cleanups.forEach((fn) => fn());
 		};
 	}, [openProjectFile, openSourceSelector, openVideoFile]);
 

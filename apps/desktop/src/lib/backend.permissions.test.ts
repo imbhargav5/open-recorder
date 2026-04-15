@@ -51,6 +51,21 @@ describe("permission backend wrappers", () => {
 				expect(result).toBe(status);
 			}
 		});
+
+		it("logs error and returns 'unknown' when IPC call rejects", async () => {
+			const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+			const ipcError = new Error("IPC channel closed");
+			invoke.mockRejectedValue(ipcError);
+
+			const result = await backend.getMicrophonePermissionStatus();
+
+			expect(result).toBe("unknown");
+			expect(errorSpy).toHaveBeenCalledOnce();
+			expect(errorSpy).toHaveBeenCalledWith(
+				"[backend] getMicrophonePermissionStatus failed:",
+				ipcError,
+			);
+		});
 	});
 
 	describe("openMicrophonePreferences", () => {
@@ -68,6 +83,21 @@ describe("permission backend wrappers", () => {
 			expect(invoke).toHaveBeenCalledWith("request_microphone_permission");
 			expect(result).toBe(true);
 		});
+
+		it("logs error and returns false when IPC call rejects", async () => {
+			const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+			const ipcError = new Error("IPC channel closed");
+			invoke.mockRejectedValue(ipcError);
+
+			const result = await backend.requestMicrophonePermission();
+
+			expect(result).toBe(false);
+			expect(errorSpy).toHaveBeenCalledOnce();
+			expect(errorSpy).toHaveBeenCalledWith(
+				"[backend] requestMicrophonePermission failed:",
+				ipcError,
+			);
+		});
 	});
 
 	// ==================== Camera ====================
@@ -78,6 +108,21 @@ describe("permission backend wrappers", () => {
 			const result = await backend.getCameraPermissionStatus();
 			expect(invoke).toHaveBeenCalledWith("get_camera_permission_status");
 			expect(result).toBe("not_determined");
+		});
+
+		it("logs error and returns 'unknown' when IPC call rejects", async () => {
+			const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+			const ipcError = new Error("IPC channel closed");
+			invoke.mockRejectedValue(ipcError);
+
+			const result = await backend.getCameraPermissionStatus();
+
+			expect(result).toBe("unknown");
+			expect(errorSpy).toHaveBeenCalledOnce();
+			expect(errorSpy).toHaveBeenCalledWith(
+				"[backend] getCameraPermissionStatus failed:",
+				ipcError,
+			);
 		});
 	});
 
@@ -96,6 +141,21 @@ describe("permission backend wrappers", () => {
 			expect(invoke).toHaveBeenCalledWith("request_camera_permission");
 			expect(result).toBe(false);
 		});
+
+		it("logs error and returns false when IPC call rejects", async () => {
+			const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+			const ipcError = new Error("IPC channel closed");
+			invoke.mockRejectedValue(ipcError);
+
+			const result = await backend.requestCameraPermission();
+
+			expect(result).toBe(false);
+			expect(errorSpy).toHaveBeenCalledOnce();
+			expect(errorSpy).toHaveBeenCalledWith(
+				"[backend] requestCameraPermission failed:",
+				ipcError,
+			);
+		});
 	});
 
 	// ==================== Screen Recording (existing, verify still works) ====================
@@ -107,6 +167,21 @@ describe("permission backend wrappers", () => {
 			expect(invoke).toHaveBeenCalledWith("get_screen_recording_permission_status");
 			expect(result).toBe("granted");
 		});
+
+		it("logs error and returns 'unknown' when IPC call rejects", async () => {
+			const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+			const ipcError = new Error("IPC channel closed");
+			invoke.mockRejectedValue(ipcError);
+
+			const result = await backend.getScreenRecordingPermissionStatus();
+
+			expect(result).toBe("unknown");
+			expect(errorSpy).toHaveBeenCalledOnce();
+			expect(errorSpy).toHaveBeenCalledWith(
+				"[backend] getScreenRecordingPermissionStatus failed:",
+				ipcError,
+			);
+		});
 	});
 
 	describe("requestScreenRecordingPermission", () => {
@@ -115,6 +190,21 @@ describe("permission backend wrappers", () => {
 			const result = await backend.requestScreenRecordingPermission();
 			expect(invoke).toHaveBeenCalledWith("request_screen_recording_permission");
 			expect(result).toBe(true);
+		});
+
+		it("logs error and returns false when IPC call rejects", async () => {
+			const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+			const ipcError = new Error("IPC channel closed");
+			invoke.mockRejectedValue(ipcError);
+
+			const result = await backend.requestScreenRecordingPermission();
+
+			expect(result).toBe(false);
+			expect(errorSpy).toHaveBeenCalledOnce();
+			expect(errorSpy).toHaveBeenCalledWith(
+				"[backend] requestScreenRecordingPermission failed:",
+				ipcError,
+			);
 		});
 	});
 
@@ -134,6 +224,38 @@ describe("permission backend wrappers", () => {
 			const result = await backend.getAccessibilityPermissionStatus();
 			expect(invoke).toHaveBeenCalledWith("get_accessibility_permission_status");
 			expect(result).toBe("granted");
+		});
+
+		it("logs error and returns 'unknown' when IPC call rejects", async () => {
+			const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+			const ipcError = new Error("IPC channel closed");
+			invoke.mockRejectedValue(ipcError);
+
+			const result = await backend.getAccessibilityPermissionStatus();
+
+			expect(result).toBe("unknown");
+			expect(errorSpy).toHaveBeenCalledOnce();
+			expect(errorSpy).toHaveBeenCalledWith(
+				"[backend] getAccessibilityPermissionStatus failed:",
+				ipcError,
+			);
+		});
+	});
+
+	describe("requestAccessibilityPermission", () => {
+		it("logs error and returns false when IPC call rejects", async () => {
+			const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+			const ipcError = new Error("IPC channel closed");
+			invoke.mockRejectedValue(ipcError);
+
+			const result = await backend.requestAccessibilityPermission();
+
+			expect(result).toBe(false);
+			expect(errorSpy).toHaveBeenCalledOnce();
+			expect(errorSpy).toHaveBeenCalledWith(
+				"[backend] requestAccessibilityPermission failed:",
+				ipcError,
+			);
 		});
 	});
 

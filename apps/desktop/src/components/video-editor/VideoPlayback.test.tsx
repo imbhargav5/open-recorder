@@ -496,4 +496,43 @@ describe("VideoPlayback", () => {
 		expect(video.volume).toBeCloseTo(0.8);
 		await harness.unmount();
 	});
+
+	it("removes playback event listeners on unmount using the captured video reference", async () => {
+		const addEventSpy = vi.spyOn(HTMLVideoElement.prototype, "addEventListener");
+		const removeEventSpy = vi.spyOn(HTMLVideoElement.prototype, "removeEventListener");
+
+		const harness = await renderPlayback();
+		const video = getPrimaryVideo(harness.container);
+
+		defineMediaProperty(video, "videoWidth", 1920);
+		defineMediaProperty(video, "videoHeight", 1080);
+		defineMediaProperty(video, "duration", 10);
+		defineMediaProperty(video, "readyState", HTMLMediaElement.HAVE_CURRENT_DATA);
+
+		await act(async () => {
+			video.dispatchEvent(new Event("loadedmetadata"));
+			video.dispatchEvent(new Event("loadeddata"));
+		});
+		await flushEffects();
+
+		// The effect may run more than once as state settles, so capture the most-recent
+		// handler registered for each playback event — those are the live listeners.
+		const playbackEvents = new Set(["play", "pause", "ended", "seeked", "seeking"]);
+		const latestHandlers = new Map<string, EventListener>();
+		for (const [event, handler] of addEventSpy.mock.calls) {
+			if (playbackEvents.has(event as string)) {
+				latestHandlers.set(event as string, handler as EventListener);
+			}
+		}
+		expect(latestHandlers.size).toBe(5);
+
+		await harness.unmount();
+
+		// Each live listener must be removed with the exact same handler reference that was
+		// added, proving cleanup used the captured videoRef.current from effect setup time
+		// rather than reading the (possibly null) ref at teardown time.
+		for (const [event, handler] of latestHandlers) {
+			expect(removeEventSpy).toHaveBeenCalledWith(event, handler);
+		}
+	});
 });

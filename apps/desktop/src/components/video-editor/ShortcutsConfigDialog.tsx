@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Keyboard, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -28,6 +28,13 @@ export function ShortcutsConfigDialog() {
   const [captureFor, setCaptureFor] = useState<ShortcutAction | null>(null);
   const [conflict, setConflict] = useState<{ forAction: ShortcutAction; pending: ShortcutBinding; conflictWith: ShortcutConflict } | null>(null);
 
+  // Refs keep the handler closure always reading the latest values without
+  // forcing the listener to be torn down and re-added on every state change.
+  const captureForRef = useRef<ShortcutAction | null>(captureFor);
+  const draftRef = useRef<ShortcutsConfig>(draft);
+  captureForRef.current = captureFor;
+  draftRef.current = draft;
+
   useEffect(() => {
     if (isConfigOpen) {
       setDraft(shortcuts);
@@ -36,10 +43,13 @@ export function ShortcutsConfigDialog() {
     }
   }, [isConfigOpen, shortcuts]);
 
+  // Register the listener once on mount and always remove it on unmount,
+  // regardless of captureFor state, so no keydown events leak after close.
   useEffect(() => {
-    if (!captureFor) return;
-
     const handleCapture = (e: KeyboardEvent) => {
+      const currentCaptureFor = captureForRef.current;
+      if (!currentCaptureFor) return;
+
       e.preventDefault();
       e.stopPropagation();
 
@@ -57,7 +67,7 @@ export function ShortcutsConfigDialog() {
         ...(e.altKey ? { alt: true } : {}),
       };
 
-      const found = findConflict(binding, captureFor, draft);
+      const found = findConflict(binding, currentCaptureFor, draftRef.current);
       setCaptureFor(null);
 
       if (found?.type === 'fixed') {
@@ -66,16 +76,16 @@ export function ShortcutsConfigDialog() {
       }
 
       if (found?.type === 'configurable') {
-        setConflict({ forAction: captureFor, pending: binding, conflictWith: found });
+        setConflict({ forAction: currentCaptureFor, pending: binding, conflictWith: found });
         return;
       }
 
-      setDraft((prev: ShortcutsConfig) => ({ ...prev, [captureFor]: binding }));
+      setDraft((prev: ShortcutsConfig) => ({ ...prev, [currentCaptureFor]: binding }));
     };
 
     window.addEventListener('keydown', handleCapture, { capture: true });
     return () => window.removeEventListener('keydown', handleCapture, { capture: true });
-  }, [captureFor]);
+  }, []);
 
   const handleSwap = useCallback(() => {
     if (!conflict || conflict.conflictWith.type !== 'configurable') return;

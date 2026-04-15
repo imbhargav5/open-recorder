@@ -106,8 +106,12 @@ export function PermissionOnboarding({ permissionsHook, onComplete }: Permission
 
 		const win = getCurrentWindow();
 		void (async () => {
-			await win.setSize(new LogicalSize(ONBOARDING_WINDOW_WIDTH, ONBOARDING_WINDOW_HEIGHT));
-			await win.center();
+			try {
+				await win.setSize(new LogicalSize(ONBOARDING_WINDOW_WIDTH, ONBOARDING_WINDOW_HEIGHT));
+				await win.center();
+			} catch (err) {
+				console.error("[PermissionOnboarding] window resize failed, continuing with current size:", err);
+			}
 		})();
 	}, []);
 
