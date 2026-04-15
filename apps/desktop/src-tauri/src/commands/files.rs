@@ -68,7 +68,10 @@ pub async fn store_recorded_video(
         .await
         .map_err(|e| e.to_string())?;
 
-    let path_str = file_path.to_string_lossy().to_string();
+    let path_str = file_path
+        .to_str()
+        .ok_or_else(|| "Invalid UTF-8 in path".to_string())?
+        .to_string();
 
     // Also set as current video path
     {
@@ -98,7 +101,11 @@ pub async fn prepare_recording_file(
         .await
         .map_err(|e| e.to_string())?;
 
-    Ok(file_path.to_string_lossy().to_string())
+    let path_str = file_path
+        .to_str()
+        .ok_or_else(|| "Invalid UTF-8 in path".to_string())?
+        .to_string();
+    Ok(path_str)
 }
 
 #[tauri::command]
@@ -152,7 +159,11 @@ pub async fn store_recording_asset(
         .await
         .map_err(|e| e.to_string())?;
 
-    Ok(file_path.to_string_lossy().to_string())
+    let path_str = file_path
+        .to_str()
+        .ok_or_else(|| "Invalid UTF-8 in path".to_string())?
+        .to_string();
+    Ok(path_str)
 }
 
 #[tauri::command]
@@ -357,5 +368,43 @@ mod tests {
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), data);
+    }
+
+    // ==================== Issue #20: Invalid UTF-8 path fails loudly ====================
+
+    #[cfg(unix)]
+    #[test]
+    fn test_invalid_utf8_path_returns_error() {
+        use std::ffi::OsStr;
+        use std::os::unix::ffi::OsStrExt;
+
+        // Build a PathBuf whose bytes are not valid UTF-8
+        let invalid_bytes: &[u8] = &[0xFF, 0xFE, b'f', b'i', b'l', b'e', b'.', b'm', b'p', b'4'];
+        let os_str = OsStr::from_bytes(invalid_bytes);
+        let path = std::path::Path::new(os_str);
+
+        // The fixed code uses to_str().ok_or_else(...) — verify it returns Err
+        let result: Result<String, String> = path
+            .to_str()
+            .ok_or_else(|| "Invalid UTF-8 in path".to_string())
+            .map(|s| s.to_string());
+
+        assert!(result.is_err(), "Expected Err for invalid UTF-8 path");
+        assert_eq!(result.unwrap_err(), "Invalid UTF-8 in path");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_valid_utf8_path_succeeds() {
+        use std::path::PathBuf;
+
+        let path = PathBuf::from("/tmp/valid_utf8_recording.mp4");
+        let result: Result<String, String> = path
+            .to_str()
+            .ok_or_else(|| "Invalid UTF-8 in path".to_string())
+            .map(|s| s.to_string());
+
+        assert!(result.is_ok(), "Expected Ok for valid UTF-8 path");
+        assert_eq!(result.unwrap(), "/tmp/valid_utf8_recording.mp4");
     }
 }
