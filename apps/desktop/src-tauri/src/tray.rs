@@ -104,7 +104,7 @@ fn tray_icon_image(_app: &tauri::App) -> Result<Image<'static>, Box<dyn std::err
 }
 
 #[cfg(not(target_os = "macos"))]
-fn tray_icon_image(app: &tauri::App) -> Result<Image<'static>, Box<dyn std::error::Error>> {
+fn tray_icon_image<R: tauri::Runtime>(app: &tauri::App<R>) -> Result<Image<'static>, Box<dyn std::error::Error>> {
     app.default_window_icon()
         .cloned()
         .map(into_owned_tray_image)
