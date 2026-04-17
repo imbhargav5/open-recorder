@@ -367,11 +367,7 @@ export default function ImageEditor() {
 		try {
 			// Show HUD overlay again, then close this window
 			await backend.hudOverlayShow();
-
-			// Close image editor
-			const { getCurrentWindow } = await import("@tauri-apps/api/window");
-			const win = getCurrentWindow();
-			await win.close();
+			window.close();
 		} catch {
 			// ignore
 		}

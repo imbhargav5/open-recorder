@@ -2,18 +2,14 @@
  * Tests for the permission-related backend wrappers.
  *
  * These verify that each permission function delegates to the correct
- * Tauri invoke command with the expected arguments.
+ * IPC command with the expected arguments.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// Mock the Tauri invoke API before importing the module under test
-vi.mock("@tauri-apps/api/core", () => ({
+// Mock the Electron IPC bridge before importing the module under test
+vi.mock("@/lib/electronBridge", () => ({
 	invoke: vi.fn(),
-	convertFileSrc: vi.fn((path: string) => `asset://localhost/${path}`),
-}));
-
-vi.mock("@tauri-apps/api/event", () => ({
 	listen: vi.fn(),
 }));
 
@@ -21,7 +17,7 @@ vi.mock("@/lib/mediaPlaybackUrl", () => ({
 	resolveMediaPlaybackUrl: vi.fn((path: string) => path),
 }));
 
-const { invoke } = vi.mocked(await import("@tauri-apps/api/core"));
+const { invoke } = vi.mocked(await import("@/lib/electronBridge"));
 
 const backend = await import("@/lib/backend");
 
@@ -158,7 +154,7 @@ describe("permission backend wrappers", () => {
 		});
 	});
 
-	// ==================== Screen Recording (existing, verify still works) ====================
+	// ==================== Screen Recording ====================
 
 	describe("getScreenRecordingPermissionStatus", () => {
 		it("invokes the correct command", async () => {
@@ -216,7 +212,7 @@ describe("permission backend wrappers", () => {
 		});
 	});
 
-	// ==================== Accessibility (existing, verify still works) ====================
+	// ==================== Accessibility ====================
 
 	describe("getAccessibilityPermissionStatus", () => {
 		it("invokes the correct command", async () => {

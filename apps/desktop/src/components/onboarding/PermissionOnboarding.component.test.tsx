@@ -2,7 +2,7 @@
 
 /**
  * Component-level tests for PermissionOnboarding.
- * Focuses on the Tauri window-resize path and error resilience.
+ * Focuses on the window-resize path and error resilience.
  */
 
 import { act } from "react";
@@ -10,39 +10,13 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { UsePermissionsResult } from "../../hooks/usePermissions";
 
-// ─── Mock Tauri window API ────────────────────────────────────────────────────
+// ─── Mock Electron IPC bridge ─────────────────────────────────────────────────
 
-const mockSetSize = vi.fn();
-const mockCenter = vi.fn();
-const mockSetPosition = vi.fn();
-const mockSetSize2 = vi.fn();
+const mockInvoke = vi.fn();
 
-vi.mock("@tauri-apps/api/window", () => ({
-	getCurrentWindow: () => ({
-		setSize: mockSetSize,
-		center: mockCenter,
-		setPosition: mockSetPosition,
-	}),
-	primaryMonitor: vi.fn().mockResolvedValue(null),
-}));
-
-vi.mock("@tauri-apps/api/dpi", () => ({
-	LogicalSize: class {
-		width: number;
-		height: number;
-		constructor(w: number, h: number) {
-			this.width = w;
-			this.height = h;
-		}
-	},
-	PhysicalPosition: class {
-		x: number;
-		y: number;
-		constructor(x: number, y: number) {
-			this.x = x;
-			this.y = y;
-		}
-	},
+vi.mock("@/lib/electronBridge", () => ({
+	invoke: mockInvoke,
+	listen: vi.fn(),
 }));
 
 const { PermissionOnboarding } = await import("./PermissionOnboarding");
@@ -109,10 +83,9 @@ beforeEach(() => {
 	localStorage.clear();
 });
 
-describe("PermissionOnboarding — setSize error resilience", () => {
-	it("renders the welcome step normally when setSize succeeds", async () => {
-		mockSetSize.mockResolvedValue(undefined);
-		mockCenter.mockResolvedValue(undefined);
+describe("PermissionOnboarding — resize error resilience", () => {
+	it("renders the welcome step normally when resize_hud_to_onboarding succeeds", async () => {
+		mockInvoke.mockResolvedValue(null);
 
 		const harness = await renderOnboarding(makePermissionsHook());
 
@@ -122,9 +95,8 @@ describe("PermissionOnboarding — setSize error resilience", () => {
 		await harness.unmount();
 	});
 
-	it("continues to render correctly and does not crash when setSize throws", async () => {
-		mockSetSize.mockRejectedValue(new Error("Tauri IPC failure: setSize"));
-		mockCenter.mockResolvedValue(undefined);
+	it("continues to render correctly and does not crash when resize_hud_to_onboarding throws", async () => {
+		mockInvoke.mockRejectedValue(new Error("IPC failure: resize_hud_to_onboarding"));
 
 		const harness = await renderOnboarding(makePermissionsHook());
 
@@ -135,8 +107,8 @@ describe("PermissionOnboarding — setSize error resilience", () => {
 		await harness.unmount();
 	});
 
-	it("does not call onComplete prematurely when setSize throws", async () => {
-		mockSetSize.mockRejectedValue(new Error("Tauri IPC failure: setSize"));
+	it("does not call onComplete prematurely when resize_hud_to_onboarding throws", async () => {
+		mockInvoke.mockRejectedValue(new Error("IPC failure: resize_hud_to_onboarding"));
 		const onComplete = vi.fn();
 
 		const harness = await renderOnboarding(makePermissionsHook(), onComplete);
@@ -147,23 +119,21 @@ describe("PermissionOnboarding — setSize error resilience", () => {
 	});
 
 	it("step dots are rendered and reflect the initial step index", async () => {
-		mockSetSize.mockRejectedValue(new Error("Tauri IPC failure: setSize"));
+		mockInvoke.mockRejectedValue(new Error("IPC failure: resize_hud_to_onboarding"));
 
 		const harness = await renderOnboarding(makePermissionsHook());
 
 		// Non-macOS flow: welcome | microphone | camera | done → 4 dots
 		const dots = harness.container.querySelectorAll(".rounded-full");
 		// There will be multiple rounded-full elements (icons, spinner, dots).
-		// The step dot bar specifically uses a flex row of small divs — just assert
-		// there are at least 4 dot-like elements present.
+		// Just assert there are at least 4 dot-like elements present.
 		expect(dots.length).toBeGreaterThanOrEqual(4);
 
 		await harness.unmount();
 	});
 
-	it("allows the user to proceed past welcome when setSize threw on mount", async () => {
-		mockSetSize.mockRejectedValue(new Error("Tauri IPC failure: setSize"));
-		mockCenter.mockResolvedValue(undefined);
+	it("allows the user to proceed past welcome when resize_hud_to_onboarding threw on mount", async () => {
+		mockInvoke.mockRejectedValue(new Error("IPC failure: resize_hud_to_onboarding"));
 
 		const harness = await renderOnboarding(makePermissionsHook());
 

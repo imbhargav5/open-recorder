@@ -1,6 +1,20 @@
-import { getIdentifier } from "@tauri-apps/api/app";
-import { relaunch } from "@tauri-apps/plugin-process";
-import { check, type Update } from "@tauri-apps/plugin-updater";
+// Updater stubs — electron-updater is invoked from the main process.
+// The renderer triggers checks via IPC; for now these are no-ops that keep
+// the hook working without crashing.
+type DownloadProgressEvent =
+	| { event: "Started"; data: { contentLength?: number } }
+	| { event: "Progress"; data: { chunkLength: number } }
+	| { event: "Finished"; data: Record<string, never> };
+
+interface Update {
+	version: string;
+	body?: string;
+	downloadAndInstall: (onProgress: (event: DownloadProgressEvent) => void) => Promise<void>;
+}
+
+const check = async (): Promise<Update | null> => null;
+const relaunch = async () => { window.location.reload(); };
+const getIdentifier = async () => "dev.openrecorder.app";
 import { useAtom } from "jotai";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {

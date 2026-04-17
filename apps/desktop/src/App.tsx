@@ -1,4 +1,4 @@
-import { getName } from "@tauri-apps/api/app";
+import { invoke } from "@/lib/electronBridge";
 import { useAtom } from "jotai";
 import { useEffect } from "react";
 import { AppUpdaterDialog } from "./components/AppUpdaterDialog";
@@ -37,7 +37,7 @@ export default function App() {
 			);
 		});
 
-		getName()
+		invoke<string>("get_app_name")
 			.then(setAppName)
 			.catch(() => {
 				setAppName("Open Recorder");

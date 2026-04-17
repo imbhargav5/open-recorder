@@ -1,4 +1,3 @@
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useAtom } from "jotai";
 import { AppWindow, Loader2, Monitor } from "lucide-react";
 import { useEffect } from "react";
@@ -292,7 +291,7 @@ export function SourceSelector() {
 			</Tabs>
 
 			<div className="mt-4 flex justify-end gap-2 border-t border-border pt-4">
-				<Button variant="outline" onClick={() => getCurrentWindow().close()}>
+				<Button variant="outline" onClick={() => window.close()}>
 					Cancel
 				</Button>
 				<Button onClick={() => void handleShare()} disabled={!selectedSource}>

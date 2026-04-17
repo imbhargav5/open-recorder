@@ -1,0 +1,44 @@
+appId: dev.openrecorder.app
+productName: Open Recorder
+copyright: Copyright © 2024 Open Recorder
+
+directories:
+  output: release
+  buildResources: public/icons
+
+files:
+  - dist/**/*
+  - dist-electron/**/*
+  - "!node_modules/**/*"
+
+mac:
+  category: public.app-category.video
+  target:
+    - target: dmg
+      arch:
+        - arm64
+        - x64
+    - target: zip
+      arch:
+        - arm64
+        - x64
+  entitlementsInherit: build/entitlements.mac.plist
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+
+linux:
+  target:
+    - target: AppImage
+      arch:
+        - x64
+  category: Video
+
+publish:
+  provider: github
+  owner: imbhargav5
+  repo: open-recorder
+  releaseType: release

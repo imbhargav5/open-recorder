@@ -1,13 +1,19 @@
 /**
- * Backend abstraction layer — Tauri v2 commands and event listeners.
+ * Backend abstraction layer — Electron IPC via contextBridge.
+ *
+ * All communication with the Electron main process goes through this module.
+ * The public API is identical to the former Tauri version so call-sites need
+ * no changes.
  */
 
-import { convertFileSrc, invoke } from "@tauri-apps/api/core";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { invoke, listen } from "@/lib/electronBridge";
+import { toFileUrl } from "@/lib/fileUrl";
 import { resolveMediaPlaybackUrl as resolveMediaPlaybackAssetUrl } from "@/lib/mediaPlaybackUrl";
 import type { RecordingSession } from "./recordingSession";
 import type { ShortcutsConfig } from "./shortcuts";
 import type { DesktopSource } from "../components/launch/sourceSelectorState";
+
+export type UnlistenFn = () => void;
 
 // ─── Source List Options ─────────────────────────────────────────────────────
 
@@ -27,8 +33,6 @@ export interface NativeRecordingOptions {
 	microphoneDeviceId?: string;
 	microphoneLabel?: string;
 }
-
-export type { UnlistenFn };
 
 // ─── Platform ───────────────────────────────────────────────────────────────
 
@@ -190,13 +194,19 @@ export function stopCursorTelemetryCapture(videoPath?: string | null): Promise<v
 	return invoke("stop_cursor_telemetry_capture", { videoPath });
 }
 
-export function selectScreenArea(): Promise<{ x: number; y: number; width: number; height: number; displayId: number } | null> {
+export function selectScreenArea(): Promise<{
+	x: number;
+	y: number;
+	width: number;
+	height: number;
+	displayId: number;
+} | null> {
 	return invoke("select_screen_area");
 }
 
 // ─── Cursor ─────────────────────────────────────────────────────────────────
 
-export function getCursorTelemetry(videoPath: string): Promise<any> {
+export function getCursorTelemetry(videoPath: string): Promise<unknown> {
 	return invoke("get_cursor_telemetry", { videoPath });
 }
 
@@ -204,21 +214,21 @@ export function setCursorScale(scale: number): Promise<void> {
 	return invoke("set_cursor_scale", { scale });
 }
 
-export function getSystemCursorAssets(): Promise<any> {
+export function getSystemCursorAssets(): Promise<unknown> {
 	return invoke("get_system_cursor_assets");
 }
 
 // ─── Permissions ────────────────────────────────────────────────────────────
 
 export function getScreenRecordingPermissionStatus(): Promise<string> {
-	return invoke("get_screen_recording_permission_status").catch((err) => {
+	return invoke<string>("get_screen_recording_permission_status").catch((err) => {
 		console.error("[backend] getScreenRecordingPermissionStatus failed:", err);
 		return "unknown";
 	});
 }
 
 export function requestScreenRecordingPermission(): Promise<boolean> {
-	return invoke("request_screen_recording_permission").catch((err) => {
+	return invoke<boolean>("request_screen_recording_permission").catch((err) => {
 		console.error("[backend] requestScreenRecordingPermission failed:", err);
 		return false;
 	});
@@ -229,14 +239,14 @@ export function openScreenRecordingPreferences(): Promise<void> {
 }
 
 export function getAccessibilityPermissionStatus(): Promise<string> {
-	return invoke("get_accessibility_permission_status").catch((err) => {
+	return invoke<string>("get_accessibility_permission_status").catch((err) => {
 		console.error("[backend] getAccessibilityPermissionStatus failed:", err);
 		return "unknown";
 	});
 }
 
 export function requestAccessibilityPermission(): Promise<boolean> {
-	return invoke("request_accessibility_permission").catch((err) => {
+	return invoke<boolean>("request_accessibility_permission").catch((err) => {
 		console.error("[backend] requestAccessibilityPermission failed:", err);
 		return false;
 	});
@@ -247,28 +257,28 @@ export function openAccessibilityPreferences(): Promise<void> {
 }
 
 export function getMicrophonePermissionStatus(): Promise<string> {
-	return invoke("get_microphone_permission_status").catch((err) => {
+	return invoke<string>("get_microphone_permission_status").catch((err) => {
 		console.error("[backend] getMicrophonePermissionStatus failed:", err);
 		return "unknown";
 	});
 }
 
 export function requestMicrophonePermission(): Promise<boolean> {
-	return invoke("request_microphone_permission").catch((err) => {
+	return invoke<boolean>("request_microphone_permission").catch((err) => {
 		console.error("[backend] requestMicrophonePermission failed:", err);
 		return false;
 	});
 }
 
 export function getCameraPermissionStatus(): Promise<string> {
-	return invoke("get_camera_permission_status").catch((err) => {
+	return invoke<string>("get_camera_permission_status").catch((err) => {
 		console.error("[backend] getCameraPermissionStatus failed:", err);
 		return "unknown";
 	});
 }
 
 export function requestCameraPermission(): Promise<boolean> {
-	return invoke("request_camera_permission").catch((err) => {
+	return invoke<boolean>("request_camera_permission").catch((err) => {
 		console.error("[backend] requestCameraPermission failed:", err);
 		return false;
 	});
@@ -291,10 +301,7 @@ export function saveExportedVideo(videoData: Uint8Array, fileName: string): Prom
 	});
 }
 
-export function saveScreenshotFile(
-	imageData: Uint8Array,
-	fileName: string,
-): Promise<string | null> {
+export function saveScreenshotFile(imageData: Uint8Array, fileName: string): Promise<string | null> {
 	return invoke("save_screenshot_file", {
 		imageData: Array.from(imageData),
 		fileName,
@@ -313,11 +320,11 @@ export function saveProjectFile(
 	return invoke("save_project_file", { data, suggestedName, existingPath });
 }
 
-export function loadProjectFile(): Promise<any | null> {
+export function loadProjectFile(): Promise<unknown | null> {
 	return invoke("load_project_file");
 }
 
-export function loadCurrentProjectFile(): Promise<any | null> {
+export function loadCurrentProjectFile(): Promise<unknown | null> {
 	return invoke("load_current_project_file");
 }
 
@@ -386,59 +393,68 @@ export function muxWgcRecording(): Promise<string> {
 // ─── Event Listeners ────────────────────────────────────────────────────────
 
 export function onStopRecordingFromTray(callback: () => void): Promise<UnlistenFn> {
-	return listen("stop-recording-from-tray", callback);
+	return Promise.resolve(listen("stop-recording-from-tray", callback));
 }
 
 export function onNewRecordingFromTray(callback: () => void): Promise<UnlistenFn> {
-	return listen("new-recording-from-tray", callback);
+	return Promise.resolve(listen("new-recording-from-tray", callback));
 }
 
 export function onRecordingStateChanged(
 	callback: (recording: boolean) => void,
 ): Promise<UnlistenFn> {
-	return listen("recording-state-changed", (e) => callback(e.payload as boolean));
+	return Promise.resolve(listen("recording-state-changed", callback));
 }
 
 export function onRecordingInterrupted(callback: () => void): Promise<UnlistenFn> {
-	return listen("recording-interrupted", callback);
+	return Promise.resolve(listen("recording-interrupted", callback));
 }
 
 export function onCursorStateChanged(callback: (cursorType: string) => void): Promise<UnlistenFn> {
-	return listen("cursor-state-changed", (e) => callback(e.payload as string));
+	return Promise.resolve(listen("cursor-state-changed", callback));
 }
 
 export function onMenuOpenVideoFile(callback: () => void): Promise<UnlistenFn> {
-	return listen("menu-open-video-file", callback);
+	return Promise.resolve(listen("menu-open-video-file", callback));
 }
 
 export function onMenuLoadProject(callback: () => void): Promise<UnlistenFn> {
-	return listen("menu-load-project", callback);
+	return Promise.resolve(listen("menu-load-project", callback));
 }
 
 export function onMenuSaveProject(callback: () => void): Promise<UnlistenFn> {
-	return listen("menu-save-project", callback);
+	return Promise.resolve(listen("menu-save-project", callback));
 }
 
 export function onMenuSaveProjectAs(callback: () => void): Promise<UnlistenFn> {
-	return listen("menu-save-project-as", callback);
+	return Promise.resolve(listen("menu-save-project-as", callback));
 }
 
 export function onRequestSaveBeforeClose(callback: () => void): Promise<UnlistenFn> {
-	return listen("request-save-before-close", callback);
+	return Promise.resolve(listen("request-save-before-close", callback));
 }
 
 export function onMenuCheckUpdates(callback: () => void): Promise<UnlistenFn> {
-	return listen("menu-check-updates", callback);
+	return Promise.resolve(listen("menu-check-updates", callback));
 }
 
 // ─── Asset Path Conversion ──────────────────────────────────────────────────
 
-export function convertFileToSrc(path: string): Promise<string> {
-	return Promise.resolve(convertFileSrc(path));
+/**
+ * Convert a native file path to a URL that can be loaded in the renderer.
+ * In Electron the renderer can load file:// URLs directly.
+ */
+export function convertFileToSrc(filePath: string): Promise<string> {
+	return Promise.resolve(toFileUrl(filePath));
 }
 
 // ─── Runtime Detection ──────────────────────────────────────────────────────
 
+export function isElectron(): boolean {
+	return typeof window !== "undefined" && "electronAPI" in window;
+}
+
+/** @deprecated Use isElectron() */
 export function isTauri(): boolean {
-	return true;
+	return isElectron();
 }

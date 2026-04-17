@@ -6,18 +6,13 @@
  * a brief resize so the user gets a clear, focused permission-granting experience.
  */
 
-import { getCurrentWindow, primaryMonitor } from "@tauri-apps/api/window";
-import { LogicalSize, PhysicalPosition } from "@tauri-apps/api/dpi";
+import { invoke } from "@/lib/electronBridge";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MdCheck, MdClose, MdMic, MdScreenShare, MdVideocam } from "react-icons/md";
 import { HiShieldCheck } from "react-icons/hi2";
 import type { PermissionState, PermissionStatus, UsePermissionsResult } from "../../hooks/usePermissions";
 
 const ONBOARDING_COMPLETE_KEY = "open-recorder-onboarding-v1";
-const ONBOARDING_WINDOW_WIDTH = 480;
-const ONBOARDING_WINDOW_HEIGHT = 360;
-const HUD_WIDTH = 780;
-const HUD_HEIGHT = 155;
 
 type OnboardingStep = "welcome" | "screen_recording" | "microphone" | "camera" | "done";
 
@@ -104,37 +99,14 @@ export function PermissionOnboarding({ permissionsHook, onComplete }: Permission
 		if (resizedRef.current) return;
 		resizedRef.current = true;
 
-		const win = getCurrentWindow();
-		void (async () => {
-			try {
-				await win.setSize(new LogicalSize(ONBOARDING_WINDOW_WIDTH, ONBOARDING_WINDOW_HEIGHT));
-				await win.center();
-			} catch (err) {
-				console.error("[PermissionOnboarding] window resize failed, continuing with current size:", err);
-			}
-		})();
+		invoke("resize_hud_to_onboarding").catch((err) => {
+			console.error("[PermissionOnboarding] window resize failed, continuing with current size:", err);
+		});
 	}, []);
 
 	// Restore the HUD window to its normal size and re-position to bottom-center
 	const restoreWindowSize = useCallback(async () => {
-		const win = getCurrentWindow();
-		await win.setSize(new LogicalSize(HUD_WIDTH, HUD_HEIGHT));
-
-		try {
-			const monitor = await primaryMonitor();
-			if (monitor) {
-				const scale = monitor.scaleFactor;
-				const logicalW = monitor.size.width / scale;
-				const logicalH = monitor.size.height / scale;
-				const x = (logicalW - HUD_WIDTH) / 2;
-				const y = logicalH - HUD_HEIGHT - 5;
-				await win.setPosition(
-					new PhysicalPosition(Math.round(x * scale), Math.round(y * scale)),
-				);
-			}
-		} catch {
-			await win.center();
-		}
+		await invoke("restore_hud_size");
 	}, []);
 
 	const handleComplete = useCallback(async () => {
