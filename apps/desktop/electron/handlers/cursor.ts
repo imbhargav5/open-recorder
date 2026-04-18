@@ -1,6 +1,5 @@
 /**
  * Cursor telemetry IPC handlers.
- * Mirrors src-tauri/src/commands/cursor.rs.
  */
 
 import fs from "node:fs";

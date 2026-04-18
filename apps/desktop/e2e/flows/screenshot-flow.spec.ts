@@ -197,7 +197,6 @@ test.describe("Screenshot flow", () => {
     const errors: string[] = [];
     page.on("pageerror", (err) => {
       if (
-        !err.message.includes("tauri") &&
         !err.message.includes("WebGL") &&
         !err.message.includes("play()") &&
         !err.message.includes("ResizeObserver")

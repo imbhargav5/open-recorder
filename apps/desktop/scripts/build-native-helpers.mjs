@@ -4,7 +4,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 
 const projectRoot = process.cwd();
-const nativeRoot = path.join(projectRoot, 'src-tauri', 'native');
+const nativeRoot = path.join(projectRoot, 'native');
 
 if (process.platform !== 'darwin') {
   console.log('[build-native-helpers] Skipping: host platform is not macOS.');

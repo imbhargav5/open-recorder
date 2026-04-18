@@ -34,7 +34,6 @@ test.describe("Export flow", () => {
     const errors: string[] = [];
     page.on("pageerror", (err) => {
       if (
-        !err.message.includes("tauri") &&
         !err.message.includes("WebGL") &&
         !err.message.includes("play()") &&
         !err.message.includes("ResizeObserver")
@@ -133,7 +132,6 @@ test.describe("Export flow", () => {
 
     // No fatal crashes
     const fatalErrors = errors.filter(
-      (e) => !e.includes("WebGL") && !e.includes("tauri") && !e.includes("play()"),
     );
     expect(fatalErrors).toHaveLength(0);
   });

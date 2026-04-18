@@ -161,16 +161,13 @@ The repository release flow uses two GitHub Actions workflows:
 - `.github/workflows/release-pr.yml` computes the next version and opens or updates a release PR.
 - `.github/workflows/release.yml` runs after that PR is merged to `main`, then builds and publishes the signed release artifacts.
 
-The release workflows use Tauri to produce signed and notarized macOS DMGs, Windows NSIS installers, and Linux AppImages when these GitHub repository secrets are configured:
+The release workflows use Electron Builder to produce signed and notarized macOS DMGs, Windows NSIS installers, and Linux AppImages when these GitHub repository secrets are configured:
 
-- `APPLE_CERTIFICATE`: base64-encoded `Developer ID Application` `.p12` certificate export
-- `APPLE_CERTIFICATE_PASSWORD`: password used when exporting the `.p12`
-- `APPLE_SIGNING_IDENTITY`: signing identity name
+- `APPLE_CERTIFICATE` (or `CSC_LINK`): base64-encoded `Developer ID Application` `.p12` certificate export
+- `APPLE_CERTIFICATE_PASSWORD` (or `CSC_KEY_PASSWORD`): password used when exporting the `.p12`
 - `APPLE_ID`: Apple Developer account email
 - `APPLE_APP_SPECIFIC_PASSWORD`: app-specific password for notarization
 - `APPLE_TEAM_ID`: your Apple Developer team ID
-- `TAURI_SIGNING_PRIVATE_KEY`: Tauri updater signing private key
-- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`: password for the signing key (optional)
 
 This repo now includes two helper scripts:
 
@@ -215,7 +212,7 @@ Inside GitHub Actions, `.github/workflows/release-pr.yml` then:
 2. Reads `apps/desktop/package.json` and the latest local `v*` tag.
 3. Uses whichever version is newer as the base version.
 4. Computes the next patch, minor, or major version.
-5. Syncs `apps/desktop/package.json`, `apps/desktop/src-tauri/Cargo.toml`, `apps/desktop/src-tauri/tauri.conf.json`, and the `open-recorder` entry inside `apps/desktop/src-tauri/Cargo.lock`.
+5. Syncs `apps/desktop/package.json` with the new version.
 6. Writes `.github/release-plan.json` with the release title, notes, and latest flag.
 7. Opens or updates the release PR.
 

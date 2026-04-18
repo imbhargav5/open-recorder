@@ -1,6 +1,5 @@
 /**
  * Application state for the Electron main process.
- * Mirrors the Rust AppState from src-tauri/src/state/.
  */
 
 export interface SelectedSource {

@@ -117,7 +117,6 @@ test.describe("Video Editor load", () => {
     const fatalErrors = errors.filter(
       (e) =>
         !e.includes("WebGL") &&
-        !e.includes("tauri") &&
         !e.includes("ResizeObserver") &&
         !e.includes("play() request was interrupted") &&
         !e.includes("video"),

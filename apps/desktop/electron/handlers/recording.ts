@@ -1,6 +1,5 @@
 /**
  * Screen recording IPC handlers.
- * Mirrors src-tauri/src/commands/recording.rs.
  *
  * Note: Actual screen capture is delegated to the renderer via the
  * MediaRecorder/getDisplayMedia APIs. The main process manages file paths

@@ -72,11 +72,8 @@ The local dispatcher does the following:
    - patch -> increments patch
    - minor -> increments minor and resets patch to `0`
    - major -> increments major and resets minor and patch to `0`
-7. Updates all release version files:
+7. Updates the release version file:
    - `apps/desktop/package.json`
-   - `apps/desktop/src-tauri/Cargo.toml`
-   - `apps/desktop/src-tauri/tauri.conf.json`
-   - `apps/desktop/src-tauri/Cargo.lock` for the `open-recorder` package entry
 8. Writes `.github/release-plan.json` with:
    - `tagName`
    - `releaseName`
@@ -98,7 +95,7 @@ That workflow:
 6. Builds Windows x64.
 7. Builds Linux x64.
 8. Downloads and renames the uploaded artifacts into stable release filenames.
-9. Generates `latest.json` for the auto-updater using the current tag and uploaded signatures.
+9. Uploads `latest-mac.yml`, `latest.yml`, and `latest-linux.yml` for the electron-updater.
 10. Creates or updates the GitHub release with `ncipollo/release-action`.
 
 The workflow still supports manual `workflow_dispatch` as a fallback, but the normal path is:

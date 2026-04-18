@@ -1,8 +1,7 @@
 /**
  * Electron main process entry point.
  *
- * Replaces the Tauri (Rust) backend. All IPC handlers that were Tauri commands
- * are registered here via ipcMain.handle().
+ * All IPC handlers are registered here via ipcMain.handle().
  */
 
 import { app, BrowserWindow, ipcMain, protocol, net, screen } from "electron";

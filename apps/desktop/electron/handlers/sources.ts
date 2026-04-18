@@ -1,6 +1,5 @@
 /**
  * Screen/window source IPC handlers.
- * Mirrors src-tauri/src/commands/sources.rs.
  * Uses Electron's desktopCapturer API for source enumeration.
  */
 

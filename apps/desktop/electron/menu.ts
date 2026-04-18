@@ -1,6 +1,5 @@
 /**
  * Application menu setup.
- * Mirrors src-tauri/src/menu.rs.
  */
 
 import { Menu, app } from "electron";

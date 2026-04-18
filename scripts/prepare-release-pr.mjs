@@ -9,7 +9,6 @@ const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
 const desktopAppRoot = resolve(repoRoot, "apps", "desktop");
 const desktopPackageJsonPath = resolve(desktopAppRoot, "package.json");
-const tauriRoot = resolve(desktopAppRoot, "src-tauri");
 const releasePlanPath = resolve(repoRoot, ".github", "release-plan.json");
 
 process.chdir(repoRoot);
@@ -159,28 +158,7 @@ function updateJsonVersion(filePath, nextVersion, spacing) {
 	writeFileSync(filePath, `${JSON.stringify(json, null, spacing)}\n`);
 }
 
-function updateTextVersion(filePath, pattern, replacement) {
-	const current = readFileSync(filePath, "utf8");
-	if (!current.match(pattern)) {
-		die(`Could not update version in ${filePath}`);
-	}
-
-	const next = current.replace(pattern, replacement);
-	writeFileSync(filePath, next);
-}
-
 function syncVersionFiles(nextVersion) {
-	updateTextVersion(
-		resolve(tauriRoot, "Cargo.toml"),
-		/^version = "\d+\.\d+\.\d+"$/m,
-		`version = "${nextVersion}"`,
-	);
-	updateJsonVersion(resolve(tauriRoot, "tauri.conf.json"), nextVersion, 2);
-	updateTextVersion(
-		resolve(tauriRoot, "Cargo.lock"),
-		/(\[\[package\]\]\s+name = "open-recorder"\s+version = ")\d+\.\d+\.\d+(")/m,
-		`$1${nextVersion}$2`,
-	);
 	updateJsonVersion(desktopPackageJsonPath, nextVersion, "\t");
 }
 

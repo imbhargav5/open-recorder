@@ -1,4 +1,4 @@
-.tauriDrag {
+.appDrag {
   -webkit-app-region: drag;
 }
 
@@ -7,7 +7,7 @@
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.18);
 }
 
-.tauriNoDrag {
+.appNoDrag {
   -webkit-app-region: no-drag;
 }
 

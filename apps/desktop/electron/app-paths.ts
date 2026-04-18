@@ -1,6 +1,5 @@
 /**
  * Application path utilities for the Electron main process.
- * Mirrors src-tauri/src/app_paths.rs.
  */
 
 import path from "node:path";

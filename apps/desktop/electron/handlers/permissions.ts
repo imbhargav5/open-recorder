@@ -1,6 +1,5 @@
 /**
  * Permission check IPC handlers.
- * Mirrors src-tauri/src/commands/permissions.rs.
  *
  * On macOS, permissions are checked via systemPreferences.
  * On Linux/Windows, permissions are always "granted".
