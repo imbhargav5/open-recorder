@@ -17,12 +17,8 @@
 	"type": "module",
 	"main": "dist-electron/main.js",
 	"scripts": {
-		"dev": "concurrently -n vite,electron -c cyan,yellow \"pnpm dev:vite\" \"wait-on http://localhost:5789 && pnpm build:electron && electron .\" --kill-others-on-fail",
-		"dev:vite": "vite",
-		"dev:electron": "pnpm build:electron && electron .",
-		"build": "pnpm build:vite && pnpm build:electron",
-		"build:vite": "vite build",
-		"build:electron": "pnpm node scripts/build-electron.mjs",
+		"dev": "vite",
+		"build": "vite build",
 		"build:dist": "pnpm build && electron-builder",
 		"build:icons": "node scripts/build-icons.mjs",
 		"lint": "biome check .",
@@ -88,8 +84,8 @@
 		"xstate": "^5.28.0"
 	},
 	"devDependencies": {
-		"@playwright/test": "^1.52.0",
 		"@biomejs/biome": "2.3.13",
+		"@playwright/test": "^1.52.0",
 		"@testing-library/jest-dom": "^6.9.1",
 		"@testing-library/react": "^16.3.2",
 		"@testing-library/user-event": "^14.6.1",
@@ -99,10 +95,8 @@
 		"@types/uuid": "^10.0.0",
 		"@vitejs/plugin-react": "^4.2.1",
 		"autoprefixer": "^10.4.21",
-		"concurrently": "^9.1.2",
 		"electron": "^33.4.0",
 		"electron-builder": "^26.0.12",
-		"esbuild": "^0.25.5",
 		"fast-check": "^4.5.2",
 		"jsdom": "^29.0.1",
 		"postcss": "^8.5.6",
@@ -110,7 +104,7 @@
 		"terser": "^5.44.1",
 		"typescript": "^5.2.2",
 		"vite": "^5.1.6",
-		"vitest": "3.2.4",
-		"wait-on": "^8.0.3"
+		"vite-plugin-electron": "0.29.1",
+		"vitest": "3.2.4"
 	}
 }
