@@ -1,60 +1,45 @@
-import { clearMocks, mockConvertFileSrc } from "@tauri-apps/api/mocks";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { resolveMediaPlaybackUrl } from "./mediaPlaybackUrl";
 
 describe("resolveMediaPlaybackUrl", () => {
-	beforeEach(() => {
-		Object.defineProperty(globalThis, "window", {
-			value: {},
-			writable: true,
-			configurable: true,
-		});
-	});
-
-	afterEach(() => {
-		clearMocks();
-		delete (globalThis as typeof globalThis & { window?: Window }).window;
-	});
-
-	it("uses Tauri's macOS asset URL conversion for local file paths", () => {
-		mockConvertFileSrc("macos");
-
-		expect(resolveMediaPlaybackUrl("/Users/bhargav/Videos/demo clip.mov")).toBe(
-			"asset://localhost/%2FUsers%2Fbhargav%2FVideos%2Fdemo%20clip.mov",
-		);
-	});
-
-	it("uses Tauri's Windows asset URL conversion for local file paths", () => {
-		mockConvertFileSrc("windows");
-
-		expect(resolveMediaPlaybackUrl("C:\\Users\\bhargav\\Videos\\demo clip.mov")).toBe(
-			"http://asset.localhost/C%3A%5CUsers%5Cbhargav%5CVideos%5Cdemo%20clip.mov",
-		);
-	});
-
-	it("normalizes saved file URLs before converting them", () => {
-		mockConvertFileSrc("macos");
-
-		expect(resolveMediaPlaybackUrl("file:///Users/bhargav/Videos/demo%20clip.mov")).toBe(
-			"asset://localhost/%2FUsers%2Fbhargav%2FVideos%2Fdemo%20clip.mov",
-		);
-	});
-
-	it("returns already renderable media URLs unchanged", () => {
-		expect(resolveMediaPlaybackUrl("asset://localhost/%2FUsers%2Fbhargav%2Fdemo.mov")).toBe(
-			"asset://localhost/%2FUsers%2Fbhargav%2Fdemo.mov",
-		);
-		expect(resolveMediaPlaybackUrl("https://asset.localhost/%2FUsers%2Fbhargav%2Fdemo.mov")).toBe(
-			"https://asset.localhost/%2FUsers%2Fbhargav%2Fdemo.mov",
-		);
+	it("returns already-renderable URLs unchanged", () => {
 		expect(resolveMediaPlaybackUrl("blob:https://example.com/video-id")).toBe(
 			"blob:https://example.com/video-id",
 		);
+		expect(resolveMediaPlaybackUrl("data:video/mp4;base64,abc")).toBe(
+			"data:video/mp4;base64,abc",
+		);
+		expect(resolveMediaPlaybackUrl("asset://localhost/%2FUsers%2Fbhargav%2Fdemo.mov")).toBe(
+			"asset://localhost/%2FUsers%2Fbhargav%2Fdemo.mov",
+		);
+		expect(resolveMediaPlaybackUrl("https://example.com/video.mp4")).toBe(
+			"https://example.com/video.mp4",
+		);
+		expect(resolveMediaPlaybackUrl("https://asset.localhost/video.mp4")).toBe(
+			"https://asset.localhost/video.mp4",
+		);
 	});
 
-	it("falls back to a file URL when the Tauri runtime is unavailable", () => {
+	it("passes file:// URLs through unchanged", () => {
+		expect(resolveMediaPlaybackUrl("file:///Users/bhargav/Videos/demo%20clip.mov")).toBe(
+			"file:///Users/bhargav/Videos/demo%20clip.mov",
+		);
+	});
+
+	it("converts an absolute POSIX path to a file:// URL", () => {
 		expect(resolveMediaPlaybackUrl("/Users/bhargav/Videos/demo clip.mov")).toBe(
 			"file:///Users/bhargav/Videos/demo%20clip.mov",
 		);
+	});
+
+	it("converts a Windows-style path to a file:// URL", () => {
+		expect(resolveMediaPlaybackUrl("C:\\Users\\bhargav\\Videos\\demo clip.mov")).toBe(
+			"file:///C:/Users/bhargav/Videos/demo%20clip.mov",
+		);
+	});
+
+	it("throws when given an empty string", () => {
+		expect(() => resolveMediaPlaybackUrl("")).toThrow("Path is required");
+		expect(() => resolveMediaPlaybackUrl("   ")).toThrow("Path is required");
 	});
 });

@@ -1,23 +1,7 @@
-import { convertFileSrc } from "@tauri-apps/api/core";
 import { fromFileUrl, toFileUrl } from "@/lib/fileUrl";
 
-const ALREADY_RENDERABLE_MEDIA_PROTOCOL = /^(blob:|data:|asset:|https?:\/\/asset\.localhost\/|https?:)/i;
-
-function getConvertFileSrcRuntime():
-	| ((filePath: string, protocol?: string) => string)
-	| undefined {
-	if (typeof window === "undefined") {
-		return undefined;
-	}
-
-	return (
-		window as Window & {
-			__TAURI_INTERNALS__?: {
-				convertFileSrc?: (filePath: string, protocol?: string) => string;
-			};
-		}
-	).__TAURI_INTERNALS__?.convertFileSrc;
-}
+const ALREADY_RENDERABLE_MEDIA_PROTOCOL =
+	/^(blob:|data:|asset:|file:|https?:\/\/asset\.localhost\/|https?:)/i;
 
 export function resolveMediaPlaybackUrl(pathOrUrl: string): string {
 	const value = pathOrUrl.trim();
@@ -29,12 +13,7 @@ export function resolveMediaPlaybackUrl(pathOrUrl: string): string {
 		return value;
 	}
 
+	// Convert native path to file:// URL for Electron renderer
 	const filePath = value.startsWith("file://") ? fromFileUrl(value) : value;
-	const runtimeConvertFileSrc = getConvertFileSrcRuntime();
-
-	if (runtimeConvertFileSrc) {
-		return convertFileSrc(filePath);
-	}
-
 	return toFileUrl(filePath);
 }

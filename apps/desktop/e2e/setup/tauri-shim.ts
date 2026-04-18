@@ -1,40 +1,34 @@
 /**
- * Tauri IPC shim for Playwright E2E tests.
+ * Electron IPC shim for Playwright E2E tests.
  *
- * In Tauri v2 all invoke() calls go through window.__TAURI_INTERNALS__.invoke()
- * and listen() calls go through invoke('plugin:event|listen', ...).
- * This shim installs a complete fake of that interface so the React app can
- * initialise and run inside a plain Chromium window without any native binary.
+ * Installs a fake window.electronAPI so the React renderer can boot and run
+ * inside a plain Chromium window (driven by Playwright) without any Electron
+ * native binary.
  *
  * Usage (in every test):
- *   await page.addInitScript({ content: TAURI_SHIM_SCRIPT });
- *   // optionally configure per-test handlers BEFORE navigation
- *   await page.addInitScript((handlers) => {
- *     for (const [cmd, val] of Object.entries(handlers)) {
- *       window.__TEST_HANDLERS__[cmd] = () => val;
- *     }
- *   }, handlerMap);
+ *   await installTauriShim(page);   // kept for backwards-compat — installs the shim
+ *   await configureHandlers(page, { get_platform: 'linux', ... });
+ *   await setLocalStorage(page, { 'some-key': 'some-value' });
  *   await page.goto('/?windowType=hud-overlay');
  */
 
-export const TAURI_SHIM_SCRIPT = /* javascript */ `
+export const ELECTRON_SHIM_SCRIPT = /* javascript */ `
 (function () {
-  if (window.__TAURI_INTERNALS__) return; // guard against double-injection
-
-  // ─── Callback registry ──────────────────────────────────────────────────────
-  let _nextId = 0;
+  if (window.electronAPI) return; // guard against double-injection
 
   // ─── Public test surfaces ────────────────────────────────────────────────────
-  // __TEST_HANDLERS__    : { [cmdName]: (args) => returnValue }
-  // __TEST_EVENT_LISTENERS__ : { [eventName]: Array<{ handlerId: number }> }
-  // __TEST_IPC_LOG__     : Array<{ cmd, args, time }>
-  // __TAURI_FIRE_EVENT__ : (eventName, payload) => void
+  // __TEST_HANDLERS__         : { [channel]: (args) => returnValue }
+  // __TEST_EVENT_LISTENERS__  : { [channel]: Array<callback> }
+  // __TEST_IPC_LOG__          : Array<{ cmd, args, time }>
+  // __TAURI_FIRE_EVENT__      : (channel, payload) => void  (kept for spec compat)
   window.__TEST_HANDLERS__ = {};
   window.__TEST_EVENT_LISTENERS__ = {};
   window.__TEST_IPC_LOG__ = [];
 
   // ─── Default responses for all known commands ─────────────────────────────
-  const DEFAULTS = {
+  var DEFAULTS = {
+    // App
+    get_app_name: 'Open Recorder',
     // Permissions — default everything to "granted" so startup doesn't stall
     get_screen_recording_permission_status: 'granted',
     get_accessibility_permission_status: 'granted',
@@ -105,6 +99,8 @@ export const TAURI_SHIM_SCRIPT = /* javascript */ `
     hud_overlay_close: null,
     start_hud_overlay_drag: null,
     set_has_unsaved_changes: null,
+    resize_hud_to_onboarding: null,
+    restore_hud_size: null,
     // Dialogs
     save_exported_video: null,
     save_screenshot_file: null,
@@ -115,137 +111,61 @@ export const TAURI_SHIM_SCRIPT = /* javascript */ `
     // Windows-specific
     is_wgc_available: false,
     mux_wgc_recording: '/tmp/test-recording.mp4',
+    // Clipboard
+    write_clipboard_image: null,
   };
 
-  // ─── __TAURI_INTERNALS__ shim ─────────────────────────────────────────────
-  window.__TAURI_INTERNALS__ = {
-    metadata: {
-      currentWindow: { label: 'main' },
-      currentWebview: { label: 'main', windowLabel: 'main' },
-    },
-
-    transformCallback: function (callback, once) {
-      var id = ++_nextId;
-      var key = '_' + id;
-      if (once) {
-        window[key] = function () {
-          callback.apply(this, arguments);
-          delete window[key];
-        };
-      } else {
-        window[key] = callback;
-      }
-      return id;
-    },
-
-    unregisterCallback: function (id) {
-      delete window['_' + id];
-    },
-
-    invoke: async function (cmd, args) {
+  // ─── electronAPI shim ─────────────────────────────────────────────────────
+  window.electronAPI = {
+    invoke: async function (channel, args) {
       args = args || {};
 
       // Log every IPC call for test assertions
-      window.__TEST_IPC_LOG__.push({ cmd: cmd, args: args, time: Date.now() });
+      window.__TEST_IPC_LOG__.push({ cmd: channel, args: args, time: Date.now() });
 
-      // ── Event plugin ──────────────────────────────────────────────────────
-      if (cmd === 'plugin:event|listen') {
-        var event = args.event;
-        var handlerId = args.handler;
-        if (!window.__TEST_EVENT_LISTENERS__[event]) {
-          window.__TEST_EVENT_LISTENERS__[event] = [];
-        }
-        window.__TEST_EVENT_LISTENERS__[event].push({ handlerId: handlerId });
-        return handlerId; // eventId == handlerId in shim
-      }
-      if (cmd === 'plugin:event|unlisten') {
-        var evName = args.event;
-        var evId = args.eventId;
-        if (window.__TEST_EVENT_LISTENERS__[evName]) {
-          window.__TEST_EVENT_LISTENERS__[evName] = window.__TEST_EVENT_LISTENERS__[evName]
-            .filter(function (l) { return l.handlerId !== evId; });
-        }
-        return null;
-      }
-      if (cmd === 'plugin:event|emit') return null;
-
-      // ── App plugin ────────────────────────────────────────────────────────
-      if (cmd === 'plugin:app|name') return 'Open Recorder';
-      if (cmd === 'plugin:app|version') return '0.0.21';
-      if (cmd === 'plugin:app|tauri_version') return '2.0.0';
-
-      // ── Window/webview plugins (all no-ops) ───────────────────────────────
-      if (
-        cmd.startsWith('plugin:window|') ||
-        cmd.startsWith('plugin:webview|') ||
-        cmd.startsWith('plugin:os|') ||
-        cmd.startsWith('plugin:updater|') ||
-        cmd.startsWith('plugin:global-shortcut|') ||
-        cmd.startsWith('plugin:notification|') ||
-        cmd.startsWith('plugin:process|') ||
-        cmd.startsWith('plugin:shell|') ||
-        cmd.startsWith('plugin:fs|') ||
-        cmd.startsWith('plugin:dialog|') ||
-        cmd.startsWith('plugin:clipboard-manager|') ||
-        cmd.startsWith('plugin:resources|')
-      ) {
-        // Return sensible defaults for specific queries
-        if (cmd === 'plugin:window|primary_monitor') {
-          return {
-            name: 'main',
-            size: { width: 1920, height: 1080 },
-            position: { x: 0, y: 0 },
-            scaleFactor: 1,
-          };
-        }
-        return null;
-      }
-
-      // ── Per-test handler overrides ────────────────────────────────────────
+      // Per-test handler overrides
       var handlers = window.__TEST_HANDLERS__ || {};
-      if (typeof handlers[cmd] === 'function') {
-        return handlers[cmd](args);
+      if (typeof handlers[channel] === 'function') {
+        return handlers[channel](args);
       }
 
-      // ── Default responses ─────────────────────────────────────────────────
-      if (Object.prototype.hasOwnProperty.call(DEFAULTS, cmd)) {
-        return DEFAULTS[cmd];
+      // Default responses
+      if (Object.prototype.hasOwnProperty.call(DEFAULTS, channel)) {
+        return DEFAULTS[channel];
       }
 
       // Unknown command — warn and return null (don't throw)
-      console.warn('[tauri-shim] Unhandled command:', cmd, args);
+      console.warn('[electron-shim] Unhandled command:', channel, args);
       return null;
     },
 
-    convertFileSrc: function (filePath, protocol) {
-      // Return a URL that the browser will not reject, but that won't load any real file
-      return 'data:text/plain,' + encodeURIComponent(filePath || '');
-    },
-  };
-
-  // ─── Event plugin internals (used by _unlisten) ───────────────────────────
-  window.__TAURI_EVENT_PLUGIN_INTERNALS__ = {
-    unregisterListener: function (event, eventId) {
-      if (window.__TEST_EVENT_LISTENERS__[event]) {
-        window.__TEST_EVENT_LISTENERS__[event] = window.__TEST_EVENT_LISTENERS__[event]
-          .filter(function (l) { return l.handlerId !== eventId; });
+    on: function (channel, callback) {
+      if (!window.__TEST_EVENT_LISTENERS__[channel]) {
+        window.__TEST_EVENT_LISTENERS__[channel] = [];
       }
+      window.__TEST_EVENT_LISTENERS__[channel].push(callback);
+      return function () {
+        var listeners = window.__TEST_EVENT_LISTENERS__[channel] || [];
+        var idx = listeners.indexOf(callback);
+        if (idx >= 0) listeners.splice(idx, 1);
+      };
+    },
+
+    send: function (channel, args) {
+      window.__TEST_IPC_LOG__.push({ cmd: channel, args: args || {}, time: Date.now() });
     },
   };
 
-  // ─── Test helper: fire a fake Tauri event ─────────────────────────────────
+  // ─── Alias __TAURI_INTERNALS__ for test specs that reference it directly ──
+  window.__TAURI_INTERNALS__ = {
+    invoke: window.electronAPI.invoke.bind(window.electronAPI),
+  };
+
+  // ─── Test helper: fire a fake event ──────────────────────────────────────
   window.__TAURI_FIRE_EVENT__ = function (eventName, payload) {
     var listeners = (window.__TEST_EVENT_LISTENERS__ || {})[eventName] || [];
     for (var i = 0; i < listeners.length; i++) {
-      var fn = window['_' + listeners[i].handlerId];
-      if (typeof fn === 'function') {
-        fn({
-          event: eventName,
-          payload: payload,
-          id: listeners[i].handlerId,
-          windowLabel: 'main',
-        });
-      }
+      listeners[i](payload);
     }
   };
 
@@ -265,14 +185,17 @@ export const TAURI_SHIM_SCRIPT = /* javascript */ `
 })();
 `;
 
+/** @deprecated Alias kept for import compatibility — installs the Electron shim. */
+export const TAURI_SHIM_SCRIPT = ELECTRON_SHIM_SCRIPT;
+
 /**
- * Installs the Tauri IPC shim on a Playwright page via addInitScript.
+ * Installs the Electron IPC shim on a Playwright page via addInitScript.
  * Call this BEFORE page.goto() to ensure the shim is ready when the app boots.
  */
 export async function installTauriShim(
   page: import("@playwright/test").Page,
 ): Promise<void> {
-  await page.addInitScript({ content: TAURI_SHIM_SCRIPT });
+  await page.addInitScript({ content: ELECTRON_SHIM_SCRIPT });
 }
 
 /**
@@ -294,8 +217,6 @@ export async function configureHandlers(
 /**
  * Configures the get_sources handler to return different sources depending on
  * whether the call is requesting screen sources or window sources.
- * This avoids strict-mode violations when both screen and window calls
- * return the same static list.
  */
 export async function configureSourceHandlers(
   page: import("@playwright/test").Page,
