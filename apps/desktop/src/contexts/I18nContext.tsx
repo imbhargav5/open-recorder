@@ -10,7 +10,6 @@ import { useAtom } from 'jotai'
 import {
   DEFAULT_LOCALE,
   I18N_NAMESPACES,
-  SUPPORTED_LOCALES,
   type AppLocale,
   type I18nNamespace,
 } from '@/i18n/config'
@@ -61,9 +60,6 @@ interface I18nContextValue {
 
 const I18nContext = createContext<I18nContextValue | null>(null)
 
-function isSupportedLocale(locale: string): locale is AppLocale {
-  return SUPPORTED_LOCALES.includes(locale as AppLocale)
-}
 
 function getMessageValue(source: unknown, key: string): string | undefined {
   const parts = key.split('.')

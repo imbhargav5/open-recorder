@@ -203,10 +203,10 @@ export async function preloadCursorAssets() {
 
 			try {
 				const result = await getSystemCursorAssets();
-				if (result && result.cursors) {
-					systemCursors = result.cursors;
+				if (result && typeof result === "object" && "cursors" in result) {
+					systemCursors = (result as { cursors: Record<string, SystemCursorAsset> }).cursors;
 				} else if (result && typeof result === "object") {
-					systemCursors = result as Record<string, SystemCursorAsset>;
+					systemCursors = result as unknown as Record<string, SystemCursorAsset>;
 				}
 			} catch (error) {
 				console.warn("[CursorRenderer] Failed to fetch system cursor assets:", error);

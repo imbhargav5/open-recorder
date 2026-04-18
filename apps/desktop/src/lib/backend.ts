@@ -320,11 +320,11 @@ export function saveProjectFile(
 	return invoke("save_project_file", { data, suggestedName, existingPath });
 }
 
-export function loadProjectFile(): Promise<unknown | null> {
+export function loadProjectFile(): Promise<{ data: unknown; filePath: string } | null> {
 	return invoke("load_project_file");
 }
 
-export function loadCurrentProjectFile(): Promise<unknown | null> {
+export function loadCurrentProjectFile(): Promise<{ data?: unknown; filePath?: string | null } | null> {
 	return invoke("load_current_project_file");
 }
 
