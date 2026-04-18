@@ -195,7 +195,7 @@ function normalizeEntry(
 	entry: unknown,
 	context: NormalizationContext,
 	defaultInteractionType?: CursorInteractionType,
-) {
+): CursorTelemetryPoint | null {
 	if (!isRecord(entry)) {
 		return null;
 	}
