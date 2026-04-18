@@ -259,7 +259,7 @@ export function LaunchWindow() {
 
 	// Elapsed timer
 	useEffect(() => {
-		let timer: NodeJS.Timeout | null = null;
+		let timer: ReturnType<typeof setTimeout> | null = null;
 		if (recording) {
 			if (!recordingStart) setRecordingStart(Date.now());
 			const startTime = recordingStart || Date.now();

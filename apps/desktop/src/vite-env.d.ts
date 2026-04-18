@@ -54,4 +54,6 @@ declare global {
   }
 }
 
+declare module 'pixi.js/unsafe-eval';
+
 export {};

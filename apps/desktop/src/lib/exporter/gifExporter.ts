@@ -1,5 +1,5 @@
 import GIF from 'gif.js';
-import type { ExportProgress, ExportResult, GifFrameRate, GifSizePreset, GIF_SIZE_PRESETS } from './types';
+import type { ExportProgress, ExportResult, GifFrameRate, GifSizePreset } from './types';
 import { StreamingVideoDecoder } from './streamingDecoder';
 import { FrameRenderer } from './frameRenderer';
 import { SyncedVideoProvider } from './syncedVideoProvider';

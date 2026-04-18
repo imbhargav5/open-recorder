@@ -20,7 +20,7 @@ function ContentClamp({
   const isTruncated = text.length > truncateLength
 
   const [open, setOpen] = React.useState(false)
-  const timeoutRef = React.useRef<NodeJS.Timeout | null>(null)
+  const timeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const handleMouseEnter = () => {
     if (timeoutRef.current) {

@@ -874,7 +874,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 						maxHeight: TARGET_HEIGHT,
 						maxFrameRate: TARGET_FRAME_RATE,
 						minFrameRate: MIN_FRAME_RATE,
-						cursor: shouldHideSourceCursor ? "never" : "always",
+						cursor: (shouldHideSourceCursor ? "never" : "always") as "never" | "always",
 					},
 				};
 
@@ -978,7 +978,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 						width: { ideal: TARGET_WIDTH, max: TARGET_WIDTH },
 						height: { ideal: TARGET_HEIGHT, max: TARGET_HEIGHT },
 						frameRate: { ideal: TARGET_FRAME_RATE, max: TARGET_FRAME_RATE },
-						cursor: shouldHideSourceCursor ? "never" : "always",
+						cursor: (shouldHideSourceCursor ? "never" : "always") as "never" | "always",
 					},
 					selfBrowserSurface: "exclude",
 					surfaceSwitching: "exclude",
