@@ -4,8 +4,8 @@
  */
 
 import { app, shell } from "electron";
-import { exec } from "node:child_process";
 import path from "node:path";
+import { defaultRecordingsDir } from "../app-paths.js";
 import type { AppState } from "../state.js";
 
 export function registerPlatformHandlers(
@@ -35,7 +35,6 @@ export function registerPlatformHandlers(
 
 	handle("open_recordings_folder", () => {
 		const state = getState();
-		const { defaultRecordingsDir } = require("../app-paths.js") as typeof import("../app-paths.js");
 		const dir = state.customRecordingsDir ?? defaultRecordingsDir();
 		return shell.openPath(dir);
 	});

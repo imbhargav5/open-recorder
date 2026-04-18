@@ -59,7 +59,7 @@ test.describe("Export flow", () => {
 
     // Directly invoke the export command through the shim
     const result = await page.evaluate(async () => {
-      return window.__TAURI_INTERNALS__.invoke("save_exported_video", {
+      return window.electronAPI.invoke("save_exported_video", {
         videoData: [],
         fileName: "export.mp4",
       });
@@ -84,9 +84,9 @@ test.describe("Export flow", () => {
     // Simulate the sequence of IPC calls that an export flow would make
     await page.evaluate(async () => {
       // 1. Get current video path
-      await window.__TAURI_INTERNALS__.invoke("get_current_video_path");
+      await window.electronAPI.invoke("get_current_video_path");
       // 2. Save exported video
-      await window.__TAURI_INTERNALS__.invoke("save_exported_video", {
+      await window.electronAPI.invoke("save_exported_video", {
         videoData: [],
         fileName: "test-export.mp4",
       });
@@ -146,12 +146,12 @@ test.describe("Export flow", () => {
 
     const results = await page.evaluate(async () => {
       return {
-        videoPath: await window.__TAURI_INTERNALS__.invoke("get_current_video_path"),
-        exportedPath: await window.__TAURI_INTERNALS__.invoke("save_exported_video", {
+        videoPath: await window.electronAPI.invoke("get_current_video_path"),
+        exportedPath: await window.electronAPI.invoke("save_exported_video", {
           videoData: [],
           fileName: "gif-export.gif",
         }),
-        screenshotPath: await window.__TAURI_INTERNALS__.invoke(
+        screenshotPath: await window.electronAPI.invoke(
           "save_screenshot_file",
           { imageData: [], fileName: "screenshot.png" },
         ),

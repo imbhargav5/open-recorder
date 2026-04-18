@@ -108,7 +108,7 @@ test.describe("Screenshot flow", () => {
 
     // Directly invoke take_screenshot via shim to test the contract
     const result = await page.evaluate(async () => {
-      return window.__TAURI_INTERNALS__.invoke("take_screenshot", {
+      return window.electronAPI.invoke("take_screenshot", {
         captureType: "screen",
         windowId: undefined,
       });
@@ -131,7 +131,7 @@ test.describe("Screenshot flow", () => {
     await page.waitForTimeout(500);
 
     await page.evaluate(async () => {
-      await window.__TAURI_INTERNALS__.invoke("switch_to_image_editor");
+      await window.electronAPI.invoke("switch_to_image_editor");
     });
 
     const wasCalled = await page.evaluate(() =>
@@ -149,12 +149,12 @@ test.describe("Screenshot flow", () => {
 
     // Simulate the full screenshot capture sequence
     await page.evaluate(async () => {
-      await window.__TAURI_INTERNALS__.invoke("hud_overlay_hide");
-      await window.__TAURI_INTERNALS__.invoke("take_screenshot", {
+      await window.electronAPI.invoke("hud_overlay_hide");
+      await window.electronAPI.invoke("take_screenshot", {
         captureType: "screen",
         windowId: undefined,
       });
-      await window.__TAURI_INTERNALS__.invoke("switch_to_image_editor");
+      await window.electronAPI.invoke("switch_to_image_editor");
     });
 
     // Verify all three commands were called in the log

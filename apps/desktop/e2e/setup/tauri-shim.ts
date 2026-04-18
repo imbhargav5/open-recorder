@@ -156,11 +156,6 @@ export const ELECTRON_SHIM_SCRIPT = /* javascript */ `
     },
   };
 
-  // ─── Alias __TAURI_INTERNALS__ for test specs that reference it directly ──
-  window.__TAURI_INTERNALS__ = {
-    invoke: window.electronAPI.invoke.bind(window.electronAPI),
-  };
-
   // ─── Test helper: fire a fake event ──────────────────────────────────────
   window.__TAURI_FIRE_EVENT__ = function (eventName, payload) {
     var listeners = (window.__TEST_EVENT_LISTENERS__ || {})[eventName] || [];
@@ -184,9 +179,6 @@ export const ELECTRON_SHIM_SCRIPT = /* javascript */ `
   };
 })();
 `;
-
-/** @deprecated Alias kept for import compatibility — installs the Electron shim. */
-export const TAURI_SHIM_SCRIPT = ELECTRON_SHIM_SCRIPT;
 
 /**
  * Installs the Electron IPC shim on a Playwright page via addInitScript.
