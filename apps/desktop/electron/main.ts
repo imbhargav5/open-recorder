@@ -7,6 +7,7 @@
 
 import { app, BrowserWindow, ipcMain, protocol, net, screen } from "electron";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { createDefaultState } from "./state.js";
 import type { AppState } from "./state.js";
@@ -34,8 +35,9 @@ const VITE_DEV_URL = "http://localhost:5789";
 
 // ─── Paths ───────────────────────────────────────────────────────────────────
 
-// __dirname is available in the CJS output produced by esbuild
-const PRELOAD_PATH = path.join(__dirname, "preload.cjs");
+// ESM doesn't provide __dirname — reconstruct it from import.meta.url
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const PRELOAD_PATH = path.join(__dirname, "preload.js");
 const RESOURCES_PATH = IS_DEV
 	? path.join(__dirname, "..", "public")
 	: path.join(process.resourcesPath, "public");

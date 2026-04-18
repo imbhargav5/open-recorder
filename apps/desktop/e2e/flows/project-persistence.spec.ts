@@ -46,7 +46,7 @@ test.describe("Project persistence", () => {
     const projectJson = fakeProjectFileJson();
 
     await page.evaluate(async (data) => {
-      await window.__TAURI_INTERNALS__.invoke("save_project_file", {
+      await window.electronAPI.invoke("save_project_file", {
         data,
         suggestedName: "my-recording",
       });
@@ -70,7 +70,7 @@ test.describe("Project persistence", () => {
     await page.goto(EDITOR_URL);
 
     const path = await page.evaluate(async () => {
-      return window.__TAURI_INTERNALS__.invoke("save_project_file", {
+      return window.electronAPI.invoke("save_project_file", {
         data: JSON.stringify({ version: "1" }),
         suggestedName: "test-project",
       });
@@ -86,7 +86,7 @@ test.describe("Project persistence", () => {
     await page.goto(EDITOR_URL);
 
     const project = await page.evaluate(async () => {
-      return window.__TAURI_INTERNALS__.invoke("load_current_project_file");
+      return window.electronAPI.invoke("load_current_project_file");
     });
 
     // The fake project fixture has a zoom region
@@ -144,12 +144,12 @@ test.describe("Project persistence", () => {
 
     // Save project
     await page.evaluate(async (data) => {
-      await window.__TAURI_INTERNALS__.invoke("save_project_file", { data });
+      await window.electronAPI.invoke("save_project_file", { data });
     }, projectData);
 
     // Load project — should return what we saved
     const loaded = await page.evaluate(async () => {
-      return window.__TAURI_INTERNALS__.invoke("load_current_project_file");
+      return window.electronAPI.invoke("load_current_project_file");
     });
 
     expect(loaded).toBeTruthy();
@@ -168,7 +168,7 @@ test.describe("Project persistence", () => {
 
     // Simulate marking the project as having unsaved changes
     await page.evaluate(async () => {
-      await window.__TAURI_INTERNALS__.invoke("set_has_unsaved_changes", {
+      await window.electronAPI.invoke("set_has_unsaved_changes", {
         hasChanges: true,
       });
     });

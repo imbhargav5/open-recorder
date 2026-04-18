@@ -135,7 +135,7 @@ test.describe("Recording lifecycle", () => {
 
     // Manually invoke the command via the shim to verify IPC logging works
     await page.evaluate(async () => {
-      await window.__TAURI_INTERNALS__.invoke("start_native_screen_recording", {
+      await window.electronAPI.invoke("start_native_screen_recording", {
         source: { id: "screen:0:0", name: "Main Display", sourceType: "screen" },
         options: {},
       });
@@ -162,7 +162,7 @@ test.describe("Recording lifecycle", () => {
     await page.waitForTimeout(500);
 
     await page.evaluate(async () => {
-      await window.__TAURI_INTERNALS__.invoke("stop_native_screen_recording");
+      await window.electronAPI.invoke("stop_native_screen_recording");
     });
 
     const wasCalled = await page.evaluate(() =>
@@ -178,7 +178,7 @@ test.describe("Recording lifecycle", () => {
     await page.waitForTimeout(500);
 
     await page.evaluate(async () => {
-      await window.__TAURI_INTERNALS__.invoke("switch_to_editor", {
+      await window.electronAPI.invoke("switch_to_editor", {
         query: "?mode=video",
       });
     });

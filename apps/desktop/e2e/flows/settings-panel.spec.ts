@@ -51,7 +51,7 @@ test.describe("Settings panel", () => {
 
     // Invoke the command through the shim
     const result = await page.evaluate(async () => {
-      return window.__TAURI_INTERNALS__.invoke("set_has_unsaved_changes", {
+      return window.electronAPI.invoke("set_has_unsaved_changes", {
         hasChanges: true,
       });
     });
@@ -76,7 +76,7 @@ test.describe("Settings panel", () => {
     };
 
     const result = await page.evaluate(async (shortcuts) => {
-      return window.__TAURI_INTERNALS__.invoke("save_shortcuts", { shortcuts });
+      return window.electronAPI.invoke("save_shortcuts", { shortcuts });
     }, fakeShortcuts);
 
     expect(result).toBeNull();
@@ -92,7 +92,7 @@ test.describe("Settings panel", () => {
     await page.goto(EDITOR_URL);
 
     const dir = await page.evaluate(async () => {
-      return window.__TAURI_INTERNALS__.invoke("get_recordings_directory");
+      return window.electronAPI.invoke("get_recordings_directory");
     });
 
     expect(dir).toBe("/home/user/recordings");
@@ -106,11 +106,11 @@ test.describe("Settings panel", () => {
     await page.waitForTimeout(500);
 
     const results = await page.evaluate(async () => {
-      const cursorAssets = await window.__TAURI_INTERNALS__.invoke(
+      const cursorAssets = await window.electronAPI.invoke(
         "get_system_cursor_assets",
       );
-      await window.__TAURI_INTERNALS__.invoke("set_cursor_scale", { scale: 1.5 });
-      const telemetry = await window.__TAURI_INTERNALS__.invoke(
+      await window.electronAPI.invoke("set_cursor_scale", { scale: 1.5 });
+      const telemetry = await window.electronAPI.invoke(
         "get_cursor_telemetry",
         { videoPath: "/tmp/test-recording.webm" },
       );
