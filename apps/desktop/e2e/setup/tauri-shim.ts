@@ -6,7 +6,7 @@
  * native binary.
  *
  * Usage (in every test):
- *   await installTauriShim(page);   // kept for backwards-compat — installs the shim
+ *   await installElectronShim(page);
  *   await configureHandlers(page, { get_platform: 'linux', ... });
  *   await setLocalStorage(page, { 'some-key': 'some-value' });
  *   await page.goto('/?windowType=hud-overlay');
@@ -156,7 +156,7 @@ export const ELECTRON_SHIM_SCRIPT = /* javascript */ `
     },
   };
 
-  // ─── Test helper: fire a fake event ──────────────────────────────────────
+  // ─── Test helper: fire a fake Electron event ─────────────────────────────
   window.__TAURI_FIRE_EVENT__ = function (eventName, payload) {
     var listeners = (window.__TEST_EVENT_LISTENERS__ || {})[eventName] || [];
     for (var i = 0; i < listeners.length; i++) {
@@ -184,11 +184,14 @@ export const ELECTRON_SHIM_SCRIPT = /* javascript */ `
  * Installs the Electron IPC shim on a Playwright page via addInitScript.
  * Call this BEFORE page.goto() to ensure the shim is ready when the app boots.
  */
-export async function installTauriShim(
+export async function installElectronShim(
   page: import("@playwright/test").Page,
 ): Promise<void> {
   await page.addInitScript({ content: ELECTRON_SHIM_SCRIPT });
 }
+
+/** @deprecated Use installElectronShim instead. */
+export const installTauriShim = installElectronShim;
 
 /**
  * Pre-configures command handlers as an init script (runs before page JS).

@@ -1,6 +1,5 @@
 /**
  * File dialog IPC handlers.
- * Mirrors src-tauri/src/commands/dialogs.rs.
  */
 
 import fs from "node:fs";

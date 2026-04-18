@@ -1,6 +1,5 @@
 /**
  * Platform IPC handlers.
- * Mirrors src-tauri/src/commands/platform.rs.
  */
 
 import { app, shell } from "electron";

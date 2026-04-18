@@ -1,6 +1,5 @@
 /**
  * Screenshot IPC handlers.
- * Mirrors src-tauri/src/commands/screenshot.rs.
  */
 
 import fs from "node:fs";

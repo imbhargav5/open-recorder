@@ -1,32 +1,32 @@
 /**
- * Smoke — Native recording (tauri-driver only, macOS CI)
+ * Smoke — Native recording (Electron full-app, macOS CI)
  *
- * These tests require a real Tauri native binary and tauri-driver, which are
- * not available in the standard Playwright-only CI environment.
+ * These tests require a fully packaged Electron binary. They are skipped in
+ * the standard Playwright-only CI environment that runs against the Vite dev
+ * server with the Electron IPC shim.
  *
- * All tests in this file are skipped by default. To run them locally:
- *   1. Build the app: pnpm build
- *   2. Start tauri-driver: tauri-driver
- *   3. Run with TAURI_DRIVER=1: TAURI_DRIVER=1 pnpm e2e --config e2e/playwright.config.ts
+ * To run locally:
+ *   1. Build and package the app: pnpm build:dist
+ *   2. Set ELECTRON_APP=1: ELECTRON_APP=1 pnpm e2e --config e2e/playwright.config.ts
  *
  * These tests exist as a placeholder for future native E2E coverage once
- * tauri-driver support is wired into the macOS CI pipeline.
+ * full Electron app testing is wired into the macOS CI pipeline.
  */
 
 import { test } from "@playwright/test";
 
-const NEEDS_TAURI_DRIVER = !process.env.TAURI_DRIVER;
+const NEEDS_ELECTRON_APP = !process.env.ELECTRON_APP;
 
-test.describe("Native recording smoke tests (tauri-driver only)", () => {
+test.describe("Native recording smoke tests (Electron full-app only)", () => {
   test.skip(
-    NEEDS_TAURI_DRIVER,
-    "Requires TAURI_DRIVER=1 env var and a running tauri-driver process",
+    NEEDS_ELECTRON_APP,
+    "Requires ELECTRON_APP=1 env var and a packaged Electron binary",
   );
 
   test("placeholder: start and stop a native recording session", async () => {
-    // TODO: implement using tauri-driver WebDriver session
+    // TODO: implement using Playwright Electron launch
     // Steps would be:
-    // 1. Connect to tauri-driver WebDriver endpoint
+    // 1. Launch Electron app via playwright.electron.launch()
     // 2. Click Record button
     // 3. Verify native recording starts (OS-level screen capture)
     // 4. Click Stop

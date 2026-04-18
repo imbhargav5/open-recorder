@@ -1,6 +1,5 @@
 /**
  * Settings IPC handlers.
- * Mirrors src-tauri/src/commands/settings.rs.
  */
 
 import fs from "node:fs";

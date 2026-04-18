@@ -1,6 +1,5 @@
 /**
  * Window management IPC handlers.
- * Mirrors src-tauri/src/commands/window_mgmt.rs.
  */
 
 import { BrowserWindow, app, screen } from "electron";

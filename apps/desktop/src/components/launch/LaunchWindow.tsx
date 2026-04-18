@@ -63,7 +63,7 @@ function ModeButton({
 			onClick={onClick}
 			title={title}
 			disabled={disabled}
-			className={`flex items-center justify-center w-[30px] h-[30px] rounded-md transition-all ${styles.tauriNoDrag} ${
+			className={`flex items-center justify-center w-[30px] h-[30px] rounded-md transition-all ${styles.appNoDrag} ${
 				active
 					? "bg-white/15 text-white shadow-sm"
 					: "text-white/40 hover:text-white/70 hover:bg-white/5"
@@ -564,11 +564,11 @@ export function LaunchWindow() {
 
 	return (
 		<div className="w-full h-full flex items-end justify-center bg-transparent overflow-hidden">
-			<div className={`flex flex-col items-center gap-2 mx-auto ${styles.tauriDrag}`}>
+			<div className={`flex flex-col items-center gap-2 mx-auto ${styles.appDrag}`}>
 				{/* ── Facecam preview (only in recording view, before recording starts) ── */}
 				{showCameraPreview && (
 					<div
-						className={`flex items-center gap-3 rounded-[22px] border border-white/15 bg-[rgba(18,18,26,0.92)] px-3 py-2 shadow-xl backdrop-blur-xl ${styles.tauriNoDrag}`}
+						className={`flex items-center gap-3 rounded-[22px] border border-white/15 bg-[rgba(18,18,26,0.92)] px-3 py-2 shadow-xl backdrop-blur-xl ${styles.appNoDrag}`}
 					>
 						<div className="h-14 w-24 overflow-hidden rounded-2xl border border-white/10 bg-black/30">
 							<video
@@ -594,7 +594,7 @@ export function LaunchWindow() {
 								}
 							>
 								<SelectTrigger
-									className={`h-8 max-w-[230px] rounded-full border-white/15 bg-[#131722] px-3 py-1 text-xs text-slate-100 outline-none ring-0 ring-offset-0 focus:ring-0 focus:ring-offset-0 ${styles.tauriNoDrag}`}
+									className={`h-8 max-w-[230px] rounded-full border-white/15 bg-[#131722] px-3 py-1 text-xs text-slate-100 outline-none ring-0 ring-offset-0 focus:ring-0 focus:ring-offset-0 ${styles.appNoDrag}`}
 								>
 									<SelectValue
 										placeholder={
@@ -631,7 +631,7 @@ export function LaunchWindow() {
            ================================================================ */}
 				{view === "choice" && !recording && (
 					<div
-						className={`flex items-center gap-3 px-4 py-3 ${styles.tauriDrag} ${styles.hudBar}`}
+						className={`flex items-center gap-3 px-4 py-3 ${styles.appDrag} ${styles.hudBar}`}
 						style={dialogStyle}
 					>
 						{dragHandle}
@@ -641,7 +641,7 @@ export function LaunchWindow() {
 								setView("screenshot");
 								setScreenshotMode(null);
 							}}
-							className={`flex items-center gap-2.5 px-5 py-2.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.08] hover:border-white/[0.15] transition-all cursor-pointer ${styles.tauriNoDrag}`}
+							className={`flex items-center gap-2.5 px-5 py-2.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.08] hover:border-white/[0.15] transition-all cursor-pointer ${styles.appNoDrag}`}
 						>
 							<Camera size={16} className="text-white/70" />
 							<span className="text-[13px] font-medium text-white/80">Screenshot</span>
@@ -649,7 +649,7 @@ export function LaunchWindow() {
 
 						<button
 							onClick={() => setView("recording")}
-							className={`flex items-center gap-2.5 px-5 py-2.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.08] hover:border-white/[0.15] transition-all cursor-pointer ${styles.tauriNoDrag}`}
+							className={`flex items-center gap-2.5 px-5 py-2.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.08] hover:border-white/[0.15] transition-all cursor-pointer ${styles.appNoDrag}`}
 						>
 							<Video size={16} className="text-white/70" />
 							<span className="text-[13px] font-medium text-white/80">Record Video</span>
@@ -663,7 +663,7 @@ export function LaunchWindow() {
            ================================================================ */}
 				{view === "screenshot" && !recording && (
 					<div
-						className={`w-full mx-auto flex items-center gap-1.5 px-3 py-2 ${styles.tauriDrag} ${styles.hudBar}`}
+						className={`w-full mx-auto flex items-center gap-1.5 px-3 py-2 ${styles.appDrag} ${styles.hudBar}`}
 						style={barStyle}
 					>
 						{dragHandle}
@@ -677,7 +677,7 @@ export function LaunchWindow() {
 								setScreenshotMode(null);
 							}}
 							title="Back"
-							className={`text-white/60 hover:text-white hover:bg-transparent ${styles.tauriNoDrag}`}
+							className={`text-white/60 hover:text-white hover:bg-transparent ${styles.appNoDrag}`}
 						>
 							<ChevronLeft size={16} />
 						</Button>
@@ -715,7 +715,7 @@ export function LaunchWindow() {
 								<Button
 									variant="link"
 									size="sm"
-									className={`gap-1 text-white/60 bg-transparent hover:bg-transparent px-0 text-xs ${styles.tauriNoDrag}`}
+									className={`gap-1 text-white/60 bg-transparent hover:bg-transparent px-0 text-xs ${styles.appNoDrag}`}
 									onClick={() => openSourceSelector()}
 									title={selectedSource}
 								>
@@ -731,7 +731,7 @@ export function LaunchWindow() {
 									size="sm"
 									onClick={handleScreenshotCapture}
 									disabled={isCapturing}
-									className={`gap-1.5 text-white bg-transparent hover:bg-transparent px-1 text-xs font-medium ${styles.tauriNoDrag}`}
+									className={`gap-1.5 text-white bg-transparent hover:bg-transparent px-1 text-xs font-medium ${styles.appNoDrag}`}
 								>
 									{isCapturing ? (
 										<>
@@ -756,7 +756,7 @@ export function LaunchWindow() {
            ================================================================ */}
 				{(view === "recording" || recording) && (
 					<div
-						className={`w-full mx-auto flex items-center gap-1.5 px-3 py-2 ${styles.tauriDrag} ${styles.hudBar}`}
+						className={`w-full mx-auto flex items-center gap-1.5 px-3 py-2 ${styles.appDrag} ${styles.hudBar}`}
 						style={barStyle}
 					>
 						{dragHandle}
@@ -769,7 +769,7 @@ export function LaunchWindow() {
 									size="icon"
 									onClick={() => setView("choice")}
 									title="Back"
-									className={`text-white/60 hover:text-white hover:bg-transparent ${styles.tauriNoDrag}`}
+									className={`text-white/60 hover:text-white hover:bg-transparent ${styles.appNoDrag}`}
 								>
 									<ChevronLeft size={16} />
 								</Button>
@@ -781,7 +781,7 @@ export function LaunchWindow() {
 						<Button
 							variant="link"
 							size="sm"
-							className={`gap-1 text-white/80 bg-transparent hover:bg-transparent px-0 text-xs ${styles.tauriNoDrag}`}
+							className={`gap-1 text-white/80 bg-transparent hover:bg-transparent px-0 text-xs ${styles.appNoDrag}`}
 							onClick={() => openSourceSelector()}
 							disabled={recording}
 							title={selectedSource}
@@ -793,14 +793,14 @@ export function LaunchWindow() {
 						<div className={dividerClass} />
 
 						{/* Audio / Mic / Camera */}
-						<div className={`flex items-center gap-1 ${styles.tauriNoDrag}`}>
+						<div className={`flex items-center gap-1 ${styles.appNoDrag}`}>
 							<Button
 								variant="link"
 								size="icon"
 								onClick={() => !recording && setSystemAudioEnabled(!systemAudioEnabled)}
 								disabled={recording}
 								title={systemAudioEnabled ? "Disable system audio" : "Enable system audio"}
-								className={`text-white/80 hover:bg-transparent ${styles.tauriNoDrag}`}
+								className={`text-white/80 hover:bg-transparent ${styles.appNoDrag}`}
 							>
 								{systemAudioEnabled ? (
 									<MdVolumeUp size={16} className="text-[#2563EB]" />
@@ -818,7 +818,7 @@ export function LaunchWindow() {
 										onClick={() => micSend({ type: "CLICK" })}
 										disabled={recording}
 										title={isMicEnabled ? "Microphone settings" : "Enable microphone"}
-										className={`text-white/80 hover:bg-transparent ${styles.tauriNoDrag}`}
+										className={`text-white/80 hover:bg-transparent ${styles.appNoDrag}`}
 									>
 										{isMicEnabled ? (
 											<MdMic size={16} className="text-[#2563EB]" />
@@ -831,7 +831,7 @@ export function LaunchWindow() {
 									align="center"
 									side="top"
 									sideOffset={10}
-									className={`w-[280px] rounded-2xl border border-white/15 bg-[rgba(18,18,26,0.96)] p-3 text-slate-100 shadow-xl backdrop-blur-xl ${styles.tauriNoDrag}`}
+									className={`w-[280px] rounded-2xl border border-white/15 bg-[rgba(18,18,26,0.96)] p-3 text-slate-100 shadow-xl backdrop-blur-xl ${styles.appNoDrag}`}
 									onPointerDownOutside={(e) => {
 										if (micButtonRef.current?.contains(e.target as Node)) {
 											e.preventDefault();
@@ -872,7 +872,7 @@ export function LaunchWindow() {
 													void permissionsHook.requestMicrophoneAccess();
 												}
 											}}
-											className={`h-8 w-full rounded-full border border-white/15 bg-blue-500/20 hover:bg-blue-500/30 px-3 py-1 text-xs text-blue-300 font-medium transition-colors cursor-pointer ${styles.tauriNoDrag}`}
+											className={`h-8 w-full rounded-full border border-white/15 bg-blue-500/20 hover:bg-blue-500/30 px-3 py-1 text-xs text-blue-300 font-medium transition-colors cursor-pointer ${styles.appNoDrag}`}
 										>
 											{micPermissionDeniedOrRestricted
 												? "Open System Settings"
@@ -893,7 +893,7 @@ export function LaunchWindow() {
 											disabled={isLoadingMicrophoneDevices || isRequestingMicrophoneAccess}
 										>
 											<SelectTrigger
-												className={`h-8 w-full rounded-full border-white/15 bg-[#131722] px-3 py-1 text-xs text-slate-100 outline-none ring-0 ring-offset-0 focus:ring-0 focus:ring-offset-0 ${styles.tauriNoDrag}`}
+												className={`h-8 w-full rounded-full border-white/15 bg-[#131722] px-3 py-1 text-xs text-slate-100 outline-none ring-0 ring-offset-0 focus:ring-0 focus:ring-offset-0 ${styles.appNoDrag}`}
 											>
 												<SelectValue
 													placeholder={
@@ -938,7 +938,7 @@ export function LaunchWindow() {
 								onClick={toggleCamera}
 								disabled={recording}
 								title={cameraEnabled ? "Disable facecam" : "Enable facecam"}
-								className={`text-white/80 hover:bg-transparent ${styles.tauriNoDrag}`}
+								className={`text-white/80 hover:bg-transparent ${styles.appNoDrag}`}
 							>
 								{cameraEnabled ? (
 									<MdVideocam size={16} className="text-[#2563EB]" />
@@ -956,7 +956,7 @@ export function LaunchWindow() {
 							size="sm"
 							onClick={hasSelectedSource ? toggleRecording : () => openSourceSelector()}
 							disabled={!hasSelectedSource && !recording}
-							className={`gap-1 text-white bg-transparent hover:bg-transparent px-0 text-xs ${styles.tauriNoDrag}`}
+							className={`gap-1 text-white bg-transparent hover:bg-transparent px-0 text-xs ${styles.appNoDrag}`}
 						>
 							{recording ? (
 								<>

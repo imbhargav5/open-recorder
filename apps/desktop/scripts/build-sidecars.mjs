@@ -1,9 +1,14 @@
 /**
- * Build script for Tauri sidecars.
+ * Build script for native sidecars.
  *
- * Compiles Swift helpers on macOS and copies them to src-tauri/binaries/
- * with Tauri's triple-suffixed naming convention:
- *   e.g., openscreen-screencapturekit-helper-aarch64-apple-darwin
+ * Compiles Swift helpers on macOS and copies them to resources/binaries/
+ * with a target-triple-suffixed naming convention, e.g.:
+ *   openscreen-screencapturekit-helper-aarch64-apple-darwin
+ *
+ * Swift sources live in apps/desktop/native/.
+ * Output binaries are placed in apps/desktop/resources/binaries/
+ * and must be listed under extraResources in electron-builder.yml to be
+ * bundled into the final app package.
  */
 
 import { spawnSync } from 'node:child_process';
@@ -12,8 +17,8 @@ import path from 'node:path';
 import { existsSync } from 'node:fs';
 
 const projectRoot = process.cwd();
-const nativeRoot = path.join(projectRoot, 'src-tauri', 'native');
-const outputDir = path.join(projectRoot, 'src-tauri', 'binaries');
+const nativeRoot = path.join(projectRoot, 'native');
+const outputDir = path.join(projectRoot, 'resources', 'binaries');
 
 function getTargetTripleFromArgs() {
   const targetFlagIndex = process.argv.indexOf('--target');
@@ -24,7 +29,6 @@ function getTargetTripleFromArgs() {
   return null;
 }
 
-// Determine Tauri target triple
 function getHostTriple() {
   const platform = process.platform;
   const arch = process.arch;
@@ -43,7 +47,6 @@ function getHostTriple() {
 
 function getTargetTriple() {
   return (
-    process.env.TAURI_TARGET_TRIPLE ||
     process.env.npm_config_target ||
     getTargetTripleFromArgs() ||
     getHostTriple()
@@ -123,7 +126,7 @@ if (process.platform === 'darwin') {
   for (const helper of helpers) {
     const sourcePath = path.join(nativeRoot, helper.source);
     if (!existsSync(sourcePath)) {
-      console.warn(`[build-tauri-sidecars] Source not found: ${sourcePath}, skipping.`);
+      console.warn(`[build-sidecars] Source not found: ${sourcePath}, skipping.`);
       continue;
     }
 
@@ -143,10 +146,10 @@ if (process.platform === 'darwin') {
       throw new Error(details || `Failed to compile ${helper.source}`);
     }
 
-    // Rename with triple suffix for Tauri
-    const tauriOutput = path.join(outputDir, `${helper.output}-${triple}`);
-    await copyFile(tempOutput, tauriOutput);
-    await chmod(tauriOutput, 0o755);
+    // Rename with triple suffix for target identification
+    const finalOutput = path.join(outputDir, `${helper.output}-${triple}`);
+    await copyFile(tempOutput, finalOutput);
+    await chmod(finalOutput, 0o755);
 
     // Clean up temp file (without triple)
     const { unlinkSync } = await import('node:fs');
@@ -156,7 +159,7 @@ if (process.platform === 'darwin') {
       // ignore
     }
 
-    console.log(`[build-tauri-sidecars] Built ${helper.output}-${triple}`);
+    console.log(`[build-sidecars] Built ${helper.output}-${triple}`);
   }
 }
 
@@ -165,7 +168,7 @@ if (process.platform === 'darwin') {
 if (process.platform === 'win32') {
   const wgcDir = path.join(nativeRoot, 'wgc-capture');
   if (existsSync(wgcDir)) {
-    console.log('[build-tauri-sidecars] Building WGC capture helper...');
+    console.log('[build-sidecars] Building WGC capture helper...');
     const result = spawnSync('dotnet', ['publish', '-c', 'Release', '-o', outputDir], {
       cwd: wgcDir,
       encoding: 'utf8',
@@ -173,17 +176,17 @@ if (process.platform === 'win32') {
     });
 
     if (result.status !== 0) {
-      console.warn('[build-tauri-sidecars] WGC build failed:', result.stderr);
+      console.warn('[build-sidecars] WGC build failed:', result.stderr);
     } else {
       // Rename with triple suffix
       const exeSrc = path.join(outputDir, 'wgc-capture.exe');
       const exeDst = path.join(outputDir, `wgc-capture-${triple}.exe`);
       if (existsSync(exeSrc)) {
         await copyFile(exeSrc, exeDst);
-        console.log(`[build-tauri-sidecars] Built wgc-capture-${triple}.exe`);
+        console.log(`[build-sidecars] Built wgc-capture-${triple}.exe`);
       }
     }
   }
 }
 
-console.log('[build-tauri-sidecars] Done.');
+console.log('[build-sidecars] Done.');

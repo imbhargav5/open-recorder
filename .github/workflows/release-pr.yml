@@ -79,6 +79,3 @@ jobs:
           add-paths: |
             .github/release-plan.json
             apps/desktop/package.json
-            apps/desktop/src-tauri/Cargo.lock
-            apps/desktop/src-tauri/Cargo.toml
-            apps/desktop/src-tauri/tauri.conf.json

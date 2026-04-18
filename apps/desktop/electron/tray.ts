@@ -1,6 +1,5 @@
 /**
  * System tray management.
- * Mirrors src-tauri/src/tray.rs.
  */
 
 import { Tray, Menu, nativeImage, app } from "electron";

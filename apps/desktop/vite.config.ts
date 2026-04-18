@@ -14,7 +14,7 @@ export default defineConfig({
 		port: 5789,
 		strictPort: true,
 	},
-	envPrefix: ["VITE_", "TAURI_ENV_"],
+	envPrefix: ["VITE_"],
 	optimizeDeps: {
 		entries: ["index.html"],
 		exclude: [

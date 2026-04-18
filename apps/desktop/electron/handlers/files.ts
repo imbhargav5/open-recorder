@@ -1,6 +1,5 @@
 /**
  * File I/O IPC handlers.
- * Mirrors src-tauri/src/commands/files.rs.
  */
 
 import fs from "node:fs";

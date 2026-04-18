@@ -5,10 +5,10 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /**
- * Playwright E2E configuration for the Open Recorder Tauri desktop app.
+ * Playwright E2E configuration for the Open Recorder Electron desktop app.
  *
- * Tests run against the Vite dev server (no native Tauri binary needed).
- * All Tauri IPC calls are intercepted by the tauri-shim injected via
+ * Tests run against the Vite dev server (no native Electron binary needed).
+ * All Electron IPC calls are intercepted by the electron shim injected via
  * page.addInitScript() before React initialises.
  *
  * @see apps/desktop/e2e/setup/tauri-shim.ts

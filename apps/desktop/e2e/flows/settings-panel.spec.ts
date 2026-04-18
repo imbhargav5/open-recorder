@@ -131,7 +131,6 @@ test.describe("Settings panel", () => {
     const errors: string[] = [];
     page.on("pageerror", (err) => {
       if (
-        !err.message.includes("tauri") &&
         !err.message.includes("WebGL") &&
         !err.message.includes("play()")
       ) {
