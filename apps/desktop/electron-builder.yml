@@ -24,7 +24,9 @@ mac:
         - x64
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
-    NSAudioCaptureUsageDescription: Open Recorder uses the microphone for audio recording.
+    NSMicrophoneUsageDescription: Open Recorder uses the microphone for audio commentary during recordings.
+    NSCameraUsageDescription: Open Recorder uses the camera for facecam recordings.
+    NSAudioCaptureUsageDescription: Open Recorder captures system audio when you choose to record it.
 
 win:
   target:
