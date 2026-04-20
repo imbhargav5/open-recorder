@@ -23,6 +23,8 @@ mac:
         - arm64
         - x64
   entitlementsInherit: build/entitlements.mac.plist
+  extendInfo:
+    NSAudioCaptureUsageDescription: Open Recorder uses the microphone for audio recording.
 
 win:
   target:
