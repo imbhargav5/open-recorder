@@ -214,7 +214,7 @@ function PlaybackCursor({
   currentTimeMs: number;
   videoDurationMs: number;
   onSeek?: (time: number) => void;
-  timelineRef: React.RefObject<HTMLDivElement>;
+  timelineRef: React.RefObject<HTMLDivElement | null>;
   keyframes?: { id: string; time: number }[];
 }) {
   const { sidebarWidth, direction, range, valueToPixels, pixelsToValue } = useTimelineContext();

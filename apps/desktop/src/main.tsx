@@ -1,5 +1,5 @@
-import React from "react";
-import ReactDOM from "react-dom/client";
+import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
 import { Provider, createStore } from "jotai";
 import App from "./App.tsx";
 import { I18nProvider } from "./contexts/I18nContext.tsx";
@@ -13,14 +13,14 @@ async function bootstrap() {
 
 	const store = createStore();
 
-	ReactDOM.createRoot(document.getElementById("root")!).render(
-		<React.StrictMode>
+	createRoot(document.getElementById("root")!).render(
+		<StrictMode>
 			<Provider store={store}>
 				<I18nProvider>
 					<App />
 				</I18nProvider>
 			</Provider>
-		</React.StrictMode>,
+		</StrictMode>,
 	);
 }
 

@@ -314,7 +314,7 @@ export function normalizeCursorTelemetryPayload(
 		...sampleEntries.map((entry) => normalizeEntry(entry, normalizationContext, "move")),
 		...clickEntries.map((entry) => normalizeEntry(entry, normalizationContext)),
 	]
-		.filter((entry): entry is CursorTelemetryPoint => entry !== null)
+		.filter((entry) => entry !== null)
 		.sort((a, b) => a.timeMs - b.timeMs);
 
 	if (normalized.length === 0) {
