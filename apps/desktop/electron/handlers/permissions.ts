@@ -6,7 +6,7 @@
  * On Linux/Windows, permissions are always "granted".
  */
 
-import { shell, systemPreferences } from "electron";
+import { desktopCapturer, shell, systemPreferences } from "electron";
 
 export function registerPermissionHandlers(
 	handle: (channel: string, handler: (args: unknown) => unknown) => void,
@@ -23,8 +23,15 @@ export function registerPermissionHandlers(
 
 	handle("request_screen_recording_permission", async () => {
 		if (process.platform === "darwin") {
-			// On macOS, screen recording permission must be granted in System Preferences.
-			// Opening the preferences pane is the only way to prompt the user.
+			// Trigger a screen capture attempt so macOS registers this app in
+			// System Preferences > Privacy > Screen Recording.  Without this
+			// the app never appears in the list.
+			try {
+				await desktopCapturer.getSources({ types: ["screen"], thumbnailSize: { width: 1, height: 1 } });
+			} catch {
+				// Expected to fail if permission is denied — that's fine,
+				// the attempt itself is what registers the app.
+			}
 			await shell.openExternal(
 				"x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture",
 			);

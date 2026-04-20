@@ -3,7 +3,7 @@
  *
  * Bundles:
  *   electron/main.ts    → dist-electron/main.js    (main process, ESM)
- *   electron/preload.ts → dist-electron/preload.js  (preload, ESM)
+ *   electron/preload.ts → dist-electron/preload.cjs (preload, CJS)
  *
  * ESM output works with Electron 28+ when the package has "type": "module".
  * Uses esbuild for fast TypeScript transpilation and bundling.
@@ -39,6 +39,13 @@ await Promise.all([
   build({
     ...shared,
     entryPoints: [path.join(ROOT, "electron", "preload.ts")],
+    // Preload scripts run in a special renderer context that does not
+    // support ESM imports reliably. Build as CJS so `require("electron")`
+    // works regardless of Electron version or sandbox mode.
+    // Output as .cjs since the package uses "type": "module".
+    format: "cjs",
+    outdir: undefined,
+    outfile: path.join(OUT_DIR, "preload.cjs"),
   }),
 ]);
 

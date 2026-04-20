@@ -32,12 +32,15 @@ const HUD_HEIGHT = 155;
 const HUD_BOTTOM_MARGIN = 5;
 const IS_DEV = !app.isPackaged;
 const VITE_DEV_URL = "http://localhost:5789";
+const APP_NAME = IS_DEV ? "OpenRecorderDev" : "Open Recorder";
+
+app.name = APP_NAME;
 
 // ─── Paths ───────────────────────────────────────────────────────────────────
 
 // ESM doesn't provide __dirname — reconstruct it from import.meta.url
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PRELOAD_PATH = path.join(__dirname, "preload.js");
+const PRELOAD_PATH = path.join(__dirname, "preload.cjs");
 const RESOURCES_PATH = IS_DEV
 	? path.join(__dirname, "..", "public")
 	: path.join(process.resourcesPath, "public");
@@ -108,7 +111,6 @@ function registerAllHandlers(): void {
 	registerWindowMgmtHandlers(handle, getState, setState, rendererUrlResolver, PRELOAD_PATH);
 
 	// ─── Additional app-level handlers ─────────────────────────────────────
-	handle("get_app_name", () => app.name);
 	handle("get_app_version", () => app.getVersion());
 	handle("write_clipboard_image", async (args) => {
 		const { clipboard, nativeImage } = await import("electron");

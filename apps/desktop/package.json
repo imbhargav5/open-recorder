@@ -17,9 +17,10 @@
 	"type": "module",
 	"main": "dist-electron/main.js",
 	"scripts": {
-		"dev": "concurrently -n vite,electron -c cyan,yellow \"pnpm dev:vite\" \"wait-on http://localhost:5789 && pnpm build:electron && electron .\" --kill-others-on-fail",
+		"postinstall": "pnpm node scripts/patch-electron-plist.mjs",
+		"dev": "concurrently -n vite,electron -c cyan,yellow \"pnpm dev:vite\" \"wait-on http://localhost:5789 && pnpm build:electron && pnpm node scripts/open-electron.mjs\" --kill-others-on-fail",
 		"dev:vite": "vite",
-		"dev:electron": "pnpm build:electron && electron .",
+		"dev:electron": "pnpm build:electron && pnpm node scripts/open-electron.mjs",
 		"build": "pnpm build:vite && pnpm build:electron",
 		"build:vite": "vite build",
 		"build:electron": "pnpm node scripts/build-electron.mjs",
