@@ -1,6 +1,80 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+@variant dark (&:where(.dark, .dark *));
+
+@theme inline {
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+  --color-chart-1: hsl(var(--chart-1));
+  --color-chart-2: hsl(var(--chart-2));
+  --color-chart-3: hsl(var(--chart-3));
+  --color-chart-4: hsl(var(--chart-4));
+  --color-chart-5: hsl(var(--chart-5));
+
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+}
+
+@keyframes accordion-down {
+  from {
+    height: 0;
+  }
+
+  to {
+    height: var(--radix-accordion-content-height);
+  }
+}
+
+@keyframes accordion-up {
+  from {
+    height: var(--radix-accordion-content-height);
+  }
+
+  to {
+    height: 0;
+  }
+}
+
+@keyframes enter {
+  from {
+    opacity: var(--tw-enter-opacity, 1);
+    transform:
+      translate3d(var(--tw-enter-translate-x, 0), var(--tw-enter-translate-y, 0), 0)
+      scale3d(var(--tw-enter-scale, 1), var(--tw-enter-scale, 1), var(--tw-enter-scale, 1))
+      rotate(var(--tw-enter-rotate, 0));
+  }
+}
+
+@keyframes exit {
+  to {
+    opacity: var(--tw-exit-opacity, 1);
+    transform:
+      translate3d(var(--tw-exit-translate-x, 0), var(--tw-exit-translate-y, 0), 0)
+      scale3d(var(--tw-exit-scale, 1), var(--tw-exit-scale, 1), var(--tw-exit-scale, 1))
+      rotate(var(--tw-exit-rotate, 0));
+  }
+}
 
 @layer base {
   :root {
@@ -32,6 +106,7 @@
     --chart-5: 27 87% 67%;
     --radius: 0.5rem;
   }
+
   .dark {
     --background: 20 14.3% 4.1%;
     --foreground: 60 9.1% 97.8%;
@@ -60,11 +135,11 @@
   }
 }
 
-
 @layer base {
   * {
     @apply border-border;
   }
+
   body {
     @apply bg-background text-foreground;
     -webkit-user-select: none;
@@ -88,29 +163,119 @@
   }
 }
 
-/* Smooth timeline cursor animations */
 @layer utilities {
+  .animate-in,
+  [class~="data-[state=open]:animate-in"][data-state="open"],
+  [class~="data-[state=closed]:animate-in"][data-state="closed"] {
+    animation-name: enter;
+    animation-duration: 150ms;
+    --tw-enter-opacity: initial;
+    --tw-enter-scale: initial;
+    --tw-enter-rotate: initial;
+    --tw-enter-translate-x: initial;
+    --tw-enter-translate-y: initial;
+  }
+
+  .animate-out,
+  [class~="data-[state=open]:animate-out"][data-state="open"],
+  [class~="data-[state=closed]:animate-out"][data-state="closed"] {
+    animation-name: exit;
+    animation-duration: 150ms;
+    --tw-exit-opacity: initial;
+    --tw-exit-scale: initial;
+    --tw-exit-rotate: initial;
+    --tw-exit-translate-x: initial;
+    --tw-exit-translate-y: initial;
+  }
+
+  .fade-in,
+  .fade-in-0,
+  [class~="data-[state=open]:fade-in-0"][data-state="open"] {
+    --tw-enter-opacity: 0;
+  }
+
+  .fade-out-0,
+  [class~="data-[state=closed]:fade-out-0"][data-state="closed"] {
+    --tw-exit-opacity: 0;
+  }
+
+  .zoom-in-95,
+  [class~="data-[state=open]:zoom-in-95"][data-state="open"] {
+    --tw-enter-scale: 0.95;
+  }
+
+  .zoom-out-95,
+  [class~="data-[state=closed]:zoom-out-95"][data-state="closed"] {
+    --tw-exit-scale: 0.95;
+  }
+
+  .slide-in-from-top-2,
+  [class~="data-[side=bottom]:slide-in-from-top-2"][data-side="bottom"],
+  [class~="data-[state=open]:slide-in-from-top-2"][data-state="open"] {
+    --tw-enter-translate-y: -0.5rem;
+  }
+
+  .slide-in-from-top-\[48\%\],
+  [class~="data-[state=open]:slide-in-from-top-[48%]"][data-state="open"] {
+    --tw-enter-translate-y: -48%;
+  }
+
+  .slide-in-from-bottom-2,
+  [class~="data-[side=top]:slide-in-from-bottom-2"][data-side="top"] {
+    --tw-enter-translate-y: 0.5rem;
+  }
+
+  .slide-in-from-right-2,
+  [class~="data-[side=left]:slide-in-from-right-2"][data-side="left"] {
+    --tw-enter-translate-x: 0.5rem;
+  }
+
+  .slide-in-from-left-2,
+  [class~="data-[side=right]:slide-in-from-left-2"][data-side="right"] {
+    --tw-enter-translate-x: -0.5rem;
+  }
+
+  .slide-in-from-left-1\/2,
+  [class~="data-[state=open]:slide-in-from-left-1/2"][data-state="open"] {
+    --tw-enter-translate-x: -50%;
+  }
+
+  .slide-out-to-left-1\/2,
+  [class~="data-[state=closed]:slide-out-to-left-1/2"][data-state="closed"] {
+    --tw-exit-translate-x: -50%;
+  }
+
+  .slide-out-to-top-\[48\%\],
+  [class~="data-[state=closed]:slide-out-to-top-[48%]"][data-state="closed"] {
+    --tw-exit-translate-y: -48%;
+  }
+
+  .animate-in[class~="duration-200"],
+  .animate-out[class~="duration-200"],
+  [class~="data-[state=open]:animate-in"][class~="duration-200"][data-state="open"],
+  [class~="data-[state=closed]:animate-out"][class~="duration-200"][data-state="closed"] {
+    animation-duration: 200ms;
+  }
+
   .timeline-cursor-smooth {
     will-change: transform;
     transition: left 33ms linear, right 33ms linear;
   }
-  
-  /* Hidden scrollbar - still scrollable but invisible */
+
   .custom-scrollbar {
-    scrollbar-width: none; /* Firefox */
-    -ms-overflow-style: none; /* IE/Edge */
+    scrollbar-width: none;
+    -ms-overflow-style: none;
   }
-  
+
   .custom-scrollbar::-webkit-scrollbar {
-    display: none; /* Chrome, Safari, Opera */
+    display: none;
   }
-  
-  /* Smooth playback scrubber */
+
   input[type="range"] {
     -webkit-appearance: none;
     appearance: none;
   }
-  
+
   input[type="range"]::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;
@@ -119,7 +284,7 @@
     border-radius: 50%;
     background: #fff;
     cursor: pointer;
-    box-shadow: 0 2px 8px rgba(255,255,255,0.32);
+    box-shadow: 0 2px 8px rgba(255, 255, 255, 0.32);
     border: 2px solid #fff;
     transition: all 0.08s ease-out;
   }
@@ -127,7 +292,7 @@
   input[type="range"]::-webkit-slider-thumb:hover {
     background: #fff;
     transform: scale(1.15);
-    box-shadow: 0 3px 10px rgba(255,255,255,0.5);
+    box-shadow: 0 3px 10px rgba(255, 255, 255, 0.5);
     border-color: var(--brand-accent);
   }
 
@@ -142,14 +307,14 @@
     background: #fff;
     cursor: pointer;
     border: 2px solid #fff;
-    box-shadow: 0 2px 8px rgba(255,255,255,0.32);
+    box-shadow: 0 2px 8px rgba(255, 255, 255, 0.32);
     transition: all 0.08s ease-out;
   }
 
   input[type="range"]::-moz-range-thumb:hover {
     background: #fff;
     transform: scale(1.15);
-    box-shadow: 0 3px 10px rgba(255,255,255,0.5);
+    box-shadow: 0 3px 10px rgba(255, 255, 255, 0.5);
     border-color: var(--brand-accent);
   }
 
@@ -157,4 +322,3 @@
     transform: scale(1.25);
   }
 }
-
