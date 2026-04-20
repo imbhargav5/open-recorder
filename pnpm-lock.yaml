@@ -98,9 +98,6 @@ importers:
       emoji-picker-react:
         specifier: ^4.16.1
         version: 4.18.0(react@18.3.1)
-      fix-webm-duration:
-        specifier: ^1.0.6
-        version: 1.0.6
       gif.js:
         specifier: ^0.2.0
         version: 0.2.0
@@ -2387,9 +2384,6 @@ packages:
   fill-range@7.1.1:
     resolution: {integrity: sha512-YsGpe3WHLK8ZYi4tWDg2Jy3ebRz2rXowDxnld4bkQB00cc/1Zw9AWnC0i9ztDJitivtQvaI9KaLyKrc+hBW0yg==}
     engines: {node: '>=8'}
-
-  fix-webm-duration@1.0.6:
-    resolution: {integrity: sha512-zVAqi4gE+8ywxJuAyV/rlJVX6CMtvyapEbQx6jyoeX9TMjdqAlt/FdG5d7rXSSkDVzTvS0H7CtwzHcH/vh4FPA==}
 
   flairup@1.0.0:
     resolution: {integrity: sha512-IKlE+pNvL2R+kVL1kEhUYqRxVqeFnjiIvHWDMLFXNaqyUdFXQM2wte44EfMYJNHkW16X991t2Zg8apKkhv7OBA==}
@@ -6138,8 +6132,6 @@ snapshots:
   fill-range@7.1.1:
     dependencies:
       to-regex-range: 5.0.1
-
-  fix-webm-duration@1.0.6: {}
 
   flairup@1.0.0: {}
 
