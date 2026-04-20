@@ -48,6 +48,12 @@ describe("permission backend wrappers", () => {
 			}
 		});
 
+		it("normalizes Electron's 'not-determined' status", async () => {
+			invoke.mockResolvedValue("not-determined");
+			const result = await backend.getMicrophonePermissionStatus();
+			expect(result).toBe("not_determined");
+		});
+
 		it("logs error and returns 'unknown' when IPC call rejects", async () => {
 			const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 			const ipcError = new Error("IPC channel closed");
@@ -120,6 +126,12 @@ describe("permission backend wrappers", () => {
 				ipcError,
 			);
 		});
+
+		it("normalizes Electron's 'not-determined' status", async () => {
+			invoke.mockResolvedValue("not-determined");
+			const result = await backend.getCameraPermissionStatus();
+			expect(result).toBe("not_determined");
+		});
 	});
 
 	describe("openCameraPreferences", () => {
@@ -177,6 +189,12 @@ describe("permission backend wrappers", () => {
 				"[backend] getScreenRecordingPermissionStatus failed:",
 				ipcError,
 			);
+		});
+
+		it("normalizes Electron's 'not-determined' status", async () => {
+			invoke.mockResolvedValue("not-determined");
+			const result = await backend.getScreenRecordingPermissionStatus();
+			expect(result).toBe("not_determined");
 		});
 	});
 

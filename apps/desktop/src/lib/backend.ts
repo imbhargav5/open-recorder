@@ -15,6 +15,10 @@ import type { DesktopSource } from "../components/launch/sourceSelectorState";
 
 export type UnlistenFn = () => void;
 
+function normalizePermissionStatus(status: string): string {
+	return status === "not-determined" ? "not_determined" : status;
+}
+
 // ─── Source List Options ─────────────────────────────────────────────────────
 
 export interface SourceListOptions {
@@ -221,10 +225,12 @@ export function getSystemCursorAssets(): Promise<unknown> {
 // ─── Permissions ────────────────────────────────────────────────────────────
 
 export function getScreenRecordingPermissionStatus(): Promise<string> {
-	return invoke<string>("get_screen_recording_permission_status").catch((err) => {
-		console.error("[backend] getScreenRecordingPermissionStatus failed:", err);
-		return "unknown";
-	});
+	return invoke<string>("get_screen_recording_permission_status")
+		.then(normalizePermissionStatus)
+		.catch((err) => {
+			console.error("[backend] getScreenRecordingPermissionStatus failed:", err);
+			return "unknown";
+		});
 }
 
 export function requestScreenRecordingPermission(): Promise<boolean> {
@@ -257,10 +263,12 @@ export function openAccessibilityPreferences(): Promise<void> {
 }
 
 export function getMicrophonePermissionStatus(): Promise<string> {
-	return invoke<string>("get_microphone_permission_status").catch((err) => {
-		console.error("[backend] getMicrophonePermissionStatus failed:", err);
-		return "unknown";
-	});
+	return invoke<string>("get_microphone_permission_status")
+		.then(normalizePermissionStatus)
+		.catch((err) => {
+			console.error("[backend] getMicrophonePermissionStatus failed:", err);
+			return "unknown";
+		});
 }
 
 export function requestMicrophonePermission(): Promise<boolean> {
@@ -271,10 +279,12 @@ export function requestMicrophonePermission(): Promise<boolean> {
 }
 
 export function getCameraPermissionStatus(): Promise<string> {
-	return invoke<string>("get_camera_permission_status").catch((err) => {
-		console.error("[backend] getCameraPermissionStatus failed:", err);
-		return "unknown";
-	});
+	return invoke<string>("get_camera_permission_status")
+		.then(normalizePermissionStatus)
+		.catch((err) => {
+			console.error("[backend] getCameraPermissionStatus failed:", err);
+			return "unknown";
+		});
 }
 
 export function requestCameraPermission(): Promise<boolean> {

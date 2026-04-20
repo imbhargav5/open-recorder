@@ -31,6 +31,11 @@ const WORKSPACE_ROOT = path.resolve(__dirname, "..", "..", "..");
 
 const DEV_NAME = "OpenRecorderDev";
 const DEV_BUNDLE_ID = "dev.openrecorder.app.dev";
+const MICROPHONE_USAGE_DESCRIPTION =
+	"Open Recorder uses the microphone for audio commentary during recordings.";
+const CAMERA_USAGE_DESCRIPTION = "Open Recorder uses the camera for facecam recordings.";
+const AUDIO_CAPTURE_USAGE_DESCRIPTION =
+	"Open Recorder captures system audio when you choose to record it.";
 
 // ─── Locate the electron package directory ───────────────────────────────────
 
@@ -103,6 +108,9 @@ const mainPlist = path.join(originalApp, "Contents", "Info.plist");
 plistSet(mainPlist, "CFBundleName", DEV_NAME);
 plistSet(mainPlist, "CFBundleDisplayName", DEV_NAME);
 plistSet(mainPlist, "CFBundleIdentifier", DEV_BUNDLE_ID);
+plistSet(mainPlist, "NSMicrophoneUsageDescription", MICROPHONE_USAGE_DESCRIPTION);
+plistSet(mainPlist, "NSCameraUsageDescription", CAMERA_USAGE_DESCRIPTION);
+plistSet(mainPlist, "NSAudioCaptureUsageDescription", AUDIO_CAPTURE_USAGE_DESCRIPTION);
 // Keep CFBundleExecutable as "Electron" — do NOT change it.
 
 // ─── 3. Rename only the .app directory ───────────────────────────────────────
