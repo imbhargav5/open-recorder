@@ -1,6 +1,6 @@
 import { invoke } from "@/lib/electronBridge";
 import { useAtom } from "jotai";
-import { useEffect } from "react";
+import { useEffect, type ReactElement } from "react";
 import { AppUpdaterDialog } from "./components/AppUpdaterDialog";
 import ImageEditor from "./components/image-editor/ImageEditor";
 import { LaunchWindow } from "./components/launch/LaunchWindow";
@@ -48,7 +48,7 @@ export default function App() {
 		document.title = windowType === "editor" ? `${appName} Editor` : appName;
 	}, [appName, windowType]);
 
-	let content: JSX.Element;
+	let content: ReactElement;
 
 	switch (windowType) {
 		case "hud-overlay":

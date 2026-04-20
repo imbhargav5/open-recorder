@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect, type FC, type RefObject } from "react";
 import { useTimelineContext } from "dnd-timeline";
 
 interface Keyframe {
@@ -12,10 +12,10 @@ interface KeyframeMarkersProps {
   setSelectedKeyframeId: (id: string | null) => void;
   onKeyframeMove: (id: string, newTime: number) => void;
   videoDurationMs: number;
-  timelineRef: React.RefObject<HTMLDivElement>;
+  timelineRef: RefObject<HTMLDivElement | null>;
 }
 
-const KeyframeMarkers: React.FC<KeyframeMarkersProps> = ({
+const KeyframeMarkers: FC<KeyframeMarkersProps> = ({
   keyframes,
   selectedKeyframeId,
   setSelectedKeyframeId,
