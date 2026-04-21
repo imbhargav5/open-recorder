@@ -6,12 +6,18 @@
  * a brief resize so the user gets a clear, focused permission-granting experience.
  */
 
-import { invoke } from "@/lib/electronBridge";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { MdCheck, MdClose, MdMic, MdRefresh, MdScreenShare, MdVideocam } from "react-icons/md";
 import { HiShieldCheck } from "react-icons/hi2";
+import { MdCheck, MdClose, MdMic, MdRefresh, MdScreenShare, MdVideocam } from "react-icons/md";
 import * as backend from "@/lib/backend";
-import type { PermissionState, PermissionStatus, UsePermissionsResult } from "../../hooks/usePermissions";
+import { invoke } from "@/lib/electronBridge";
+import type {
+	PermissionState,
+	PermissionStatus,
+	UsePermissionsResult,
+} from "../../hooks/usePermissions";
+import { Button } from "../ui/button";
+import { Card } from "../ui/card";
 
 const ONBOARDING_COMPLETE_KEY = "open-recorder-onboarding-v1";
 
@@ -107,7 +113,10 @@ export function PermissionOnboarding({ permissionsHook, onComplete }: Permission
 		resizedRef.current = true;
 
 		invoke("resize_hud_to_onboarding").catch((err) => {
-			console.error("[PermissionOnboarding] window resize failed, continuing with current size:", err);
+			console.error(
+				"[PermissionOnboarding] window resize failed, continuing with current size:",
+				err,
+			);
 		});
 	}, []);
 
@@ -209,26 +218,24 @@ export function PermissionOnboarding({ permissionsHook, onComplete }: Permission
 			case "welcome":
 				return (
 					<div className="flex flex-col items-center gap-4 text-center">
-						<div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-500/15 border border-blue-400/20">
+						<div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-blue-400/20 bg-blue-500/15">
 							<HiShieldCheck size={28} className="text-blue-400" />
 						</div>
 						<div>
-							<h2 className="text-base font-semibold text-white">
-								Welcome to Open Recorder
-							</h2>
-							<p className="mt-1.5 text-xs text-white/55 leading-relaxed max-w-[320px]">
+							<h2 className="text-base font-semibold text-white">Welcome to Open Recorder</h2>
+							<p className="mt-1.5 max-w-[320px] text-xs leading-relaxed text-white/55">
 								We need a few permissions to capture your screen, microphone, and camera.
 								{isMacOS
 									? " macOS will ask you to approve each one."
 									: " Your system may prompt you when using these features."}
 							</p>
 						</div>
-						<button
+						<Button
 							onClick={advanceStep}
-							className="mt-1 px-6 py-2 rounded-full bg-blue-500 hover:bg-blue-400 text-white text-sm font-medium transition-colors cursor-pointer"
+							className="mt-1 rounded-full bg-blue-500 px-6 text-sm font-medium text-white hover:bg-blue-400"
 						>
 							Get Started
-						</button>
+						</Button>
 					</div>
 				);
 
@@ -266,23 +273,22 @@ export function PermissionOnboarding({ permissionsHook, onComplete }: Permission
 			case "done":
 				return (
 					<div className="flex flex-col items-center gap-4 text-center">
-						<div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-500/15 border border-emerald-400/20">
+						<div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-emerald-400/20 bg-emerald-500/15">
 							<MdCheck size={28} className="text-emerald-400" />
 						</div>
 						<div>
 							<h2 className="text-base font-semibold text-white">You're All Set!</h2>
-							<p className="mt-1.5 text-xs text-white/55 leading-relaxed max-w-[320px]">
-								Open Recorder is ready to go. You can change permissions
-								anytime in System Settings.
+							<p className="mt-1.5 max-w-[320px] text-xs leading-relaxed text-white/55">
+								Open Recorder is ready to go. You can change permissions anytime in System Settings.
 							</p>
 						</div>
 						<PermissionSummary permissions={permissions} />
-						<button
+						<Button
 							onClick={() => void handleComplete()}
-							className="mt-1 px-6 py-2 rounded-full bg-blue-500 hover:bg-blue-400 text-white text-sm font-medium transition-colors cursor-pointer"
+							className="mt-1 rounded-full bg-blue-500 px-6 text-sm font-medium text-white hover:bg-blue-400"
 						>
 							Start Recording
-						</button>
+						</Button>
 					</div>
 				);
 		}
@@ -322,9 +328,7 @@ export function PermissionOnboarding({ permissionsHook, onComplete }: Permission
 				<div className="flex items-center gap-2 text-xs">
 					{statusIcon(status)}
 					<span
-						className={
-							isGranted ? "text-emerald-400" : isDenied ? "text-red-400" : "text-white/50"
-						}
+						className={isGranted ? "text-emerald-400" : isDenied ? "text-red-400" : "text-white/50"}
 					>
 						{statusLabel(status)}
 					</span>
@@ -332,30 +336,31 @@ export function PermissionOnboarding({ permissionsHook, onComplete }: Permission
 
 				{showRelaunchHint && (
 					<p className="text-[11px] leading-relaxed text-amber-300/80 bg-amber-400/10 border border-amber-400/20 rounded-lg px-3 py-2 max-w-[320px]">
-						After enabling Screen Recording in System Settings, macOS
-						needs Open Recorder to restart before it picks up the new
-						permission. Click <span className="font-semibold">Quit & Relaunch</span> once you&rsquo;ve toggled the switch.
+						After enabling Screen Recording in System Settings, macOS needs Open Recorder to restart
+						before it picks up the new permission. Click{" "}
+						<span className="font-semibold">Quit & Relaunch</span> once you&rsquo;ve toggled the
+						switch.
 					</p>
 				)}
 
 				<div className="flex items-center gap-3">
 					{isGranted ? (
-						<button
+						<Button
 							onClick={advanceStep}
-							className="px-5 py-2 rounded-full bg-blue-500 hover:bg-blue-400 text-white text-sm font-medium transition-colors cursor-pointer"
+							className="rounded-full bg-blue-500 px-5 text-sm font-medium text-white hover:bg-blue-400"
 						>
 							Continue
-						</button>
+						</Button>
 					) : (
 						<>
-							<button
+							<Button
 								onClick={() => void handleGrantPermission()}
 								disabled={isRequesting}
-								className="px-5 py-2 rounded-full bg-blue-500 hover:bg-blue-400 disabled:opacity-50 text-white text-sm font-medium transition-colors cursor-pointer disabled:cursor-not-allowed"
+								className="rounded-full bg-blue-500 px-5 text-sm font-medium text-white hover:bg-blue-400"
 							>
 								{isRequesting ? (
 									<span className="flex items-center gap-2">
-										<div className="h-3 w-3 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+										<div className="h-3 w-3 animate-spin rounded-full border-2 border-white/30 border-t-white" />
 										Requesting...
 									</span>
 								) : isDenied || showRelaunchHint ? (
@@ -363,24 +368,25 @@ export function PermissionOnboarding({ permissionsHook, onComplete }: Permission
 								) : (
 									"Grant Permission"
 								)}
-							</button>
+							</Button>
 							{showRelaunchHint && (
-								<button
+								<Button
 									onClick={() => void handleRelaunchApp()}
 									disabled={isRequesting}
-									className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-white text-sm font-medium transition-colors cursor-pointer disabled:cursor-not-allowed"
+									className="gap-1.5 rounded-full bg-emerald-500 px-4 text-sm font-medium text-white hover:bg-emerald-400"
 								>
 									<MdRefresh size={16} />
 									Quit & Relaunch
-								</button>
+								</Button>
 							)}
 							{!required && !showRelaunchHint && (
-								<button
+								<Button
+									variant="ghost"
 									onClick={advanceStep}
-									className="px-4 py-2 rounded-full text-white/50 hover:text-white/80 text-sm transition-colors cursor-pointer"
+									className="rounded-full px-4 text-sm text-white/50 hover:bg-transparent hover:text-white/80"
 								>
 									Skip
-								</button>
+								</Button>
 							)}
 						</>
 					)}
@@ -390,20 +396,11 @@ export function PermissionOnboarding({ permissionsHook, onComplete }: Permission
 	};
 
 	return (
-		<div className="w-full h-full flex items-center justify-center">
-			<div
-				className="flex flex-col items-center gap-5 w-full max-w-[440px] px-6 py-6 rounded-[22px]"
-				style={{
-					background:
-						"linear-gradient(135deg, rgba(28,28,36,0.97) 0%, rgba(18,18,26,0.96) 100%)",
-					backdropFilter: "blur(16px) saturate(140%)",
-					WebkitBackdropFilter: "blur(16px) saturate(140%)",
-					border: "1px solid rgba(80,80,120,0.25)",
-				}}
-			>
+		<div className="flex h-full w-full items-center justify-center">
+			<Card className="hud-surface flex w-full max-w-[440px] flex-col items-center gap-5 rounded-[22px] px-6 py-6">
 				{renderStepContent()}
 				<StepDots steps={steps} currentIndex={currentIndex} />
-			</div>
+			</Card>
 		</div>
 	);
 }
