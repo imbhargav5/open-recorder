@@ -244,6 +244,29 @@ export function openScreenRecordingPreferences(): Promise<void> {
 	return invoke("open_screen_recording_preferences");
 }
 
+/**
+ * Probe effective screen-recording permission by asking the OS for a thumbnail
+ * via `desktopCapturer.getSources`.  This bypasses macOS's per-process cache
+ * on `systemPreferences.getMediaAccessStatus("screen")`, which otherwise stays
+ * stuck on the status read at app launch.
+ */
+export function probeScreenRecordingEffectiveStatus(): Promise<string> {
+	return invoke<string>("probe_screen_recording_effective_status")
+		.then(normalizePermissionStatus)
+		.catch((err) => {
+			console.error("[backend] probeScreenRecordingEffectiveStatus failed:", err);
+			return "unknown";
+		});
+}
+
+/**
+ * Relaunch the Electron app.  Required on macOS after granting screen-recording
+ * permission in dev because the TCC cache only refreshes on a fresh process.
+ */
+export function relaunchApp(): Promise<void> {
+	return invoke("relaunch_app");
+}
+
 export function getAccessibilityPermissionStatus(): Promise<string> {
 	return invoke<string>("get_accessibility_permission_status").catch((err) => {
 		console.error("[backend] getAccessibilityPermissionStatus failed:", err);

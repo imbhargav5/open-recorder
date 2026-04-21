@@ -8,8 +8,9 @@
 
 import { invoke } from "@/lib/electronBridge";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { MdCheck, MdClose, MdMic, MdScreenShare, MdVideocam } from "react-icons/md";
+import { MdCheck, MdClose, MdMic, MdRefresh, MdScreenShare, MdVideocam } from "react-icons/md";
 import { HiShieldCheck } from "react-icons/hi2";
+import * as backend from "@/lib/backend";
 import type { PermissionState, PermissionStatus, UsePermissionsResult } from "../../hooks/usePermissions";
 
 const ONBOARDING_COMPLETE_KEY = "open-recorder-onboarding-v1";
@@ -86,6 +87,12 @@ export function PermissionOnboarding({ permissionsHook, onComplete }: Permission
 
 	const [step, setStep] = useState<OnboardingStep>("welcome");
 	const [isRequesting, setIsRequesting] = useState(false);
+	// Screen-recording needs a relaunch before macOS picks up a new grant in
+	// the running process (the TCC status is cached per-process).  When the
+	// user has gone through "Grant Permission → open Settings" at least once,
+	// surface a "Quit & Relaunch" affordance instead of pretending the 500ms
+	// refetch will work.
+	const [screenRecordingAwaitingRelaunch, setScreenRecordingAwaitingRelaunch] = useState(false);
 	const resizedRef = useRef(false);
 
 	// Build the step list — skip macOS-only steps on other platforms
@@ -135,6 +142,14 @@ export function PermissionOnboarding({ permissionsHook, onComplete }: Permission
 					if (!granted) {
 						await openPermissionSettings("screenRecording");
 					}
+					// Regardless of the immediate result: macOS caches the TCC
+					// answer per-process on the screen-recording pathway, so
+					// the `granted` return above is only reliable if the user
+					// had already flipped the toggle before clicking.  Flag the
+					// UI so it can offer an explicit "Quit & Relaunch" button
+					// instead of silently waiting for a refresh that macOS
+					// refuses to serve.
+					setScreenRecordingAwaitingRelaunch(true);
 					break;
 				}
 				case "microphone": {
@@ -152,8 +167,6 @@ export function PermissionOnboarding({ permissionsHook, onComplete }: Permission
 					break;
 				}
 			}
-			// Small delay to let the OS update TCC state
-			await new Promise((r) => setTimeout(r, 500));
 			await refreshPermissions();
 		} finally {
 			setIsRequesting(false);
@@ -166,6 +179,28 @@ export function PermissionOnboarding({ permissionsHook, onComplete }: Permission
 		openPermissionSettings,
 		refreshPermissions,
 	]);
+
+	const handleRelaunchApp = useCallback(async () => {
+		setIsRequesting(true);
+		try {
+			await backend.relaunchApp();
+		} catch (err) {
+			console.error("[PermissionOnboarding] relaunchApp failed:", err);
+			setIsRequesting(false);
+		}
+		// Normal path: the app restarts before we get here — no need to reset
+		// isRequesting on success.
+	}, []);
+
+	// Once the OS reports screen recording is actually granted, drop the
+	// "awaiting relaunch" banner automatically so the user can keep moving
+	// without restarting.  This triggers when the focus-refresh picks up a
+	// granted status via the desktopCapturer probe.
+	useEffect(() => {
+		if (permissions.screenRecording === "granted" && screenRecordingAwaitingRelaunch) {
+			setScreenRecordingAwaitingRelaunch(false);
+		}
+	}, [permissions.screenRecording, screenRecordingAwaitingRelaunch]);
 
 	// ─── Step Content ────────────────────────────────────────────────────────
 
@@ -205,6 +240,7 @@ export function PermissionOnboarding({ permissionsHook, onComplete }: Permission
 					permissions.screenRecording,
 					"screenRecording",
 					true,
+					screenRecordingAwaitingRelaunch && permissions.screenRecording !== "granted",
 				);
 
 			case "microphone":
@@ -259,6 +295,7 @@ export function PermissionOnboarding({ permissionsHook, onComplete }: Permission
 		status: PermissionStatus,
 		_permKey: keyof PermissionState,
 		required: boolean,
+		showRelaunchHint = false,
 	) => {
 		const isGranted = status === "granted";
 		const isDenied = status === "denied" || status === "restricted";
@@ -293,6 +330,14 @@ export function PermissionOnboarding({ permissionsHook, onComplete }: Permission
 					</span>
 				</div>
 
+				{showRelaunchHint && (
+					<p className="text-[11px] leading-relaxed text-amber-300/80 bg-amber-400/10 border border-amber-400/20 rounded-lg px-3 py-2 max-w-[320px]">
+						After enabling Screen Recording in System Settings, macOS
+						needs Open Recorder to restart before it picks up the new
+						permission. Click <span className="font-semibold">Quit & Relaunch</span> once you&rsquo;ve toggled the switch.
+					</p>
+				)}
+
 				<div className="flex items-center gap-3">
 					{isGranted ? (
 						<button
@@ -313,13 +358,23 @@ export function PermissionOnboarding({ permissionsHook, onComplete }: Permission
 										<div className="h-3 w-3 rounded-full border-2 border-white/30 border-t-white animate-spin" />
 										Requesting...
 									</span>
-								) : isDenied ? (
+								) : isDenied || showRelaunchHint ? (
 									"Open Settings"
 								) : (
 									"Grant Permission"
 								)}
 							</button>
-							{!required && (
+							{showRelaunchHint && (
+								<button
+									onClick={() => void handleRelaunchApp()}
+									disabled={isRequesting}
+									className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-white text-sm font-medium transition-colors cursor-pointer disabled:cursor-not-allowed"
+								>
+									<MdRefresh size={16} />
+									Quit & Relaunch
+								</button>
+							)}
+							{!required && !showRelaunchHint && (
 								<button
 									onClick={advanceStep}
 									className="px-4 py-2 rounded-full text-white/50 hover:text-white/80 text-sm transition-colors cursor-pointer"
