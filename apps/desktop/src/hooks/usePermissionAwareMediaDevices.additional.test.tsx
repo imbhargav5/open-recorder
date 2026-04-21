@@ -57,13 +57,11 @@ function createMediaDevicesMock(
 				deviceChangeListeners.add(listener as () => void);
 			}
 		}),
-		removeEventListener: vi.fn(
-			(event: string, listener: EventListenerOrEventListenerObject) => {
-				if (event === "devicechange" && typeof listener === "function") {
-					deviceChangeListeners.delete(listener as () => void);
-				}
-			},
-		),
+		removeEventListener: vi.fn((event: string, listener: EventListenerOrEventListenerObject) => {
+			if (event === "devicechange" && typeof listener === "function") {
+				deviceChangeListeners.delete(listener as () => void);
+			}
+		}),
 		emitDeviceChange: async () => {
 			await act(async () => {
 				deviceChangeListeners.forEach((listener) => listener());
@@ -543,10 +541,7 @@ describe("usePermissionAwareMediaDevices – listener lifecycle", () => {
 		}) as MediaDevices["getUserMedia"];
 
 		const mediaDevices = createMediaDevicesMock(
-			[
-				[createDevice("audioinput", "default", "")],
-				[createDevice("audioinput", "default", "")],
-			],
+			[[createDevice("audioinput", "default", "")], [createDevice("audioinput", "default", "")]],
 			getUserMedia,
 		);
 
@@ -567,5 +562,202 @@ describe("usePermissionAwareMediaDevices – listener lifecycle", () => {
 		expect(mediaDevices.getUserMedia).toHaveBeenCalledTimes(1);
 
 		await hook.unmount();
+	});
+
+	it("clears a latched denial when a later devicechange surfaces real labels", async () => {
+		const getUserMedia = vi.fn(async () => {
+			throw new DOMException("denied", "NotAllowedError");
+		}) as MediaDevices["getUserMedia"];
+
+		const mediaDevices = createMediaDevicesMock(
+			[
+				// Initial load: empty label → prompt → denied → latch.
+				[createDevice("audioinput", "default", "")],
+				// devicechange after the user flipped the OS toggle: labels
+				// now populated, which only happens once permission is granted.
+				[
+					createDevice("audioinput", "default", "Default Microphone"),
+					createDevice("audioinput", "usb-mic", "USB Microphone"),
+				],
+			],
+			getUserMedia,
+		);
+
+		const hook = await mountHook(() =>
+			usePermissionAwareMediaDevices({
+				kind: "audioinput",
+				fallbackLabelPrefix: "Microphone",
+				unavailableMessage: "Unavailable",
+			}),
+		);
+
+		expect(hook.getCurrent().permissionDenied).toBe(true);
+
+		await mediaDevices.emitDeviceChange();
+
+		expect(hook.getCurrent().permissionDenied).toBe(false);
+		expect(hook.getCurrent().error).toBeNull();
+		expect(hook.getCurrent().devices.map((device) => device.deviceId)).toEqual([
+			"default",
+			"usb-mic",
+		]);
+		// No re-prompt for getUserMedia — the labels alone told us we're granted.
+		expect(mediaDevices.getUserMedia).toHaveBeenCalledTimes(1);
+
+		await hook.unmount();
+	});
+
+	it("retries getUserMedia on window focus after a previous denial", async () => {
+		let grantNow = false;
+		const getUserMedia = vi.fn(async () => {
+			if (grantNow) {
+				return {
+					getTracks: () => [{ stop: vi.fn() }],
+				} as unknown as MediaStream;
+			}
+			throw new DOMException("denied", "NotAllowedError");
+		}) as MediaDevices["getUserMedia"];
+
+		const mediaDevices = createMediaDevicesMock(
+			[
+				// Mount: initial enumerate (empty label → prompt).
+				[createDevice("audioinput", "default", "")],
+				// Mount: post-denial re-enumerate (still empty → stays denied).
+				[createDevice("audioinput", "default", "")],
+				// Focus refresh: initial enumerate still empty → triggers prompt.
+				[createDevice("audioinput", "default", "")],
+				// Focus refresh: post-grant enumerate returns real labels.
+				[
+					createDevice("audioinput", "default", "Default Microphone"),
+					createDevice("audioinput", "usb-mic", "USB Microphone"),
+				],
+			],
+			getUserMedia,
+		);
+
+		const hook = await mountHook(() =>
+			usePermissionAwareMediaDevices({
+				kind: "audioinput",
+				fallbackLabelPrefix: "Microphone",
+				unavailableMessage: "Unavailable",
+			}),
+		);
+
+		expect(hook.getCurrent().permissionDenied).toBe(true);
+		expect(mediaDevices.getUserMedia).toHaveBeenCalledTimes(1);
+
+		// Simulate: user flipped the OS toggle while the app was unfocused.
+		grantNow = true;
+
+		await act(async () => {
+			window.dispatchEvent(new Event("focus"));
+		});
+		await flushEffects();
+		await flushEffects();
+
+		// Focus handler re-attempted getUserMedia and it now succeeds silently.
+		expect(mediaDevices.getUserMedia).toHaveBeenCalledTimes(2);
+		expect(hook.getCurrent().permissionDenied).toBe(false);
+		expect(hook.getCurrent().error).toBeNull();
+		expect(hook.getCurrent().devices.map((device) => device.deviceId)).toEqual([
+			"default",
+			"usb-mic",
+		]);
+
+		await hook.unmount();
+	});
+
+	it("debounces a focus + visibilitychange burst into a single refresh", async () => {
+		const getUserMedia = vi.fn(async () => {
+			throw new DOMException("denied", "NotAllowedError");
+		}) as MediaDevices["getUserMedia"];
+
+		const mediaDevices = createMediaDevicesMock(
+			[[createDevice("audioinput", "default", "")]],
+			getUserMedia,
+		);
+
+		const hook = await mountHook(() =>
+			usePermissionAwareMediaDevices({
+				kind: "audioinput",
+				fallbackLabelPrefix: "Microphone",
+				unavailableMessage: "Unavailable",
+			}),
+		);
+
+		expect(mediaDevices.getUserMedia).toHaveBeenCalledTimes(1);
+
+		Object.defineProperty(document, "visibilityState", {
+			configurable: true,
+			value: "visible",
+		});
+
+		await act(async () => {
+			window.dispatchEvent(new Event("focus"));
+			document.dispatchEvent(new Event("visibilitychange"));
+			window.dispatchEvent(new Event("focus"));
+		});
+		await flushEffects();
+		await flushEffects();
+
+		// Three rapid events should coalesce into exactly one retry.
+		expect(mediaDevices.getUserMedia).toHaveBeenCalledTimes(2);
+
+		await hook.unmount();
+	});
+
+	it("does not prompt on focus when permission is already granted", async () => {
+		const mediaDevices = createMediaDevicesMock([
+			[
+				createDevice("audioinput", "default", "Default Microphone"),
+				createDevice("audioinput", "usb-mic", "USB Microphone"),
+			],
+		]);
+
+		const hook = await mountHook(() =>
+			usePermissionAwareMediaDevices({
+				kind: "audioinput",
+				fallbackLabelPrefix: "Microphone",
+				unavailableMessage: "Unavailable",
+			}),
+		);
+
+		expect(mediaDevices.getUserMedia).not.toHaveBeenCalled();
+
+		await act(async () => {
+			window.dispatchEvent(new Event("focus"));
+		});
+		await flushEffects();
+		await flushEffects();
+
+		// Focus-driven refresh with allowPermissionPrompt=false means no getUserMedia.
+		expect(mediaDevices.getUserMedia).not.toHaveBeenCalled();
+
+		await hook.unmount();
+	});
+
+	it("removes focus and visibilitychange listeners on unmount", async () => {
+		const windowAdd = vi.spyOn(window, "addEventListener");
+		const windowRemove = vi.spyOn(window, "removeEventListener");
+		const documentAdd = vi.spyOn(document, "addEventListener");
+		const documentRemove = vi.spyOn(document, "removeEventListener");
+
+		createMediaDevicesMock([[createDevice("audioinput", "mic-1", "Microphone")]]);
+
+		const hook = await mountHook(() =>
+			usePermissionAwareMediaDevices({
+				kind: "audioinput",
+				fallbackLabelPrefix: "Microphone",
+				unavailableMessage: "Unavailable",
+			}),
+		);
+
+		expect(windowAdd).toHaveBeenCalledWith("focus", expect.any(Function));
+		expect(documentAdd).toHaveBeenCalledWith("visibilitychange", expect.any(Function));
+
+		await hook.unmount();
+
+		expect(windowRemove).toHaveBeenCalledWith("focus", expect.any(Function));
+		expect(documentRemove).toHaveBeenCalledWith("visibilitychange", expect.any(Function));
 	});
 });
