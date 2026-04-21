@@ -199,6 +199,14 @@ export function usePermissionAwareMediaDevices({
 						kind,
 						fallbackLabelPrefix,
 					);
+				} else if (permissionDeniedRef.current && !shouldRequestDeviceAccess(initialDeviceInfos)) {
+					// We were latched as "denied" but the browser is now handing
+					// us real device labels, which only happens once the OS has
+					// actually granted access.  Clear the latch so callers stop
+					// rendering the denied banner.
+					permissionDeniedRef.current = false;
+					setPermissionDenied(false);
+					setError(null);
 				} else {
 					setPermissionDenied(permissionDeniedRef.current);
 				}
@@ -228,11 +236,54 @@ export function usePermissionAwareMediaDevices({
 			void loadDevices(!permissionDeniedRef.current);
 		};
 
+		// Re-probe whenever the window regains focus or becomes visible.  The
+		// user may have flipped a permission toggle in macOS System Settings
+		// and returned to the app — Electron does not always fire a
+		// `devicechange` in that case, so the cached `permissionDeniedRef`
+		// latch would otherwise stay `true` forever.  When we are latched we
+		// retry with prompting allowed: `getUserMedia` resolves silently if
+		// the grant is already in place and rejects immediately if it isn't,
+		// so this won't surface a redundant OS dialog on every focus.
+		let pendingRefresh = false;
+		const maybeRefresh = () => {
+			if (pendingRefresh) {
+				return;
+			}
+			pendingRefresh = true;
+			queueMicrotask(() => {
+				pendingRefresh = false;
+				if (!mounted) {
+					return;
+				}
+				void loadDevices(permissionDeniedRef.current);
+			});
+		};
+		const handleFocus = () => {
+			maybeRefresh();
+		};
+		const handleVisibilityChange = () => {
+			if (typeof document !== "undefined" && document.visibilityState === "visible") {
+				maybeRefresh();
+			}
+		};
+
 		mediaDevices.addEventListener?.("devicechange", handleDeviceChange);
+		if (typeof window !== "undefined") {
+			window.addEventListener("focus", handleFocus);
+		}
+		if (typeof document !== "undefined") {
+			document.addEventListener("visibilitychange", handleVisibilityChange);
+		}
 
 		return () => {
 			mounted = false;
 			mediaDevices.removeEventListener?.("devicechange", handleDeviceChange);
+			if (typeof window !== "undefined") {
+				window.removeEventListener("focus", handleFocus);
+			}
+			if (typeof document !== "undefined") {
+				document.removeEventListener("visibilitychange", handleVisibilityChange);
+			}
 		};
 	}, [autoSelectFirstDevice, enabled, fallbackLabelPrefix, kind, unavailableMessage]);
 
