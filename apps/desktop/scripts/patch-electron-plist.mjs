@@ -7,7 +7,10 @@
  *  2. Updates CFBundleName, CFBundleDisplayName, and CFBundleIdentifier in
  *     every Info.plist (main app + helpers)
  *  3. Updates the electron package's path.txt so `require('electron')` resolves
- *  4. Re-signs the entire bundle with an ad-hoc signature
+ *  4. Re-signs the entire bundle — preferring a stable self-signed identity
+ *     (see `OPEN_RECORDER_DEV_CODESIGN_IDENTITY` below) so macOS's TCC database
+ *     recognizes the rebuilt bundle as the same app across reinstalls.  Falls
+ *     back to an ad-hoc signature when no stable identity is available.
  *  5. Registers the app with LaunchServices
  *
  * The executable inside Contents/MacOS stays as "Electron" so that
@@ -15,6 +18,33 @@
  *
  * Run once after `pnpm install` (idempotent — safe to re-run).
  * macOS-only; exits silently on other platforms.
+ *
+ * ── Preserving TCC grants across `node_modules` rebuilds ──────────────────
+ *
+ * macOS keys Screen-Recording / Microphone / Camera grants on the combination
+ * of the bundle identifier *and* the code-signing "designated requirement".
+ * An ad-hoc signature's DR is derived from the content hash of the bundle —
+ * so every time this script regenerates `OpenRecorderDev.app` (e.g. after a
+ * `pnpm install` that wiped `node_modules`), the DR changes and TCC silently
+ * invalidates the previously-granted permissions.  Users then land on the
+ * "Denied" screen and have to re-grant from scratch.
+ *
+ * To avoid that, set the `OPEN_RECORDER_DEV_CODESIGN_IDENTITY` environment
+ * variable to the *name* of a stable self-signed codesigning identity already
+ * present in your login keychain (e.g. `"Open Recorder Dev"`).  One-time
+ * setup:
+ *
+ *   # Create a self-signed certificate in Keychain Access:
+ *   #   Keychain Access → Certificate Assistant → Create a Certificate…
+ *   #   Name:          Open Recorder Dev
+ *   #   Identity type: Self Signed Root
+ *   #   Certificate type: Code Signing
+ *   # Then add to your shell profile:
+ *   export OPEN_RECORDER_DEV_CODESIGN_IDENTITY="Open Recorder Dev"
+ *
+ * With that set, every re-patch signs with the same identity and TCC keeps
+ * the grants alive.  Without it, this script ad-hoc-signs and warns that
+ * permissions will need to be re-granted.
  */
 
 import { execSync } from "node:child_process";
@@ -123,8 +153,55 @@ writeFileSync(pathTxtFile, `${DEV_NAME}.app/Contents/MacOS/Electron`);
 
 // ─── 5. Re-sign the entire bundle ───────────────────────────────────────────
 
+/**
+ * Prefer a stable self-signed identity from the user's keychain so the
+ * designated-requirement hash stays constant across rebuilds — that is what
+ * keeps macOS's TCC database from invalidating Screen-Recording, Mic, and
+ * Camera grants every time `node_modules` is wiped.  Falls back to ad-hoc.
+ */
+function resolveCodesignIdentity() {
+	const envIdentity = process.env.OPEN_RECORDER_DEV_CODESIGN_IDENTITY;
+	if (!envIdentity) {
+		return null;
+	}
+	try {
+		const output = execSync(`security find-identity -v -p codesigning`, {
+			encoding: "utf-8",
+			stdio: ["ignore", "pipe", "ignore"],
+		});
+		if (output.includes(envIdentity)) {
+			return envIdentity;
+		}
+		console.warn(
+			`[patch-electron] OPEN_RECORDER_DEV_CODESIGN_IDENTITY="${envIdentity}" not found in keychain — falling back to ad-hoc.`,
+		);
+	} catch {
+		// `security` isn't available — fall through to ad-hoc.
+	}
+	return null;
+}
+
+const stableIdentity = resolveCodesignIdentity();
+const signingIdentityArg = stableIdentity ? `"${stableIdentity}"` : "-";
+
 try {
-	execSync(`codesign --force --deep --sign - "${patchedApp}"`, { stdio: "pipe" });
+	execSync(`codesign --force --deep --sign ${signingIdentityArg} "${patchedApp}"`, {
+		stdio: "pipe",
+	});
+	if (stableIdentity) {
+		console.log(`✓ Signed with stable identity "${stableIdentity}" — TCC grants should persist.`);
+	} else {
+		console.log(
+			"[patch-electron] Signed with ad-hoc identity. Because the ad-hoc signature's\n" +
+				"               designated-requirement hash changes with the bundle contents,\n" +
+				"               macOS will invalidate previously-granted Screen Recording,\n" +
+				"               Microphone, and Camera permissions on the next rebuild and\n" +
+				"               you'll have to re-grant them.\n" +
+				"               Set OPEN_RECORDER_DEV_CODESIGN_IDENTITY to a stable self-signed\n" +
+				"               codesigning identity from your login keychain to avoid this —\n" +
+				"               see the header comment of this script for setup instructions.",
+		);
+	}
 } catch (err) {
 	console.warn("[patch-electron] codesign warning:", err.message);
 }
