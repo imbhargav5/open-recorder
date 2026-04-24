@@ -12,7 +12,7 @@
 		"url": "https://github.com/imbhargav5/open-recorder/issues"
 	},
 	"private": true,
-	"version": "0.0.24",
+	"version": "0.0.25",
 	"packageManager": "pnpm@10.17.1",
 	"type": "module",
 	"main": "dist-electron/main.js",
