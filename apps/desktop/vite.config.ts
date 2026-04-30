@@ -1,7 +1,8 @@
 import path from "node:path";
+import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
-import electron from "vite-plugin-electron/simple";
 import { defineConfig } from "vite";
+import electron from "vite-plugin-electron/simple";
 
 const rendererOnly = process.env.OPEN_RECORDER_RENDERER_ONLY === "1";
 
@@ -9,44 +10,43 @@ const rendererOnly = process.env.OPEN_RECORDER_RENDERER_ONLY === "1";
 export default defineConfig({
 	plugins: [
 		react(),
-		...(
-			rendererOnly
-				? []
-				: [
-						electron({
-							main: {
-								entry: "electron/main.ts",
-								// "type": "module" in package.json is auto-detected by the plugin,
-								// so the main process is compiled to ESM (formats: ["es"]) automatically.
-								vite: {
-									build: {
-										sourcemap: process.env.NODE_ENV !== "production",
-										minify: process.env.NODE_ENV === "production",
-									},
+		...(rendererOnly
+			? []
+			: [
+					electron({
+						main: {
+							entry: "electron/main.ts",
+							// "type": "module" in package.json is auto-detected by the plugin,
+							// so the main process is compiled to ESM (formats: ["es"]) automatically.
+							vite: {
+								build: {
+									sourcemap: process.env.NODE_ENV !== "production",
+									minify: process.env.NODE_ENV === "production",
 								},
 							},
-							preload: {
-								input: path.join(__dirname, "electron/preload.ts"),
-								vite: {
-									build: {
-										sourcemap: process.env.NODE_ENV !== "production",
-										minify: process.env.NODE_ENV === "production",
-										rollupOptions: {
-											output: {
-												// The preload runs with sandbox:false / nodeIntegration:false,
-												// so Electron requires ESM (require() is not available).
-												// Override the plugin's default "cjs" format.
-												format: "esm",
-												// Keep .js extension so PRELOAD_PATH = "preload.js" in main.ts resolves correctly.
-												entryFileNames: "[name].js",
-											},
+						},
+						preload: {
+							input: path.join(__dirname, "electron/preload.ts"),
+							vite: {
+								build: {
+									sourcemap: process.env.NODE_ENV !== "production",
+									minify: process.env.NODE_ENV === "production",
+									rollupOptions: {
+										output: {
+											// The preload runs with sandbox:false / nodeIntegration:false,
+											// so Electron requires ESM (require() is not available).
+											// Override the plugin's default "cjs" format.
+											format: "esm",
+											// Keep .js extension so PRELOAD_PATH = "preload.js" in main.ts resolves correctly.
+											entryFileNames: "[name].js",
 										},
 									},
 								},
 							},
-						}),
-					]
-		),
+						},
+					}),
+				]),
+		tailwindcss(),
 	],
 	resolve: {
 		alias: {
