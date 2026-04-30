@@ -12,6 +12,7 @@ import { usePermissions } from "./usePermissions";
 
 vi.mock("@/lib/backend", () => ({
 	getPlatform: vi.fn(),
+	getEffectiveScreenRecordingPermissionStatus: vi.fn(),
 	getScreenRecordingPermissionStatus: vi.fn(),
 	getMicrophonePermissionStatus: vi.fn(),
 	getCameraPermissionStatus: vi.fn(),
@@ -108,7 +109,7 @@ describe("usePermissions – additional coverage", () => {
 	describe("allPermissionsGranted computed flags", () => {
 		it("allRequiredPermissionsGranted is false when accessibility is denied", async () => {
 			backend.getPlatform.mockResolvedValue("darwin");
-			backend.getScreenRecordingPermissionStatus.mockResolvedValue("granted");
+			backend.getEffectiveScreenRecordingPermissionStatus.mockResolvedValue("granted");
 			backend.getMicrophonePermissionStatus.mockResolvedValue("granted");
 			backend.getCameraPermissionStatus.mockResolvedValue("granted");
 			backend.getAccessibilityPermissionStatus.mockResolvedValue("denied");
@@ -122,7 +123,7 @@ describe("usePermissions – additional coverage", () => {
 
 		it("allPermissionsGranted is false when only microphone is denied", async () => {
 			backend.getPlatform.mockResolvedValue("darwin");
-			backend.getScreenRecordingPermissionStatus.mockResolvedValue("granted");
+			backend.getEffectiveScreenRecordingPermissionStatus.mockResolvedValue("granted");
 			backend.getMicrophonePermissionStatus.mockResolvedValue("denied");
 			backend.getCameraPermissionStatus.mockResolvedValue("granted");
 			backend.getAccessibilityPermissionStatus.mockResolvedValue("granted");
@@ -136,7 +137,7 @@ describe("usePermissions – additional coverage", () => {
 
 		it("allPermissionsGranted is false when only camera is denied", async () => {
 			backend.getPlatform.mockResolvedValue("darwin");
-			backend.getScreenRecordingPermissionStatus.mockResolvedValue("granted");
+			backend.getEffectiveScreenRecordingPermissionStatus.mockResolvedValue("granted");
 			backend.getMicrophonePermissionStatus.mockResolvedValue("granted");
 			backend.getCameraPermissionStatus.mockResolvedValue("denied");
 			backend.getAccessibilityPermissionStatus.mockResolvedValue("granted");
@@ -150,7 +151,7 @@ describe("usePermissions – additional coverage", () => {
 
 		it("allRequiredPermissionsGranted is false when screenRecording is 'not_determined'", async () => {
 			backend.getPlatform.mockResolvedValue("darwin");
-			backend.getScreenRecordingPermissionStatus.mockResolvedValue("not_determined");
+			backend.getEffectiveScreenRecordingPermissionStatus.mockResolvedValue("not_determined");
 			backend.getMicrophonePermissionStatus.mockResolvedValue("granted");
 			backend.getCameraPermissionStatus.mockResolvedValue("granted");
 			backend.getAccessibilityPermissionStatus.mockResolvedValue("granted");
@@ -163,7 +164,7 @@ describe("usePermissions – additional coverage", () => {
 
 		it("treats 'restricted' status as not granted for all computed flags", async () => {
 			backend.getPlatform.mockResolvedValue("darwin");
-			backend.getScreenRecordingPermissionStatus.mockResolvedValue("restricted");
+			backend.getEffectiveScreenRecordingPermissionStatus.mockResolvedValue("restricted");
 			backend.getMicrophonePermissionStatus.mockResolvedValue("restricted");
 			backend.getCameraPermissionStatus.mockResolvedValue("restricted");
 			backend.getAccessibilityPermissionStatus.mockResolvedValue("restricted");
@@ -181,14 +182,14 @@ describe("usePermissions – additional coverage", () => {
 	describe("refreshPermissions – return value and side effects", () => {
 		it("returns the resolved PermissionState as its value", async () => {
 			backend.getPlatform.mockResolvedValue("darwin");
-			backend.getScreenRecordingPermissionStatus.mockResolvedValue("denied");
+			backend.getEffectiveScreenRecordingPermissionStatus.mockResolvedValue("denied");
 			backend.getMicrophonePermissionStatus.mockResolvedValue("denied");
 			backend.getCameraPermissionStatus.mockResolvedValue("denied");
 			backend.getAccessibilityPermissionStatus.mockResolvedValue("denied");
 
 			const hook = await mountHook();
 
-			backend.getScreenRecordingPermissionStatus.mockResolvedValue("granted");
+			backend.getEffectiveScreenRecordingPermissionStatus.mockResolvedValue("granted");
 			backend.getMicrophonePermissionStatus.mockResolvedValue("granted");
 			backend.getCameraPermissionStatus.mockResolvedValue("granted");
 			backend.getAccessibilityPermissionStatus.mockResolvedValue("granted");
@@ -225,7 +226,7 @@ describe("usePermissions – additional coverage", () => {
 
 		it("sets isChecking to false after completing", async () => {
 			backend.getPlatform.mockResolvedValue("darwin");
-			backend.getScreenRecordingPermissionStatus.mockResolvedValue("granted");
+			backend.getEffectiveScreenRecordingPermissionStatus.mockResolvedValue("granted");
 			backend.getMicrophonePermissionStatus.mockResolvedValue("granted");
 			backend.getCameraPermissionStatus.mockResolvedValue("granted");
 			backend.getAccessibilityPermissionStatus.mockResolvedValue("granted");
@@ -238,7 +239,7 @@ describe("usePermissions – additional coverage", () => {
 
 		it("handles partial backend errors – succeeding checks retain their values, failing checks become 'unknown'", async () => {
 			backend.getPlatform.mockResolvedValue("darwin");
-			backend.getScreenRecordingPermissionStatus.mockResolvedValue("granted");
+			backend.getEffectiveScreenRecordingPermissionStatus.mockResolvedValue("granted");
 			backend.getMicrophonePermissionStatus.mockRejectedValue(new Error("IPC error"));
 			backend.getCameraPermissionStatus.mockResolvedValue("denied");
 			backend.getAccessibilityPermissionStatus.mockRejectedValue(new Error("IPC error"));
@@ -260,7 +261,7 @@ describe("usePermissions – additional coverage", () => {
 	describe("requestMicrophoneAccess – fallback and edge cases", () => {
 		it("falls back to getUserMedia when native macOS request throws", async () => {
 			backend.getPlatform.mockResolvedValue("darwin");
-			backend.getScreenRecordingPermissionStatus.mockResolvedValue("granted");
+			backend.getEffectiveScreenRecordingPermissionStatus.mockResolvedValue("granted");
 			backend.getMicrophonePermissionStatus
 				.mockResolvedValueOnce("not_determined")
 				.mockResolvedValue("granted");
@@ -355,7 +356,7 @@ describe("usePermissions – additional coverage", () => {
 	describe("requestCameraAccess – fallback and edge cases", () => {
 		it("falls back to getUserMedia when native macOS camera request throws", async () => {
 			backend.getPlatform.mockResolvedValue("darwin");
-			backend.getScreenRecordingPermissionStatus.mockResolvedValue("granted");
+			backend.getEffectiveScreenRecordingPermissionStatus.mockResolvedValue("granted");
 			backend.getMicrophonePermissionStatus.mockResolvedValue("granted");
 			backend.getCameraPermissionStatus
 				.mockResolvedValueOnce("not_determined")
@@ -407,7 +408,7 @@ describe("usePermissions – additional coverage", () => {
 	describe("requestScreenRecordingAccess – edge cases", () => {
 		it("returns false when backend throws and status remains denied", async () => {
 			backend.getPlatform.mockResolvedValue("darwin");
-			backend.getScreenRecordingPermissionStatus.mockResolvedValue("denied");
+			backend.getEffectiveScreenRecordingPermissionStatus.mockResolvedValue("denied");
 			backend.getMicrophonePermissionStatus.mockResolvedValue("granted");
 			backend.getCameraPermissionStatus.mockResolvedValue("granted");
 			backend.getAccessibilityPermissionStatus.mockResolvedValue("granted");
@@ -428,7 +429,7 @@ describe("usePermissions – additional coverage", () => {
 
 		it("returns true when backend returns false but re-check shows granted", async () => {
 			backend.getPlatform.mockResolvedValue("darwin");
-			backend.getScreenRecordingPermissionStatus
+			backend.getEffectiveScreenRecordingPermissionStatus
 				.mockResolvedValueOnce("not_determined")
 				.mockResolvedValue("granted");
 			backend.getMicrophonePermissionStatus.mockResolvedValue("granted");
@@ -498,7 +499,7 @@ describe("usePermissions – additional coverage", () => {
 	describe("isMacOS state transitions", () => {
 		it("sets isMacOS=true when darwin is detected on mount", async () => {
 			backend.getPlatform.mockResolvedValue("darwin");
-			backend.getScreenRecordingPermissionStatus.mockResolvedValue("granted");
+			backend.getEffectiveScreenRecordingPermissionStatus.mockResolvedValue("granted");
 			backend.getMicrophonePermissionStatus.mockResolvedValue("granted");
 			backend.getCameraPermissionStatus.mockResolvedValue("granted");
 			backend.getAccessibilityPermissionStatus.mockResolvedValue("granted");
@@ -516,7 +517,7 @@ describe("usePermissions – additional coverage", () => {
 			expect(hook.getCurrent().isMacOS).toBe(false);
 
 			backend.getPlatform.mockResolvedValue("darwin");
-			backend.getScreenRecordingPermissionStatus.mockResolvedValue("granted");
+			backend.getEffectiveScreenRecordingPermissionStatus.mockResolvedValue("granted");
 			backend.getMicrophonePermissionStatus.mockResolvedValue("granted");
 			backend.getCameraPermissionStatus.mockResolvedValue("granted");
 			backend.getAccessibilityPermissionStatus.mockResolvedValue("granted");
@@ -527,6 +528,22 @@ describe("usePermissions – additional coverage", () => {
 			await flushEffects();
 
 			expect(hook.getCurrent().isMacOS).toBe(true);
+
+			await hook.unmount();
+		});
+
+		it("prefers the effective probe over the cached screen status", async () => {
+			backend.getPlatform.mockResolvedValue("darwin");
+			backend.getEffectiveScreenRecordingPermissionStatus.mockResolvedValue("denied");
+			backend.getScreenRecordingPermissionStatus.mockResolvedValue("granted");
+			backend.getMicrophonePermissionStatus.mockResolvedValue("granted");
+			backend.getCameraPermissionStatus.mockResolvedValue("granted");
+			backend.getAccessibilityPermissionStatus.mockResolvedValue("granted");
+
+			const hook = await mountHook();
+
+			expect(hook.getCurrent().permissions.screenRecording).toBe("denied");
+			expect(backend.getScreenRecordingPermissionStatus).not.toHaveBeenCalled();
 
 			await hook.unmount();
 		});

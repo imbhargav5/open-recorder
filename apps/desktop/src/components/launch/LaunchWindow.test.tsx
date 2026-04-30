@@ -349,4 +349,48 @@ describe("LaunchWindow event listener cleanup", () => {
 		// (the handler was not invoked post-cleanup)
 		expect(backend.openVideoFilePicker).not.toHaveBeenCalled();
 	});
+
+	it("routes tray-triggered source selection through preparePermissions only", async () => {
+		let capturedHandler: (() => void) | undefined;
+		const preparePermissions = vi.fn().mockResolvedValue(true);
+
+		backend.onMenuOpenVideoFile.mockResolvedValue(vi.fn());
+		backend.onMenuLoadProject.mockResolvedValue(vi.fn());
+		backend.onNewRecordingFromTray.mockImplementation((handler) => {
+			capturedHandler = handler;
+			return Promise.resolve(vi.fn());
+		});
+		backend.getSelectedSource.mockResolvedValue(null);
+		backend.openSourceSelector.mockResolvedValue(undefined);
+
+		useScreenRecorder.mockReturnValue({
+			recording: false,
+			toggleRecording: vi.fn(),
+			preparePermissions,
+			setMicrophoneEnabled: vi.fn(),
+			microphoneDeviceId: undefined,
+			setMicrophoneDeviceId: vi.fn(),
+			systemAudioEnabled: false,
+			setSystemAudioEnabled: vi.fn(),
+			cameraEnabled: false,
+			setCameraEnabled: vi.fn(),
+			cameraDeviceId: undefined,
+			setCameraDeviceId: vi.fn(),
+		});
+
+		const harness = await mountLaunchWindow();
+
+		await act(async () => {
+			capturedHandler?.();
+		});
+		await flushEffects();
+
+		expect(preparePermissions).toHaveBeenCalledOnce();
+		expect(backend.getScreenRecordingPermissionStatus).not.toHaveBeenCalled();
+		expect(backend.requestScreenRecordingPermission).not.toHaveBeenCalled();
+		expect(backend.openScreenRecordingPreferences).not.toHaveBeenCalled();
+		expect(backend.openSourceSelector).toHaveBeenCalledOnce();
+
+		await harness.unmount();
+	});
 });
