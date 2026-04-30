@@ -3,21 +3,14 @@
  * Mirrors src-tauri/src/commands/window_mgmt.rs.
  */
 
-import { BrowserWindow, app, screen } from "electron";
-import path from "node:path";
+import { BrowserWindow, screen, type IpcMainInvokeEvent } from "electron";
 import type { AppState } from "../state.js";
-
-/** Returns a BrowserWindow by its custom windowLabel property. */
-function getWindowByLabel(label: string): BrowserWindow | undefined {
-	return BrowserWindow.getAllWindows().find(
-		(w) => (w as BrowserWindow & { windowLabel?: string }).windowLabel === label,
-	);
-}
-
-/** Returns true for editor window labels (editor, editor-1, editor-2, …). */
-export function isEditorWindowLabel(label: string): boolean {
-	return label === "editor" || label.startsWith("editor-");
-}
+import {
+	getWindowByLabel,
+	getWindowFromWebContents,
+	getWindowLabel,
+	isEditorWindowLabel,
+} from "../window-routing.js";
 
 function nextEditorWindowLabel(): string {
 	let index = 1;
@@ -79,7 +72,10 @@ function createWindow(opts: CreateWindowOpts): BrowserWindow {
 
 export function registerWindowMgmtHandlers(
 	handle: (channel: string, handler: (args: unknown) => unknown) => void,
-	getState: () => AppState,
+	handleWithSender: (
+		channel: string,
+		handler: (event: IpcMainInvokeEvent, args: unknown) => unknown,
+	) => void,
 	setState: (updater: (s: AppState) => void) => void,
 	getRendererUrl: () => string,
 	preloadPath: string,
@@ -225,21 +221,20 @@ export function registerWindowMgmtHandlers(
 		return null;
 	});
 
-	handle("set_has_unsaved_changes", (args) => {
+	handleWithSender("set_has_unsaved_changes", (event, args) => {
 		const { hasChanges } = args as { hasChanges: boolean };
-		// We track this per-window using the sender's window label.
-		// For simplicity, update global state — the caller must pass the label.
-		const { windowLabel } = (args as { hasChanges: boolean; windowLabel?: string });
-		if (windowLabel && isEditorWindowLabel(windowLabel)) {
-			setState((s) => {
-				if (hasChanges) {
-					s.unsavedEditorWindows.add(windowLabel);
-				} else {
-					s.unsavedEditorWindows.delete(windowLabel);
-				}
-				s.hasUnsavedChanges = s.unsavedEditorWindows.size > 0;
-			});
-		}
+		const senderWindow = getWindowFromWebContents(event.sender);
+		const windowLabel = getWindowLabel(senderWindow);
+		if (!isEditorWindowLabel(windowLabel)) return null;
+
+		setState((s) => {
+			if (hasChanges) {
+				s.unsavedEditorWindows.add(windowLabel);
+			} else {
+				s.unsavedEditorWindows.delete(windowLabel);
+			}
+			s.hasUnsavedChanges = s.unsavedEditorWindows.size > 0;
+		});
 		return null;
 	});
 }
