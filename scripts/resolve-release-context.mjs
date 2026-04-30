@@ -143,6 +143,10 @@ function readReleasePlan() {
 	return JSON.parse(readFileSync(releasePlanPath, "utf8"));
 }
 
+function hasVersionChanged(previousVersion, currentVersion) {
+	return !previousVersion || previousVersion !== currentVersion;
+}
+
 const args = parseArgs(process.argv.slice(2));
 const currentVersion = currentPackageVersion();
 const defaultTagName = `v${currentVersion}`;
@@ -162,13 +166,16 @@ if (args.eventName === "workflow_dispatch") {
 	makeLatest = args.makeLatest || "true";
 } else if (args.eventName === "push") {
 	const previousVersion = previousPackageVersion(args.before);
-	shouldRelease = !previousVersion || previousVersion !== currentVersion;
+	shouldRelease = hasVersionChanged(previousVersion, currentVersion);
+
+	if (shouldRelease && !releasePlan) {
+		die("Push-triggered releases require .github/release-plan.json to match the desktop package version bump.");
+	}
 
 	if (releasePlan?.tagName) {
 		if (releasePlan.tagName !== defaultTagName) {
 			die(`release-plan tag ${releasePlan.tagName} does not match package version ${defaultTagName}`);
 		}
-
 		tagName = releasePlan.tagName;
 		releaseName = releasePlan.releaseName || `Open Recorder ${tagName}`;
 		releaseNotes = releasePlan.releaseNotes || "";
