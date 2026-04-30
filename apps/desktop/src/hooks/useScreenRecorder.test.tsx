@@ -28,6 +28,7 @@ vi.mock("@/lib/backend", () => ({
 	onStopRecordingFromTray: vi.fn(),
 	onRecordingStateChanged: vi.fn(),
 	onRecordingInterrupted: vi.fn(),
+	getEffectiveScreenRecordingPermissionStatus: vi.fn(),
 	getScreenRecordingPermissionStatus: vi.fn(),
 	requestScreenRecordingPermission: vi.fn(),
 	openScreenRecordingPreferences: vi.fn(),
@@ -210,5 +211,34 @@ describe("useScreenRecorder — async continuation after unmount", () => {
 		expect(backend.switchToEditor).not.toHaveBeenCalled();
 		expect(backend.setCurrentVideoPath).not.toHaveBeenCalled();
 		expect(backend.setCurrentRecordingSession).not.toHaveBeenCalled();
+	});
+});
+
+describe("useScreenRecorder — permission preparation", () => {
+	beforeEach(() => {
+		backend.getPlatform.mockResolvedValue("darwin");
+		backend.getEffectiveScreenRecordingPermissionStatus.mockResolvedValue("granted");
+		backend.getAccessibilityPermissionStatus.mockResolvedValue("granted");
+	});
+
+	it("uses the effective screen-recording status for the re-check path", async () => {
+		backend.getEffectiveScreenRecordingPermissionStatus
+			.mockResolvedValueOnce("denied")
+			.mockResolvedValueOnce("granted");
+		backend.requestScreenRecordingPermission.mockResolvedValue(false);
+
+		const hook = await mountHook();
+
+		let allowed = false;
+		await act(async () => {
+			allowed = await hook.getCurrent().preparePermissions();
+		});
+
+		expect(allowed).toBe(true);
+		expect(backend.getEffectiveScreenRecordingPermissionStatus).toHaveBeenCalledTimes(2);
+		expect(backend.getScreenRecordingPermissionStatus).not.toHaveBeenCalled();
+		expect(backend.openScreenRecordingPreferences).not.toHaveBeenCalled();
+
+		await hook.unmount();
 	});
 });
