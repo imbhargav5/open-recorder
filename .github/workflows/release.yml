@@ -1,10 +1,11 @@
-name: Release Tauri App
+name: Release Electron App
 
 on:
   push:
     branches:
       - main
     paths:
+      - .github/release-plan.json
       - apps/desktop/package.json
   workflow_dispatch:
     inputs:
@@ -70,28 +71,16 @@ jobs:
     if: needs.resolve-release.outputs.should_release == 'true'
     runs-on: macos-14
     env:
-      TAURI_TARGET_TRIPLE: aarch64-apple-darwin
-      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE || secrets.CSC_LINK }}
-      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD || secrets.CSC_KEY_PASSWORD }}
-      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY || secrets.CSC_NAME }}
+      CSC_LINK: ${{ secrets.APPLE_CERTIFICATE || secrets.CSC_LINK }}
+      CSC_KEY_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD || secrets.CSC_KEY_PASSWORD }}
+      CSC_NAME: ${{ secrets.APPLE_SIGNING_IDENTITY || secrets.CSC_NAME }}
       APPLE_ID: ${{ secrets.APPLE_ID }}
-      APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-apple-darwin
-
-      - name: Rust cache
-        uses: swatinem/rust-cache@v2
-        with:
-          workspaces: apps/desktop/src-tauri
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -106,58 +95,63 @@ jobs:
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
-      - name: Install frontend dependencies
+      - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build sidecars
-        run: pnpm --filter @open-recorder/desktop build:sidecars
+      - name: Build desktop app
+        run: pnpm --filter @open-recorder/desktop build
 
-      - name: Build Tauri app
-        uses: tauri-apps/tauri-action@v0
+      - name: Package macOS arm64 artifacts
+        run: pnpm --filter @open-recorder/desktop exec electron-builder --config electron-builder.yml --publish never --mac dmg zip --arm64
+
+      - name: Verify macOS arm64 artifacts
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          projectPath: apps/desktop
-          args: --target aarch64-apple-darwin
+          EXPECTED_PATTERNS: '["\\.dmg$","\\.zip$","^latest-mac.*\\.yml$"]'
+        run: |
+          node <<'NODE'
+          const { readdirSync, statSync } = require("node:fs");
+          const { join } = require("node:path");
 
-      - name: Upload macOS arm64 artifact
+          const releaseDir = "apps/desktop/release";
+          const files = readdirSync(releaseDir)
+            .filter((name) => statSync(join(releaseDir, name)).isFile())
+            .sort();
+
+          console.log(files.join("\n"));
+
+          const patterns = JSON.parse(process.env.EXPECTED_PATTERNS);
+          for (const source of patterns) {
+            const regex = new RegExp(source);
+            if (!files.some((file) => regex.test(file))) {
+              console.error(`Missing packaging artifact matching ${source}`);
+              process.exit(1);
+            }
+          }
+          NODE
+
+      - name: Upload macOS arm64 artifact set
         uses: actions/upload-artifact@v4
         with:
           name: macos-arm64
-          path: |
-            apps/desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
-            apps/desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app.tar.gz
-            apps/desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app.tar.gz.sig
+          path: apps/desktop/release/**/*
           if-no-files-found: error
 
   build-macos-x64:
     name: Build macOS x64
     needs: resolve-release
     if: needs.resolve-release.outputs.should_release == 'true'
-    runs-on: macos-14
+    runs-on: macos-13
     env:
-      TAURI_TARGET_TRIPLE: x86_64-apple-darwin
-      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE || secrets.CSC_LINK }}
-      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD || secrets.CSC_KEY_PASSWORD }}
-      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY || secrets.CSC_NAME }}
+      CSC_LINK: ${{ secrets.APPLE_CERTIFICATE || secrets.CSC_LINK }}
+      CSC_KEY_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD || secrets.CSC_KEY_PASSWORD }}
+      CSC_NAME: ${{ secrets.APPLE_SIGNING_IDENTITY || secrets.CSC_NAME }}
       APPLE_ID: ${{ secrets.APPLE_ID }}
-      APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-apple-darwin
-
-      - name: Rust cache
-        uses: swatinem/rust-cache@v2
-        with:
-          workspaces: apps/desktop/src-tauri
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -172,28 +166,45 @@ jobs:
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
-      - name: Install frontend dependencies
+      - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build sidecars
-        run: pnpm --filter @open-recorder/desktop build:sidecars
+      - name: Build desktop app
+        run: pnpm --filter @open-recorder/desktop build
 
-      - name: Build Tauri app
-        uses: tauri-apps/tauri-action@v0
+      - name: Package macOS x64 artifacts
+        run: pnpm --filter @open-recorder/desktop exec electron-builder --config electron-builder.yml --publish never --mac dmg zip --x64
+
+      - name: Verify macOS x64 artifacts
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          projectPath: apps/desktop
-          args: --target x86_64-apple-darwin
+          EXPECTED_PATTERNS: '["\\.dmg$","\\.zip$","^latest-mac.*\\.yml$"]'
+        run: |
+          node <<'NODE'
+          const { readdirSync, statSync } = require("node:fs");
+          const { join } = require("node:path");
 
-      - name: Upload macOS x64 artifact
+          const releaseDir = "apps/desktop/release";
+          const files = readdirSync(releaseDir)
+            .filter((name) => statSync(join(releaseDir, name)).isFile())
+            .sort();
+
+          console.log(files.join("\n"));
+
+          const patterns = JSON.parse(process.env.EXPECTED_PATTERNS);
+          for (const source of patterns) {
+            const regex = new RegExp(source);
+            if (!files.some((file) => regex.test(file))) {
+              console.error(`Missing packaging artifact matching ${source}`);
+              process.exit(1);
+            }
+          }
+          NODE
+
+      - name: Upload macOS x64 artifact set
         uses: actions/upload-artifact@v4
         with:
           name: macos-x64
-          path: |
-            apps/desktop/src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
-            apps/desktop/src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app.tar.gz
-            apps/desktop/src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app.tar.gz.sig
+          path: apps/desktop/release/**/*
           if-no-files-found: error
 
   build-windows-x64:
@@ -202,19 +213,10 @@ jobs:
     if: needs.resolve-release.outputs.should_release == 'true'
     runs-on: windows-latest
     env:
-      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Rust cache
-        uses: swatinem/rust-cache@v2
-        with:
-          workspaces: apps/desktop/src-tauri
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -229,20 +231,46 @@ jobs:
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
-      - name: Install frontend dependencies
+      - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build sidecars
-        run: pnpm --filter @open-recorder/desktop build:sidecars
+      - name: Build desktop app
+        run: pnpm --filter @open-recorder/desktop build
 
-      - name: Build Tauri app
-        run: pnpm --filter @open-recorder/desktop tauri build
+      - name: Package Windows x64 artifacts
+        run: pnpm --filter @open-recorder/desktop exec electron-builder --config electron-builder.yml --publish never --win nsis --x64
 
-      - name: Upload Windows x64 artifact
+      - name: Verify Windows x64 artifacts
+        shell: bash
+        env:
+          EXPECTED_PATTERNS: '["\\.exe$","^latest\\.yml$"]'
+        run: |
+          node <<'NODE'
+          const { readdirSync, statSync } = require("node:fs");
+          const { join } = require("node:path");
+
+          const releaseDir = "apps/desktop/release";
+          const files = readdirSync(releaseDir)
+            .filter((name) => statSync(join(releaseDir, name)).isFile())
+            .sort();
+
+          console.log(files.join("\n"));
+
+          const patterns = JSON.parse(process.env.EXPECTED_PATTERNS);
+          for (const source of patterns) {
+            const regex = new RegExp(source);
+            if (!files.some((file) => regex.test(file))) {
+              console.error(`Missing packaging artifact matching ${source}`);
+              process.exit(1);
+            }
+          }
+          NODE
+
+      - name: Upload Windows x64 artifact set
         uses: actions/upload-artifact@v4
         with:
           name: windows-x64
-          path: "apps/desktop/src-tauri/target/release/bundle/nsis/*"
+          path: apps/desktop/release/**/*
           if-no-files-found: error
 
   build-linux-x64:
@@ -251,24 +279,10 @@ jobs:
     if: needs.resolve-release.outputs.should_release == 'true'
     runs-on: ubuntu-22.04
     env:
-      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
-
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Rust cache
-        uses: swatinem/rust-cache@v2
-        with:
-          workspaces: apps/desktop/src-tauri
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -283,27 +297,53 @@ jobs:
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
-      - name: Install frontend dependencies
+      - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build Tauri app
-        run: pnpm --filter @open-recorder/desktop tauri build
+      - name: Build desktop app
+        run: pnpm --filter @open-recorder/desktop build
 
-      - name: Upload Linux x64 artifact
+      - name: Package Linux x64 artifacts
+        run: pnpm --filter @open-recorder/desktop exec electron-builder --config electron-builder.yml --publish never --linux AppImage --x64
+
+      - name: Verify Linux x64 artifacts
+        env:
+          EXPECTED_PATTERNS: '["\\.AppImage$","^latest-linux\\.yml$"]'
+        run: |
+          node <<'NODE'
+          const { readdirSync, statSync } = require("node:fs");
+          const { join } = require("node:path");
+
+          const releaseDir = "apps/desktop/release";
+          const files = readdirSync(releaseDir)
+            .filter((name) => statSync(join(releaseDir, name)).isFile())
+            .sort();
+
+          console.log(files.join("\n"));
+
+          const patterns = JSON.parse(process.env.EXPECTED_PATTERNS);
+          for (const source of patterns) {
+            const regex = new RegExp(source);
+            if (!files.some((file) => regex.test(file))) {
+              console.error(`Missing packaging artifact matching ${source}`);
+              process.exit(1);
+            }
+          }
+          NODE
+
+      - name: Upload Linux x64 artifact set
         uses: actions/upload-artifact@v4
         with:
           name: linux-x64
-          path: |
-            apps/desktop/src-tauri/target/release/bundle/appimage/*
-            apps/desktop/src-tauri/target/release/bundle/deb/*.deb
+          path: apps/desktop/release/**/*
           if-no-files-found: error
 
   publish-release:
     name: Publish release
     needs:
       - resolve-release
-      - build-macos-x64
       - build-macos-arm64
+      - build-macos-x64
       - build-windows-x64
       - build-linux-x64
     if: needs.resolve-release.outputs.should_release == 'true'
@@ -317,121 +357,80 @@ jobs:
       - name: List artifacts
         run: find release-assets -type f | sort
 
-      - name: Prepare release assets
+      - name: Prepare Electron release assets
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p release-upload
 
-          copy_match() {
+          copy_unique() {
+            local source_path="$1"
+            local dest_name="$2"
+            local dest_path="release-upload/$dest_name"
+
+            if [ -e "$dest_path" ]; then
+              echo "Duplicate release asset: $dest_name" >&2
+              exit 1
+            fi
+
+            cp "$source_path" "$dest_path"
+          }
+
+          copy_matches() {
             local source_dir="$1"
             local pattern="$2"
-            local dest_name="$3"
-            local found=""
+            local found=0
 
-            if [ -d "$source_dir" ]; then
-              found=$(find "$source_dir" -name "$pattern" -type f | head -1)
-            fi
+            while IFS= read -r file_path; do
+              found=1
+              copy_unique "$file_path" "$(basename "$file_path")"
+            done < <(find "$source_dir" -type f -name "$pattern" | sort)
 
-            if [ -n "$found" ]; then
-              cp "$found" "release-upload/$dest_name"
-            fi
-          }
-
-          copy_match "release-assets/macos-arm64" "*.dmg" "open-recorder-macos-arm64.dmg"
-          copy_match "release-assets/macos-arm64" "*.app.tar.gz" "open-recorder-macos-arm64.app.tar.gz"
-          copy_match "release-assets/macos-arm64" "*.app.tar.gz.sig" "open-recorder-macos-arm64.app.tar.gz.sig"
-
-          copy_match "release-assets/macos-x64" "*.dmg" "open-recorder-macos-x64.dmg"
-          copy_match "release-assets/macos-x64" "*.app.tar.gz" "open-recorder-macos-x64.app.tar.gz"
-          copy_match "release-assets/macos-x64" "*.app.tar.gz.sig" "open-recorder-macos-x64.app.tar.gz.sig"
-
-          copy_match "release-assets/windows-x64" "*setup.exe" "open-recorder-windows-x64-setup.exe"
-          copy_match "release-assets/windows-x64" "*setup.exe.sig" "open-recorder-windows-x64-setup.exe.sig"
-
-          copy_match "release-assets/linux-x64" "*.AppImage" "open-recorder-linux-x64.appimage"
-          copy_match "release-assets/linux-x64" "*.AppImage.sig" "open-recorder-linux-x64.appimage.sig"
-          copy_match "release-assets/linux-x64" "*.deb" "open-recorder-linux-x64.deb"
-
-          require_file() {
-            local file_path="$1"
-            if [ ! -f "$file_path" ]; then
-              echo "Missing required updater artifact: $file_path" >&2
+            if [ "$found" -eq 0 ]; then
+              echo "Missing required artifact pattern '$pattern' in $source_dir" >&2
               exit 1
             fi
           }
 
-          require_file "release-upload/open-recorder-macos-arm64.app.tar.gz"
-          require_file "release-upload/open-recorder-macos-arm64.app.tar.gz.sig"
-          require_file "release-upload/open-recorder-macos-x64.app.tar.gz"
-          require_file "release-upload/open-recorder-macos-x64.app.tar.gz.sig"
-          require_file "release-upload/open-recorder-windows-x64-setup.exe"
-          require_file "release-upload/open-recorder-windows-x64-setup.exe.sig"
-          require_file "release-upload/open-recorder-linux-x64.appimage"
-          require_file "release-upload/open-recorder-linux-x64.appimage.sig"
+          copy_alias() {
+            local source_dir="$1"
+            local pattern="$2"
+            local alias_name="$3"
+            local file_path
+
+            file_path=$(find "$source_dir" -type f -name "$pattern" | sort | head -1)
+            if [ -z "$file_path" ]; then
+              echo "Missing alias source pattern '$pattern' in $source_dir" >&2
+              exit 1
+            fi
+
+            copy_unique "$file_path" "$alias_name"
+          }
+
+          copy_matches "release-assets/macos-arm64" "*.dmg"
+          copy_matches "release-assets/macos-arm64" "*.zip"
+          copy_matches "release-assets/macos-arm64" "*.blockmap"
+          copy_matches "release-assets/macos-arm64" "latest-mac*.yml"
+
+          copy_matches "release-assets/macos-x64" "*.dmg"
+          copy_matches "release-assets/macos-x64" "*.zip"
+          copy_matches "release-assets/macos-x64" "*.blockmap"
+          copy_matches "release-assets/macos-x64" "latest-mac*.yml"
+
+          copy_matches "release-assets/windows-x64" "*.exe"
+          copy_matches "release-assets/windows-x64" "*.blockmap"
+          copy_matches "release-assets/windows-x64" "latest*.yml"
+
+          copy_matches "release-assets/linux-x64" "*.AppImage"
+          copy_matches "release-assets/linux-x64" "*.blockmap"
+          copy_matches "release-assets/linux-x64" "latest-linux*.yml"
+
+          copy_alias "release-assets/macos-arm64" "*.dmg" "open-recorder-macos-arm64.dmg"
+          copy_alias "release-assets/macos-x64" "*.dmg" "open-recorder-macos-x64.dmg"
+          copy_alias "release-assets/windows-x64" "*.exe" "open-recorder-windows-x64-setup.exe"
+          copy_alias "release-assets/linux-x64" "*.AppImage" "open-recorder-linux-x64.AppImage"
 
           find release-upload -type f | sort
-
-      - name: Generate updater manifest (latest.json)
-        shell: bash
-        env:
-          RELEASE_TAG: ${{ needs.resolve-release.outputs.tag_name }}
-          RELEASE_NOTES: ${{ needs.resolve-release.outputs.release_notes }}
-        run: |
-          set -euo pipefail
-          TAG="$RELEASE_TAG"
-          VERSION="${TAG#v}"
-          REPO="imbhargav5/open-recorder"
-          BASE_URL="https://github.com/${REPO}/releases/download/${TAG}"
-          PUB_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          NOTES=$(node -p 'JSON.stringify(process.env.RELEASE_NOTES ?? "").slice(1, -1)')
-
-          read_required_file() {
-            local file_path="$1"
-            if [ ! -s "$file_path" ]; then
-              echo "Required file is missing or empty: $file_path" >&2
-              exit 1
-            fi
-            cat "$file_path"
-          }
-
-          MAC_ARM64_SIG=$(read_required_file "release-upload/open-recorder-macos-arm64.app.tar.gz.sig")
-          MAC_ARM64_FILE="open-recorder-macos-arm64.app.tar.gz"
-          MAC_X64_SIG=$(read_required_file "release-upload/open-recorder-macos-x64.app.tar.gz.sig")
-          MAC_X64_FILE="open-recorder-macos-x64.app.tar.gz"
-          WIN_SIG=$(read_required_file "release-upload/open-recorder-windows-x64-setup.exe.sig")
-          WIN_FILE="open-recorder-windows-x64-setup.exe"
-          LINUX_SIG=$(read_required_file "release-upload/open-recorder-linux-x64.appimage.sig")
-          LINUX_FILE="open-recorder-linux-x64.appimage"
-
-          cat > release-upload/latest.json << MANIFEST
-          {
-            "version": "${VERSION}",
-            "notes": "${NOTES}",
-            "pub_date": "${PUB_DATE}",
-            "platforms": {
-              "darwin-aarch64": {
-                "signature": "${MAC_ARM64_SIG}",
-                "url": "${BASE_URL}/${MAC_ARM64_FILE}"
-              },
-              "darwin-x86_64": {
-                "signature": "${MAC_X64_SIG}",
-                "url": "${BASE_URL}/${MAC_X64_FILE}"
-              },
-              "windows-x86_64": {
-                "signature": "${WIN_SIG}",
-                "url": "${BASE_URL}/${WIN_FILE}"
-              },
-              "linux-x86_64": {
-                "signature": "${LINUX_SIG}",
-                "url": "${BASE_URL}/${LINUX_FILE}"
-              }
-            }
-          }
-          MANIFEST
-
-          echo "Generated latest.json:"
-          cat release-upload/latest.json
 
       - name: Create or update release
         uses: ncipollo/release-action@v1

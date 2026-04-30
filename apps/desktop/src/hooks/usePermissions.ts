@@ -67,7 +67,7 @@ export function usePermissions(): UsePermissionsResult {
 		} else {
 			// Fetch all statuses in parallel on macOS
 			const [screenStatus, micStatus, camStatus, accessStatus] = await Promise.all([
-				backend.getScreenRecordingPermissionStatus().catch(() => "unknown"),
+				backend.getEffectiveScreenRecordingPermissionStatus().catch(() => "unknown"),
 				backend.getMicrophonePermissionStatus().catch(() => "unknown"),
 				backend.getCameraPermissionStatus().catch(() => "unknown"),
 				backend.getAccessibilityPermissionStatus().catch(() => "unknown"),
@@ -164,12 +164,46 @@ export function usePermissions(): UsePermissionsResult {
 		[],
 	);
 
-	// Check permissions on mount
+	// Check permissions on mount, and any time the window regains focus /
+	// becomes visible.  This is the canonical macOS pattern — after the user
+	// opens System Settings, flips a permission toggle, and comes back to the
+	// app, the HUD window gets `focus` + `visibilitychange: visible`.  Without
+	// this listener nothing would ever re-read the OS status and the UI would
+	// stay frozen on the old `"denied"` state.
 	useEffect(() => {
 		mountedRef.current = true;
 		void refreshPermissions();
+
+		// Debounce so the rapid focus→visibilitychange→focus burst macOS fires
+		// when returning from System Settings doesn't queue up N refetches.
+		let pending = false;
+		const maybeRefresh = () => {
+			if (pending) return;
+			pending = true;
+			queueMicrotask(() => {
+				pending = false;
+				if (mountedRef.current) {
+					void refreshPermissions();
+				}
+			});
+		};
+
+		const onFocus = () => {
+			maybeRefresh();
+		};
+		const onVisibilityChange = () => {
+			if (document.visibilityState === "visible") {
+				maybeRefresh();
+			}
+		};
+
+		window.addEventListener("focus", onFocus);
+		document.addEventListener("visibilitychange", onVisibilityChange);
+
 		return () => {
 			mountedRef.current = false;
+			window.removeEventListener("focus", onFocus);
+			document.removeEventListener("visibilitychange", onVisibilityChange);
 		};
 	}, [refreshPermissions]);
 

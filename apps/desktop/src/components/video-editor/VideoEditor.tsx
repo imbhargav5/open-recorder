@@ -1,4 +1,5 @@
 import type { Span } from "dnd-timeline";
+import { useAtom, useSetAtom } from "jotai";
 import {
 	ChevronDown,
 	Download,
@@ -7,9 +8,12 @@ import {
 	HelpCircle,
 	Image,
 	LoaderCircle,
+	PanelLeft,
 } from "lucide-react";
-import { useAtom, useSetAtom } from "jotai";
 import { Profiler, useCallback, useEffect, useMemo, useRef } from "react";
+import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
+import { toast } from "sonner";
+import { internalViewAtom, sidebarExpandedAtom } from "@/atoms/navigation";
 import {
 	annotationRegionsAtom,
 	aspectRatioAtom,
@@ -17,18 +21,18 @@ import {
 	audioVolumeAtom,
 	backgroundBlurAtom,
 	borderRadiusAtom,
+	type CursorSettings,
 	connectZoomsAtom,
 	cropRegionAtom,
-	type CursorSettings,
+	currentProjectPathAtom,
 	cursorSettingsAtom,
 	cursorTelemetryAtom,
-	currentProjectPathAtom,
 	durationAtom,
 	exportErrorAtom,
+	exportedFilePathAtom,
 	exportFormatAtom,
 	exportProgressAtom,
 	exportQualityAtom,
-	exportedFilePathAtom,
 	facecamOffsetMsAtom,
 	facecamPlaybackPathAtom,
 	facecamSettingsAtom,
@@ -60,8 +64,8 @@ import {
 	zoomMotionBlurAtom,
 	zoomRegionsAtom,
 } from "@/atoms/videoEditor";
-import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
-import { toast } from "sonner";
+import { ProjectsPage } from "@/components/projects/ProjectsPage";
+import { AppSidebar } from "@/components/shell/AppSidebar";
 import { Button } from "@/components/ui/button";
 import {
 	Empty,
@@ -74,6 +78,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Toaster } from "@/components/ui/sonner";
 import { Switch } from "@/components/ui/switch";
 import { useShortcuts } from "@/contexts/ShortcutsContext";
+import { useWaveformData } from "@/hooks/useWaveformData";
 import { getAssetPath } from "@/lib/assetPath";
 import * as backend from "@/lib/backend";
 import {
@@ -97,7 +102,6 @@ import {
 } from "@/lib/recordingSession";
 import { matchesShortcut } from "@/lib/shortcuts";
 import { cn } from "@/lib/utils";
-import { useWaveformData } from "@/hooks/useWaveformData";
 import { DEFAULT_WALLPAPER_RELATIVE_PATH, WALLPAPER_PATHS } from "@/lib/wallpapers";
 import { getAspectRatioValue } from "@/utils/aspectRatioUtils";
 import { AllShortcutsDialog } from "./AllShortcutsDialog";
@@ -107,7 +111,6 @@ import { buildVideoEditorNavbarTitle } from "./editorWindowParams";
 import PlaybackControls from "./PlaybackControls";
 import {
 	createProjectData,
-	deriveNextId,
 	normalizeProjectEditor,
 	validateProjectData,
 } from "./projectPersistence";
@@ -136,7 +139,10 @@ import {
 	type ZoomRegion,
 } from "./types";
 import { useTimeStore } from "./useTimeStore";
+import { useVideoEditorHistory } from "./useVideoEditorHistory";
 import VideoPlayback, { VideoPlaybackRef } from "./VideoPlayback";
+import { buildImmediateExportSettings, buildMp4ExportPlan } from "./videoEditorExportUtils";
+import { deriveEditorHistoryCounters } from "./videoEditorHistory";
 import { loadInitialVideoEditorState } from "./videoEditorLoadState";
 import { markVideoEditorTiming } from "./videoEditorPerf";
 import {
@@ -147,75 +153,10 @@ import { findDominantRegion } from "./videoPlayback/zoomRegionUtils";
 
 const LOOP_CURSOR_END_WINDOW_MS = 670;
 
-type EditorHistorySnapshot = {
-	zoomRegions: ZoomRegion[];
-	trimRegions: TrimRegion[];
-	speedRegions: SpeedRegion[];
-	annotationRegions: AnnotationRegion[];
-	selectedZoomId: string | null;
-	selectedTrimId: string | null;
-	selectedSpeedId: string | null;
-	selectedAnnotationId: string | null;
-	signature: string;
-};
-
 type PendingExportSave = {
 	fileName: string;
 	arrayBuffer: ArrayBuffer;
 };
-
-function getZoomRegionSignature(region: ZoomRegion) {
-	return `${region.id}:${region.startMs}:${region.endMs}:${region.depth}:${region.focus.cx}:${region.focus.cy}`;
-}
-
-function getTrimRegionSignature(region: TrimRegion) {
-	return `${region.id}:${region.startMs}:${region.endMs}`;
-}
-
-function getSpeedRegionSignature(region: SpeedRegion) {
-	return `${region.id}:${region.startMs}:${region.endMs}:${region.speed}`;
-}
-
-function getAnnotationRegionSignature(region: AnnotationRegion) {
-	return [
-		region.id,
-		region.startMs,
-		region.endMs,
-		region.type,
-		region.content,
-		region.textContent ?? "",
-		region.imageContent ?? "",
-		region.position.x,
-		region.position.y,
-		region.size.width,
-		region.size.height,
-		region.style.fontSize,
-		region.style.color,
-		region.style.backgroundColor,
-		region.style.fontFamily ?? "",
-		region.style.fontWeight ?? "",
-		region.style.fontStyle,
-		region.style.textDecoration,
-		region.style.textAlign,
-		region.zIndex,
-		region.figureData?.arrowDirection ?? "",
-		region.figureData?.color ?? "",
-		region.figureData?.strokeWidth ?? 0,
-	].join(":");
-}
-
-function createHistorySignature(snapshot: Omit<EditorHistorySnapshot, "signature">) {
-	return [
-		snapshot.zoomRegions.map(getZoomRegionSignature).join("|"),
-		snapshot.trimRegions.map(getTrimRegionSignature).join("|"),
-		snapshot.speedRegions.map(getSpeedRegionSignature).join("|"),
-		snapshot.annotationRegions.map(getAnnotationRegionSignature).join("|"),
-		snapshot.selectedZoomId ?? "",
-		snapshot.selectedTrimId ?? "",
-		snapshot.selectedSpeedId ?? "",
-		snapshot.selectedAnnotationId ?? "",
-	].join("~");
-}
 
 export default function VideoEditor() {
 	const [videoPath, setVideoPath] = useAtom(videoPathAtom);
@@ -239,7 +180,14 @@ export default function VideoEditor() {
 	const [zoomMotionBlur, setZoomMotionBlur] = useAtom(zoomMotionBlurAtom);
 	const [connectZooms, setConnectZooms] = useAtom(connectZoomsAtom);
 	const [cursorSettings, setCursorSettings] = useAtom(cursorSettingsAtom);
-	const { showCursor, loopCursor, cursorSize, cursorSmoothing, cursorMotionBlur, cursorClickBounce } = cursorSettings;
+	const {
+		showCursor,
+		loopCursor,
+		cursorSize,
+		cursorSmoothing,
+		cursorMotionBlur,
+		cursorClickBounce,
+	} = cursorSettings;
 	const [borderRadius, setBorderRadius] = useAtom(borderRadiusAtom);
 	const [padding, setPadding] = useAtom(paddingAtom);
 	const [cropRegion, setCropRegion] = useAtom(cropRegionAtom);
@@ -269,6 +217,8 @@ export default function VideoEditor() {
 	const setExportedFilePath = useSetAtom(exportedFilePathAtom);
 	const [hasPendingExportSave, setHasPendingExportSave] = useAtom(hasPendingExportSaveAtom);
 	const [lastSavedSnapshot, setLastSavedSnapshot] = useAtom(lastSavedSnapshotAtom);
+	const [internalView] = useAtom(internalViewAtom);
+	const [sidebarExpanded, setSidebarExpanded] = useAtom(sidebarExpandedAtom);
 
 	const videoPlaybackRef = useRef<VideoPlaybackRef>(null);
 	const nextZoomIdRef = useRef(1);
@@ -282,43 +232,10 @@ export default function VideoEditor() {
 	const nextAnnotationZIndexRef = useRef(1); // Track z-index for stacking order
 	const exporterRef = useRef<VideoExporter | null>(null);
 	const autoSuggestedVideoPathRef = useRef<string | null>(null);
-	const historyPastRef = useRef<EditorHistorySnapshot[]>([]);
-	const historyFutureRef = useRef<EditorHistorySnapshot[]>([]);
-	const historyCurrentRef = useRef<EditorHistorySnapshot | null>(null);
-	const applyingHistoryRef = useRef(false);
 	const pendingExportSaveRef = useRef<PendingExportSave | null>(null);
 	const playbackOverlayWasVisibleRef = useRef(false);
 
-	const cloneSnapshot = useCallback((snapshot: EditorHistorySnapshot): EditorHistorySnapshot => {
-		return {
-			zoomRegions: [...snapshot.zoomRegions],
-			trimRegions: [...snapshot.trimRegions],
-			speedRegions: [...snapshot.speedRegions],
-			annotationRegions: [...snapshot.annotationRegions],
-			selectedZoomId: snapshot.selectedZoomId,
-			selectedTrimId: snapshot.selectedTrimId,
-			selectedSpeedId: snapshot.selectedSpeedId,
-			selectedAnnotationId: snapshot.selectedAnnotationId,
-			signature: snapshot.signature,
-		};
-	}, []);
-
-	const buildHistorySnapshot = useCallback((): EditorHistorySnapshot => {
-		const snapshot = {
-			zoomRegions,
-			trimRegions,
-			speedRegions,
-			annotationRegions,
-			selectedZoomId,
-			selectedTrimId,
-			selectedSpeedId,
-			selectedAnnotationId,
-		};
-		return {
-			...snapshot,
-			signature: createHistorySignature(snapshot),
-		};
-	}, [
+	const { handleUndo, handleRedo } = useVideoEditorHistory({
 		zoomRegions,
 		trimRegions,
 		speedRegions,
@@ -327,66 +244,20 @@ export default function VideoEditor() {
 		selectedTrimId,
 		selectedSpeedId,
 		selectedAnnotationId,
-	]);
-
-	const applyHistorySnapshot = useCallback(
-		(snapshot: EditorHistorySnapshot) => {
-			applyingHistoryRef.current = true;
-			const cloned = cloneSnapshot(snapshot);
-			setZoomRegions(cloned.zoomRegions);
-			setTrimRegions(cloned.trimRegions);
-			setSpeedRegions(cloned.speedRegions);
-			setAnnotationRegions(cloned.annotationRegions);
-			setSelectedZoomId(cloned.selectedZoomId);
-			setSelectedTrimId(cloned.selectedTrimId);
-			setSelectedSpeedId(cloned.selectedSpeedId);
-			setSelectedAnnotationId(cloned.selectedAnnotationId);
-
-			nextZoomIdRef.current = deriveNextId(
-				"zoom",
-				cloned.zoomRegions.map((region) => region.id),
-			);
-			nextTrimIdRef.current = deriveNextId(
-				"trim",
-				cloned.trimRegions.map((region) => region.id),
-			);
-			nextSpeedIdRef.current = deriveNextId(
-				"speed",
-				cloned.speedRegions.map((region) => region.id),
-			);
-			nextAnnotationIdRef.current = deriveNextId(
-				"annotation",
-				cloned.annotationRegions.map((region) => region.id),
-			);
-			nextAnnotationZIndexRef.current =
-				cloned.annotationRegions.reduce((max, region) => Math.max(max, region.zIndex), 0) + 1;
-		},
-		[cloneSnapshot],
-	);
-
-	const handleUndo = useCallback(() => {
-		if (historyPastRef.current.length === 0) return;
-
-		const current = historyCurrentRef.current ?? cloneSnapshot(buildHistorySnapshot());
-		const previous = historyPastRef.current.pop();
-		if (!previous) return;
-
-		historyFutureRef.current.push(cloneSnapshot(current));
-		historyCurrentRef.current = cloneSnapshot(previous);
-		applyHistorySnapshot(previous);
-	}, [applyHistorySnapshot, buildHistorySnapshot, cloneSnapshot]);
-
-	const handleRedo = useCallback(() => {
-		if (historyFutureRef.current.length === 0) return;
-
-		const current = historyCurrentRef.current ?? cloneSnapshot(buildHistorySnapshot());
-		const next = historyFutureRef.current.pop();
-		if (!next) return;
-
-		historyPastRef.current.push(cloneSnapshot(current));
-		historyCurrentRef.current = cloneSnapshot(next);
-		applyHistorySnapshot(next);
-	}, [applyHistorySnapshot, buildHistorySnapshot, cloneSnapshot]);
+		setZoomRegions,
+		setTrimRegions,
+		setSpeedRegions,
+		setAnnotationRegions,
+		setSelectedZoomId,
+		setSelectedTrimId,
+		setSelectedSpeedId,
+		setSelectedAnnotationId,
+		nextZoomIdRef,
+		nextTrimIdRef,
+		nextSpeedIdRef,
+		nextAnnotationIdRef,
+		nextAnnotationZIndexRef,
+	});
 
 	const resolvePlaybackPaths = useCallback(
 		async (sourcePath: string, nextFacecamPath?: string | null) => {
@@ -488,27 +359,17 @@ export default function VideoEditor() {
 			setSelectedSpeedId(null);
 			setSelectedAnnotationId(null);
 
-			nextZoomIdRef.current = deriveNextId(
-				"zoom",
-				normalizedEditor.zoomRegions.map((region) => region.id),
-			);
-			nextTrimIdRef.current = deriveNextId(
-				"trim",
-				normalizedEditor.trimRegions.map((region) => region.id),
-			);
-			nextSpeedIdRef.current = deriveNextId(
-				"speed",
-				normalizedEditor.speedRegions.map((region) => region.id),
-			);
-			nextAnnotationIdRef.current = deriveNextId(
-				"annotation",
-				normalizedEditor.annotationRegions.map((region) => region.id),
-			);
-			nextAnnotationZIndexRef.current =
-				normalizedEditor.annotationRegions.reduce(
-					(max, region) => Math.max(max, region.zIndex),
-					0,
-				) + 1;
+			const counters = deriveEditorHistoryCounters({
+				zoomRegions: normalizedEditor.zoomRegions,
+				trimRegions: normalizedEditor.trimRegions,
+				speedRegions: normalizedEditor.speedRegions,
+				annotationRegions: normalizedEditor.annotationRegions,
+			});
+			nextZoomIdRef.current = counters.nextZoomId;
+			nextTrimIdRef.current = counters.nextTrimId;
+			nextSpeedIdRef.current = counters.nextSpeedId;
+			nextAnnotationIdRef.current = counters.nextAnnotationId;
+			nextAnnotationZIndexRef.current = counters.nextAnnotationZIndex;
 
 			setLastSavedSnapshot(
 				JSON.stringify(
@@ -608,32 +469,6 @@ export default function VideoEditor() {
 		gifLoop,
 		gifSizePreset,
 	]);
-
-	useEffect(() => {
-		const snapshot = cloneSnapshot(buildHistorySnapshot());
-
-		if (!historyCurrentRef.current) {
-			historyCurrentRef.current = snapshot;
-			return;
-		}
-
-		if (applyingHistoryRef.current) {
-			historyCurrentRef.current = snapshot;
-			applyingHistoryRef.current = false;
-			return;
-		}
-
-		if (historyCurrentRef.current.signature === snapshot.signature) {
-			return;
-		}
-
-		historyPastRef.current.push(cloneSnapshot(historyCurrentRef.current));
-		if (historyPastRef.current.length > 100) {
-			historyPastRef.current.shift();
-		}
-		historyCurrentRef.current = snapshot;
-		historyFutureRef.current = [];
-	}, [buildHistorySnapshot, cloneSnapshot]);
 
 	const hasUnsavedChanges = Boolean(
 		currentProjectPath &&
@@ -1171,15 +1006,18 @@ export default function VideoEditor() {
 		[setCursorSettings],
 	);
 	const setCursorSmoothing = useCallback(
-		(v: CursorSettings["cursorSmoothing"]) => setCursorSettings((p) => ({ ...p, cursorSmoothing: v })),
+		(v: CursorSettings["cursorSmoothing"]) =>
+			setCursorSettings((p) => ({ ...p, cursorSmoothing: v })),
 		[setCursorSettings],
 	);
 	const setCursorMotionBlur = useCallback(
-		(v: CursorSettings["cursorMotionBlur"]) => setCursorSettings((p) => ({ ...p, cursorMotionBlur: v })),
+		(v: CursorSettings["cursorMotionBlur"]) =>
+			setCursorSettings((p) => ({ ...p, cursorMotionBlur: v })),
 		[setCursorSettings],
 	);
 	const setCursorClickBounce = useCallback(
-		(v: CursorSettings["cursorClickBounce"]) => setCursorSettings((p) => ({ ...p, cursorClickBounce: v })),
+		(v: CursorSettings["cursorClickBounce"]) =>
+			setCursorSettings((p) => ({ ...p, cursorClickBounce: v })),
 		[setCursorSettings],
 	);
 
@@ -1783,8 +1621,6 @@ export default function VideoEditor() {
 
 				const sourceWidth = video.videoWidth || 1920;
 				const sourceHeight = video.videoHeight || 1080;
-				const sourceAspectRatio = sourceHeight > 0 ? sourceWidth / sourceHeight : 16 / 9;
-				const aspectRatioValue = getAspectRatioValue(aspectRatio, sourceAspectRatio);
 
 				// Get preview CONTAINER dimensions for scaling
 				const playbackRef = videoPlaybackRef.current;
@@ -1792,7 +1628,9 @@ export default function VideoEditor() {
 				const previewWidth = containerElement?.clientWidth || 1920;
 				const previewHeight = containerElement?.clientHeight || 1080;
 				const sourceVideoUrl = await backend.resolveMediaPlaybackUrl(sourcePath);
-				const facecamSourceUrl = facecamVideoPath ? await backend.resolveMediaPlaybackUrl(facecamVideoPath) : undefined;
+				const facecamSourceUrl = facecamVideoPath
+					? await backend.resolveMediaPlaybackUrl(facecamVideoPath)
+					: undefined;
 
 				if (settings.format === "gif" && settings.gifConfig) {
 					// GIF Export
@@ -1861,83 +1699,16 @@ export default function VideoEditor() {
 				} else {
 					// MP4 Export
 					const quality = settings.quality || exportQuality;
-					let exportWidth: number;
-					let exportHeight: number;
-					let bitrate: number;
-
-					if (quality === "source") {
-						// Use source resolution
-						exportWidth = sourceWidth;
-						exportHeight = sourceHeight;
-
-						if (aspectRatio === "native") {
-							exportWidth = Math.floor(sourceWidth / 2) * 2;
-							exportHeight = Math.floor(sourceHeight / 2) * 2;
-						} else if (aspectRatioValue === 1) {
-							// Square (1:1): use smaller dimension to avoid codec limits
-							const baseDimension = Math.floor(Math.min(sourceWidth, sourceHeight) / 2) * 2;
-							exportWidth = baseDimension;
-							exportHeight = baseDimension;
-						} else if (aspectRatioValue > 1) {
-							// Landscape: find largest even dimensions that exactly match aspect ratio
-							const baseWidth = Math.floor(sourceWidth / 2) * 2;
-							let found = false;
-							for (let w = baseWidth; w >= 100 && !found; w -= 2) {
-								const h = Math.round(w / aspectRatioValue);
-								if (h % 2 === 0 && Math.abs(w / h - aspectRatioValue) < 0.0001) {
-									exportWidth = w;
-									exportHeight = h;
-									found = true;
-								}
-							}
-							if (!found) {
-								exportWidth = baseWidth;
-								exportHeight = Math.floor(baseWidth / aspectRatioValue / 2) * 2;
-							}
-						} else {
-							// Portrait: find largest even dimensions that exactly match aspect ratio
-							const baseHeight = Math.floor(sourceHeight / 2) * 2;
-							let found = false;
-							for (let h = baseHeight; h >= 100 && !found; h -= 2) {
-								const w = Math.round(h * aspectRatioValue);
-								if (w % 2 === 0 && Math.abs(w / h - aspectRatioValue) < 0.0001) {
-									exportWidth = w;
-									exportHeight = h;
-									found = true;
-								}
-							}
-							if (!found) {
-								exportHeight = baseHeight;
-								exportWidth = Math.floor((baseHeight * aspectRatioValue) / 2) * 2;
-							}
-						}
-
-						// Calculate visually lossless bitrate matching screen recording optimization
-						const totalPixels = exportWidth * exportHeight;
-						bitrate = 30_000_000;
-						if (totalPixels > 1920 * 1080 && totalPixels <= 2560 * 1440) {
-							bitrate = 50_000_000;
-						} else if (totalPixels > 2560 * 1440) {
-							bitrate = 80_000_000;
-						}
-					} else {
-						// Use quality-based target resolution
-						const targetHeight = quality === "medium" ? 720 : 1080;
-
-						// Calculate dimensions maintaining aspect ratio
-						exportHeight = Math.floor(targetHeight / 2) * 2;
-						exportWidth = Math.floor((exportHeight * aspectRatioValue) / 2) * 2;
-
-						// Adjust bitrate for lower resolutions
-						const totalPixels = exportWidth * exportHeight;
-						if (totalPixels <= 1280 * 720) {
-							bitrate = 10_000_000;
-						} else if (totalPixels <= 1920 * 1080) {
-							bitrate = 20_000_000;
-						} else {
-							bitrate = 30_000_000;
-						}
-					}
+					const {
+						width: exportWidth,
+						height: exportHeight,
+						bitrate,
+					} = buildMp4ExportPlan({
+						quality,
+						sourceWidth,
+						sourceHeight,
+						aspectRatio,
+					});
 
 					const exporter = new VideoExporter({
 						videoUrl: sourceVideoUrl,
@@ -2068,30 +1839,17 @@ export default function VideoEditor() {
 			return;
 		}
 
-		// Build export settings from current state
 		const sourceWidth = video.videoWidth || 1920;
 		const sourceHeight = video.videoHeight || 1080;
-		const gifDimensions = calculateOutputDimensions(
+		const settings: ExportSettings = buildImmediateExportSettings({
+			format: exportFormat,
+			exportQuality,
+			gifFrameRate,
+			gifLoop,
+			gifSizePreset,
 			sourceWidth,
 			sourceHeight,
-			gifSizePreset,
-			GIF_SIZE_PRESETS,
-		);
-
-		const settings: ExportSettings = {
-			format: exportFormat,
-			quality: exportFormat === "mp4" ? exportQuality : undefined,
-			gifConfig:
-				exportFormat === "gif"
-					? {
-							frameRate: gifFrameRate,
-							loop: gifLoop,
-							sizePreset: gifSizePreset,
-							width: gifDimensions.width,
-							height: gifDimensions.height,
-						}
-					: undefined,
-		};
+		});
 
 		setShowExportDialog(true);
 		setExportError(null);
@@ -2194,7 +1952,7 @@ export default function VideoEditor() {
 	}
 
 	return (
-		<div className="flex flex-col h-screen bg-[#09090b] text-slate-200 overflow-hidden selection:bg-[#2563EB]/30">
+		<div className="flex h-screen bg-[#09090b] text-slate-200 overflow-hidden selection:bg-[#2563EB]/30">
 			{showPlaybackLoadingOverlay && (
 				<div className="fixed inset-0 z-[120] flex items-center justify-center bg-[#09090b]/92 px-6 backdrop-blur-sm">
 					<Empty className="border-white/10 bg-white/[0.02]">
@@ -2210,402 +1968,426 @@ export default function VideoEditor() {
 					</Empty>
 				</div>
 			)}
-			<div
-				className="relative h-10 flex-shrink-0 bg-[#09090b]/80 backdrop-blur-md border-b border-white/5 flex items-center justify-center px-6 z-50"
-				style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-			>
-				<span className="text-sm font-semibold tracking-tight text-white/90">
-					{editorNavbarTitle}
-				</span>
+			<AppSidebar />
+			<div className="flex flex-col flex-1 min-w-0">
 				<div
-					className="absolute right-4 flex items-center gap-2"
-					style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+					className="relative h-10 flex-shrink-0 bg-[#09090b]/80 backdrop-blur-md border-b border-white/5 flex items-center justify-center px-6 z-50"
+					style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
 				>
-					<button
-						type="button"
-						onClick={() => setShowShortcutsDialog(true)}
-						className="inline-flex h-7 w-7 items-center justify-center rounded-md text-white/60 transition hover:bg-white/8 hover:text-white cursor-pointer"
-						title="Keyboard shortcuts"
-						aria-label="Keyboard shortcuts"
+					<div
+						className="absolute left-2 flex items-center"
+						style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
 					>
-						<HelpCircle className="h-4 w-4" />
-					</button>
-					<button
-						type="button"
-						onClick={() => void openRecordingsFolder()}
-						className="inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-white/90 transition hover:bg-white/8 hover:text-white cursor-pointer"
-						title="Open recordings folder"
-						aria-label="Open recordings folder"
-					>
-						<FolderOpen className="h-4 w-4" />
-						<span className="text-xs font-normal">Manage recordings</span>
-					</button>
-
-					<Popover>
-						<div className="flex">
-							<Button
-								type="button"
-								size="sm"
-								onClick={handleOpenExportDialog}
-								className="h-7 rounded-r-none gap-1.5 bg-[#2563EB] text-white text-xs font-medium hover:bg-[#2563EB]/90 active:scale-[0.98] transition-all"
-							>
-								<Download className="w-3.5 h-3.5" />
-								Export {exportFormat === "gif" ? "GIF" : "Video"}
-							</Button>
-							<PopoverTrigger asChild>
-								<Button
-									type="button"
-									size="sm"
-									className="h-7 w-7 p-0 rounded-l-none border-l border-[#2563EB]/50 bg-[#2563EB] text-white hover:bg-[#2563EB]/90 active:scale-[0.98] transition-all"
-								>
-									<ChevronDown className="w-3.5 h-3.5" />
-								</Button>
-							</PopoverTrigger>
-						</div>
-						<PopoverContent
-							side="bottom"
-							align="end"
-							sideOffset={8}
-							className="w-[280px] bg-[#09090b] border-white/10 p-3 rounded-xl"
+						<button
+							type="button"
+							onClick={() => setSidebarExpanded(!sidebarExpanded)}
+							aria-label={sidebarExpanded ? "Collapse sidebar" : "Expand sidebar"}
+							aria-expanded={sidebarExpanded}
+							title={sidebarExpanded ? "Collapse sidebar" : "Expand sidebar"}
+							className="inline-flex h-7 w-7 items-center justify-center rounded-md text-white/60 transition hover:bg-white/8 hover:text-white cursor-pointer"
 						>
-							<div className="space-y-3">
-								<div className="flex items-center gap-2">
-									<button
-										onClick={() => setExportFormat("mp4")}
-										className={cn(
-											"flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg border transition-all text-xs font-medium",
-											exportFormat === "mp4"
-												? "bg-[#2563EB]/10 border-[#2563EB]/50 text-white"
-												: "bg-white/5 border-white/10 text-slate-400 hover:bg-white/10 hover:text-slate-200",
-										)}
+							<PanelLeft className="h-4 w-4" />
+						</button>
+					</div>
+					<span className="text-sm font-semibold tracking-tight text-white/90">
+						{internalView === "projects" ? "Projects" : editorNavbarTitle}
+					</span>
+					{internalView === "editor" && (
+						<div
+							className="absolute right-4 flex items-center gap-2"
+							style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+						>
+							<button
+								type="button"
+								onClick={() => setShowShortcutsDialog(true)}
+								className="inline-flex h-7 w-7 items-center justify-center rounded-md text-white/60 transition hover:bg-white/8 hover:text-white cursor-pointer"
+								title="Keyboard shortcuts"
+								aria-label="Keyboard shortcuts"
+							>
+								<HelpCircle className="h-4 w-4" />
+							</button>
+							<button
+								type="button"
+								onClick={() => void openRecordingsFolder()}
+								className="inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-white/90 transition hover:bg-white/8 hover:text-white cursor-pointer"
+								title="Open recordings folder"
+								aria-label="Open recordings folder"
+							>
+								<FolderOpen className="h-4 w-4" />
+								<span className="text-xs font-normal">Manage recordings</span>
+							</button>
+
+							<Popover>
+								<div className="flex">
+									<Button
+										type="button"
+										size="sm"
+										onClick={handleOpenExportDialog}
+										className="h-7 rounded-r-none gap-1.5 bg-[#2563EB] text-white text-xs font-medium hover:bg-[#2563EB]/90 active:scale-[0.98] transition-all"
 									>
-										<Film className="w-3.5 h-3.5" />
-										MP4
-									</button>
-									<button
-										onClick={() => setExportFormat("gif")}
-										className={cn(
-											"flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg border transition-all text-xs font-medium",
-											exportFormat === "gif"
-												? "bg-[#2563EB]/10 border-[#2563EB]/50 text-white"
-												: "bg-white/5 border-white/10 text-slate-400 hover:bg-white/10 hover:text-slate-200",
-										)}
-									>
-										<Image className="w-3.5 h-3.5" />
-										GIF
-									</button>
+										<Download className="w-3.5 h-3.5" />
+										Export {exportFormat === "gif" ? "GIF" : "Video"}
+									</Button>
+									<PopoverTrigger asChild>
+										<Button
+											type="button"
+											size="sm"
+											className="h-7 w-7 p-0 rounded-l-none border-l border-[#2563EB]/50 bg-[#2563EB] text-white hover:bg-[#2563EB]/90 active:scale-[0.98] transition-all"
+										>
+											<ChevronDown className="w-3.5 h-3.5" />
+										</Button>
+									</PopoverTrigger>
 								</div>
-
-								{exportFormat === "mp4" && (
-									<div className="bg-white/5 border border-white/5 p-0.5 w-full grid grid-cols-3 h-7 rounded-lg">
-										<button
-											onClick={() => setExportQuality("medium")}
-											className={cn(
-												"rounded-md transition-all text-[10px] font-medium",
-												exportQuality === "medium"
-													? "bg-white text-black"
-													: "text-slate-400 hover:text-slate-200",
-											)}
-										>
-											Low
-										</button>
-										<button
-											onClick={() => setExportQuality("good")}
-											className={cn(
-												"rounded-md transition-all text-[10px] font-medium",
-												exportQuality === "good"
-													? "bg-white text-black"
-													: "text-slate-400 hover:text-slate-200",
-											)}
-										>
-											Medium
-										</button>
-										<button
-											onClick={() => setExportQuality("source")}
-											className={cn(
-												"rounded-md transition-all text-[10px] font-medium",
-												exportQuality === "source"
-													? "bg-white text-black"
-													: "text-slate-400 hover:text-slate-200",
-											)}
-										>
-											High
-										</button>
-									</div>
-								)}
-
-								{exportFormat === "gif" && (
-									<div className="space-y-2">
-										<div className="flex items-center gap-2">
-											<div className="flex-1 bg-white/5 border border-white/5 p-0.5 grid grid-cols-4 h-7 rounded-lg">
-												{GIF_FRAME_RATES.map((rate) => (
-													<button
-														key={rate.value}
-														onClick={() => setGifFrameRate(rate.value)}
-														className={cn(
-															"rounded-md transition-all text-[10px] font-medium",
-															gifFrameRate === rate.value
-																? "bg-white text-black"
-																: "text-slate-400 hover:text-slate-200",
-														)}
-													>
-														{rate.value}
-													</button>
-												))}
-											</div>
-											<div className="flex-1 bg-white/5 border border-white/5 p-0.5 grid grid-cols-3 h-7 rounded-lg">
-												{Object.entries(GIF_SIZE_PRESETS).map(([key, _preset]) => (
-													<button
-														key={key}
-														onClick={() => setGifSizePreset(key as GifSizePreset)}
-														className={cn(
-															"rounded-md transition-all text-[10px] font-medium",
-															gifSizePreset === key
-																? "bg-white text-black"
-																: "text-slate-400 hover:text-slate-200",
-														)}
-													>
-														{key === "original"
-															? "Orig"
-															: key.charAt(0).toUpperCase() + key.slice(1, 3)}
-													</button>
-												))}
-											</div>
-										</div>
-										<div className="flex items-center justify-between">
-											<span className="text-[10px] text-slate-500">
-												{gifOutputDimensions.width} × {gifOutputDimensions.height}px
-											</span>
-											<div className="flex items-center gap-2">
-												<span className="text-[10px] text-slate-400">Loop</span>
-												<Switch
-													checked={gifLoop}
-													onCheckedChange={setGifLoop}
-													className="data-[state=checked]:bg-[#2563EB] scale-75"
-												/>
-											</div>
-										</div>
-									</div>
-								)}
-							</div>
-						</PopoverContent>
-					</Popover>
-				</div>
-			</div>
-
-			<div className="flex-1 p-5 gap-4 flex min-h-0 relative">
-				{/* Left Column - Video & Timeline */}
-				<div className="flex-[7] flex flex-col gap-3 min-w-0 h-full">
-					<PanelGroup direction="vertical" className="gap-3">
-						{/* Top section: video preview and controls */}
-						<Panel defaultSize={70} minSize={40}>
-							<div className="w-full h-full flex flex-col items-center justify-center bg-black/40 rounded-2xl border border-white/5 shadow-2xl overflow-hidden">
-								{/* Video preview */}
-								<div
-									className="w-full flex justify-center items-center"
-									style={{ flex: "1 1 auto", margin: "6px 0 0" }}
+								<PopoverContent
+									side="bottom"
+									align="end"
+									sideOffset={8}
+									className="w-[280px] bg-[#09090b] border-white/10 p-3 rounded-xl"
 								>
-									<div
-										className="relative"
-										style={{
-											width: "auto",
-											height: "100%",
-											aspectRatio: getAspectRatioValue(
-												aspectRatio,
-												(() => {
-													const previewVideo = videoPlaybackRef.current?.video;
-													if (previewVideo && previewVideo.videoHeight > 0) {
-														return previewVideo.videoWidth / previewVideo.videoHeight;
-													}
-													return 16 / 9;
-												})(),
-											),
-											maxWidth: "100%",
-											margin: "0 auto",
-											boxSizing: "border-box",
-										}}
-									>
-										<Profiler id="VideoPlayback" onRender={onRenderProfiler}>
-											<VideoPlayback
-												aspectRatio={aspectRatio}
-												ref={videoPlaybackRef}
-												videoPath={videoPath || ""}
-												facecamVideoPath={facecamPlaybackPath || undefined}
-												facecamOffsetMs={facecamOffsetMs}
-												facecamSettings={facecamSettings}
-												onDurationChange={setDuration}
-												onTimeUpdate={timeStore.setTime}
-												onPlayStateChange={setIsPlaying}
-												onError={setError}
-												wallpaper={wallpaper}
-												audioMuted={audioMuted}
-												audioVolume={audioVolume}
+									<div className="space-y-3">
+										<div className="flex items-center gap-2">
+											<button
+												onClick={() => setExportFormat("mp4")}
+												className={cn(
+													"flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg border transition-all text-xs font-medium",
+													exportFormat === "mp4"
+														? "bg-[#2563EB]/10 border-[#2563EB]/50 text-white"
+														: "bg-white/5 border-white/10 text-slate-400 hover:bg-white/10 hover:text-slate-200",
+												)}
+											>
+												<Film className="w-3.5 h-3.5" />
+												MP4
+											</button>
+											<button
+												onClick={() => setExportFormat("gif")}
+												className={cn(
+													"flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg border transition-all text-xs font-medium",
+													exportFormat === "gif"
+														? "bg-[#2563EB]/10 border-[#2563EB]/50 text-white"
+														: "bg-white/5 border-white/10 text-slate-400 hover:bg-white/10 hover:text-slate-200",
+												)}
+											>
+												<Image className="w-3.5 h-3.5" />
+												GIF
+											</button>
+										</div>
+
+										{exportFormat === "mp4" && (
+											<div className="bg-white/5 border border-white/5 p-0.5 w-full grid grid-cols-3 h-7 rounded-lg">
+												<button
+													onClick={() => setExportQuality("medium")}
+													className={cn(
+														"rounded-md transition-all text-[10px] font-medium",
+														exportQuality === "medium"
+															? "bg-white text-black"
+															: "text-slate-400 hover:text-slate-200",
+													)}
+												>
+													Low
+												</button>
+												<button
+													onClick={() => setExportQuality("good")}
+													className={cn(
+														"rounded-md transition-all text-[10px] font-medium",
+														exportQuality === "good"
+															? "bg-white text-black"
+															: "text-slate-400 hover:text-slate-200",
+													)}
+												>
+													Medium
+												</button>
+												<button
+													onClick={() => setExportQuality("source")}
+													className={cn(
+														"rounded-md transition-all text-[10px] font-medium",
+														exportQuality === "source"
+															? "bg-white text-black"
+															: "text-slate-400 hover:text-slate-200",
+													)}
+												>
+													High
+												</button>
+											</div>
+										)}
+
+										{exportFormat === "gif" && (
+											<div className="space-y-2">
+												<div className="flex items-center gap-2">
+													<div className="flex-1 bg-white/5 border border-white/5 p-0.5 grid grid-cols-4 h-7 rounded-lg">
+														{GIF_FRAME_RATES.map((rate) => (
+															<button
+																key={rate.value}
+																onClick={() => setGifFrameRate(rate.value)}
+																className={cn(
+																	"rounded-md transition-all text-[10px] font-medium",
+																	gifFrameRate === rate.value
+																		? "bg-white text-black"
+																		: "text-slate-400 hover:text-slate-200",
+																)}
+															>
+																{rate.value}
+															</button>
+														))}
+													</div>
+													<div className="flex-1 bg-white/5 border border-white/5 p-0.5 grid grid-cols-3 h-7 rounded-lg">
+														{Object.entries(GIF_SIZE_PRESETS).map(([key, _preset]) => (
+															<button
+																key={key}
+																onClick={() => setGifSizePreset(key as GifSizePreset)}
+																className={cn(
+																	"rounded-md transition-all text-[10px] font-medium",
+																	gifSizePreset === key
+																		? "bg-white text-black"
+																		: "text-slate-400 hover:text-slate-200",
+																)}
+															>
+																{key === "original"
+																	? "Orig"
+																	: key.charAt(0).toUpperCase() + key.slice(1, 3)}
+															</button>
+														))}
+													</div>
+												</div>
+												<div className="flex items-center justify-between">
+													<span className="text-[10px] text-slate-500">
+														{gifOutputDimensions.width} × {gifOutputDimensions.height}px
+													</span>
+													<div className="flex items-center gap-2">
+														<span className="text-[10px] text-slate-400">Loop</span>
+														<Switch
+															checked={gifLoop}
+															onCheckedChange={setGifLoop}
+															className="data-[state=checked]:bg-[#2563EB] scale-75"
+														/>
+													</div>
+												</div>
+											</div>
+										)}
+									</div>
+								</PopoverContent>
+							</Popover>
+						</div>
+					)}
+				</div>
+
+				{internalView === "projects" ? (
+					<ProjectsPage />
+				) : (
+					<div className="flex-1 p-5 gap-4 flex min-h-0 relative">
+						{/* Left Column - Video & Timeline */}
+						<div className="flex-[7] flex flex-col gap-3 min-w-0 h-full">
+							<PanelGroup direction="vertical" className="gap-3">
+								{/* Top section: video preview and controls */}
+								<Panel defaultSize={70} minSize={40}>
+									<div className="w-full h-full flex flex-col items-center justify-center bg-black/40 rounded-2xl border border-white/5 shadow-2xl overflow-hidden">
+										{/* Video preview */}
+										<div
+											className="w-full flex justify-center items-center"
+											style={{ flex: "1 1 auto", margin: "6px 0 0" }}
+										>
+											<div
+												className="relative"
+												style={{
+													width: "auto",
+													height: "100%",
+													aspectRatio: getAspectRatioValue(
+														aspectRatio,
+														(() => {
+															const previewVideo = videoPlaybackRef.current?.video;
+															if (previewVideo && previewVideo.videoHeight > 0) {
+																return previewVideo.videoWidth / previewVideo.videoHeight;
+															}
+															return 16 / 9;
+														})(),
+													),
+													maxWidth: "100%",
+													margin: "0 auto",
+													boxSizing: "border-box",
+												}}
+											>
+												<Profiler id="VideoPlayback" onRender={onRenderProfiler}>
+													<VideoPlayback
+														aspectRatio={aspectRatio}
+														ref={videoPlaybackRef}
+														videoPath={videoPath || ""}
+														facecamVideoPath={facecamPlaybackPath || undefined}
+														facecamOffsetMs={facecamOffsetMs}
+														facecamSettings={facecamSettings}
+														onDurationChange={setDuration}
+														onTimeUpdate={timeStore.setTime}
+														onPlayStateChange={setIsPlaying}
+														onError={setError}
+														wallpaper={wallpaper}
+														audioMuted={audioMuted}
+														audioVolume={audioVolume}
+														zoomRegions={effectiveZoomRegions}
+														selectedZoomId={selectedZoomId}
+														onSelectZoom={handleSelectZoom}
+														onZoomFocusChange={handleZoomFocusChange}
+														isPlaying={isPlaying}
+														showShadow={shadowIntensity > 0}
+														shadowIntensity={shadowIntensity}
+														backgroundBlur={backgroundBlur}
+														zoomMotionBlur={zoomMotionBlur}
+														connectZooms={connectZooms}
+														borderRadius={borderRadius}
+														padding={padding}
+														cropRegion={cropRegion}
+														trimRegions={trimRegions}
+														speedRegions={speedRegions}
+														annotationRegions={annotationRegions}
+														selectedAnnotationId={selectedAnnotationId}
+														onSelectAnnotation={handleSelectAnnotation}
+														onAnnotationPositionChange={handleAnnotationPositionChange}
+														onAnnotationSizeChange={handleAnnotationSizeChange}
+														cursorTelemetry={effectiveCursorTelemetry}
+														showCursor={showCursor}
+														cursorSize={cursorSize}
+														cursorSmoothing={cursorSmoothing}
+														cursorMotionBlur={cursorMotionBlur}
+														cursorClickBounce={cursorClickBounce}
+														onReadyChange={setPlaybackReady}
+														onFacecamPositionChange={handleFacecamPositionChange}
+													/>
+												</Profiler>
+											</div>
+										</div>
+										{/* Playback controls */}
+										<div
+											className="w-full flex justify-center items-center"
+											style={{
+												height: "48px",
+												flexShrink: 0,
+												padding: "6px 12px",
+												margin: "6px 0 6px 0",
+											}}
+										>
+											<div style={{ width: "100%", maxWidth: "700px" }}>
+												<Profiler id="PlaybackControls" onRender={onRenderProfiler}>
+													<PlaybackControls
+														isPlaying={isPlaying}
+														timeStore={timeStore}
+														duration={duration}
+														onTogglePlayPause={togglePlayPause}
+														onSeek={handleSeek}
+													/>
+												</Profiler>
+											</div>
+										</div>
+									</div>
+								</Panel>
+
+								<PanelResizeHandle className="h-3 bg-[#09090b]/80 hover:bg-[#09090b] transition-colors rounded-full mx-4 flex items-center justify-center">
+									<div className="w-8 h-1 bg-white/20 rounded-full"></div>
+								</PanelResizeHandle>
+
+								{/* Timeline section */}
+								<Panel defaultSize={30} minSize={20}>
+									<div className="h-full min-h-0 bg-[#09090b] rounded-2xl border border-white/5 shadow-lg overflow-auto flex flex-col">
+										<Profiler id="TimelineEditor" onRender={onRenderProfiler}>
+											<TimelineEditor
+												videoDuration={duration}
+												timeStore={timeStore}
+												onSeek={handleSeek}
+												cursorTelemetry={effectiveCursorTelemetry}
 												zoomRegions={effectiveZoomRegions}
+												onZoomAdded={handleZoomAdded}
+												onZoomSuggested={handleZoomSuggested}
+												onZoomSpanChange={handleZoomSpanChange}
+												onZoomDelete={handleZoomDelete}
 												selectedZoomId={selectedZoomId}
 												onSelectZoom={handleSelectZoom}
-												onZoomFocusChange={handleZoomFocusChange}
-												isPlaying={isPlaying}
-												showShadow={shadowIntensity > 0}
-												shadowIntensity={shadowIntensity}
-												backgroundBlur={backgroundBlur}
-												zoomMotionBlur={zoomMotionBlur}
-												connectZooms={connectZooms}
-												borderRadius={borderRadius}
-												padding={padding}
-												cropRegion={cropRegion}
 												trimRegions={trimRegions}
+												onTrimAdded={handleTrimAdded}
+												onTrimSpanChange={handleTrimSpanChange}
+												onTrimDelete={handleTrimDelete}
+												selectedTrimId={selectedTrimId}
+												onSelectTrim={handleSelectTrim}
 												speedRegions={speedRegions}
+												onSpeedAdded={handleSpeedAdded}
+												onSpeedSpanChange={handleSpeedSpanChange}
+												onSpeedDelete={handleSpeedDelete}
+												selectedSpeedId={selectedSpeedId}
+												onSelectSpeed={handleSelectSpeed}
 												annotationRegions={annotationRegions}
+												onAnnotationAdded={handleAnnotationAdded}
+												onAnnotationSpanChange={handleAnnotationSpanChange}
+												onAnnotationDelete={handleAnnotationDelete}
 												selectedAnnotationId={selectedAnnotationId}
 												onSelectAnnotation={handleSelectAnnotation}
-												onAnnotationPositionChange={handleAnnotationPositionChange}
-												onAnnotationSizeChange={handleAnnotationSizeChange}
-												cursorTelemetry={effectiveCursorTelemetry}
-												showCursor={showCursor}
-												cursorSize={cursorSize}
-												cursorSmoothing={cursorSmoothing}
-												cursorMotionBlur={cursorMotionBlur}
-												cursorClickBounce={cursorClickBounce}
-												onReadyChange={setPlaybackReady}
-												onFacecamPositionChange={handleFacecamPositionChange}
+												aspectRatio={aspectRatio}
+												onAspectRatioChange={setAspectRatio}
+												waveformData={waveformData}
+												waveformLoading={waveformLoading}
+												audioMuted={audioMuted}
 											/>
 										</Profiler>
 									</div>
-								</div>
-								{/* Playback controls */}
-								<div
-									className="w-full flex justify-center items-center"
-									style={{
-										height: "48px",
-										flexShrink: 0,
-										padding: "6px 12px",
-										margin: "6px 0 6px 0",
-									}}
-								>
-									<div style={{ width: "100%", maxWidth: "700px" }}>
-										<Profiler id="PlaybackControls" onRender={onRenderProfiler}>
-											<PlaybackControls
-												isPlaying={isPlaying}
-												timeStore={timeStore}
-												duration={duration}
-												onTogglePlayPause={togglePlayPause}
-												onSeek={handleSeek}
-											/>
-										</Profiler>
-									</div>
-								</div>
-							</div>
-						</Panel>
+								</Panel>
+							</PanelGroup>
+						</div>
 
-						<PanelResizeHandle className="h-3 bg-[#09090b]/80 hover:bg-[#09090b] transition-colors rounded-full mx-4 flex items-center justify-center">
-							<div className="w-8 h-1 bg-white/20 rounded-full"></div>
-						</PanelResizeHandle>
-
-						{/* Timeline section */}
-						<Panel defaultSize={30} minSize={20}>
-							<div className="h-full min-h-0 bg-[#09090b] rounded-2xl border border-white/5 shadow-lg overflow-auto flex flex-col">
-								<Profiler id="TimelineEditor" onRender={onRenderProfiler}>
-									<TimelineEditor
-										videoDuration={duration}
-										timeStore={timeStore}
-										onSeek={handleSeek}
-										cursorTelemetry={effectiveCursorTelemetry}
-										zoomRegions={effectiveZoomRegions}
-										onZoomAdded={handleZoomAdded}
-										onZoomSuggested={handleZoomSuggested}
-										onZoomSpanChange={handleZoomSpanChange}
-										onZoomDelete={handleZoomDelete}
-										selectedZoomId={selectedZoomId}
-										onSelectZoom={handleSelectZoom}
-										trimRegions={trimRegions}
-										onTrimAdded={handleTrimAdded}
-										onTrimSpanChange={handleTrimSpanChange}
-										onTrimDelete={handleTrimDelete}
-										selectedTrimId={selectedTrimId}
-										onSelectTrim={handleSelectTrim}
-										speedRegions={speedRegions}
-										onSpeedAdded={handleSpeedAdded}
-										onSpeedSpanChange={handleSpeedSpanChange}
-										onSpeedDelete={handleSpeedDelete}
-										selectedSpeedId={selectedSpeedId}
-										onSelectSpeed={handleSelectSpeed}
-										annotationRegions={annotationRegions}
-										onAnnotationAdded={handleAnnotationAdded}
-										onAnnotationSpanChange={handleAnnotationSpanChange}
-										onAnnotationDelete={handleAnnotationDelete}
-										selectedAnnotationId={selectedAnnotationId}
-										onSelectAnnotation={handleSelectAnnotation}
-										aspectRatio={aspectRatio}
-										onAspectRatioChange={setAspectRatio}
-										waveformData={waveformData}
-										waveformLoading={waveformLoading}
-										audioMuted={audioMuted}
-									/>
-								</Profiler>
-							</div>
-						</Panel>
-					</PanelGroup>
-				</div>
-
-				{/* Right section: settings panel */}
-				<Profiler id="SettingsPanel" onRender={onRenderProfiler}>
-					<SettingsPanel
-						selected={wallpaper}
-						onWallpaperChange={setWallpaper}
-						audioMuted={audioMuted}
-						onAudioMutedChange={setAudioMuted}
-						audioVolume={audioVolume}
-						onAudioVolumeChange={setAudioVolume}
-						selectedZoomDepth={selectedZoomDepth}
-						onZoomDepthChange={handleZoomDepthChange}
-						selectedZoomId={selectedZoomId}
-						onZoomDelete={handleZoomDelete}
-						selectedTrimId={selectedTrimId}
-						onTrimDelete={handleTrimDelete}
-						shadowIntensity={shadowIntensity}
-						onShadowChange={setShadowIntensity}
-						backgroundBlur={backgroundBlur}
-						onBackgroundBlurChange={setBackgroundBlur}
-						zoomMotionBlur={zoomMotionBlur}
-						onZoomMotionBlurChange={setZoomMotionBlur}
-						connectZooms={connectZooms}
-						onConnectZoomsChange={setConnectZooms}
-						showCursor={showCursor}
-						onShowCursorChange={setShowCursor}
-						loopCursor={loopCursor}
-						onLoopCursorChange={setLoopCursor}
-						cursorSize={cursorSize}
-						onCursorSizeChange={setCursorSize}
-						cursorSmoothing={cursorSmoothing}
-						onCursorSmoothingChange={setCursorSmoothing}
-						cursorMotionBlur={cursorMotionBlur}
-						onCursorMotionBlurChange={setCursorMotionBlur}
-						cursorClickBounce={cursorClickBounce}
-						onCursorClickBounceChange={setCursorClickBounce}
-						borderRadius={borderRadius}
-						onBorderRadiusChange={setBorderRadius}
-						padding={padding}
-						onPaddingChange={setPadding}
-						cropRegion={cropRegion}
-						onCropChange={setCropRegion}
-						facecamVideoPath={facecamVideoPath}
-						facecamSettings={facecamSettings}
-						onFacecamSettingsChange={setFacecamSettings}
-						aspectRatio={aspectRatio}
-						videoElement={videoPlaybackRef.current?.video || null}
-						selectedAnnotationId={selectedAnnotationId}
-						annotationRegions={annotationRegions}
-						onAnnotationContentChange={handleAnnotationContentChange}
-						onAnnotationTypeChange={handleAnnotationTypeChange}
-						onAnnotationStyleChange={handleAnnotationStyleChange}
-						onAnnotationFigureDataChange={handleAnnotationFigureDataChange}
-						onAnnotationDelete={handleAnnotationDelete}
-						selectedSpeedId={selectedSpeedId}
-						selectedSpeedValue={selectedSpeedValue}
-						onSpeedChange={handleSpeedChange}
-						onSpeedDelete={handleSpeedDelete}
-					/>
-				</Profiler>
+						{/* Right section: settings panel */}
+						<Profiler id="SettingsPanel" onRender={onRenderProfiler}>
+							<SettingsPanel
+								selected={wallpaper}
+								onWallpaperChange={setWallpaper}
+								audioMuted={audioMuted}
+								onAudioMutedChange={setAudioMuted}
+								audioVolume={audioVolume}
+								onAudioVolumeChange={setAudioVolume}
+								selectedZoomDepth={selectedZoomDepth}
+								onZoomDepthChange={handleZoomDepthChange}
+								selectedZoomId={selectedZoomId}
+								onZoomDelete={handleZoomDelete}
+								selectedTrimId={selectedTrimId}
+								onTrimDelete={handleTrimDelete}
+								shadowIntensity={shadowIntensity}
+								onShadowChange={setShadowIntensity}
+								backgroundBlur={backgroundBlur}
+								onBackgroundBlurChange={setBackgroundBlur}
+								zoomMotionBlur={zoomMotionBlur}
+								onZoomMotionBlurChange={setZoomMotionBlur}
+								connectZooms={connectZooms}
+								onConnectZoomsChange={setConnectZooms}
+								showCursor={showCursor}
+								onShowCursorChange={setShowCursor}
+								loopCursor={loopCursor}
+								onLoopCursorChange={setLoopCursor}
+								cursorSize={cursorSize}
+								onCursorSizeChange={setCursorSize}
+								cursorSmoothing={cursorSmoothing}
+								onCursorSmoothingChange={setCursorSmoothing}
+								cursorMotionBlur={cursorMotionBlur}
+								onCursorMotionBlurChange={setCursorMotionBlur}
+								cursorClickBounce={cursorClickBounce}
+								onCursorClickBounceChange={setCursorClickBounce}
+								borderRadius={borderRadius}
+								onBorderRadiusChange={setBorderRadius}
+								padding={padding}
+								onPaddingChange={setPadding}
+								cropRegion={cropRegion}
+								onCropChange={setCropRegion}
+								facecamVideoPath={facecamVideoPath}
+								facecamSettings={facecamSettings}
+								onFacecamSettingsChange={setFacecamSettings}
+								aspectRatio={aspectRatio}
+								videoElement={videoPlaybackRef.current?.video || null}
+								selectedAnnotationId={selectedAnnotationId}
+								annotationRegions={annotationRegions}
+								onAnnotationContentChange={handleAnnotationContentChange}
+								onAnnotationTypeChange={handleAnnotationTypeChange}
+								onAnnotationStyleChange={handleAnnotationStyleChange}
+								onAnnotationFigureDataChange={handleAnnotationFigureDataChange}
+								onAnnotationDelete={handleAnnotationDelete}
+								selectedSpeedId={selectedSpeedId}
+								selectedSpeedValue={selectedSpeedValue}
+								onSpeedChange={handleSpeedChange}
+								onSpeedDelete={handleSpeedDelete}
+							/>
+						</Profiler>
+					</div>
+				)}
 			</div>
 
 			<Toaster theme="dark" className="pointer-events-auto" />

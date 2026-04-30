@@ -4,26 +4,24 @@
  */
 
 import { Tray, Menu, nativeImage, app } from "electron";
-import path from "node:path";
 import type { AppState } from "./state.js";
+import { resolveHudWindow, sendToWindow } from "./window-routing.js";
 
 let tray: Tray | null = null;
 
 export function setupTray(
 	iconPath: string,
 	getState: () => AppState,
-	emit: (channel: string, payload: unknown) => void,
 ): void {
 	const icon = nativeImage.createFromPath(iconPath);
 	tray = new Tray(icon.isEmpty() ? nativeImage.createEmpty() : icon);
 	tray.setToolTip("Open Recorder");
 
-	updateTrayMenu(getState, emit);
+	updateTrayMenu(getState);
 }
 
 export function updateTrayMenu(
 	getState: () => AppState,
-	emit: (channel: string, payload: unknown) => void,
 ): void {
 	if (!tray) return;
 
@@ -35,9 +33,9 @@ export function updateTrayMenu(
 			label: isRecording ? "Stop Recording" : "New Recording",
 			click: () => {
 				if (isRecording) {
-					emit("stop-recording-from-tray", null);
+					sendToWindow(resolveHudWindow(), "stop-recording-from-tray", null);
 				} else {
-					emit("new-recording-from-tray", null);
+					sendToWindow(resolveHudWindow(), "new-recording-from-tray", null);
 				}
 			},
 		},

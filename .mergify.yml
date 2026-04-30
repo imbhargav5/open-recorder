@@ -1,6 +1,5 @@
 queue_rules:
   - name: Default merge queue
-    autoqueue: true
     draft_bot_account: imbhargav5
     merge_bot_account: imbhargav5
     update_bot_account: imbhargav5
@@ -27,3 +26,4 @@ merge_protections:
 
 merge_protections_settings:
   reporting_method: check-runs
+  auto_merge: true

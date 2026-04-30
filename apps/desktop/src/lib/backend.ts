@@ -15,6 +15,10 @@ import type { DesktopSource } from "../components/launch/sourceSelectorState";
 
 export type UnlistenFn = () => void;
 
+function normalizePermissionStatus(status: string): string {
+	return status === "not-determined" ? "not_determined" : status;
+}
+
 // ─── Source List Options ─────────────────────────────────────────────────────
 
 export interface SourceListOptions {
@@ -32,6 +36,26 @@ export interface NativeRecordingOptions {
 	capturesMicrophone?: boolean;
 	microphoneDeviceId?: string;
 	microphoneLabel?: string;
+}
+
+export type UpdateStatus =
+	| "idle"
+	| "checking"
+	| "up-to-date"
+	| "available"
+	| "downloading"
+	| "ready"
+	| "error";
+
+export interface UpdaterState {
+	supported: boolean;
+	dialogOpen: boolean;
+	status: UpdateStatus;
+	currentVersion: string;
+	version: string | null;
+	releaseNotes: string | null;
+	downloadProgress: number;
+	error: string | null;
 }
 
 // ─── Platform ───────────────────────────────────────────────────────────────
@@ -221,10 +245,12 @@ export function getSystemCursorAssets(): Promise<{ cursors?: Record<string, Syst
 // ─── Permissions ────────────────────────────────────────────────────────────
 
 export function getScreenRecordingPermissionStatus(): Promise<string> {
-	return invoke<string>("get_screen_recording_permission_status").catch((err) => {
-		console.error("[backend] getScreenRecordingPermissionStatus failed:", err);
-		return "unknown";
-	});
+	return invoke<string>("get_screen_recording_permission_status")
+		.then(normalizePermissionStatus)
+		.catch((err) => {
+			console.error("[backend] getScreenRecordingPermissionStatus failed:", err);
+			return "unknown";
+		});
 }
 
 export function requestScreenRecordingPermission(): Promise<boolean> {
@@ -236,6 +262,58 @@ export function requestScreenRecordingPermission(): Promise<boolean> {
 
 export function openScreenRecordingPreferences(): Promise<void> {
 	return invoke("open_screen_recording_preferences");
+}
+
+/**
+ * Probe effective screen-recording permission by asking the OS for a thumbnail
+ * via `desktopCapturer.getSources`.  This bypasses macOS's per-process cache
+ * on `systemPreferences.getMediaAccessStatus("screen")`, which otherwise stays
+ * stuck on the status read at app launch.
+ */
+export function probeScreenRecordingEffectiveStatus(): Promise<string> {
+	return invoke<string>("probe_screen_recording_effective_status")
+		.then(normalizePermissionStatus)
+		.catch((err) => {
+			console.error("[backend] probeScreenRecordingEffectiveStatus failed:", err);
+			return "unknown";
+		});
+}
+
+export async function getEffectiveScreenRecordingPermissionStatus(): Promise<string> {
+	const effectiveStatus = await probeScreenRecordingEffectiveStatus();
+	if (effectiveStatus !== "unknown") {
+		return effectiveStatus;
+	}
+
+	return getScreenRecordingPermissionStatus();
+}
+
+/**
+ * Relaunch the Electron app.  Required on macOS after granting screen-recording
+ * permission in dev because the TCC cache only refreshes on a fresh process.
+ */
+export function relaunchApp(): Promise<void> {
+	return invoke("relaunch_app");
+}
+
+export function getUpdaterState(): Promise<UpdaterState> {
+	return invoke<UpdaterState>("get_updater_state");
+}
+
+export function checkForUpdates(options?: { showDialog?: boolean }): Promise<UpdaterState> {
+	return invoke<UpdaterState>("check_for_updates", options ?? {});
+}
+
+export function downloadUpdate(): Promise<UpdaterState> {
+	return invoke<UpdaterState>("download_update");
+}
+
+export function dismissUpdaterDialog(): Promise<UpdaterState> {
+	return invoke<UpdaterState>("dismiss_updater_dialog");
+}
+
+export function installUpdateAndRestart(): Promise<void> {
+	return invoke("install_update_and_restart");
 }
 
 export function getAccessibilityPermissionStatus(): Promise<string> {
@@ -257,10 +335,12 @@ export function openAccessibilityPreferences(): Promise<void> {
 }
 
 export function getMicrophonePermissionStatus(): Promise<string> {
-	return invoke<string>("get_microphone_permission_status").catch((err) => {
-		console.error("[backend] getMicrophonePermissionStatus failed:", err);
-		return "unknown";
-	});
+	return invoke<string>("get_microphone_permission_status")
+		.then(normalizePermissionStatus)
+		.catch((err) => {
+			console.error("[backend] getMicrophonePermissionStatus failed:", err);
+			return "unknown";
+		});
 }
 
 export function requestMicrophonePermission(): Promise<boolean> {
@@ -271,10 +351,12 @@ export function requestMicrophonePermission(): Promise<boolean> {
 }
 
 export function getCameraPermissionStatus(): Promise<string> {
-	return invoke<string>("get_camera_permission_status").catch((err) => {
-		console.error("[backend] getCameraPermissionStatus failed:", err);
-		return "unknown";
-	});
+	return invoke<string>("get_camera_permission_status")
+		.then(normalizePermissionStatus)
+		.catch((err) => {
+			console.error("[backend] getCameraPermissionStatus failed:", err);
+			return "unknown";
+		});
 }
 
 export function requestCameraPermission(): Promise<boolean> {
@@ -439,8 +521,16 @@ export function onRequestSaveBeforeClose(callback: () => void): Promise<Unlisten
 	return Promise.resolve(listen("request-save-before-close", callback));
 }
 
-export function onMenuCheckUpdates(callback: () => void): Promise<UnlistenFn> {
-	return Promise.resolve(listen("menu-check-updates", callback));
+export function onUpdaterStateChanged(
+	callback: (state: UpdaterState) => void,
+): Promise<UnlistenFn> {
+	return Promise.resolve(listen("updater-state-changed", callback));
+}
+
+export function onUpdaterDownloadProgress(
+	callback: (event: { percent: number }) => void,
+): Promise<UnlistenFn> {
+	return Promise.resolve(listen("updater-download-progress", callback));
 }
 
 // ─── Asset Path Conversion ──────────────────────────────────────────────────
