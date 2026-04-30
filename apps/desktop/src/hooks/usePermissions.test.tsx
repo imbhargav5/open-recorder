@@ -12,6 +12,7 @@ import { usePermissions } from "./usePermissions";
 
 vi.mock("@/lib/backend", () => ({
 	getPlatform: vi.fn(),
+	getEffectiveScreenRecordingPermissionStatus: vi.fn(),
 	getScreenRecordingPermissionStatus: vi.fn(),
 	getMicrophonePermissionStatus: vi.fn(),
 	getCameraPermissionStatus: vi.fn(),
@@ -136,6 +137,7 @@ describe("usePermissions", () => {
 		it("does not call any native permission check commands", async () => {
 			const hook = await mountHook();
 
+			expect(backend.getEffectiveScreenRecordingPermissionStatus).not.toHaveBeenCalled();
 			expect(backend.getScreenRecordingPermissionStatus).not.toHaveBeenCalled();
 			expect(backend.getMicrophonePermissionStatus).not.toHaveBeenCalled();
 			expect(backend.getCameraPermissionStatus).not.toHaveBeenCalled();
@@ -162,7 +164,7 @@ describe("usePermissions", () => {
 		});
 
 		it("fetches all permission statuses on mount", async () => {
-			backend.getScreenRecordingPermissionStatus.mockResolvedValue("granted");
+			backend.getEffectiveScreenRecordingPermissionStatus.mockResolvedValue("granted");
 			backend.getMicrophonePermissionStatus.mockResolvedValue("not_determined");
 			backend.getCameraPermissionStatus.mockResolvedValue("denied");
 			backend.getAccessibilityPermissionStatus.mockResolvedValue("granted");
@@ -179,7 +181,8 @@ describe("usePermissions", () => {
 				accessibility: "granted",
 			});
 
-			expect(backend.getScreenRecordingPermissionStatus).toHaveBeenCalledTimes(1);
+			expect(backend.getEffectiveScreenRecordingPermissionStatus).toHaveBeenCalledTimes(1);
+			expect(backend.getScreenRecordingPermissionStatus).not.toHaveBeenCalled();
 			expect(backend.getMicrophonePermissionStatus).toHaveBeenCalledTimes(1);
 			expect(backend.getCameraPermissionStatus).toHaveBeenCalledTimes(1);
 			expect(backend.getAccessibilityPermissionStatus).toHaveBeenCalledTimes(1);
@@ -188,7 +191,7 @@ describe("usePermissions", () => {
 		});
 
 		it("reports allRequiredPermissionsGranted correctly", async () => {
-			backend.getScreenRecordingPermissionStatus.mockResolvedValue("granted");
+			backend.getEffectiveScreenRecordingPermissionStatus.mockResolvedValue("granted");
 			backend.getMicrophonePermissionStatus.mockResolvedValue("not_determined");
 			backend.getCameraPermissionStatus.mockResolvedValue("denied");
 			backend.getAccessibilityPermissionStatus.mockResolvedValue("granted");
@@ -204,7 +207,7 @@ describe("usePermissions", () => {
 		});
 
 		it("reports allPermissionsGranted when everything is granted", async () => {
-			backend.getScreenRecordingPermissionStatus.mockResolvedValue("granted");
+			backend.getEffectiveScreenRecordingPermissionStatus.mockResolvedValue("granted");
 			backend.getMicrophonePermissionStatus.mockResolvedValue("granted");
 			backend.getCameraPermissionStatus.mockResolvedValue("granted");
 			backend.getAccessibilityPermissionStatus.mockResolvedValue("granted");
@@ -218,7 +221,7 @@ describe("usePermissions", () => {
 		});
 
 		it("reports allRequiredPermissionsGranted as false when screen recording is denied", async () => {
-			backend.getScreenRecordingPermissionStatus.mockResolvedValue("denied");
+			backend.getEffectiveScreenRecordingPermissionStatus.mockResolvedValue("denied");
 			backend.getMicrophonePermissionStatus.mockResolvedValue("granted");
 			backend.getCameraPermissionStatus.mockResolvedValue("granted");
 			backend.getAccessibilityPermissionStatus.mockResolvedValue("granted");
@@ -229,7 +232,7 @@ describe("usePermissions", () => {
 		});
 
 		it("handles backend errors gracefully, falling back to 'unknown'", async () => {
-			backend.getScreenRecordingPermissionStatus.mockRejectedValue(new Error("IPC error"));
+			backend.getEffectiveScreenRecordingPermissionStatus.mockRejectedValue(new Error("IPC error"));
 			backend.getMicrophonePermissionStatus.mockRejectedValue(new Error("IPC error"));
 			backend.getCameraPermissionStatus.mockRejectedValue(new Error("IPC error"));
 			backend.getAccessibilityPermissionStatus.mockRejectedValue(new Error("IPC error"));
@@ -251,7 +254,7 @@ describe("usePermissions", () => {
 	describe("refreshPermissions", () => {
 		it("re-fetches all statuses and updates state", async () => {
 			backend.getPlatform.mockResolvedValue("darwin");
-			backend.getScreenRecordingPermissionStatus.mockResolvedValue("denied");
+			backend.getEffectiveScreenRecordingPermissionStatus.mockResolvedValue("denied");
 			backend.getMicrophonePermissionStatus.mockResolvedValue("not_determined");
 			backend.getCameraPermissionStatus.mockResolvedValue("not_determined");
 			backend.getAccessibilityPermissionStatus.mockResolvedValue("denied");
@@ -260,7 +263,7 @@ describe("usePermissions", () => {
 			expect(hook.getCurrent().permissions.screenRecording).toBe("denied");
 
 			// Simulate user granting screen recording externally
-			backend.getScreenRecordingPermissionStatus.mockResolvedValue("granted");
+			backend.getEffectiveScreenRecordingPermissionStatus.mockResolvedValue("granted");
 			backend.getAccessibilityPermissionStatus.mockResolvedValue("granted");
 
 			let result!: PermissionState;
@@ -281,7 +284,7 @@ describe("usePermissions", () => {
 	describe("requestMicrophoneAccess", () => {
 		it("uses the native request path on macOS", async () => {
 			backend.getPlatform.mockResolvedValue("darwin");
-			backend.getScreenRecordingPermissionStatus.mockResolvedValue("granted");
+			backend.getEffectiveScreenRecordingPermissionStatus.mockResolvedValue("granted");
 			backend.getMicrophonePermissionStatus.mockResolvedValue("not_determined");
 			backend.getCameraPermissionStatus.mockResolvedValue("granted");
 			backend.getAccessibilityPermissionStatus.mockResolvedValue("granted");
@@ -307,7 +310,7 @@ describe("usePermissions", () => {
 
 		it("returns false when the native macOS request is denied", async () => {
 			backend.getPlatform.mockResolvedValue("darwin");
-			backend.getScreenRecordingPermissionStatus.mockResolvedValue("granted");
+			backend.getEffectiveScreenRecordingPermissionStatus.mockResolvedValue("granted");
 			backend.getMicrophonePermissionStatus.mockResolvedValue("not_determined");
 			backend.getCameraPermissionStatus.mockResolvedValue("granted");
 			backend.getAccessibilityPermissionStatus.mockResolvedValue("granted");
@@ -336,7 +339,7 @@ describe("usePermissions", () => {
 	describe("requestCameraAccess", () => {
 		it("uses the native request path on macOS", async () => {
 			backend.getPlatform.mockResolvedValue("darwin");
-			backend.getScreenRecordingPermissionStatus.mockResolvedValue("granted");
+			backend.getEffectiveScreenRecordingPermissionStatus.mockResolvedValue("granted");
 			backend.getMicrophonePermissionStatus.mockResolvedValue("granted");
 			backend.getCameraPermissionStatus.mockResolvedValue("not_determined");
 			backend.getAccessibilityPermissionStatus.mockResolvedValue("granted");
@@ -361,7 +364,7 @@ describe("usePermissions", () => {
 
 		it("returns false on native camera permission denial", async () => {
 			backend.getPlatform.mockResolvedValue("darwin");
-			backend.getScreenRecordingPermissionStatus.mockResolvedValue("granted");
+			backend.getEffectiveScreenRecordingPermissionStatus.mockResolvedValue("granted");
 			backend.getMicrophonePermissionStatus.mockResolvedValue("granted");
 			backend.getCameraPermissionStatus.mockResolvedValue("not_determined");
 			backend.getAccessibilityPermissionStatus.mockResolvedValue("granted");
@@ -389,7 +392,7 @@ describe("usePermissions", () => {
 	describe("requestScreenRecordingAccess", () => {
 		it("delegates to backend.requestScreenRecordingPermission and refreshes on success", async () => {
 			backend.getPlatform.mockResolvedValue("darwin");
-			backend.getScreenRecordingPermissionStatus.mockResolvedValue("denied");
+			backend.getEffectiveScreenRecordingPermissionStatus.mockResolvedValue("denied");
 			backend.getMicrophonePermissionStatus.mockResolvedValue("granted");
 			backend.getCameraPermissionStatus.mockResolvedValue("granted");
 			backend.getAccessibilityPermissionStatus.mockResolvedValue("granted");
@@ -399,7 +402,7 @@ describe("usePermissions", () => {
 			expect(hook.getCurrent().permissions.screenRecording).toBe("denied");
 
 			// After granting, native API returns "granted"
-			backend.getScreenRecordingPermissionStatus.mockResolvedValue("granted");
+			backend.getEffectiveScreenRecordingPermissionStatus.mockResolvedValue("granted");
 
 			let granted!: boolean;
 			await act(async () => {
@@ -415,7 +418,7 @@ describe("usePermissions", () => {
 
 		it("falls back to re-checking status when requestScreenRecordingPermission returns false", async () => {
 			backend.getPlatform.mockResolvedValue("darwin");
-			backend.getScreenRecordingPermissionStatus.mockResolvedValue("denied");
+			backend.getEffectiveScreenRecordingPermissionStatus.mockResolvedValue("denied");
 			backend.getMicrophonePermissionStatus.mockResolvedValue("granted");
 			backend.getCameraPermissionStatus.mockResolvedValue("granted");
 			backend.getAccessibilityPermissionStatus.mockResolvedValue("granted");
@@ -440,7 +443,7 @@ describe("usePermissions", () => {
 	describe("openPermissionSettings", () => {
 		beforeEach(() => {
 			backend.getPlatform.mockResolvedValue("darwin");
-			backend.getScreenRecordingPermissionStatus.mockResolvedValue("granted");
+			backend.getEffectiveScreenRecordingPermissionStatus.mockResolvedValue("granted");
 			backend.getMicrophonePermissionStatus.mockResolvedValue("granted");
 			backend.getCameraPermissionStatus.mockResolvedValue("granted");
 			backend.getAccessibilityPermissionStatus.mockResolvedValue("granted");

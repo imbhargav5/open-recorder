@@ -259,6 +259,15 @@ export function probeScreenRecordingEffectiveStatus(): Promise<string> {
 		});
 }
 
+export async function getEffectiveScreenRecordingPermissionStatus(): Promise<string> {
+	const effectiveStatus = await probeScreenRecordingEffectiveStatus();
+	if (effectiveStatus !== "unknown") {
+		return effectiveStatus;
+	}
+
+	return getScreenRecordingPermissionStatus();
+}
+
 /**
  * Relaunch the Electron app.  Required on macOS after granting screen-recording
  * permission in dev because the TCC cache only refreshes on a fresh process.

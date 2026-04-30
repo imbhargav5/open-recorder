@@ -21,9 +21,10 @@ export function defaultRecordingsDir(): string {
 	return path.join(home, "Videos", APP_DIR_NAME);
 }
 
-/** Default directory for screenshots. Same as recordings dir. */
+/** Default directory for screenshots (~/Pictures/Open Recorder). */
 export function defaultScreenshotsDir(): string {
-	return defaultRecordingsDir();
+	const home = os.homedir();
+	return path.join(home, "Pictures", APP_DIR_NAME);
 }
 
 /** Directory where app config/settings are persisted. */

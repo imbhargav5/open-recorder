@@ -23,8 +23,7 @@ export function registerScreenshotHandlers(
 			windowId?: number;
 		};
 
-		const state = getState();
-		const dir = state.customRecordingsDir ?? getDefaultScreenshotsDir();
+		const dir = getDefaultScreenshotsDir();
 		await fs.promises.mkdir(dir, { recursive: true });
 
 		const timestamp = Math.floor(Date.now() / 1000);

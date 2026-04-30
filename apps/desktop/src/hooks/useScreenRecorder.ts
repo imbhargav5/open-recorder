@@ -276,13 +276,13 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			}
 
 			// ── Screen Recording (required) ──────────────────────────────────
-			const screenStatus = await backend.getScreenRecordingPermissionStatus();
+			const screenStatus = await backend.getEffectiveScreenRecordingPermissionStatus();
 			if (screenStatus !== "granted") {
 				const granted = await backend.requestScreenRecordingPermission();
 				if (granted) {
 					// continue to next check
 				} else {
-					const refreshedStatus = await backend.getScreenRecordingPermissionStatus();
+					const refreshedStatus = await backend.getEffectiveScreenRecordingPermissionStatus();
 					if (refreshedStatus !== "granted") {
 						await backend.openScreenRecordingPreferences();
 						alert(

@@ -307,22 +307,6 @@ export function LaunchWindow() {
 
 	const openSourceSelector = useCallback(
 		async (tab?: "screens" | "windows") => {
-			const screenStatus = await backend
-				.getScreenRecordingPermissionStatus()
-				.catch(() => "unknown");
-			if (screenStatus !== "granted") {
-				const granted = await backend.requestScreenRecordingPermission().catch(() => false);
-				if (!granted) {
-					await backend.openScreenRecordingPreferences().catch(() => {
-						// Ignore preference-opening failures and keep showing the permission alert.
-					});
-					alert(
-						"Open Recorder needs Screen Recording permission to show live screen and window previews. System Settings has been opened. After enabling it, quit and reopen Open Recorder.",
-					);
-					return;
-				}
-			}
-
 			const permissionsReady = await preparePermissions();
 			if (!permissionsReady) return;
 

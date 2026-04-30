@@ -159,10 +159,7 @@ describe("permission backend wrappers", () => {
 
 			expect(result).toBe(false);
 			expect(errorSpy).toHaveBeenCalledOnce();
-			expect(errorSpy).toHaveBeenCalledWith(
-				"[backend] requestCameraPermission failed:",
-				ipcError,
-			);
+			expect(errorSpy).toHaveBeenCalledWith("[backend] requestCameraPermission failed:", ipcError);
 		});
 	});
 
@@ -195,6 +192,58 @@ describe("permission backend wrappers", () => {
 			invoke.mockResolvedValue("not-determined");
 			const result = await backend.getScreenRecordingPermissionStatus();
 			expect(result).toBe("not_determined");
+		});
+	});
+
+	describe("probeScreenRecordingEffectiveStatus", () => {
+		it("invokes the probe command", async () => {
+			invoke.mockResolvedValue("granted");
+			const result = await backend.probeScreenRecordingEffectiveStatus();
+			expect(invoke).toHaveBeenCalledWith("probe_screen_recording_effective_status");
+			expect(result).toBe("granted");
+		});
+
+		it("normalizes Electron's 'not-determined' status", async () => {
+			invoke.mockResolvedValue("not-determined");
+			const result = await backend.probeScreenRecordingEffectiveStatus();
+			expect(result).toBe("not_determined");
+		});
+
+		it("logs error and returns 'unknown' when IPC call rejects", async () => {
+			const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+			const ipcError = new Error("IPC channel closed");
+			invoke.mockRejectedValue(ipcError);
+
+			const result = await backend.probeScreenRecordingEffectiveStatus();
+
+			expect(result).toBe("unknown");
+			expect(errorSpy).toHaveBeenCalledOnce();
+			expect(errorSpy).toHaveBeenCalledWith(
+				"[backend] probeScreenRecordingEffectiveStatus failed:",
+				ipcError,
+			);
+		});
+	});
+
+	describe("getEffectiveScreenRecordingPermissionStatus", () => {
+		it("returns the probe result when it is known", async () => {
+			invoke.mockResolvedValueOnce("granted");
+
+			const result = await backend.getEffectiveScreenRecordingPermissionStatus();
+
+			expect(result).toBe("granted");
+			expect(invoke).toHaveBeenCalledTimes(1);
+			expect(invoke).toHaveBeenCalledWith("probe_screen_recording_effective_status");
+		});
+
+		it("falls back to the cached status when the probe is unknown", async () => {
+			invoke.mockResolvedValueOnce("unknown").mockResolvedValueOnce("not-determined");
+
+			const result = await backend.getEffectiveScreenRecordingPermissionStatus();
+
+			expect(result).toBe("not_determined");
+			expect(invoke).toHaveBeenNthCalledWith(1, "probe_screen_recording_effective_status");
+			expect(invoke).toHaveBeenNthCalledWith(2, "get_screen_recording_permission_status");
 		});
 	});
 
