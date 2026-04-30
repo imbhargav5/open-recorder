@@ -45,10 +45,18 @@ jobs:
           ref: ${{ github.event.inputs.base_ref }}
           fetch-depth: 0
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.17.1
+          run_install: false
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Fetch release tags
         run: git fetch --tags origin
@@ -68,6 +76,65 @@ jobs:
             --latest "$MAKE_LATEST" \
             --output "$GITHUB_OUTPUT"
 
+      - name: Verify changed release files
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t changed_files < <(git diff --name-only -- apps/desktop/package.json .github/release-plan.json)
+          if [ "${#changed_files[@]}" -ne 2 ]; then
+            echo "Expected release preparation to update exactly 2 files." >&2
+            git diff --name-only >&2
+            exit 1
+          fi
+
+          unexpected=$(git diff --name-only -- . ':(exclude)apps/desktop/package.json' ':(exclude).github/release-plan.json')
+          if [ -n "$unexpected" ]; then
+            echo "Unexpected files changed during release preparation:" >&2
+            echo "$unexpected" >&2
+            exit 1
+          fi
+
+      - name: Verify release context resolves from Electron package version
+        run: |
+          node scripts/resolve-release-context.mjs \
+            --event-name push \
+            --before HEAD \
+            --output "$RUNNER_TEMP/release-context.out"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build desktop app
+        run: pnpm --filter @open-recorder/desktop build
+
+      - name: Linux packaging smoke test
+        run: pnpm --filter @open-recorder/desktop exec electron-builder --config electron-builder.yml --publish never --linux AppImage --x64
+
+      - name: Verify Linux packaging artifacts
+        env:
+          EXPECTED_PATTERNS: '["\\.AppImage$","^latest-linux\\.yml$"]'
+        run: |
+          node <<'NODE'
+          const { readdirSync, statSync } = require("node:fs");
+          const { join } = require("node:path");
+
+          const releaseDir = "apps/desktop/release";
+          const files = readdirSync(releaseDir)
+            .filter((name) => statSync(join(releaseDir, name)).isFile())
+            .sort();
+
+          console.log(files.join("\n"));
+
+          const patterns = JSON.parse(process.env.EXPECTED_PATTERNS);
+          for (const source of patterns) {
+            const regex = new RegExp(source);
+            if (!files.some((file) => regex.test(file))) {
+              console.error(`Missing packaging artifact matching ${source}`);
+              process.exit(1);
+            }
+          }
+          NODE
+
       - name: Create or update release PR
         uses: peter-evans/create-pull-request@v7
         with:
@@ -79,6 +146,3 @@ jobs:
           add-paths: |
             .github/release-plan.json
             apps/desktop/package.json
-            apps/desktop/src-tauri/Cargo.lock
-            apps/desktop/src-tauri/Cargo.toml
-            apps/desktop/src-tauri/tauri.conf.json

@@ -22,10 +22,16 @@ jobs:
         with:
           filters: |
             relevant:
+              - '.github/workflows/release-pr.yml'
+              - '.github/workflows/release.yml'
               - '.github/workflows/test.yml'
+              - '.github/release-plan.json'
               - 'apps/desktop/**'
               - 'package.json'
               - 'pnpm-lock.yaml'
+              - 'scripts/dispatch-release-build.mjs'
+              - 'scripts/prepare-release-pr.mjs'
+              - 'scripts/resolve-release-context.mjs'
               - 'pnpm-workspace.yaml'
               - 'turbo.json'
               - 'biome.json'
@@ -89,3 +95,58 @@ jobs:
         with:
           name: playwright-report
           path: apps/desktop/e2e-results/
+
+  package-linux:
+    name: Electron package smoke
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.17.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build desktop app
+        run: pnpm --filter @open-recorder/desktop build
+
+      - name: Package Linux artifacts
+        run: pnpm --filter @open-recorder/desktop exec electron-builder --config electron-builder.yml --publish never --linux AppImage --x64
+
+      - name: Verify Linux package artifacts
+        env:
+          EXPECTED_PATTERNS: '["\\.AppImage$","^latest-linux\\.yml$"]'
+        run: |
+          node <<'NODE'
+          const { readdirSync, statSync } = require("node:fs");
+          const { join } = require("node:path");
+
+          const releaseDir = "apps/desktop/release";
+          const files = readdirSync(releaseDir)
+            .filter((name) => statSync(join(releaseDir, name)).isFile())
+            .sort();
+
+          console.log(files.join("\n"));
+
+          const patterns = JSON.parse(process.env.EXPECTED_PATTERNS);
+          for (const source of patterns) {
+            const regex = new RegExp(source);
+            if (!files.some((file) => regex.test(file))) {
+              console.error(`Missing packaging artifact matching ${source}`);
+              process.exit(1);
+            }
+          }
+          NODE

@@ -13,8 +13,8 @@ function usage() {
 	console.log(`Usage: node scripts/dispatch-release-build.mjs [options]
 
 Dispatches the release PR GitHub Actions workflow. That workflow computes the
-next semantic version, updates the desktop version files, and opens or updates
-the release PR. Merging that PR triggers the actual Release Tauri App workflow.
+next semantic version, updates the Electron desktop release metadata, and opens
+or updates the release PR. Merging that PR triggers the actual release build.
 
 Options:
   --release-type VALUE     Release type: patch, minor, or major. Uses a selector if omitted.
@@ -271,7 +271,7 @@ async function main() {
 	if (desktopVersion) {
 		console.log(`Current desktop package version on ${ref}: ${desktopVersion}`);
 	}
-	console.log("The workflow will compute the next version, update version files in GitHub Actions, and open or update the release PR.");
+	console.log("The workflow will compute the next version, update Electron release files in GitHub Actions, and open or update the release PR.");
 
 	const confirmed = args.yes
 		? true
@@ -305,7 +305,7 @@ async function main() {
 
 	console.log("");
 	console.log("Workflow dispatched.");
-	console.log("GitHub Actions will compute the next version, create or update the release PR, and wait for that PR to be merged before publishing the release.");
+	console.log("GitHub Actions will compute the next version, create or update the release PR, and wait for that PR to be merged before packaging and publishing the Electron release.");
 	console.log(`Check status with: gh run list --repo ${repo} --workflow release-pr.yml --limit 5`);
 }
 
