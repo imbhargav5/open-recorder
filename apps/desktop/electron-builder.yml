@@ -4,7 +4,7 @@ copyright: Copyright © 2024 Open Recorder
 
 directories:
   output: release
-  buildResources: public/icons
+  buildResources: icons
 
 files:
   - dist/**/*
@@ -13,6 +13,7 @@ files:
 
 mac:
   category: public.app-category.video
+  icon: icons/mac/icon.icns
   target:
     - target: dmg
       arch:
@@ -29,12 +30,14 @@ mac:
     NSAudioCaptureUsageDescription: Open Recorder captures system audio when you choose to record it.
 
 win:
+  icon: icons/win/icon.ico
   target:
     - target: nsis
       arch:
         - x64
 
 linux:
+  icon: icons/png/512x512.png
   target:
     - target: AppImage
       arch:
