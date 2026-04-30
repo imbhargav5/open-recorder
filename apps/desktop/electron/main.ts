@@ -25,6 +25,7 @@ import { registerDialogHandlers } from "./handlers/dialogs.js";
 import { registerScreenshotHandlers } from "./handlers/screenshot.js";
 import { registerWindowMgmtHandlers } from "./handlers/window-mgmt.js";
 import { isEditorWindowLabel } from "./window-routing.js";
+import { AppUpdaterService } from "./updater.js";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -105,7 +106,7 @@ function handleWithSender(
 	});
 }
 
-function registerAllHandlers(): void {
+function registerAllHandlers(): AppUpdaterService {
 	registerPlatformHandlers(handle, getState, RESOURCES_PATH);
 	registerFileHandlers(handle, getState, setState, defaultRecordingsDir);
 	registerSettingsHandlers(handle, getState, setState, defaultRecordingsDir, appConfigDir);
@@ -128,6 +129,17 @@ function registerAllHandlers(): void {
 
 	// ─── Additional app-level handlers ─────────────────────────────────────
 	handle("get_app_version", () => app.getVersion());
+	const updater = new AppUpdaterService(emit);
+	handle("get_updater_state", () => updater.getState());
+	handle("check_for_updates", async (args) =>
+		updater.checkForUpdates(args as { showDialog?: boolean }),
+	);
+	handle("download_update", () => updater.downloadUpdate());
+	handle("dismiss_updater_dialog", () => updater.dismissDialog());
+	handle("install_update_and_restart", () => {
+		updater.installUpdateAndRestart();
+		return null;
+	});
 	handle("write_clipboard_image", async (args) => {
 		const { clipboard, nativeImage } = await import("electron");
 		const { data, width, height } = args as { data: number[]; width: number; height: number };
@@ -137,6 +149,8 @@ function registerAllHandlers(): void {
 		clipboard.writeImage(image);
 		return null;
 	});
+
+	return updater;
 }
 
 // ─── Window Creation ──────────────────────────────────────────────────────────
@@ -199,8 +213,10 @@ app.whenReady().then(() => {
 		return net.fetch(`file://${filePath}`);
 	});
 
-	registerAllHandlers();
-	setupMenu();
+	const updater = registerAllHandlers();
+	setupMenu(() => {
+		void updater.checkForUpdates({ showDialog: true });
+	});
 
 	createHudOverlay();
 

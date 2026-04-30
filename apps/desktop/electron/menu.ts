@@ -8,7 +8,6 @@ import {
 	resolveEditorWindow,
 	resolveHudWindow,
 	resolveProjectLoadWindow,
-	resolveUpdateWindow,
 	sendToWindow,
 } from "./window-routing.js";
 
@@ -20,7 +19,7 @@ function sendMenuEvent(
 	sendToWindow(resolveTarget(sourceWindow), channel, null);
 }
 
-export function setupMenu(): void {
+export function setupMenu(onCheckForUpdates: () => void): void {
 	const isMac = process.platform === "darwin";
 
 	const template: MenuItemConstructorOptions[] = [
@@ -104,8 +103,7 @@ export function setupMenu(): void {
 			submenu: [
 				{
 					label: "Check for Updates…",
-					click: (_item, window) =>
-						sendMenuEvent("menu-check-updates", resolveUpdateWindow, window),
+					click: () => onCheckForUpdates(),
 				},
 			],
 		},
