@@ -5,7 +5,7 @@
  * are registered here via ipcMain.handle().
  */
 
-import { app, BrowserWindow, ipcMain, protocol, net, screen } from "electron";
+import { app, BrowserWindow, ipcMain, protocol, net, screen, type IpcMainInvokeEvent } from "electron";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -23,7 +23,9 @@ import { registerCursorHandlers } from "./handlers/cursor.js";
 import { registerPermissionHandlers } from "./handlers/permissions.js";
 import { registerDialogHandlers } from "./handlers/dialogs.js";
 import { registerScreenshotHandlers } from "./handlers/screenshot.js";
-import { registerWindowMgmtHandlers, isEditorWindowLabel } from "./handlers/window-mgmt.js";
+import { registerWindowMgmtHandlers } from "./handlers/window-mgmt.js";
+import { isEditorWindowLabel } from "./window-routing.js";
+import { AppUpdaterService } from "./updater.js";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -95,7 +97,16 @@ function handle(channel: string, handler: (args: unknown) => unknown): void {
 	});
 }
 
-function registerAllHandlers(): void {
+function handleWithSender(
+	channel: string,
+	handler: (event: IpcMainInvokeEvent, args: unknown) => unknown,
+): void {
+	ipcMain.handle(channel, async (event, args) => {
+		return handler(event, args ?? {});
+	});
+}
+
+function registerAllHandlers(): AppUpdaterService {
 	registerPlatformHandlers(handle, getState, RESOURCES_PATH);
 	registerFileHandlers(handle, getState, setState, defaultRecordingsDir);
 	registerSettingsHandlers(handle, getState, setState, defaultRecordingsDir, appConfigDir);
@@ -108,10 +119,27 @@ function registerAllHandlers(): void {
 
 	// Pass a resolver function for the renderer URL
 	const rendererUrlResolver = () => IS_DEV ? VITE_DEV_URL : `file://${path.join(__dirname, "..", "dist", "index.html")}`;
-	registerWindowMgmtHandlers(handle, getState, setState, rendererUrlResolver, PRELOAD_PATH);
+	registerWindowMgmtHandlers(
+		handle,
+		handleWithSender,
+		setState,
+		rendererUrlResolver,
+		PRELOAD_PATH,
+	);
 
 	// ─── Additional app-level handlers ─────────────────────────────────────
 	handle("get_app_version", () => app.getVersion());
+	const updater = new AppUpdaterService(emit);
+	handle("get_updater_state", () => updater.getState());
+	handle("check_for_updates", async (args) =>
+		updater.checkForUpdates(args as { showDialog?: boolean }),
+	);
+	handle("download_update", () => updater.downloadUpdate());
+	handle("dismiss_updater_dialog", () => updater.dismissDialog());
+	handle("install_update_and_restart", () => {
+		updater.installUpdateAndRestart();
+		return null;
+	});
 	handle("write_clipboard_image", async (args) => {
 		const { clipboard, nativeImage } = await import("electron");
 		const { data, width, height } = args as { data: number[]; width: number; height: number };
@@ -121,6 +149,8 @@ function registerAllHandlers(): void {
 		clipboard.writeImage(image);
 		return null;
 	});
+
+	return updater;
 }
 
 // ─── Window Creation ──────────────────────────────────────────────────────────
@@ -167,6 +197,10 @@ function createHudOverlay(): BrowserWindow {
 	return win;
 }
 
+function getTrackedWindowLabel(win: BrowserWindow): string {
+	return (win as BrowserWindow & { windowLabel?: string }).windowLabel ?? "";
+}
+
 // ─── App Lifecycle ────────────────────────────────────────────────────────────
 
 // Register the asset:// protocol for serving local media files
@@ -179,25 +213,28 @@ app.whenReady().then(() => {
 		return net.fetch(`file://${filePath}`);
 	});
 
-	registerAllHandlers();
-	setupMenu(emit);
+	const updater = registerAllHandlers();
+	setupMenu(() => {
+		void updater.checkForUpdates({ showDialog: true });
+	});
 
-	const hudWindow = createHudOverlay();
+	createHudOverlay();
 
 	// Try to set up the system tray
 	try {
 		const iconPath = path.join(RESOURCES_PATH, "icons", "icon.png");
-		setupTray(iconPath, getState, emit);
+		setupTray(iconPath, getState);
 	} catch (err) {
 		console.warn("[main] Could not set up tray:", err);
 	}
 
 	// Window close event handling
 	app.on("browser-window-created", (_, win) => {
+		const trackedLabel = getTrackedWindowLabel(win);
+
 		win.on("close", (event) => {
-			const label = (win as BrowserWindow & { windowLabel?: string }).windowLabel ?? "";
-			if (isEditorWindowLabel(label)) {
-				const hasUnsaved = appState.unsavedEditorWindows.has(label);
+			if (isEditorWindowLabel(trackedLabel)) {
+				const hasUnsaved = appState.unsavedEditorWindows.has(trackedLabel);
 				if (hasUnsaved) {
 					event.preventDefault();
 					win.webContents.send("request-save-before-close", null);
@@ -206,16 +243,15 @@ app.whenReady().then(() => {
 		});
 
 		win.on("closed", () => {
-			const label = (win as BrowserWindow & { windowLabel?: string }).windowLabel ?? "";
 			if (appState.nativeScreenRecordingActive) {
 				appState.nativeScreenRecordingActive = false;
 				emit("recording-interrupted", null);
 			}
-			if (isEditorWindowLabel(label)) {
-				appState.unsavedEditorWindows.delete(label);
+			if (isEditorWindowLabel(trackedLabel)) {
+				appState.unsavedEditorWindows.delete(trackedLabel);
 				appState.hasUnsavedChanges = appState.unsavedEditorWindows.size > 0;
 			}
-			updateTrayMenu(getState, emit);
+			updateTrayMenu(getState);
 		});
 	});
 

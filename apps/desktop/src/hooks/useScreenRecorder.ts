@@ -1,5 +1,3 @@
-import { fixParsedWebmDuration } from "@fix-webm-duration/fix";
-import { WebmFile } from "@fix-webm-duration/parser";
 import { useAtom } from "jotai";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { isMacOSAtom } from "@/atoms/app";
@@ -14,6 +12,12 @@ import {
 import { buildEditorWindowQuery } from "@/components/video-editor/editorWindowParams";
 import * as backend from "@/lib/backend";
 import { createDefaultFacecamSettings, type RecordingSession } from "@/lib/recordingSession";
+import {
+	createStagedRecordingFileState,
+	finalizeStagedRecordingFile,
+	queueStagedRecordingChunk,
+	resetStagedRecordingFile,
+} from "./stagedRecordingFile";
 
 const TARGET_FRAME_RATE = 60;
 const TARGET_WIDTH = 3840;
@@ -158,101 +162,10 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	const hasPromptedForReselect = useRef(false);
 	const selectedSourceName = useRef<string | undefined>(undefined);
 	const recordingSessionId = useRef<string>("");
-	const recordingFilePath = useRef<string | null>(null);
-	const facecamRecordingPath = useRef<string | null>(null);
-	const recordingWriteChain = useRef<Promise<void>>(Promise.resolve());
-	const facecamWriteChain = useRef<Promise<void>>(Promise.resolve());
-	const recordingWriteError = useRef<Error | null>(null);
-	const facecamWriteError = useRef<Error | null>(null);
-	const recordingHasData = useRef(false);
-	const facecamHasData = useRef(false);
+	const recordingFile = useRef(createStagedRecordingFileState());
+	const facecamRecordingFile = useRef(createStagedRecordingFileState());
 	const facecamPendingWrites = useRef<Promise<void>[]>([]);
 	const mountedRef = useRef(true);
-
-	const resetStagedFileState = useCallback(
-		(
-			pathRef: React.MutableRefObject<string | null>,
-			writeChainRef: React.MutableRefObject<Promise<void>>,
-			errorRef: React.MutableRefObject<Error | null>,
-			hasDataRef: React.MutableRefObject<boolean>,
-		) => {
-			pathRef.current = null;
-			writeChainRef.current = Promise.resolve();
-			errorRef.current = null;
-			hasDataRef.current = false;
-		},
-		[],
-	);
-
-	const queueRecordingChunkWrite = useCallback(
-		async (
-			pathRef: React.MutableRefObject<string | null>,
-			writeChainRef: React.MutableRefObject<Promise<void>>,
-			errorRef: React.MutableRefObject<Error | null>,
-			hasDataRef: React.MutableRefObject<boolean>,
-			chunk: Blob,
-		) => {
-			hasDataRef.current = true;
-			writeChainRef.current = writeChainRef.current.then(async () => {
-				if (errorRef.current) {
-					return;
-				}
-
-				const path = pathRef.current;
-				if (!path) {
-					errorRef.current = new Error("Recording file path is not initialized");
-					return;
-				}
-
-				try {
-					const arrayBuffer = await chunk.arrayBuffer();
-					await backend.appendRecordingData(path, new Uint8Array(arrayBuffer));
-				} catch (error) {
-					errorRef.current = error instanceof Error ? error : new Error(String(error));
-				}
-			});
-
-			await writeChainRef.current;
-		},
-		[],
-	);
-
-	const finalizeStagedWebm = useCallback(
-		async (
-			pathRef: React.MutableRefObject<string | null>,
-			writeChainRef: React.MutableRefObject<Promise<void>>,
-			errorRef: React.MutableRefObject<Error | null>,
-			hasDataRef: React.MutableRefObject<boolean>,
-			durationMs: number,
-		): Promise<string | null> => {
-			await writeChainRef.current;
-
-			if (errorRef.current) {
-				throw errorRef.current;
-			}
-
-			const path = pathRef.current;
-			if (!path) {
-				return null;
-			}
-
-			if (!hasDataRef.current) {
-				await backend.deleteRecordingFile(path).catch(() => null);
-				resetStagedFileState(pathRef, writeChainRef, errorRef, hasDataRef);
-				return null;
-			}
-
-			const bytes = await backend.readLocalFile(path);
-			const webmFile = new WebmFile(bytes);
-			const changed = fixParsedWebmDuration(webmFile, durationMs, { logger: false });
-			const outputBytes = changed ? (webmFile.source ?? bytes) : bytes;
-			await backend.replaceRecordingData(path, outputBytes);
-
-			resetStagedFileState(pathRef, writeChainRef, errorRef, hasDataRef);
-			return path;
-		},
-		[resetStagedFileState],
-	);
 
 	const stopLinuxCursorTelemetryCapture = useCallback(async (videoPath?: string | null) => {
 		if (!linuxCursorTelemetryCaptureActive.current) {
@@ -478,14 +391,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			}
 
 			const mimeType = selectMimeType();
-			resetStagedFileState(
-				facecamRecordingPath,
-				facecamWriteChain,
-				facecamWriteError,
-				facecamHasData,
-			);
+			resetStagedRecordingFile(facecamRecordingFile.current);
 			facecamPendingWrites.current = [];
-			facecamRecordingPath.current = await backend.prepareRecordingFile(
+			facecamRecordingFile.current.path = await backend.prepareRecordingFile(
 				`${RECORDING_FILE_PREFIX}${sessionId}${FACECAM_FILE_SUFFIX}`,
 			);
 
@@ -513,11 +421,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 				recorder.ondataavailable = (event) => {
 					if (event.data && event.data.size > 0) {
-						const writePromise = queueRecordingChunkWrite(
-							facecamRecordingPath,
-							facecamWriteChain,
-							facecamWriteError,
-							facecamHasData,
+						const writePromise = queueStagedRecordingChunk(
+							facecamRecordingFile.current,
+							backend,
 							event.data,
 						);
 						facecamPendingWrites.current.push(writePromise);
@@ -540,11 +446,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 					try {
 						const startedAt = cameraRecordingStartedAt.current ?? Date.now();
 						const duration = Math.max(0, Date.now() - startedAt);
-						const storedPath = await finalizeStagedWebm(
-							facecamRecordingPath,
-							facecamWriteChain,
-							facecamWriteError,
-							facecamHasData,
+						const storedPath = await finalizeStagedRecordingFile(
+							facecamRecordingFile.current,
+							backend,
 							duration,
 						);
 
@@ -561,15 +465,12 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 						});
 					} catch (error) {
 						console.error("Failed to save facecam recording:", error);
-						if (facecamRecordingPath.current) {
-							await backend.deleteRecordingFile(facecamRecordingPath.current).catch(() => null);
+						if (facecamRecordingFile.current.path) {
+							await backend
+								.deleteRecordingFile(facecamRecordingFile.current.path)
+								.catch(() => null);
 						}
-						resetStagedFileState(
-							facecamRecordingPath,
-							facecamWriteChain,
-							facecamWriteError,
-							facecamHasData,
-						);
+						resetStagedRecordingFile(facecamRecordingFile.current);
 						settle(null);
 					}
 				};
@@ -577,15 +478,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 			recorder.start(RECORDER_TIMESLICE_MS);
 		},
-		[
-			cameraDeviceId,
-			cameraEnabled,
-			finalizeStagedWebm,
-			queueRecordingChunkWrite,
-			resetStagedFileState,
-			selectMimeType,
-			setCameraEnabled,
-		],
+		[cameraDeviceId, cameraEnabled, selectMimeType, setCameraEnabled],
 	);
 
 	const stopRecording = useCallback(() => {
@@ -725,32 +618,16 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 			void stopLinuxCursorTelemetryCapture(null);
 			cleanupCapturedMedia();
-			if (recordingFilePath.current) {
-				void backend.deleteRecordingFile(recordingFilePath.current).catch(() => null);
+			if (recordingFile.current.path) {
+				void backend.deleteRecordingFile(recordingFile.current.path).catch(() => null);
 			}
-			if (facecamRecordingPath.current) {
-				void backend.deleteRecordingFile(facecamRecordingPath.current).catch(() => null);
+			if (facecamRecordingFile.current.path) {
+				void backend.deleteRecordingFile(facecamRecordingFile.current.path).catch(() => null);
 			}
-			resetStagedFileState(
-				recordingFilePath,
-				recordingWriteChain,
-				recordingWriteError,
-				recordingHasData,
-			);
-			resetStagedFileState(
-				facecamRecordingPath,
-				facecamWriteChain,
-				facecamWriteError,
-				facecamHasData,
-			);
+			resetStagedRecordingFile(recordingFile.current);
+			resetStagedRecordingFile(facecamRecordingFile.current);
 		};
-	}, [
-		cleanupCapturedMedia,
-		resetStagedFileState,
-		stopLinuxCursorTelemetryCapture,
-		stopRecording,
-		setRecording,
-	]);
+	}, [cleanupCapturedMedia, stopLinuxCursorTelemetryCapture, stopRecording, setRecording]);
 
 	const startRecording = async () => {
 		if (startInFlight.current) {
@@ -1023,14 +900,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				)} Mbps`,
 			);
 
-			resetStagedFileState(
-				recordingFilePath,
-				recordingWriteChain,
-				recordingWriteError,
-				recordingHasData,
-			);
+			resetStagedRecordingFile(recordingFile.current);
 			const videoFileName = `${RECORDING_FILE_PREFIX}${recordingSessionId.current}${VIDEO_FILE_EXTENSION}`;
-			recordingFilePath.current = await backend.prepareRecordingFile(videoFileName);
+			recordingFile.current.path = await backend.prepareRecordingFile(videoFileName);
 			const hasAudio = stream.current.getAudioTracks().length > 0;
 			const recorder = new MediaRecorder(stream.current, {
 				mimeType,
@@ -1043,13 +915,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			mediaRecorder.current = recorder;
 			recorder.ondataavailable = (event) => {
 				if (event.data && event.data.size > 0) {
-					void queueRecordingChunkWrite(
-						recordingFilePath,
-						recordingWriteChain,
-						recordingWriteError,
-						recordingHasData,
-						event.data,
-					);
+					void queueStagedRecordingChunk(recordingFile.current, backend, event.data);
 				}
 			};
 			recorder.onerror = () => {
@@ -1062,11 +928,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				const duration = Math.max(0, Date.now() - startTime.current);
 
 				try {
-					const storedPath = await finalizeStagedWebm(
-						recordingFilePath,
-						recordingWriteChain,
-						recordingWriteError,
-						recordingHasData,
+					const storedPath = await finalizeStagedRecordingFile(
+						recordingFile.current,
+						backend,
 						duration,
 					);
 					if (!storedPath) {
@@ -1097,15 +961,10 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				} catch (error) {
 					console.error("Error saving recording:", error);
 					await stopLinuxCursorTelemetryCapture(null);
-					if (recordingFilePath.current) {
-						await backend.deleteRecordingFile(recordingFilePath.current).catch(() => null);
+					if (recordingFile.current.path) {
+						await backend.deleteRecordingFile(recordingFile.current.path).catch(() => null);
 					}
-					resetStagedFileState(
-						recordingFilePath,
-						recordingWriteChain,
-						recordingWriteError,
-						recordingHasData,
-					);
+					resetStagedRecordingFile(recordingFile.current);
 				}
 			};
 
@@ -1124,26 +983,16 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			);
 			setRecording(false);
 			const facecamResultPromise = stopFacecamCapture();
-			await stopLinuxCursorTelemetryCapture(recordingFilePath.current);
+			await stopLinuxCursorTelemetryCapture(recordingFile.current.path);
 			cleanupCapturedMedia();
-			if (recordingFilePath.current) {
-				await backend.deleteRecordingFile(recordingFilePath.current).catch(() => null);
+			if (recordingFile.current.path) {
+				await backend.deleteRecordingFile(recordingFile.current.path).catch(() => null);
 			}
-			if (facecamRecordingPath.current) {
-				await backend.deleteRecordingFile(facecamRecordingPath.current).catch(() => null);
+			if (facecamRecordingFile.current.path) {
+				await backend.deleteRecordingFile(facecamRecordingFile.current.path).catch(() => null);
 			}
-			resetStagedFileState(
-				recordingFilePath,
-				recordingWriteChain,
-				recordingWriteError,
-				recordingHasData,
-			);
-			resetStagedFileState(
-				facecamRecordingPath,
-				facecamWriteChain,
-				facecamWriteError,
-				facecamHasData,
-			);
+			resetStagedRecordingFile(recordingFile.current);
+			resetStagedRecordingFile(facecamRecordingFile.current);
 			await facecamResultPromise.catch(() => null);
 		} finally {
 			startInFlight.current = false;
