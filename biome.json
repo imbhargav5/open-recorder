@@ -10,6 +10,11 @@
 		"lineWidth": 100,
 		"attributePosition": "auto"
 	},
+	"css": {
+		"parser": {
+			"tailwindDirectives": true
+		}
+	},
 	"linter": {
 		"enabled": true,
 		"rules": {
@@ -162,4 +167,3 @@
 		"actions": { "source": { "organizeImports": "on" } }
 	}
 }
-
