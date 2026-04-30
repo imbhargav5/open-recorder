@@ -67,7 +67,7 @@ export function usePermissions(): UsePermissionsResult {
 		} else {
 			// Fetch all statuses in parallel on macOS
 			const [screenStatus, micStatus, camStatus, accessStatus] = await Promise.all([
-				backend.getScreenRecordingPermissionStatus().catch(() => "unknown"),
+				backend.getEffectiveScreenRecordingPermissionStatus().catch(() => "unknown"),
 				backend.getMicrophonePermissionStatus().catch(() => "unknown"),
 				backend.getCameraPermissionStatus().catch(() => "unknown"),
 				backend.getAccessibilityPermissionStatus().catch(() => "unknown"),
