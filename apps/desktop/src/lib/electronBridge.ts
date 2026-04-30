@@ -11,6 +11,7 @@ export type UnlistenFn = () => void;
 interface ElectronAPIShape {
 	invoke(channel: string, args?: unknown): Promise<unknown>;
 	on(channel: string, callback: (payload: unknown) => void): UnlistenFn;
+	send(channel: string, args?: unknown): void;
 }
 
 function getAPI(): ElectronAPIShape {
@@ -33,4 +34,8 @@ export function listen<T>(
 	callback: (payload: T) => void,
 ): UnlistenFn {
 	return getAPI().on(channel, (payload) => callback(payload as T));
+}
+
+export function send(channel: string, args?: unknown): void {
+	getAPI().send(channel, args);
 }

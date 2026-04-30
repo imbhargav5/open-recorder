@@ -111,7 +111,6 @@ import { buildVideoEditorNavbarTitle } from "./editorWindowParams";
 import PlaybackControls from "./PlaybackControls";
 import {
 	createProjectData,
-	deriveNextId,
 	normalizeProjectEditor,
 	validateProjectData,
 } from "./projectPersistence";
@@ -140,7 +139,10 @@ import {
 	type ZoomRegion,
 } from "./types";
 import { useTimeStore } from "./useTimeStore";
+import { useVideoEditorHistory } from "./useVideoEditorHistory";
 import VideoPlayback, { VideoPlaybackRef } from "./VideoPlayback";
+import { buildImmediateExportSettings, buildMp4ExportPlan } from "./videoEditorExportUtils";
+import { deriveEditorHistoryCounters } from "./videoEditorHistory";
 import { loadInitialVideoEditorState } from "./videoEditorLoadState";
 import { markVideoEditorTiming } from "./videoEditorPerf";
 import {
@@ -151,75 +153,10 @@ import { findDominantRegion } from "./videoPlayback/zoomRegionUtils";
 
 const LOOP_CURSOR_END_WINDOW_MS = 670;
 
-type EditorHistorySnapshot = {
-	zoomRegions: ZoomRegion[];
-	trimRegions: TrimRegion[];
-	speedRegions: SpeedRegion[];
-	annotationRegions: AnnotationRegion[];
-	selectedZoomId: string | null;
-	selectedTrimId: string | null;
-	selectedSpeedId: string | null;
-	selectedAnnotationId: string | null;
-	signature: string;
-};
-
 type PendingExportSave = {
 	fileName: string;
 	arrayBuffer: ArrayBuffer;
 };
-
-function getZoomRegionSignature(region: ZoomRegion) {
-	return `${region.id}:${region.startMs}:${region.endMs}:${region.depth}:${region.focus.cx}:${region.focus.cy}`;
-}
-
-function getTrimRegionSignature(region: TrimRegion) {
-	return `${region.id}:${region.startMs}:${region.endMs}`;
-}
-
-function getSpeedRegionSignature(region: SpeedRegion) {
-	return `${region.id}:${region.startMs}:${region.endMs}:${region.speed}`;
-}
-
-function getAnnotationRegionSignature(region: AnnotationRegion) {
-	return [
-		region.id,
-		region.startMs,
-		region.endMs,
-		region.type,
-		region.content,
-		region.textContent ?? "",
-		region.imageContent ?? "",
-		region.position.x,
-		region.position.y,
-		region.size.width,
-		region.size.height,
-		region.style.fontSize,
-		region.style.color,
-		region.style.backgroundColor,
-		region.style.fontFamily ?? "",
-		region.style.fontWeight ?? "",
-		region.style.fontStyle,
-		region.style.textDecoration,
-		region.style.textAlign,
-		region.zIndex,
-		region.figureData?.arrowDirection ?? "",
-		region.figureData?.color ?? "",
-		region.figureData?.strokeWidth ?? 0,
-	].join(":");
-}
-
-function createHistorySignature(snapshot: Omit<EditorHistorySnapshot, "signature">) {
-	return [
-		snapshot.zoomRegions.map(getZoomRegionSignature).join("|"),
-		snapshot.trimRegions.map(getTrimRegionSignature).join("|"),
-		snapshot.speedRegions.map(getSpeedRegionSignature).join("|"),
-		snapshot.annotationRegions.map(getAnnotationRegionSignature).join("|"),
-		snapshot.selectedZoomId ?? "",
-		snapshot.selectedTrimId ?? "",
-		snapshot.selectedSpeedId ?? "",
-		snapshot.selectedAnnotationId ?? "",
-	].join("~");
-}
 
 export default function VideoEditor() {
 	const [videoPath, setVideoPath] = useAtom(videoPathAtom);
@@ -295,43 +232,10 @@ export default function VideoEditor() {
 	const nextAnnotationZIndexRef = useRef(1); // Track z-index for stacking order
 	const exporterRef = useRef<VideoExporter | null>(null);
 	const autoSuggestedVideoPathRef = useRef<string | null>(null);
-	const historyPastRef = useRef<EditorHistorySnapshot[]>([]);
-	const historyFutureRef = useRef<EditorHistorySnapshot[]>([]);
-	const historyCurrentRef = useRef<EditorHistorySnapshot | null>(null);
-	const applyingHistoryRef = useRef(false);
 	const pendingExportSaveRef = useRef<PendingExportSave | null>(null);
 	const playbackOverlayWasVisibleRef = useRef(false);
 
-	const cloneSnapshot = useCallback((snapshot: EditorHistorySnapshot): EditorHistorySnapshot => {
-		return {
-			zoomRegions: [...snapshot.zoomRegions],
-			trimRegions: [...snapshot.trimRegions],
-			speedRegions: [...snapshot.speedRegions],
-			annotationRegions: [...snapshot.annotationRegions],
-			selectedZoomId: snapshot.selectedZoomId,
-			selectedTrimId: snapshot.selectedTrimId,
-			selectedSpeedId: snapshot.selectedSpeedId,
-			selectedAnnotationId: snapshot.selectedAnnotationId,
-			signature: snapshot.signature,
-		};
-	}, []);
-
-	const buildHistorySnapshot = useCallback((): EditorHistorySnapshot => {
-		const snapshot = {
-			zoomRegions,
-			trimRegions,
-			speedRegions,
-			annotationRegions,
-			selectedZoomId,
-			selectedTrimId,
-			selectedSpeedId,
-			selectedAnnotationId,
-		};
-		return {
-			...snapshot,
-			signature: createHistorySignature(snapshot),
-		};
-	}, [
+	const { handleUndo, handleRedo } = useVideoEditorHistory({
 		zoomRegions,
 		trimRegions,
 		speedRegions,
@@ -340,66 +244,20 @@ export default function VideoEditor() {
 		selectedTrimId,
 		selectedSpeedId,
 		selectedAnnotationId,
-	]);
-
-	const applyHistorySnapshot = useCallback(
-		(snapshot: EditorHistorySnapshot) => {
-			applyingHistoryRef.current = true;
-			const cloned = cloneSnapshot(snapshot);
-			setZoomRegions(cloned.zoomRegions);
-			setTrimRegions(cloned.trimRegions);
-			setSpeedRegions(cloned.speedRegions);
-			setAnnotationRegions(cloned.annotationRegions);
-			setSelectedZoomId(cloned.selectedZoomId);
-			setSelectedTrimId(cloned.selectedTrimId);
-			setSelectedSpeedId(cloned.selectedSpeedId);
-			setSelectedAnnotationId(cloned.selectedAnnotationId);
-
-			nextZoomIdRef.current = deriveNextId(
-				"zoom",
-				cloned.zoomRegions.map((region) => region.id),
-			);
-			nextTrimIdRef.current = deriveNextId(
-				"trim",
-				cloned.trimRegions.map((region) => region.id),
-			);
-			nextSpeedIdRef.current = deriveNextId(
-				"speed",
-				cloned.speedRegions.map((region) => region.id),
-			);
-			nextAnnotationIdRef.current = deriveNextId(
-				"annotation",
-				cloned.annotationRegions.map((region) => region.id),
-			);
-			nextAnnotationZIndexRef.current =
-				cloned.annotationRegions.reduce((max, region) => Math.max(max, region.zIndex), 0) + 1;
-		},
-		[cloneSnapshot],
-	);
-
-	const handleUndo = useCallback(() => {
-		if (historyPastRef.current.length === 0) return;
-
-		const current = historyCurrentRef.current ?? cloneSnapshot(buildHistorySnapshot());
-		const previous = historyPastRef.current.pop();
-		if (!previous) return;
-
-		historyFutureRef.current.push(cloneSnapshot(current));
-		historyCurrentRef.current = cloneSnapshot(previous);
-		applyHistorySnapshot(previous);
-	}, [applyHistorySnapshot, buildHistorySnapshot, cloneSnapshot]);
-
-	const handleRedo = useCallback(() => {
-		if (historyFutureRef.current.length === 0) return;
-
-		const current = historyCurrentRef.current ?? cloneSnapshot(buildHistorySnapshot());
-		const next = historyFutureRef.current.pop();
-		if (!next) return;
-
-		historyPastRef.current.push(cloneSnapshot(current));
-		historyCurrentRef.current = cloneSnapshot(next);
-		applyHistorySnapshot(next);
-	}, [applyHistorySnapshot, buildHistorySnapshot, cloneSnapshot]);
+		setZoomRegions,
+		setTrimRegions,
+		setSpeedRegions,
+		setAnnotationRegions,
+		setSelectedZoomId,
+		setSelectedTrimId,
+		setSelectedSpeedId,
+		setSelectedAnnotationId,
+		nextZoomIdRef,
+		nextTrimIdRef,
+		nextSpeedIdRef,
+		nextAnnotationIdRef,
+		nextAnnotationZIndexRef,
+	});
 
 	const resolvePlaybackPaths = useCallback(
 		async (sourcePath: string, nextFacecamPath?: string | null) => {
@@ -501,27 +359,17 @@ export default function VideoEditor() {
 			setSelectedSpeedId(null);
 			setSelectedAnnotationId(null);
 
-			nextZoomIdRef.current = deriveNextId(
-				"zoom",
-				normalizedEditor.zoomRegions.map((region) => region.id),
-			);
-			nextTrimIdRef.current = deriveNextId(
-				"trim",
-				normalizedEditor.trimRegions.map((region) => region.id),
-			);
-			nextSpeedIdRef.current = deriveNextId(
-				"speed",
-				normalizedEditor.speedRegions.map((region) => region.id),
-			);
-			nextAnnotationIdRef.current = deriveNextId(
-				"annotation",
-				normalizedEditor.annotationRegions.map((region) => region.id),
-			);
-			nextAnnotationZIndexRef.current =
-				normalizedEditor.annotationRegions.reduce(
-					(max, region) => Math.max(max, region.zIndex),
-					0,
-				) + 1;
+			const counters = deriveEditorHistoryCounters({
+				zoomRegions: normalizedEditor.zoomRegions,
+				trimRegions: normalizedEditor.trimRegions,
+				speedRegions: normalizedEditor.speedRegions,
+				annotationRegions: normalizedEditor.annotationRegions,
+			});
+			nextZoomIdRef.current = counters.nextZoomId;
+			nextTrimIdRef.current = counters.nextTrimId;
+			nextSpeedIdRef.current = counters.nextSpeedId;
+			nextAnnotationIdRef.current = counters.nextAnnotationId;
+			nextAnnotationZIndexRef.current = counters.nextAnnotationZIndex;
 
 			setLastSavedSnapshot(
 				JSON.stringify(
@@ -621,32 +469,6 @@ export default function VideoEditor() {
 		gifLoop,
 		gifSizePreset,
 	]);
-
-	useEffect(() => {
-		const snapshot = cloneSnapshot(buildHistorySnapshot());
-
-		if (!historyCurrentRef.current) {
-			historyCurrentRef.current = snapshot;
-			return;
-		}
-
-		if (applyingHistoryRef.current) {
-			historyCurrentRef.current = snapshot;
-			applyingHistoryRef.current = false;
-			return;
-		}
-
-		if (historyCurrentRef.current.signature === snapshot.signature) {
-			return;
-		}
-
-		historyPastRef.current.push(cloneSnapshot(historyCurrentRef.current));
-		if (historyPastRef.current.length > 100) {
-			historyPastRef.current.shift();
-		}
-		historyCurrentRef.current = snapshot;
-		historyFutureRef.current = [];
-	}, [buildHistorySnapshot, cloneSnapshot]);
 
 	const hasUnsavedChanges = Boolean(
 		currentProjectPath &&
@@ -1799,8 +1621,6 @@ export default function VideoEditor() {
 
 				const sourceWidth = video.videoWidth || 1920;
 				const sourceHeight = video.videoHeight || 1080;
-				const sourceAspectRatio = sourceHeight > 0 ? sourceWidth / sourceHeight : 16 / 9;
-				const aspectRatioValue = getAspectRatioValue(aspectRatio, sourceAspectRatio);
 
 				// Get preview CONTAINER dimensions for scaling
 				const playbackRef = videoPlaybackRef.current;
@@ -1879,83 +1699,16 @@ export default function VideoEditor() {
 				} else {
 					// MP4 Export
 					const quality = settings.quality || exportQuality;
-					let exportWidth: number;
-					let exportHeight: number;
-					let bitrate: number;
-
-					if (quality === "source") {
-						// Use source resolution
-						exportWidth = sourceWidth;
-						exportHeight = sourceHeight;
-
-						if (aspectRatio === "native") {
-							exportWidth = Math.floor(sourceWidth / 2) * 2;
-							exportHeight = Math.floor(sourceHeight / 2) * 2;
-						} else if (aspectRatioValue === 1) {
-							// Square (1:1): use smaller dimension to avoid codec limits
-							const baseDimension = Math.floor(Math.min(sourceWidth, sourceHeight) / 2) * 2;
-							exportWidth = baseDimension;
-							exportHeight = baseDimension;
-						} else if (aspectRatioValue > 1) {
-							// Landscape: find largest even dimensions that exactly match aspect ratio
-							const baseWidth = Math.floor(sourceWidth / 2) * 2;
-							let found = false;
-							for (let w = baseWidth; w >= 100 && !found; w -= 2) {
-								const h = Math.round(w / aspectRatioValue);
-								if (h % 2 === 0 && Math.abs(w / h - aspectRatioValue) < 0.0001) {
-									exportWidth = w;
-									exportHeight = h;
-									found = true;
-								}
-							}
-							if (!found) {
-								exportWidth = baseWidth;
-								exportHeight = Math.floor(baseWidth / aspectRatioValue / 2) * 2;
-							}
-						} else {
-							// Portrait: find largest even dimensions that exactly match aspect ratio
-							const baseHeight = Math.floor(sourceHeight / 2) * 2;
-							let found = false;
-							for (let h = baseHeight; h >= 100 && !found; h -= 2) {
-								const w = Math.round(h * aspectRatioValue);
-								if (w % 2 === 0 && Math.abs(w / h - aspectRatioValue) < 0.0001) {
-									exportWidth = w;
-									exportHeight = h;
-									found = true;
-								}
-							}
-							if (!found) {
-								exportHeight = baseHeight;
-								exportWidth = Math.floor((baseHeight * aspectRatioValue) / 2) * 2;
-							}
-						}
-
-						// Calculate visually lossless bitrate matching screen recording optimization
-						const totalPixels = exportWidth * exportHeight;
-						bitrate = 30_000_000;
-						if (totalPixels > 1920 * 1080 && totalPixels <= 2560 * 1440) {
-							bitrate = 50_000_000;
-						} else if (totalPixels > 2560 * 1440) {
-							bitrate = 80_000_000;
-						}
-					} else {
-						// Use quality-based target resolution
-						const targetHeight = quality === "medium" ? 720 : 1080;
-
-						// Calculate dimensions maintaining aspect ratio
-						exportHeight = Math.floor(targetHeight / 2) * 2;
-						exportWidth = Math.floor((exportHeight * aspectRatioValue) / 2) * 2;
-
-						// Adjust bitrate for lower resolutions
-						const totalPixels = exportWidth * exportHeight;
-						if (totalPixels <= 1280 * 720) {
-							bitrate = 10_000_000;
-						} else if (totalPixels <= 1920 * 1080) {
-							bitrate = 20_000_000;
-						} else {
-							bitrate = 30_000_000;
-						}
-					}
+					const {
+						width: exportWidth,
+						height: exportHeight,
+						bitrate,
+					} = buildMp4ExportPlan({
+						quality,
+						sourceWidth,
+						sourceHeight,
+						aspectRatio,
+					});
 
 					const exporter = new VideoExporter({
 						videoUrl: sourceVideoUrl,
@@ -2086,30 +1839,17 @@ export default function VideoEditor() {
 			return;
 		}
 
-		// Build export settings from current state
 		const sourceWidth = video.videoWidth || 1920;
 		const sourceHeight = video.videoHeight || 1080;
-		const gifDimensions = calculateOutputDimensions(
+		const settings: ExportSettings = buildImmediateExportSettings({
+			format: exportFormat,
+			exportQuality,
+			gifFrameRate,
+			gifLoop,
+			gifSizePreset,
 			sourceWidth,
 			sourceHeight,
-			gifSizePreset,
-			GIF_SIZE_PRESETS,
-		);
-
-		const settings: ExportSettings = {
-			format: exportFormat,
-			quality: exportFormat === "mp4" ? exportQuality : undefined,
-			gifConfig:
-				exportFormat === "gif"
-					? {
-							frameRate: gifFrameRate,
-							loop: gifLoop,
-							sizePreset: gifSizePreset,
-							width: gifDimensions.width,
-							height: gifDimensions.height,
-						}
-					: undefined,
-		};
+		});
 
 		setShowExportDialog(true);
 		setExportError(null);

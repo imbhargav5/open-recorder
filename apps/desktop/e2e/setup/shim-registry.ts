@@ -58,6 +58,17 @@ export interface NativeRecordingOptions {
   microphoneLabel?: string;
 }
 
+export interface UpdaterState {
+  supported: boolean;
+  dialogOpen: boolean;
+  status: "idle" | "checking" | "up-to-date" | "available" | "downloading" | "ready" | "error";
+  currentVersion: string;
+  version: string | null;
+  releaseNotes: string | null;
+  downloadProgress: number;
+  error: string | null;
+}
+
 // ─── Command handler map ─────────────────────────────────────────────────────
 
 /**
@@ -139,6 +150,11 @@ export interface TauriCommandHandlers {
   request_camera_permission: () => boolean;
   open_microphone_preferences: () => null;
   open_camera_preferences: () => null;
+  get_updater_state: () => UpdaterState;
+  check_for_updates: (args: { showDialog?: boolean }) => UpdaterState;
+  download_update: () => UpdaterState;
+  dismiss_updater_dialog: () => UpdaterState;
+  install_update_and_restart: () => null;
 
   // Dialogs
   save_exported_video: (args: { videoData: number[]; fileName: string }) => string | null;
@@ -195,4 +211,5 @@ export type TauriEventName =
   | "menu-save-project"
   | "menu-save-project-as"
   | "request-save-before-close"
-  | "menu-check-updates";
+  | "updater-state-changed"
+  | "updater-download-progress";
