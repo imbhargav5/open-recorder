@@ -27,7 +27,7 @@ export default defineConfig({
 
   use: {
     /* Base URL matches the Vite dev server port in vite.config.ts */
-    baseURL: "http://localhost:5789",
+    baseURL: "http://127.0.0.1:5789",
 
     /* Use Playwright's bundled Chromium (no system Chrome dependency) */
     ...devices["Desktop Chrome"],
@@ -53,8 +53,9 @@ export default defineConfig({
 
   /* Start the Vite dev server automatically if it isn't already running */
   webServer: {
-    command: "pnpm vite",
-    url: "http://localhost:5789",
+    command:
+      "OPEN_RECORDER_RENDERER_ONLY=1 pnpm exec vite --host 127.0.0.1 --port 5789 --strictPort",
+    url: "http://127.0.0.1:5789",
     /** CWD is apps/desktop/ (one level above this config file) */
     cwd: path.join(__dirname, ".."),
     reuseExistingServer: !process.env.CI,

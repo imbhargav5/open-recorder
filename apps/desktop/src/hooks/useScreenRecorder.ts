@@ -743,7 +743,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			let systemAudioIncluded = false;
 
 			if (wantsAudioCapture) {
-				const videoConstraints = {
+				const videoConstraints: ChromeDesktopVideoConstraints = {
 					mandatory: {
 						chromeMediaSource: CHROME_MEDIA_SOURCE,
 						chromeMediaSourceId: selectedSource.id,

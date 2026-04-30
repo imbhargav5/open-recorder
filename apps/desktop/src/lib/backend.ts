@@ -238,8 +238,8 @@ export function setCursorScale(scale: number): Promise<void> {
 	return invoke("set_cursor_scale", { scale });
 }
 
-export function getSystemCursorAssets(): Promise<unknown> {
-	return invoke("get_system_cursor_assets");
+export function getSystemCursorAssets(): Promise<{ cursors?: Record<string, SystemCursorAsset> } | null> {
+	return invoke<{ cursors?: Record<string, SystemCursorAsset> } | null>("get_system_cursor_assets");
 }
 
 // ─── Permissions ────────────────────────────────────────────────────────────
@@ -402,12 +402,17 @@ export function saveProjectFile(
 	return invoke("save_project_file", { data, suggestedName, existingPath });
 }
 
-export function loadProjectFile(): Promise<{ data?: unknown; filePath?: string | null } | null> {
-	return invoke("load_project_file");
+export type LoadedProjectFile = {
+	data?: unknown;
+	filePath?: string | null;
+} | null;
+
+export function loadProjectFile(): Promise<LoadedProjectFile> {
+	return invoke<LoadedProjectFile>("load_project_file");
 }
 
-export function loadCurrentProjectFile(): Promise<{ data?: unknown; filePath?: string | null } | null> {
-	return invoke("load_current_project_file");
+export function loadCurrentProjectFile(): Promise<LoadedProjectFile> {
+	return invoke<LoadedProjectFile>("load_current_project_file");
 }
 
 // ─── Screenshot ─────────────────────────────────────────────────────────────
