@@ -3,15 +3,27 @@
  * Mirrors src-tauri/src/menu.rs.
  */
 
-import { Menu, app } from "electron";
-import type { AppState } from "./state.js";
+import { Menu, app, type BrowserWindow, type MenuItemConstructorOptions } from "electron";
+import {
+	resolveEditorWindow,
+	resolveHudWindow,
+	resolveProjectLoadWindow,
+	resolveUpdateWindow,
+	sendToWindow,
+} from "./window-routing.js";
 
-export function setupMenu(
-	emit: (channel: string, payload: unknown) => void,
+function sendMenuEvent(
+	channel: string,
+	resolveTarget: (sourceWindow?: BrowserWindow | null) => BrowserWindow | undefined,
+	sourceWindow?: BrowserWindow | null,
 ): void {
+	sendToWindow(resolveTarget(sourceWindow), channel, null);
+}
+
+export function setupMenu(): void {
 	const isMac = process.platform === "darwin";
 
-	const template: Electron.MenuItemConstructorOptions[] = [
+	const template: MenuItemConstructorOptions[] = [
 		...(isMac
 			? [
 					{
@@ -36,23 +48,26 @@ export function setupMenu(
 				{
 					label: "Open Video…",
 					accelerator: "CmdOrCtrl+O",
-					click: () => emit("menu-open-video-file", null),
+					click: (_item, window) => sendMenuEvent("menu-open-video-file", resolveHudWindow, window),
 				},
 				{ type: "separator" },
 				{
 					label: "Load Project…",
 					accelerator: "CmdOrCtrl+Shift+O",
-					click: () => emit("menu-load-project", null),
+					click: (_item, window) =>
+						sendMenuEvent("menu-load-project", resolveProjectLoadWindow, window),
 				},
 				{
 					label: "Save Project",
 					accelerator: "CmdOrCtrl+S",
-					click: () => emit("menu-save-project", null),
+					click: (_item, window) =>
+						sendMenuEvent("menu-save-project", resolveEditorWindow, window),
 				},
 				{
 					label: "Save Project As…",
 					accelerator: "CmdOrCtrl+Shift+S",
-					click: () => emit("menu-save-project-as", null),
+					click: (_item, window) =>
+						sendMenuEvent("menu-save-project-as", resolveEditorWindow, window),
 				},
 				{ type: "separator" },
 				isMac
@@ -89,7 +104,8 @@ export function setupMenu(
 			submenu: [
 				{
 					label: "Check for Updates…",
-					click: () => emit("menu-check-updates", null),
+					click: (_item, window) =>
+						sendMenuEvent("menu-check-updates", resolveUpdateWindow, window),
 				},
 			],
 		},
