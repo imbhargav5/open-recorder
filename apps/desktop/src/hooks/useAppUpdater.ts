@@ -1,22 +1,5 @@
-// Updater stubs — electron-updater is invoked from the main process.
-// The renderer triggers checks via IPC; for now these are no-ops that keep
-// the hook working without crashing.
-type DownloadProgressEvent =
-	| { event: "Started"; data: { contentLength?: number } }
-	| { event: "Progress"; data: { chunkLength: number } }
-	| { event: "Finished"; data: Record<string, never> };
-
-interface Update {
-	version: string;
-	body?: string;
-	downloadAndInstall: (onProgress: (event: DownloadProgressEvent) => void) => Promise<void>;
-}
-
-const check = async (): Promise<Update | null> => null;
-const relaunch = async () => { window.location.reload(); };
-const getIdentifier = async () => "dev.openrecorder.app";
 import { useAtom } from "jotai";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
 	type UpdateStatus,
 	updaterDialogOpenAtom,
@@ -27,6 +10,7 @@ import {
 	updaterVersionAtom,
 } from "@/atoms/updater";
 import * as backend from "@/lib/backend";
+import type { UpdaterState } from "@/lib/backend";
 
 export type { UpdateStatus } from "@/atoms/updater";
 
@@ -47,225 +31,133 @@ export type UseAppUpdaterReturn = {
 	checkForUpdate: (options?: CheckForUpdateOptions) => Promise<void>;
 	downloadAndInstall: () => Promise<void>;
 	restartApp: () => Promise<void>;
-	dismiss: () => void;
+	dismiss: () => Promise<void>;
 };
 
 type UseAppUpdaterOptions = {
 	enableAutoCheck?: boolean;
 };
 
-function getErrorMessage(error: unknown, fallback: string): string {
-	if (error instanceof Error && error.message.trim()) {
-		return error.message;
-	}
-
-	if (typeof error === "string" && error.trim()) {
-		return error;
-	}
-
-	if (
-		typeof error === "object" &&
-		error !== null &&
-		"message" in error &&
-		typeof error.message === "string" &&
-		error.message.trim()
-	) {
-		return error.message;
-	}
-
-	try {
-		const serialized = JSON.stringify(error);
-		if (serialized && serialized !== "{}") {
-			return serialized;
-		}
-	} catch {
-		// Ignore serialization failures and fall back to the default message.
-	}
-
-	return fallback;
+function applyUpdaterState(
+	state: UpdaterState,
+	setStatus: (value: UpdateStatus) => void,
+	setDialogOpen: (value: boolean) => void,
+	setVersion: (value: string | null) => void,
+	setReleaseNotes: (value: string | null) => void,
+	setDownloadProgress: (value: number) => void,
+	setError: (value: string | null) => void,
+	setUpdatesEnabled: (value: boolean) => void,
+): void {
+	setUpdatesEnabled(state.supported);
+	setStatus(state.status);
+	setDialogOpen(state.dialogOpen);
+	setVersion(state.version);
+	setReleaseNotes(state.releaseNotes);
+	setDownloadProgress(state.downloadProgress);
+	setError(state.error);
 }
 
 export function useAppUpdater({
 	enableAutoCheck = true,
 }: UseAppUpdaterOptions = {}): UseAppUpdaterReturn {
-	const [updatesEnabled, setUpdatesEnabled] = useState(!import.meta.env.DEV); // internal only
+	const [updatesEnabled, setUpdatesEnabled] = useState(false);
 	const [status, setStatus] = useAtom(updaterStatusAtom);
 	const [isDialogOpen, setIsDialogOpen] = useAtom(updaterDialogOpenAtom);
 	const [version, setVersion] = useAtom(updaterVersionAtom);
 	const [releaseNotes, setReleaseNotes] = useAtom(updaterReleaseNotesAtom);
 	const [downloadProgress, setDownloadProgress] = useAtom(updaterDownloadProgressAtom);
 	const [error, setError] = useAtom(updaterErrorAtom);
-	const updateRef = useRef<Update | null>(null);
 
-	const checkForUpdate = useCallback(
-		async ({ showDialog = false }: CheckForUpdateOptions = {}) => {
-			if (status === "checking" || status === "downloading") {
-				if (showDialog) {
-					setIsDialogOpen(true);
-				}
-				return;
-			}
-
-			if (!updatesEnabled) {
-				updateRef.current = null;
-				setVersion(null);
-				setReleaseNotes(null);
-				setDownloadProgress(0);
-				setError(showDialog ? "Updates are unavailable in development builds." : null);
-				setStatus(showDialog ? "error" : "idle");
-				setIsDialogOpen(showDialog);
-				return;
-			}
-
-			try {
-				if (showDialog) {
-					setIsDialogOpen(true);
-				}
-
-				setStatus("checking");
-				setVersion(null);
-				setReleaseNotes(null);
-				setDownloadProgress(0);
-				setError(null);
-
-				const update = await check();
-
-				if (update) {
-					updateRef.current = update;
-					setVersion(update.version);
-					setReleaseNotes(update.body ?? null);
-					setStatus("available");
-					setIsDialogOpen(true);
-				} else {
-					updateRef.current = null;
-					setVersion(null);
-					setReleaseNotes(null);
-					setStatus(showDialog ? "up-to-date" : "idle");
-					setIsDialogOpen(showDialog);
-				}
-			} catch (err) {
-				console.error("Update check failed:", err);
-				setError(getErrorMessage(err, "Failed to check for updates"));
-				setStatus("error");
-				setIsDialogOpen(showDialog);
-			}
+	const syncState = useCallback(
+		(state: UpdaterState) => {
+			applyUpdaterState(
+				state,
+				setStatus,
+				setIsDialogOpen,
+				setVersion,
+				setReleaseNotes,
+				setDownloadProgress,
+				setError,
+				setUpdatesEnabled,
+			);
 		},
 		[
-			status,
-			updatesEnabled,
-			setIsDialogOpen,
-			setVersion,
-			setReleaseNotes,
 			setDownloadProgress,
 			setError,
+			setIsDialogOpen,
+			setReleaseNotes,
 			setStatus,
+			setVersion,
 		],
 	);
 
-	const downloadAndInstall = useCallback(async () => {
-		const update = updateRef.current;
-		if (!update || status === "downloading") return;
-
-		try {
-			setIsDialogOpen(true);
-			setStatus("downloading");
-			setDownloadProgress(0);
-			setError(null);
-
-			let totalLength = 0;
-			let downloaded = 0;
-
-			await update.downloadAndInstall((event) => {
-				switch (event.event) {
-					case "Started":
-						totalLength = event.data.contentLength ?? 0;
-						break;
-					case "Progress":
-						downloaded += event.data.chunkLength;
-						if (totalLength > 0) {
-							setDownloadProgress(Math.round((downloaded / totalLength) * 100));
-						}
-						break;
-					case "Finished":
-						setDownloadProgress(100);
-						break;
-				}
-			});
-
-			setStatus("ready");
-		} catch (err) {
-			console.error("Update download failed:", err);
-			setError(getErrorMessage(err, "Failed to download update"));
-			setStatus("error");
-		}
-	}, [status, setIsDialogOpen, setStatus, setDownloadProgress, setError]);
-
-	const restartApp = useCallback(async () => {
-		await relaunch();
-	}, []);
-
-	const dismiss = useCallback(() => {
-		setIsDialogOpen(false);
-		setStatus("idle");
-		setVersion(null);
-		setReleaseNotes(null);
-		setDownloadProgress(0);
-		setError(null);
-		updateRef.current = null;
-	}, [setIsDialogOpen, setStatus, setVersion, setReleaseNotes, setDownloadProgress, setError]);
-
 	useEffect(() => {
-		if (import.meta.env.DEV) {
-			setUpdatesEnabled(false);
-			return;
-		}
-
 		let cancelled = false;
+		let unlistenState: backend.UnlistenFn | undefined;
+		let unlistenProgress: backend.UnlistenFn | undefined;
 
-		getIdentifier()
-			.then((identifier) => {
-				if (!cancelled) {
-					setUpdatesEnabled(!identifier.endsWith(".dev"));
-				}
-			})
-			.catch(() => {
-				if (!cancelled) {
-					setUpdatesEnabled(true);
-				}
-			});
+		void backend.getUpdaterState().then((state) => {
+			if (!cancelled) {
+				syncState(state);
+			}
+		});
+
+		void backend.onUpdaterStateChanged((state) => {
+			if (!cancelled) {
+				syncState(state);
+			}
+		}).then((fn) => {
+			unlistenState = fn;
+		});
+
+		void backend.onUpdaterDownloadProgress(({ percent }) => {
+			if (!cancelled) {
+				setDownloadProgress(percent);
+			}
+		}).then((fn) => {
+			unlistenProgress = fn;
+		});
 
 		return () => {
 			cancelled = true;
+			unlistenState?.();
+			unlistenProgress?.();
 		};
+	}, [setDownloadProgress, syncState]);
+
+	const checkForUpdate = useCallback(
+		async (options: CheckForUpdateOptions = {}) => {
+			const nextState = await backend.checkForUpdates(options);
+			syncState(nextState);
+		},
+		[syncState],
+	);
+
+	const downloadAndInstall = useCallback(async () => {
+		const nextState = await backend.downloadUpdate();
+		syncState(nextState);
+	}, [syncState]);
+
+	const restartApp = useCallback(async () => {
+		await backend.installUpdateAndRestart();
 	}, []);
 
-	// Auto-check for updates on mount (after a delay)
+	const dismiss = useCallback(async () => {
+		const nextState = await backend.dismissUpdaterDialog();
+		syncState(nextState);
+	}, [syncState]);
+
 	useEffect(() => {
 		if (!updatesEnabled || !enableAutoCheck) {
 			return;
 		}
 
 		const timer = setTimeout(() => {
-			checkForUpdate();
+			void checkForUpdate();
 		}, AUTO_CHECK_DELAY_MS);
 
 		return () => clearTimeout(timer);
 	}, [checkForUpdate, enableAutoCheck, updatesEnabled]);
-
-	// Listen for manual "Check for Updates" from the menu
-	useEffect(() => {
-		let unlisten: backend.UnlistenFn | undefined;
-
-		backend
-			.onMenuCheckUpdates(() => {
-				void checkForUpdate({ showDialog: true });
-			})
-			.then((fn) => {
-				unlisten = fn;
-			});
-
-		return () => unlisten?.();
-	}, [checkForUpdate]);
 
 	return {
 		status,

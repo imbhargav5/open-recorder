@@ -38,6 +38,26 @@ export interface NativeRecordingOptions {
 	microphoneLabel?: string;
 }
 
+export type UpdateStatus =
+	| "idle"
+	| "checking"
+	| "up-to-date"
+	| "available"
+	| "downloading"
+	| "ready"
+	| "error";
+
+export interface UpdaterState {
+	supported: boolean;
+	dialogOpen: boolean;
+	status: UpdateStatus;
+	currentVersion: string;
+	version: string | null;
+	releaseNotes: string | null;
+	downloadProgress: number;
+	error: string | null;
+}
+
 // ─── Platform ───────────────────────────────────────────────────────────────
 
 export function getPlatform(): Promise<string> {
@@ -276,6 +296,26 @@ export function relaunchApp(): Promise<void> {
 	return invoke("relaunch_app");
 }
 
+export function getUpdaterState(): Promise<UpdaterState> {
+	return invoke<UpdaterState>("get_updater_state");
+}
+
+export function checkForUpdates(options?: { showDialog?: boolean }): Promise<UpdaterState> {
+	return invoke<UpdaterState>("check_for_updates", options ?? {});
+}
+
+export function downloadUpdate(): Promise<UpdaterState> {
+	return invoke<UpdaterState>("download_update");
+}
+
+export function dismissUpdaterDialog(): Promise<UpdaterState> {
+	return invoke<UpdaterState>("dismiss_updater_dialog");
+}
+
+export function installUpdateAndRestart(): Promise<void> {
+	return invoke("install_update_and_restart");
+}
+
 export function getAccessibilityPermissionStatus(): Promise<string> {
 	return invoke<string>("get_accessibility_permission_status").catch((err) => {
 		console.error("[backend] getAccessibilityPermissionStatus failed:", err);
@@ -476,8 +516,16 @@ export function onRequestSaveBeforeClose(callback: () => void): Promise<Unlisten
 	return Promise.resolve(listen("request-save-before-close", callback));
 }
 
-export function onMenuCheckUpdates(callback: () => void): Promise<UnlistenFn> {
-	return Promise.resolve(listen("menu-check-updates", callback));
+export function onUpdaterStateChanged(
+	callback: (state: UpdaterState) => void,
+): Promise<UnlistenFn> {
+	return Promise.resolve(listen("updater-state-changed", callback));
+}
+
+export function onUpdaterDownloadProgress(
+	callback: (event: { percent: number }) => void,
+): Promise<UnlistenFn> {
+	return Promise.resolve(listen("updater-download-progress", callback));
 }
 
 // ─── Asset Path Conversion ──────────────────────────────────────────────────
