@@ -217,7 +217,7 @@ export default function VideoEditor() {
 	const setExportedFilePath = useSetAtom(exportedFilePathAtom);
 	const [hasPendingExportSave, setHasPendingExportSave] = useAtom(hasPendingExportSaveAtom);
 	const [lastSavedSnapshot, setLastSavedSnapshot] = useAtom(lastSavedSnapshotAtom);
-	const [internalView] = useAtom(internalViewAtom);
+	const [internalView, setInternalView] = useAtom(internalViewAtom);
 	const [sidebarExpanded, setSidebarExpanded] = useAtom(sidebarExpandedAtom);
 
 	const videoPlaybackRef = useRef<VideoPlaybackRef>(null);
@@ -500,6 +500,14 @@ export default function VideoEditor() {
 					readLocalFile: backend.readLocalFile,
 					search: window.location.search,
 				});
+				// Force editor view whenever a video/session/project is loaded — without
+				// this, an editor window opened for a fresh recording can land on the
+				// projects page (whatever was last persisted) and the <video> element
+				// never mounts, leaving the loading overlay stuck forever.
+				if (initialState.kind !== "empty") {
+					setInternalView("editor");
+				}
+
 				if (initialState.kind === "project") {
 					const restored = await applyLoadedProject(
 						initialState.data,
@@ -784,7 +792,11 @@ export default function VideoEditor() {
 		};
 	}, [duration, playbackReady, videoSourcePath]);
 
-	const showPlaybackLoadingOverlay = Boolean(videoPath) && !playbackReady && !error;
+	// The overlay is scoped to the editor view because <VideoPlayback> only mounts
+	// there. On the projects page no <video> element exists, so `playbackReady`
+	// can never flip true and the overlay would block the entire screen.
+	const showPlaybackLoadingOverlay =
+		internalView === "editor" && Boolean(videoPath) && !playbackReady && !error;
 
 	useEffect(() => {
 		if (showPlaybackLoadingOverlay) {

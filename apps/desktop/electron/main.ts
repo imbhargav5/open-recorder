@@ -5,9 +5,14 @@
  * are registered here via ipcMain.handle().
  */
 
-import { app, BrowserWindow, ipcMain, protocol, net, screen, type IpcMainInvokeEvent } from "electron";
+import { app, BrowserWindow, desktopCapturer, ipcMain, protocol, screen, session, type IpcMainInvokeEvent } from "electron";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+
+import {
+	registerAssetProtocolHandler,
+	registerAssetSchemeAsPrivileged,
+} from "./asset-protocol.js";
 
 import { createDefaultState } from "./state.js";
 import type { AppState } from "./state.js";
@@ -38,11 +43,15 @@ const APP_NAME = IS_DEV ? "OpenRecorderDev" : "Open Recorder";
 
 app.name = APP_NAME;
 
+// Must run before app.whenReady() — privileged registration unlocks range requests,
+// CORS, and CSP bypass so <video src="asset://..."> can stream large local files.
+registerAssetSchemeAsPrivileged(protocol);
+
 // ─── Paths ───────────────────────────────────────────────────────────────────
 
 // ESM doesn't provide __dirname — reconstruct it from import.meta.url
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PRELOAD_PATH = path.join(__dirname, "preload.cjs");
+const PRELOAD_PATH = path.join(__dirname, "preload.js");
 const RESOURCES_PATH = IS_DEV
 	? path.join(__dirname, "..", "public")
 	: path.join(process.resourcesPath, "public");
@@ -205,18 +214,40 @@ function getTrackedWindowLabel(win: BrowserWindow): string {
 
 // Register the asset:// protocol for serving local media files
 app.whenReady().then(() => {
-	// Register asset:// protocol so the renderer can load local video/image files
-	protocol.handle("asset", (request) => {
-		const url = new URL(request.url);
-		// Reconstruct the file path from hostname + pathname
-		const filePath = decodeURIComponent(url.hostname + url.pathname);
-		return net.fetch(`file://${filePath}`);
-	});
+	registerAssetProtocolHandler(protocol);
 
 	const updater = registerAllHandlers();
 	setupMenu(() => {
 		void updater.checkForUpdates({ showDialog: true });
 	});
+
+	// Wire up getDisplayMedia() — without this Electron returns "Not supported".
+	// Resolve the source the user already picked via the source-selector and hand it
+	// to the WebRTC pipeline. If nothing is selected, fall back to the first screen.
+	session.defaultSession.setDisplayMediaRequestHandler(
+		async (_request, callback) => {
+			const wantedId = appState.selectedSource?.id;
+			try {
+				const sources = await desktopCapturer.getSources({
+					types: ["screen", "window"],
+					thumbnailSize: { width: 0, height: 0 },
+				});
+				const match =
+					(wantedId && sources.find((s) => s.id === wantedId)) ??
+					sources.find((s) => s.id.startsWith("screen:")) ??
+					sources[0];
+				if (!match) {
+					callback({});
+					return;
+				}
+				callback({ video: match });
+			} catch (err) {
+				console.error("[setDisplayMediaRequestHandler] failed:", err);
+				callback({});
+			}
+		},
+		{ useSystemPicker: false },
+	);
 
 	createHudOverlay();
 

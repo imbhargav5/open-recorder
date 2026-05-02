@@ -7,10 +7,6 @@
  * and recording state.
  */
 
-import fs from "node:fs";
-import path from "node:path";
-import { BrowserWindow } from "electron";
-import { randomUUID } from "node:crypto";
 import type { AppState } from "../state.js";
 
 export function registerRecordingHandlers(
@@ -29,24 +25,11 @@ export function registerRecordingHandlers(
 		return null;
 	});
 
-	handle("start_native_screen_recording", async (args) => {
-		const state = getState();
-		const recordingsDir = state.customRecordingsDir ?? getDefaultRecordingsDir();
-
-		await fs.promises.mkdir(recordingsDir, { recursive: true });
-
-		const fileName = `recording-${randomUUID()}.webm`;
-		const outputPath = path.join(recordingsDir, fileName);
-
-		// Create an empty file to reserve the path
-		await fs.promises.writeFile(outputPath, Buffer.alloc(0));
-
-		setState((s) => {
-			s.nativeScreenRecordingActive = true;
-			s.currentVideoPath = outputPath;
-		});
-
-		return outputPath;
+	handle("start_native_screen_recording", async () => {
+		// Native ScreenCaptureKit/WGC capture is not implemented in the Electron port.
+		// Throw the magic string the renderer expects so it falls back to
+		// MediaRecorder + getDisplayMedia, which Electron handles via Chromium.
+		throw new Error("Failed to start native ScreenCaptureKit recording");
 	});
 
 	handle("stop_native_screen_recording", async () => {

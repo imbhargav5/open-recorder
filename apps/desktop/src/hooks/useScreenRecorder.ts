@@ -565,6 +565,13 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	}, [setIsMacOS]);
 
 	useEffect(() => {
+		mountedRef.current = true;
+		return () => {
+			mountedRef.current = false;
+		};
+	}, []);
+
+	useEffect(() => {
 		let unlistenTray: (() => void) | undefined;
 		let unlistenState: (() => void) | undefined;
 		let unlistenInterrupted: (() => void) | undefined;
@@ -598,7 +605,6 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			});
 
 		return () => {
-			mountedRef.current = false;
 			unlistenTray?.();
 			unlistenState?.();
 			unlistenInterrupted?.();
@@ -701,7 +707,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 					const errMsg = nativeError instanceof Error ? nativeError.message : String(nativeError);
 					if (useWgcCapture) {
 						console.warn("WGC capture failed, falling back to browser capture:", errMsg);
-					} else if (errMsg === MAC_NATIVE_CAPTURE_START_FAILURE) {
+					} else if (errMsg.includes(MAC_NATIVE_CAPTURE_START_FAILURE)) {
 						console.warn("Native macOS capture failed, falling back to browser capture:", errMsg);
 					} else {
 						throw new Error(errMsg || "Failed to start native screen recording");

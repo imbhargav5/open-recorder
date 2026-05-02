@@ -1,45 +1,77 @@
 import { describe, expect, it } from "vitest";
 import { resolveMediaPlaybackUrl } from "./mediaPlaybackUrl";
 
-describe("resolveMediaPlaybackUrl", () => {
-	it("returns already-renderable URLs unchanged", () => {
-		expect(resolveMediaPlaybackUrl("blob:https://example.com/video-id")).toBe(
-			"blob:https://example.com/video-id",
-		);
-		expect(resolveMediaPlaybackUrl("data:video/mp4;base64,abc")).toBe(
-			"data:video/mp4;base64,abc",
-		);
-		expect(resolveMediaPlaybackUrl("asset://localhost/%2FUsers%2Fbhargav%2Fdemo.mov")).toBe(
-			"asset://localhost/%2FUsers%2Fbhargav%2Fdemo.mov",
-		);
-		expect(resolveMediaPlaybackUrl("https://example.com/video.mp4")).toBe(
-			"https://example.com/video.mp4",
-		);
-		expect(resolveMediaPlaybackUrl("https://asset.localhost/video.mp4")).toBe(
-			"https://asset.localhost/video.mp4",
+// `resolveMediaPlaybackUrl` is the boundary every <video>/<img> src crosses.
+// Its job: never let a `file://` URL reach the DOM, because Chromium blocks
+// `file://` media when the renderer is served from `http://localhost:5789` in
+// dev. These tests pin that contract.
+
+describe("resolveMediaPlaybackUrl — pass-through for already-renderable URLs", () => {
+	it.each([
+		["blob:https://example/abc-123", "blob:https://example/abc-123"],
+		["data:image/png;base64,iVBOR", "data:image/png;base64,iVBOR"],
+		["asset://localhost/Users/foo/bar.webm", "asset://localhost/Users/foo/bar.webm"],
+		["https://cdn.example.com/clip.mp4", "https://cdn.example.com/clip.mp4"],
+		["http://asset.localhost/Users/foo", "http://asset.localhost/Users/foo"],
+	])("passes %s through unchanged", (input, expected) => {
+		expect(resolveMediaPlaybackUrl(input)).toBe(expected);
+	});
+});
+
+describe("resolveMediaPlaybackUrl — file:// must be rewritten, not passed through", () => {
+	// REGRESSION: the pass-through allow list intentionally excludes `file:`.
+	// If you re-add it, dev playback will silently break ("Failed to load video").
+	it("does NOT pass file:// URLs through unchanged", () => {
+		const input = "file:///Users/foo/bar.webm";
+		expect(resolveMediaPlaybackUrl(input)).not.toBe(input);
+	});
+
+	it("rewrites a file:// URL to an asset:// URL", () => {
+		expect(resolveMediaPlaybackUrl("file:///Users/foo/bar.webm")).toBe(
+			"asset://localhost/Users/foo/bar.webm",
 		);
 	});
 
-	it("passes file:// URLs through unchanged", () => {
-		expect(resolveMediaPlaybackUrl("file:///Users/bhargav/Videos/demo%20clip.mov")).toBe(
-			"file:///Users/bhargav/Videos/demo%20clip.mov",
+	it("preserves percent-encoded segments when rewriting", () => {
+		expect(resolveMediaPlaybackUrl("file:///Users/foo%20bar/clip.webm")).toBe(
+			"asset://localhost/Users/foo%20bar/clip.webm",
 		);
 	});
 
-	it("converts an absolute POSIX path to a file:// URL", () => {
+	it("rewrites a Windows file:// URL", () => {
+		expect(resolveMediaPlaybackUrl("file:///C:/Users/foo/bar.webm")).toBe(
+			"asset://localhost/C:/Users/foo/bar.webm",
+		);
+	});
+});
+
+describe("resolveMediaPlaybackUrl — native paths", () => {
+	it("converts a POSIX path to an asset URL", () => {
+		expect(resolveMediaPlaybackUrl("/Users/foo/bar.webm")).toBe(
+			"asset://localhost/Users/foo/bar.webm",
+		);
+	});
+
+	it("preserves spaces via percent-encoding", () => {
 		expect(resolveMediaPlaybackUrl("/Users/bhargav/Videos/demo clip.mov")).toBe(
-			"file:///Users/bhargav/Videos/demo%20clip.mov",
+			"asset://localhost/Users/bhargav/Videos/demo%20clip.mov",
 		);
 	});
 
-	it("converts a Windows-style path to a file:// URL", () => {
-		expect(resolveMediaPlaybackUrl("C:\\Users\\bhargav\\Videos\\demo clip.mov")).toBe(
-			"file:///C:/Users/bhargav/Videos/demo%20clip.mov",
+	it("converts a Windows path to an asset URL", () => {
+		expect(resolveMediaPlaybackUrl("C:\\Users\\foo\\bar.webm")).toBe(
+			"asset://localhost/C:/Users/foo/bar.webm",
 		);
 	});
 
-	it("throws when given an empty string", () => {
-		expect(() => resolveMediaPlaybackUrl("")).toThrow("Path is required");
-		expect(() => resolveMediaPlaybackUrl("   ")).toThrow("Path is required");
+	it("trims surrounding whitespace before conversion", () => {
+		expect(resolveMediaPlaybackUrl("  /Users/foo/bar.webm  ")).toBe(
+			"asset://localhost/Users/foo/bar.webm",
+		);
+	});
+
+	it("rejects an empty string", () => {
+		expect(() => resolveMediaPlaybackUrl("")).toThrow(/Path is required/);
+		expect(() => resolveMediaPlaybackUrl("   ")).toThrow(/Path is required/);
 	});
 });

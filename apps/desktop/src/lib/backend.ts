@@ -7,7 +7,7 @@
  */
 
 import { invoke, listen } from "@/lib/electronBridge";
-import { toFileUrl } from "@/lib/fileUrl";
+import { toAssetUrl } from "@/lib/fileUrl";
 import { resolveMediaPlaybackUrl as resolveMediaPlaybackAssetUrl } from "@/lib/mediaPlaybackUrl";
 import type { RecordingSession } from "./recordingSession";
 import type { ShortcutsConfig } from "./shortcuts";
@@ -537,10 +537,11 @@ export function onUpdaterDownloadProgress(
 
 /**
  * Convert a native file path to a URL that can be loaded in the renderer.
- * In Electron the renderer can load file:// URLs directly.
+ * Uses the privileged asset:// protocol registered in main so <video> can range-stream
+ * local files even when the renderer is loaded from http:// in dev.
  */
 export function convertFileToSrc(filePath: string): Promise<string> {
-	return Promise.resolve(toFileUrl(filePath));
+	return Promise.resolve(toAssetUrl(filePath));
 }
 
 // ─── Runtime Detection ──────────────────────────────────────────────────────

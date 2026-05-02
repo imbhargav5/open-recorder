@@ -11,7 +11,9 @@ export default defineConfig({
 			"src/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}",
 			"electron/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}",
 		],
-		exclude: ["e2e/**"],
+		// `._*` files are macOS AppleDouble resource forks created when the repo
+		// lives on a non-HFS+ volume; they're not source files and break esbuild.
+		exclude: ["e2e/**", "**/._*"],
 		setupFiles: ["./src/test-setup.ts"],
 	},
 	resolve: {
