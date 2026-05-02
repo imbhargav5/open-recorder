@@ -48,7 +48,7 @@ const FACECAM_TARGET_WIDTH = 1280;
 const FACECAM_TARGET_HEIGHT = 720;
 const FACECAM_TARGET_FRAME_RATE = 30;
 const FACECAM_BITRATE = 8_000_000;
-const MAC_NATIVE_CAPTURE_START_FAILURE = "Failed to start native ScreenCaptureKit recording";
+const NATIVE_MAC_SCREEN_CAPTURE_AVAILABLE = false;
 
 type FacecamCaptureResult = {
 	path: string;
@@ -664,6 +664,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 			const platform = await backend.getPlatform();
 			const useNativeMacScreenCapture =
+				NATIVE_MAC_SCREEN_CAPTURE_AVAILABLE &&
 				platform === "darwin" &&
 				(selectedSource.id?.startsWith("screen:") || selectedSource.id?.startsWith("window:"));
 
@@ -695,20 +696,18 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 				let nativeStarted = false;
 				try {
-					await backend.startNativeScreenRecording(selectedSource, {
+					const nativeRecordingPath = await backend.startNativeScreenRecording(selectedSource, {
 						captureCursor: false,
 						capturesSystemAudio: systemAudioEnabled,
 						capturesMicrophone: microphoneEnabled,
 						microphoneDeviceId,
 						microphoneLabel: micLabel,
 					});
-					nativeStarted = true;
+					nativeStarted = Boolean(nativeRecordingPath);
 				} catch (nativeError) {
 					const errMsg = nativeError instanceof Error ? nativeError.message : String(nativeError);
 					if (useWgcCapture) {
 						console.warn("WGC capture failed, falling back to browser capture:", errMsg);
-					} else if (errMsg.includes(MAC_NATIVE_CAPTURE_START_FAILURE)) {
-						console.warn("Native macOS capture failed, falling back to browser capture:", errMsg);
 					} else {
 						throw new Error(errMsg || "Failed to start native screen recording");
 					}

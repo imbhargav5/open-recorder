@@ -27,9 +27,9 @@ export function registerRecordingHandlers(
 
 	handle("start_native_screen_recording", async () => {
 		// Native ScreenCaptureKit/WGC capture is not implemented in the Electron port.
-		// Throw the magic string the renderer expects so it falls back to
-		// MediaRecorder + getDisplayMedia, which Electron handles via Chromium.
-		throw new Error("Failed to start native ScreenCaptureKit recording");
+		// Return an empty path so callers can fall back to Chromium capture without
+		// surfacing an IPC handler error in dev logs.
+		return "";
 	});
 
 	handle("stop_native_screen_recording", async () => {

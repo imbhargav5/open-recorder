@@ -3,8 +3,8 @@
  * Mirrors src-tauri/src/commands/platform.rs.
  */
 
-import { app, shell } from "electron";
 import path from "node:path";
+import { app, shell } from "electron";
 import { defaultRecordingsDir } from "../app-paths.js";
 import type { AppState } from "../state.js";
 
@@ -49,7 +49,7 @@ export function registerPlatformHandlers(
 	});
 
 	handle("is_wgc_available", () => {
-		return process.platform === "win32";
+		return false;
 	});
 
 	handle("mux_wgc_recording", () => {

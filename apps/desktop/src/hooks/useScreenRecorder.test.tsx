@@ -65,6 +65,50 @@ type HookHarnessResult = {
 	unmount: () => Promise<void>;
 };
 
+const mediaRecorderInstances: MockMediaRecorder[] = [];
+
+class MockMediaRecorder {
+	ondataavailable: ((event: { data: Blob }) => void) | null = null;
+	onstop: (() => Promise<void> | void) | null = null;
+	onerror: (() => void) | null = null;
+	state: "inactive" | "recording" = "inactive";
+
+	constructor(_stream: MediaStream, _options?: MediaRecorderOptions) {
+		mediaRecorderInstances.push(this);
+	}
+
+	start() {
+		this.state = "recording";
+	}
+
+	stop() {
+		this.state = "inactive";
+		void this.onstop?.();
+	}
+
+	static isTypeSupported(_type: string) {
+		return true;
+	}
+}
+
+function makeVideoTrack() {
+	return {
+		kind: "video" as const,
+		stop: vi.fn(),
+		applyConstraints: vi.fn().mockResolvedValue(undefined),
+		getSettings: vi.fn().mockReturnValue({ width: 1920, height: 1080, frameRate: 60 }),
+	};
+}
+
+function makeStream(videoTrack = makeVideoTrack()) {
+	return {
+		getVideoTracks: () => [videoTrack],
+		getAudioTracks: () => [] as MediaStreamTrack[],
+		getTracks: () => [videoTrack as unknown as MediaStreamTrack],
+		addTrack: vi.fn(),
+	};
+}
+
 async function mountHook(): Promise<HookHarnessResult> {
 	const container = document.createElement("div");
 	const root: Root = createRoot(container);
@@ -99,6 +143,7 @@ async function mountHook(): Promise<HookHarnessResult> {
 
 beforeEach(() => {
 	vi.clearAllMocks();
+	mediaRecorderInstances.length = 0;
 
 	// Default noop unlisten functions for event listeners
 	const makeUnlisten = () => vi.fn().mockResolvedValue(vi.fn());
@@ -112,11 +157,22 @@ beforeEach(() => {
 	// switchToEditor, setCurrentVideoPath, setCurrentRecordingSession resolve
 	// undefined by default from vi.fn() — await undefined is fine for tests
 	backend.deleteRecordingFile.mockResolvedValue(undefined);
+	backend.prepareRecordingFile.mockImplementation((name: string) =>
+		Promise.resolve(`/tmp/${name}`),
+	);
+	backend.appendRecordingData.mockResolvedValue(undefined);
+	backend.hideCursor.mockResolvedValue(undefined);
+	backend.getEffectiveScreenRecordingPermissionStatus.mockResolvedValue("granted");
+	backend.getAccessibilityPermissionStatus.mockResolvedValue("granted");
+
+	vi.stubGlobal("MediaRecorder", MockMediaRecorder);
+	window.alert = vi.fn();
 });
 
 afterEach(() => {
 	// clearAllMocks is sufficient — restoreAllMocks would undo vi.mock() spies
 	vi.clearAllMocks();
+	vi.unstubAllGlobals();
 });
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -239,6 +295,46 @@ describe("useScreenRecorder — permission preparation", () => {
 		expect(backend.getScreenRecordingPermissionStatus).not.toHaveBeenCalled();
 		expect(backend.openScreenRecordingPreferences).not.toHaveBeenCalled();
 
+		await hook.unmount();
+	});
+});
+
+describe("useScreenRecorder — Electron capture path", () => {
+	it("does not call unavailable native ScreenCaptureKit recording on macOS", async () => {
+		const screenStream = makeStream();
+		const getDisplayMedia = vi.fn().mockResolvedValue(screenStream);
+		const getUserMedia = vi.fn();
+
+		Object.defineProperty(navigator, "mediaDevices", {
+			configurable: true,
+			writable: true,
+			value: {
+				getDisplayMedia,
+				getUserMedia,
+				enumerateDevices: vi.fn().mockResolvedValue([]),
+			},
+		});
+
+		backend.getPlatform.mockResolvedValue("darwin");
+		backend.getSelectedSource.mockResolvedValue({
+			id: "screen:42",
+			name: "External Display",
+		});
+
+		const hook = await mountHook();
+
+		await act(async () => {
+			hook.getCurrent().toggleRecording();
+		});
+		await flushEffects();
+
+		expect(backend.startNativeScreenRecording).not.toHaveBeenCalled();
+		expect(getDisplayMedia).toHaveBeenCalledOnce();
+		expect(getUserMedia).not.toHaveBeenCalled();
+		expect(mediaRecorderInstances).toHaveLength(1);
+		expect(backend.setRecordingState).toHaveBeenCalledWith(true);
+
+		mediaRecorderInstances[0].state = "inactive";
 		await hook.unmount();
 	});
 });
