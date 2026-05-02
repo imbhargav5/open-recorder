@@ -1,15 +1,6 @@
 import type { Span } from "dnd-timeline";
-import { useAtom, useSetAtom } from "jotai";
-import {
-	ChevronDown,
-	Download,
-	Film,
-	FolderOpen,
-	HelpCircle,
-	Image,
-	LoaderCircle,
-	PanelLeft,
-} from "lucide-react";
+import { useAtom, useAtomValue, useSetAtom, useStore } from "jotai";
+import { ChevronDown, Download, Film, Image, LoaderCircle, PanelLeft } from "lucide-react";
 import { Profiler, useCallback, useEffect, useMemo, useRef } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { toast } from "sonner";
@@ -52,7 +43,6 @@ import {
 	selectedZoomIdAtom,
 	shadowIntensityAtom,
 	showExportDialogAtom,
-	showShortcutsDialogAtom,
 	sourceNameAtom,
 	speedRegionsAtom,
 	trimRegionsAtom,
@@ -158,14 +148,373 @@ type PendingExportSave = {
 	arrayBuffer: ArrayBuffer;
 };
 
+function useCurrentProjectSnapshot() {
+	const videoSourcePath = useAtomValue(videoSourcePathAtom);
+	const sourceName = useAtomValue(sourceNameAtom);
+	const facecamVideoPath = useAtomValue(facecamVideoPathAtom);
+	const facecamOffsetMs = useAtomValue(facecamOffsetMsAtom);
+	const wallpaper = useAtomValue(videoWallpaperAtom);
+	const audioMuted = useAtomValue(audioMutedAtom);
+	const audioVolume = useAtomValue(audioVolumeAtom);
+	const shadowIntensity = useAtomValue(shadowIntensityAtom);
+	const backgroundBlur = useAtomValue(backgroundBlurAtom);
+	const zoomMotionBlur = useAtomValue(zoomMotionBlurAtom);
+	const connectZooms = useAtomValue(connectZoomsAtom);
+	const cursorSettings = useAtomValue(cursorSettingsAtom);
+	const borderRadius = useAtomValue(borderRadiusAtom);
+	const padding = useAtomValue(paddingAtom);
+	const cropRegion = useAtomValue(cropRegionAtom);
+	const facecamSettings = useAtomValue(facecamSettingsAtom);
+	const zoomRegions = useAtomValue(zoomRegionsAtom);
+	const trimRegions = useAtomValue(trimRegionsAtom);
+	const speedRegions = useAtomValue(speedRegionsAtom);
+	const annotationRegions = useAtomValue(annotationRegionsAtom);
+	const aspectRatio = useAtomValue(aspectRatioAtom);
+	const exportQuality = useAtomValue(exportQualityAtom);
+	const exportFormat = useAtomValue(exportFormatAtom);
+	const gifFrameRate = useAtomValue(gifFrameRateAtom);
+	const gifLoop = useAtomValue(gifLoopAtom);
+	const gifSizePreset = useAtomValue(gifSizePresetAtom);
+
+	return useMemo(() => {
+		if (!videoSourcePath) {
+			return null;
+		}
+
+		return JSON.stringify(
+			createProjectData(
+				videoSourcePath,
+				{
+					wallpaper,
+					audioMuted,
+					audioVolume,
+					shadowIntensity,
+					backgroundBlur,
+					zoomMotionBlur,
+					connectZooms,
+					showCursor: cursorSettings.showCursor,
+					loopCursor: cursorSettings.loopCursor,
+					cursorSize: cursorSettings.cursorSize,
+					cursorSmoothing: cursorSettings.cursorSmoothing,
+					cursorMotionBlur: cursorSettings.cursorMotionBlur,
+					cursorClickBounce: cursorSettings.cursorClickBounce,
+					borderRadius,
+					padding,
+					cropRegion,
+					facecamSettings,
+					zoomRegions,
+					trimRegions,
+					speedRegions,
+					annotationRegions,
+					aspectRatio,
+					exportQuality,
+					exportFormat,
+					gifFrameRate,
+					gifLoop,
+					gifSizePreset,
+				},
+				{
+					facecamVideoPath,
+					facecamOffsetMs,
+					sourceName,
+				},
+			),
+		);
+	}, [
+		videoSourcePath,
+		facecamVideoPath,
+		facecamOffsetMs,
+		sourceName,
+		wallpaper,
+		audioMuted,
+		audioVolume,
+		shadowIntensity,
+		backgroundBlur,
+		zoomMotionBlur,
+		connectZooms,
+		cursorSettings,
+		borderRadius,
+		padding,
+		cropRegion,
+		facecamSettings,
+		zoomRegions,
+		trimRegions,
+		speedRegions,
+		annotationRegions,
+		aspectRatio,
+		exportQuality,
+		exportFormat,
+		gifFrameRate,
+		gifLoop,
+		gifSizePreset,
+	]);
+}
+
+function ProjectDirtyStateSync() {
+	const currentProjectPath = useAtomValue(currentProjectPathAtom);
+	const lastSavedSnapshot = useAtomValue(lastSavedSnapshotAtom);
+	const currentProjectSnapshot = useCurrentProjectSnapshot();
+	const hasUnsavedChanges = Boolean(
+		currentProjectPath &&
+			currentProjectSnapshot &&
+			lastSavedSnapshot &&
+			currentProjectSnapshot !== lastSavedSnapshot,
+	);
+
+	useEffect(() => {
+		const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+			if (!hasUnsavedChanges) {
+				return;
+			}
+
+			event.preventDefault();
+			event.returnValue = "";
+		};
+
+		window.addEventListener("beforeunload", handleBeforeUnload);
+		return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+	}, [hasUnsavedChanges]);
+
+	useEffect(() => {
+		backend.setHasUnsavedChanges(hasUnsavedChanges).catch(() => {
+			// Best-effort sync with the native close guard.
+		});
+	}, [hasUnsavedChanges]);
+
+	return null;
+}
+
+function EditorTitleBar({
+	videoPlaybackRef,
+	onOpenExportDialog,
+}: {
+	videoPlaybackRef: React.RefObject<VideoPlaybackRef | null>;
+	onOpenExportDialog: () => void;
+}) {
+	const [sidebarExpanded, setSidebarExpanded] = useAtom(sidebarExpandedAtom);
+	const internalView = useAtomValue(internalViewAtom);
+	const currentProjectPath = useAtomValue(currentProjectPathAtom);
+	const videoSourcePath = useAtomValue(videoSourcePathAtom);
+	const sourceName = useAtomValue(sourceNameAtom);
+	const [exportQuality, setExportQuality] = useAtom(exportQualityAtom);
+	const [exportFormat, setExportFormat] = useAtom(exportFormatAtom);
+	const [gifFrameRate, setGifFrameRate] = useAtom(gifFrameRateAtom);
+	const [gifLoop, setGifLoop] = useAtom(gifLoopAtom);
+	const [gifSizePreset, setGifSizePreset] = useAtom(gifSizePresetAtom);
+
+	const editorNavbarTitle = useMemo(
+		() =>
+			buildVideoEditorNavbarTitle({
+				projectPath: currentProjectPath,
+				videoPath: videoSourcePath,
+				sourceName,
+			}),
+		[currentProjectPath, sourceName, videoSourcePath],
+	);
+
+	useEffect(() => {
+		document.title = editorNavbarTitle;
+	}, [editorNavbarTitle]);
+
+	const gifOutputDimensions = useMemo(() => {
+		const videoWidth = videoPlaybackRef.current?.video?.videoWidth || 1920;
+		const videoHeight = videoPlaybackRef.current?.video?.videoHeight || 1080;
+		return calculateOutputDimensions(videoWidth, videoHeight, gifSizePreset, GIF_SIZE_PRESETS);
+	}, [gifSizePreset, videoPlaybackRef]);
+
+	return (
+		<div
+			className="relative h-10 flex-shrink-0 bg-[#09090b]/80 backdrop-blur-md border-b border-white/5 flex items-center justify-center px-6 z-50"
+			style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+		>
+			<div
+				className="absolute left-2 flex items-center"
+				style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+			>
+				<button
+					type="button"
+					onClick={() => setSidebarExpanded(!sidebarExpanded)}
+					aria-label={sidebarExpanded ? "Collapse sidebar" : "Expand sidebar"}
+					aria-expanded={sidebarExpanded}
+					title={sidebarExpanded ? "Collapse sidebar" : "Expand sidebar"}
+					className="inline-flex h-7 w-7 items-center justify-center rounded-md text-white/60 transition hover:bg-white/8 hover:text-white cursor-pointer"
+				>
+					<PanelLeft className="h-4 w-4" />
+				</button>
+			</div>
+			<span className="text-sm font-semibold tracking-tight text-white/90">
+				{internalView === "projects" ? "Projects" : editorNavbarTitle}
+			</span>
+			{internalView === "editor" && (
+				<div
+					className="absolute right-4 flex items-center gap-2"
+					style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+				>
+					<Popover>
+						<div className="flex">
+							<Button
+								type="button"
+								size="sm"
+								onClick={onOpenExportDialog}
+								className="h-7 rounded-r-none gap-1.5 bg-[#2563EB] text-white text-xs font-medium hover:bg-[#2563EB]/90 active:scale-[0.98] transition-all"
+							>
+								<Download className="w-3.5 h-3.5" />
+								Export {exportFormat === "gif" ? "GIF" : "Video"}
+							</Button>
+							<PopoverTrigger asChild>
+								<Button
+									type="button"
+									size="sm"
+									className="h-7 w-7 p-0 rounded-l-none border-l border-[#2563EB]/50 bg-[#2563EB] text-white hover:bg-[#2563EB]/90 active:scale-[0.98] transition-all"
+								>
+									<ChevronDown className="w-3.5 h-3.5" />
+								</Button>
+							</PopoverTrigger>
+						</div>
+						<PopoverContent
+							side="bottom"
+							align="end"
+							sideOffset={8}
+							className="w-[280px] bg-[#09090b] border-white/10 p-3 rounded-xl"
+						>
+							<div className="space-y-3">
+								<div className="flex items-center gap-2">
+									<button
+										onClick={() => setExportFormat("mp4")}
+										className={cn(
+											"flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg border transition-all text-xs font-medium",
+											exportFormat === "mp4"
+												? "bg-[#2563EB]/10 border-[#2563EB]/50 text-white"
+												: "bg-white/5 border-white/10 text-slate-400 hover:bg-white/10 hover:text-slate-200",
+										)}
+									>
+										<Film className="w-3.5 h-3.5" />
+										MP4
+									</button>
+									<button
+										onClick={() => setExportFormat("gif")}
+										className={cn(
+											"flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg border transition-all text-xs font-medium",
+											exportFormat === "gif"
+												? "bg-[#2563EB]/10 border-[#2563EB]/50 text-white"
+												: "bg-white/5 border-white/10 text-slate-400 hover:bg-white/10 hover:text-slate-200",
+										)}
+									>
+										<Image className="w-3.5 h-3.5" />
+										GIF
+									</button>
+								</div>
+
+								{exportFormat === "mp4" && (
+									<div className="bg-white/5 border border-white/5 p-0.5 w-full grid grid-cols-3 h-7 rounded-lg">
+										<button
+											onClick={() => setExportQuality("medium")}
+											className={cn(
+												"rounded-md transition-all text-[10px] font-medium",
+												exportQuality === "medium"
+													? "bg-white text-black"
+													: "text-slate-400 hover:text-slate-200",
+											)}
+										>
+											Low
+										</button>
+										<button
+											onClick={() => setExportQuality("good")}
+											className={cn(
+												"rounded-md transition-all text-[10px] font-medium",
+												exportQuality === "good"
+													? "bg-white text-black"
+													: "text-slate-400 hover:text-slate-200",
+											)}
+										>
+											Medium
+										</button>
+										<button
+											onClick={() => setExportQuality("source")}
+											className={cn(
+												"rounded-md transition-all text-[10px] font-medium",
+												exportQuality === "source"
+													? "bg-white text-black"
+													: "text-slate-400 hover:text-slate-200",
+											)}
+										>
+											High
+										</button>
+									</div>
+								)}
+
+								{exportFormat === "gif" && (
+									<div className="space-y-2">
+										<div className="flex items-center gap-2">
+											<div className="flex-1 bg-white/5 border border-white/5 p-0.5 grid grid-cols-4 h-7 rounded-lg">
+												{GIF_FRAME_RATES.map((rate) => (
+													<button
+														key={rate.value}
+														onClick={() => setGifFrameRate(rate.value)}
+														className={cn(
+															"rounded-md transition-all text-[10px] font-medium",
+															gifFrameRate === rate.value
+																? "bg-white text-black"
+																: "text-slate-400 hover:text-slate-200",
+														)}
+													>
+														{rate.value}
+													</button>
+												))}
+											</div>
+											<div className="flex-1 bg-white/5 border border-white/5 p-0.5 grid grid-cols-3 h-7 rounded-lg">
+												{Object.entries(GIF_SIZE_PRESETS).map(([key]) => (
+													<button
+														key={key}
+														onClick={() => setGifSizePreset(key as GifSizePreset)}
+														className={cn(
+															"rounded-md transition-all text-[10px] font-medium",
+															gifSizePreset === key
+																? "bg-white text-black"
+																: "text-slate-400 hover:text-slate-200",
+														)}
+													>
+														{key === "original"
+															? "Orig"
+															: key.charAt(0).toUpperCase() + key.slice(1, 3)}
+													</button>
+												))}
+											</div>
+										</div>
+										<div className="flex items-center justify-between">
+											<span className="text-[10px] text-slate-500">
+												{gifOutputDimensions.width} × {gifOutputDimensions.height}px
+											</span>
+											<div className="flex items-center gap-2">
+												<span className="text-[10px] text-slate-400">Loop</span>
+												<Switch
+													checked={gifLoop}
+													onCheckedChange={setGifLoop}
+													className="data-[state=checked]:bg-[#2563EB] scale-75"
+												/>
+											</div>
+										</div>
+									</div>
+								)}
+							</div>
+						</PopoverContent>
+					</Popover>
+				</div>
+			)}
+		</div>
+	);
+}
+
 export default function VideoEditor() {
+	const jotaiStore = useStore();
 	const [videoPath, setVideoPath] = useAtom(videoPathAtom);
 	const [videoSourcePath, setVideoSourcePath] = useAtom(videoSourcePathAtom);
-	const [sourceName, setSourceName] = useAtom(sourceNameAtom);
-	const [facecamVideoPath, setFacecamVideoPath] = useAtom(facecamVideoPathAtom);
+	const setSourceName = useSetAtom(sourceNameAtom);
+	const facecamVideoPath = useAtomValue(facecamVideoPathAtom);
+	const setFacecamVideoPath = useSetAtom(facecamVideoPathAtom);
 	const [facecamPlaybackPath, setFacecamPlaybackPath] = useAtom(facecamPlaybackPathAtom);
 	const [facecamOffsetMs, setFacecamOffsetMs] = useAtom(facecamOffsetMsAtom);
-	const [currentProjectPath, setCurrentProjectPath] = useAtom(currentProjectPathAtom);
+	const setCurrentProjectPath = useSetAtom(currentProjectPathAtom);
 	const [loading, setLoading] = useAtom(videoLoadingAtom);
 	const [playbackReady, setPlaybackReady] = useAtom(playbackReadyAtom);
 	const [error, setError] = useAtom(videoErrorAtom);
@@ -207,18 +556,27 @@ export default function VideoEditor() {
 	const setExportProgress = useSetAtom(exportProgressAtom);
 	const setExportError = useSetAtom(exportErrorAtom);
 	const setShowExportDialog = useSetAtom(showExportDialogAtom);
-	const setShowShortcutsDialog = useSetAtom(showShortcutsDialogAtom);
 	const [aspectRatio, setAspectRatio] = useAtom(aspectRatioAtom);
-	const [exportQuality, setExportQuality] = useAtom(exportQualityAtom);
-	const [exportFormat, setExportFormat] = useAtom(exportFormatAtom);
-	const [gifFrameRate, setGifFrameRate] = useAtom(gifFrameRateAtom);
-	const [gifLoop, setGifLoop] = useAtom(gifLoopAtom);
-	const [gifSizePreset, setGifSizePreset] = useAtom(gifSizePresetAtom);
+	const setExportQuality = useSetAtom(exportQualityAtom);
+	const setExportFormat = useSetAtom(exportFormatAtom);
+	const setGifFrameRate = useSetAtom(gifFrameRateAtom);
+	const setGifLoop = useSetAtom(gifLoopAtom);
+	const setGifSizePreset = useSetAtom(gifSizePresetAtom);
 	const setExportedFilePath = useSetAtom(exportedFilePathAtom);
 	const [hasPendingExportSave, setHasPendingExportSave] = useAtom(hasPendingExportSaveAtom);
-	const [lastSavedSnapshot, setLastSavedSnapshot] = useAtom(lastSavedSnapshotAtom);
+	const setLastSavedSnapshot = useSetAtom(lastSavedSnapshotAtom);
 	const [internalView, setInternalView] = useAtom(internalViewAtom);
-	const [sidebarExpanded, setSidebarExpanded] = useAtom(sidebarExpandedAtom);
+
+	const readExportState = useCallback(
+		() => ({
+			exportQuality: jotaiStore.get(exportQualityAtom),
+			exportFormat: jotaiStore.get(exportFormatAtom),
+			gifFrameRate: jotaiStore.get(gifFrameRateAtom),
+			gifLoop: jotaiStore.get(gifLoopAtom),
+			gifSizePreset: jotaiStore.get(gifSizePresetAtom),
+		}),
+		[jotaiStore],
+	);
 
 	const videoPlaybackRef = useRef<VideoPlaybackRef>(null);
 	const nextZoomIdRef = useRef(1);
@@ -397,99 +755,6 @@ export default function VideoEditor() {
 		void ensurePixiRuntime();
 	}, []);
 
-	const currentProjectSnapshot = useMemo(() => {
-		const sourcePath = videoSourcePath;
-		if (!sourcePath) {
-			return null;
-		}
-		return JSON.stringify(
-			createProjectData(
-				sourcePath,
-				{
-					wallpaper,
-					audioMuted,
-					audioVolume,
-					shadowIntensity,
-					backgroundBlur,
-					zoomMotionBlur,
-					connectZooms,
-					showCursor,
-					loopCursor,
-					cursorSize,
-					cursorSmoothing,
-					cursorMotionBlur,
-					cursorClickBounce,
-					borderRadius,
-					padding,
-					cropRegion,
-					facecamSettings,
-					zoomRegions,
-					trimRegions,
-					speedRegions,
-					annotationRegions,
-					aspectRatio,
-					exportQuality,
-					exportFormat,
-					gifFrameRate,
-					gifLoop,
-					gifSizePreset,
-				},
-				{
-					facecamVideoPath,
-					facecamOffsetMs,
-					sourceName,
-				},
-			),
-		);
-	}, [
-		videoSourcePath,
-		facecamVideoPath,
-		facecamOffsetMs,
-		sourceName,
-		wallpaper,
-		audioMuted,
-		audioVolume,
-		shadowIntensity,
-		backgroundBlur,
-		zoomMotionBlur,
-		connectZooms,
-		cursorSettings,
-		borderRadius,
-		padding,
-		cropRegion,
-		facecamSettings,
-		zoomRegions,
-		trimRegions,
-		speedRegions,
-		annotationRegions,
-		aspectRatio,
-		exportQuality,
-		exportFormat,
-		gifFrameRate,
-		gifLoop,
-		gifSizePreset,
-	]);
-
-	const hasUnsavedChanges = Boolean(
-		currentProjectPath &&
-			currentProjectSnapshot &&
-			lastSavedSnapshot &&
-			currentProjectSnapshot !== lastSavedSnapshot,
-	);
-	const editorNavbarTitle = useMemo(
-		() =>
-			buildVideoEditorNavbarTitle({
-				projectPath: currentProjectPath,
-				videoPath: videoSourcePath,
-				sourceName,
-			}),
-		[currentProjectPath, sourceName, videoSourcePath],
-	);
-
-	useEffect(() => {
-		document.title = editorNavbarTitle;
-	}, [editorNavbarTitle]);
-
 	useEffect(() => {
 		async function loadInitialData() {
 			try {
@@ -578,6 +843,11 @@ export default function VideoEditor() {
 				return;
 			}
 
+			const currentProjectPath = jotaiStore.get(currentProjectPathAtom);
+			const sourceName = jotaiStore.get(sourceNameAtom);
+			const facecamVideoPath = jotaiStore.get(facecamVideoPathAtom);
+			const { exportQuality, exportFormat, gifFrameRate, gifLoop, gifSizePreset } =
+				readExportState();
 			const projectData = createProjectData(
 				sourcePath,
 				{
@@ -639,12 +909,11 @@ export default function VideoEditor() {
 			toast.success(`Project saved to ${savedPath}`);
 		},
 		[
+			jotaiStore,
+			readExportState,
 			videoPath,
 			videoSourcePath,
-			facecamVideoPath,
 			facecamOffsetMs,
-			sourceName,
-			currentProjectPath,
 			wallpaper,
 			audioMuted,
 			audioVolume,
@@ -662,33 +931,8 @@ export default function VideoEditor() {
 			speedRegions,
 			annotationRegions,
 			aspectRatio,
-			exportQuality,
-			exportFormat,
-			gifFrameRate,
-			gifLoop,
-			gifSizePreset,
 		],
 	);
-
-	useEffect(() => {
-		const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-			if (!hasUnsavedChanges) {
-				return;
-			}
-
-			event.preventDefault();
-			event.returnValue = "";
-		};
-
-		window.addEventListener("beforeunload", handleBeforeUnload);
-		return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-	}, [hasUnsavedChanges]);
-
-	useEffect(() => {
-		backend.setHasUnsavedChanges(hasUnsavedChanges).catch(() => {
-			// Best-effort sync with the native close guard.
-		});
-	}, [hasUnsavedChanges]);
 
 	useEffect(() => {
 		let unlisten: (() => void) | undefined;
@@ -725,11 +969,12 @@ export default function VideoEditor() {
 				return;
 			}
 
+			setInternalView("editor");
 			toast.success(`Project loaded from ${result.filePath}`);
 		} catch (loadError) {
 			toast.error(`Failed to load project: ${String(loadError)}`);
 		}
-	}, [applyLoadedProject]);
+	}, [applyLoadedProject, setInternalView]);
 
 	useEffect(() => {
 		let unlistenLoad: (() => void) | undefined;
@@ -1043,12 +1288,6 @@ export default function VideoEditor() {
 		if (!selectedSpeedId) return null;
 		return speedRegions.find((r) => r.id === selectedSpeedId)?.speed ?? null;
 	}, [selectedSpeedId, speedRegions]);
-
-	const gifOutputDimensions = useMemo(() => {
-		const videoWidth = videoPlaybackRef.current?.video?.videoWidth || 1920;
-		const videoHeight = videoPlaybackRef.current?.video?.videoHeight || 1080;
-		return calculateOutputDimensions(videoWidth, videoHeight, gifSizePreset, GIF_SIZE_PRESETS);
-	}, [gifSizePreset]);
 
 	const handleSelectZoom = useCallback((id: string | null) => {
 		setSelectedZoomId(id);
@@ -1640,6 +1879,7 @@ export default function VideoEditor() {
 				const previewWidth = containerElement?.clientWidth || 1920;
 				const previewHeight = containerElement?.clientHeight || 1080;
 				const sourceVideoUrl = await backend.resolveMediaPlaybackUrl(sourcePath);
+				const facecamVideoPath = jotaiStore.get(facecamVideoPathAtom);
 				const facecamSourceUrl = facecamVideoPath
 					? await backend.resolveMediaPlaybackUrl(facecamVideoPath)
 					: undefined;
@@ -1710,6 +1950,7 @@ export default function VideoEditor() {
 					}
 				} else {
 					// MP4 Export
+					const { exportQuality } = readExportState();
 					const quality = settings.quality || exportQuality;
 					const {
 						width: exportWidth,
@@ -1804,9 +2045,10 @@ export default function VideoEditor() {
 			}
 		},
 		[
+			jotaiStore,
+			readExportState,
 			videoPath,
 			videoSourcePath,
-			facecamVideoPath,
 			facecamOffsetMs,
 			wallpaper,
 			audioMuted,
@@ -1827,7 +2069,6 @@ export default function VideoEditor() {
 			annotationRegions,
 			isPlaying,
 			aspectRatio,
-			exportQuality,
 			showExportSuccessToast,
 			restorePreviewAfterExport,
 		],
@@ -1853,6 +2094,7 @@ export default function VideoEditor() {
 
 		const sourceWidth = video.videoWidth || 1920;
 		const sourceHeight = video.videoHeight || 1080;
+		const { exportFormat, exportQuality, gifFrameRate, gifLoop, gifSizePreset } = readExportState();
 		const settings: ExportSettings = buildImmediateExportSettings({
 			format: exportFormat,
 			exportQuality,
@@ -1868,16 +2110,7 @@ export default function VideoEditor() {
 
 		// Start export immediately
 		handleExport(settings);
-	}, [
-		videoPath,
-		hasPendingExportSave,
-		exportFormat,
-		exportQuality,
-		gifFrameRate,
-		gifLoop,
-		gifSizePreset,
-		handleExport,
-	]);
+	}, [videoPath, hasPendingExportSave, readExportState, handleExport]);
 
 	const handleCancelExport = useCallback(() => {
 		if (exporterRef.current) {
@@ -1920,14 +2153,6 @@ export default function VideoEditor() {
 		showExportSuccessToast(savePath);
 		setShowExportDialog(false);
 	}, [showExportSuccessToast]);
-
-	const openRecordingsFolder = useCallback(async () => {
-		try {
-			await backend.openRecordingsFolder();
-		} catch (error) {
-			toast.error(`Failed to open recordings folder: ${String(error)}`);
-		}
-	}, []);
 
 	if (loading) {
 		return (
@@ -1981,209 +2206,15 @@ export default function VideoEditor() {
 				</div>
 			)}
 			<AppSidebar />
+			<ProjectDirtyStateSync />
 			<div className="flex flex-col flex-1 min-w-0">
-				<div
-					className="relative h-10 flex-shrink-0 bg-[#09090b]/80 backdrop-blur-md border-b border-white/5 flex items-center justify-center px-6 z-50"
-					style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-				>
-					<div
-						className="absolute left-2 flex items-center"
-						style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-					>
-						<button
-							type="button"
-							onClick={() => setSidebarExpanded(!sidebarExpanded)}
-							aria-label={sidebarExpanded ? "Collapse sidebar" : "Expand sidebar"}
-							aria-expanded={sidebarExpanded}
-							title={sidebarExpanded ? "Collapse sidebar" : "Expand sidebar"}
-							className="inline-flex h-7 w-7 items-center justify-center rounded-md text-white/60 transition hover:bg-white/8 hover:text-white cursor-pointer"
-						>
-							<PanelLeft className="h-4 w-4" />
-						</button>
-					</div>
-					<span className="text-sm font-semibold tracking-tight text-white/90">
-						{internalView === "projects" ? "Projects" : editorNavbarTitle}
-					</span>
-					{internalView === "editor" && (
-						<div
-							className="absolute right-4 flex items-center gap-2"
-							style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-						>
-							<button
-								type="button"
-								onClick={() => setShowShortcutsDialog(true)}
-								className="inline-flex h-7 w-7 items-center justify-center rounded-md text-white/60 transition hover:bg-white/8 hover:text-white cursor-pointer"
-								title="Keyboard shortcuts"
-								aria-label="Keyboard shortcuts"
-							>
-								<HelpCircle className="h-4 w-4" />
-							</button>
-							<button
-								type="button"
-								onClick={() => void openRecordingsFolder()}
-								className="inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-white/90 transition hover:bg-white/8 hover:text-white cursor-pointer"
-								title="Open recordings folder"
-								aria-label="Open recordings folder"
-							>
-								<FolderOpen className="h-4 w-4" />
-								<span className="text-xs font-normal">Manage recordings</span>
-							</button>
-
-							<Popover>
-								<div className="flex">
-									<Button
-										type="button"
-										size="sm"
-										onClick={handleOpenExportDialog}
-										className="h-7 rounded-r-none gap-1.5 bg-[#2563EB] text-white text-xs font-medium hover:bg-[#2563EB]/90 active:scale-[0.98] transition-all"
-									>
-										<Download className="w-3.5 h-3.5" />
-										Export {exportFormat === "gif" ? "GIF" : "Video"}
-									</Button>
-									<PopoverTrigger asChild>
-										<Button
-											type="button"
-											size="sm"
-											className="h-7 w-7 p-0 rounded-l-none border-l border-[#2563EB]/50 bg-[#2563EB] text-white hover:bg-[#2563EB]/90 active:scale-[0.98] transition-all"
-										>
-											<ChevronDown className="w-3.5 h-3.5" />
-										</Button>
-									</PopoverTrigger>
-								</div>
-								<PopoverContent
-									side="bottom"
-									align="end"
-									sideOffset={8}
-									className="w-[280px] bg-[#09090b] border-white/10 p-3 rounded-xl"
-								>
-									<div className="space-y-3">
-										<div className="flex items-center gap-2">
-											<button
-												onClick={() => setExportFormat("mp4")}
-												className={cn(
-													"flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg border transition-all text-xs font-medium",
-													exportFormat === "mp4"
-														? "bg-[#2563EB]/10 border-[#2563EB]/50 text-white"
-														: "bg-white/5 border-white/10 text-slate-400 hover:bg-white/10 hover:text-slate-200",
-												)}
-											>
-												<Film className="w-3.5 h-3.5" />
-												MP4
-											</button>
-											<button
-												onClick={() => setExportFormat("gif")}
-												className={cn(
-													"flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg border transition-all text-xs font-medium",
-													exportFormat === "gif"
-														? "bg-[#2563EB]/10 border-[#2563EB]/50 text-white"
-														: "bg-white/5 border-white/10 text-slate-400 hover:bg-white/10 hover:text-slate-200",
-												)}
-											>
-												<Image className="w-3.5 h-3.5" />
-												GIF
-											</button>
-										</div>
-
-										{exportFormat === "mp4" && (
-											<div className="bg-white/5 border border-white/5 p-0.5 w-full grid grid-cols-3 h-7 rounded-lg">
-												<button
-													onClick={() => setExportQuality("medium")}
-													className={cn(
-														"rounded-md transition-all text-[10px] font-medium",
-														exportQuality === "medium"
-															? "bg-white text-black"
-															: "text-slate-400 hover:text-slate-200",
-													)}
-												>
-													Low
-												</button>
-												<button
-													onClick={() => setExportQuality("good")}
-													className={cn(
-														"rounded-md transition-all text-[10px] font-medium",
-														exportQuality === "good"
-															? "bg-white text-black"
-															: "text-slate-400 hover:text-slate-200",
-													)}
-												>
-													Medium
-												</button>
-												<button
-													onClick={() => setExportQuality("source")}
-													className={cn(
-														"rounded-md transition-all text-[10px] font-medium",
-														exportQuality === "source"
-															? "bg-white text-black"
-															: "text-slate-400 hover:text-slate-200",
-													)}
-												>
-													High
-												</button>
-											</div>
-										)}
-
-										{exportFormat === "gif" && (
-											<div className="space-y-2">
-												<div className="flex items-center gap-2">
-													<div className="flex-1 bg-white/5 border border-white/5 p-0.5 grid grid-cols-4 h-7 rounded-lg">
-														{GIF_FRAME_RATES.map((rate) => (
-															<button
-																key={rate.value}
-																onClick={() => setGifFrameRate(rate.value)}
-																className={cn(
-																	"rounded-md transition-all text-[10px] font-medium",
-																	gifFrameRate === rate.value
-																		? "bg-white text-black"
-																		: "text-slate-400 hover:text-slate-200",
-																)}
-															>
-																{rate.value}
-															</button>
-														))}
-													</div>
-													<div className="flex-1 bg-white/5 border border-white/5 p-0.5 grid grid-cols-3 h-7 rounded-lg">
-														{Object.entries(GIF_SIZE_PRESETS).map(([key, _preset]) => (
-															<button
-																key={key}
-																onClick={() => setGifSizePreset(key as GifSizePreset)}
-																className={cn(
-																	"rounded-md transition-all text-[10px] font-medium",
-																	gifSizePreset === key
-																		? "bg-white text-black"
-																		: "text-slate-400 hover:text-slate-200",
-																)}
-															>
-																{key === "original"
-																	? "Orig"
-																	: key.charAt(0).toUpperCase() + key.slice(1, 3)}
-															</button>
-														))}
-													</div>
-												</div>
-												<div className="flex items-center justify-between">
-													<span className="text-[10px] text-slate-500">
-														{gifOutputDimensions.width} × {gifOutputDimensions.height}px
-													</span>
-													<div className="flex items-center gap-2">
-														<span className="text-[10px] text-slate-400">Loop</span>
-														<Switch
-															checked={gifLoop}
-															onCheckedChange={setGifLoop}
-															className="data-[state=checked]:bg-[#2563EB] scale-75"
-														/>
-													</div>
-												</div>
-											</div>
-										)}
-									</div>
-								</PopoverContent>
-							</Popover>
-						</div>
-					)}
-				</div>
+				<EditorTitleBar
+					videoPlaybackRef={videoPlaybackRef}
+					onOpenExportDialog={handleOpenExportDialog}
+				/>
 
 				{internalView === "projects" ? (
-					<ProjectsPage />
+					<ProjectsPage onOpenProject={handleLoadProject} />
 				) : (
 					<div className="flex-1 p-5 gap-4 flex min-h-0 relative">
 						{/* Left Column - Video & Timeline */}
@@ -2411,7 +2442,6 @@ export default function VideoEditor() {
 				onCancel={handleCancelExport}
 				onRetrySave={handleRetrySaveExport}
 				canRetrySave={hasPendingExportSave}
-				exportFormat={exportFormat}
 			/>
 		</div>
 	);

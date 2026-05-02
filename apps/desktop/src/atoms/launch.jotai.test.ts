@@ -14,8 +14,12 @@ import {
 	hasSelectedSourceAtom,
 	isCapturingAtom,
 	launchViewAtom,
+	permissionOnboardingRequestingAtom,
+	permissionOnboardingStepAtom,
 	recordingElapsedAtom,
 	recordingStartAtom,
+	resetPermissionOnboardingAtom,
+	screenRecordingAwaitingRelaunchAtom,
 	screenshotModeAtom,
 	selectedSourceAtom,
 } from "./launch";
@@ -55,6 +59,12 @@ describe("launch atoms – defaults", () => {
 
 	it("hasSelectedSourceAtom defaults to true", () => {
 		expect(store.get(hasSelectedSourceAtom)).toBe(true);
+	});
+
+	it("permission onboarding atoms default to the first step and idle flags", () => {
+		expect(store.get(permissionOnboardingStepAtom)).toBe("welcome");
+		expect(store.get(permissionOnboardingRequestingAtom)).toBe(false);
+		expect(store.get(screenRecordingAwaitingRelaunchAtom)).toBe(false);
 	});
 });
 
@@ -139,6 +149,16 @@ describe("launch atoms – mutations", () => {
 		store.set(recordingElapsedAtom, 99);
 		store.set(recordingElapsedAtom, 0);
 		expect(store.get(recordingElapsedAtom)).toBe(0);
+	});
+
+	it("can reset permission onboarding state", () => {
+		store.set(permissionOnboardingStepAtom, "done");
+		store.set(permissionOnboardingRequestingAtom, true);
+		store.set(screenRecordingAwaitingRelaunchAtom, true);
+		store.set(resetPermissionOnboardingAtom);
+		expect(store.get(permissionOnboardingStepAtom)).toBe("welcome");
+		expect(store.get(permissionOnboardingRequestingAtom)).toBe(false);
+		expect(store.get(screenRecordingAwaitingRelaunchAtom)).toBe(false);
 	});
 });
 

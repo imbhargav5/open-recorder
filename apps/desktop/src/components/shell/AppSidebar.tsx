@@ -1,6 +1,7 @@
-import { useAtom } from "jotai";
-import { FolderGit2, Video } from "lucide-react";
+import { useAtom, useSetAtom } from "jotai";
+import { FolderGit2, HelpCircle, Video } from "lucide-react";
 import { type InternalView, internalViewAtom, sidebarExpandedAtom } from "@/atoms/navigation";
+import { showShortcutsDialogAtom } from "@/atoms/videoEditor";
 import { cn } from "@/lib/utils";
 
 type NavItem = {
@@ -17,6 +18,7 @@ const NAV_ITEMS: readonly NavItem[] = [
 export function AppSidebar() {
 	const [expanded] = useAtom(sidebarExpandedAtom);
 	const [activeView, setActiveView] = useAtom(internalViewAtom);
+	const setShowShortcutsDialog = useSetAtom(showShortcutsDialogAtom);
 
 	return (
 		<aside
@@ -57,6 +59,24 @@ export function AppSidebar() {
 						</button>
 					);
 				})}
+				<button
+					type="button"
+					onClick={() => setShowShortcutsDialog(true)}
+					title={expanded ? undefined : "Help"}
+					aria-label="Help"
+					aria-haspopup="dialog"
+					className="group flex h-8 cursor-pointer items-center gap-3 rounded-md px-2 text-xs font-medium text-white/60 transition-colors hover:bg-white/5 hover:text-white"
+				>
+					<HelpCircle className="h-4 w-4 flex-shrink-0" />
+					<span
+						className={cn(
+							"truncate transition-opacity duration-150",
+							expanded ? "opacity-100" : "opacity-0 pointer-events-none",
+						)}
+					>
+						Help
+					</span>
+				</button>
 			</nav>
 		</aside>
 	);

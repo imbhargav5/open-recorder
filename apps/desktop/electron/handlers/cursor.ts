@@ -4,7 +4,15 @@
  */
 
 import fs from "node:fs";
-import type { AppState, CursorTelemetryPoint } from "../state.js";
+import { screen } from "electron";
+import type {
+	AppState,
+	CursorTelemetryBounds,
+	CursorTelemetryPoint,
+	SelectedSource,
+} from "../state.js";
+
+const CURSOR_SAMPLE_INTERVAL_MS = 16;
 
 function telemetryPathForVideo(videoPath: string): string {
 	return videoPath
@@ -14,16 +22,63 @@ function telemetryPathForVideo(videoPath: string): string {
 		.concat(".cursor.json");
 }
 
-function cursorTelemetryPayload(samples: CursorTelemetryPoint[]): unknown {
-	return { samples, clicks: [] };
+function clamp(value: number, min: number, max: number) {
+	return Math.min(Math.max(value, min), max);
+}
+
+function getSourceDisplayId(source: SelectedSource | null) {
+	const sourceDisplayId = source?.displayId ?? source?.display_id;
+	if (!sourceDisplayId) return undefined;
+
+	const numericDisplayId = Number(sourceDisplayId);
+	return Number.isFinite(numericDisplayId) ? numericDisplayId : undefined;
+}
+
+function getDisplayBoundsForSource(source: SelectedSource | null): CursorTelemetryBounds {
+	const displays = screen.getAllDisplays();
+	const sourceDisplayId = getSourceDisplayId(source);
+	const matchingDisplay =
+		sourceDisplayId !== undefined
+			? displays.find((display) => display.id === sourceDisplayId)
+			: undefined;
+	const cursorDisplay = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+	const fallbackDisplay = matchingDisplay ?? cursorDisplay ?? screen.getPrimaryDisplay();
+	const { x, y, width, height } = fallbackDisplay.bounds;
+
+	return { x, y, width, height };
+}
+
+function sampleCursorPoint(bounds: CursorTelemetryBounds, startedAt: number): CursorTelemetryPoint {
+	const point = screen.getCursorScreenPoint();
+
+	return {
+		x: clamp(point.x - bounds.x, 0, bounds.width),
+		y: clamp(point.y - bounds.y, 0, bounds.height),
+		timestamp: Date.now() - startedAt,
+		cursor_type: "arrow",
+		click_type: undefined,
+	};
+}
+
+function cursorTelemetryPayload(
+	samples: CursorTelemetryPoint[],
+	bounds?: CursorTelemetryBounds,
+): unknown {
+	return {
+		width: bounds?.width,
+		height: bounds?.height,
+		samples,
+		clicks: [],
+	};
 }
 
 async function writeCursorTelemetrySidecar(
 	videoPath: string,
 	samples: CursorTelemetryPoint[],
+	bounds?: CursorTelemetryBounds,
 ): Promise<void> {
 	const telemetryPath = telemetryPathForVideo(videoPath);
-	const payload = cursorTelemetryPayload(samples);
+	const payload = cursorTelemetryPayload(samples, bounds);
 	await fs.promises.writeFile(telemetryPath, JSON.stringify(payload, null, 2));
 }
 
@@ -55,23 +110,14 @@ export function registerCursorHandlers(
 
 		const samples: CursorTelemetryPoint[] = [];
 		let running = true;
-
-		// On Linux we could poll X11, on macOS use native APIs.
-		// For now, use a simple interval-based sampler as a stub.
 		const startedAt = Date.now();
+		const bounds = getDisplayBoundsForSource(state.selectedSource);
+
+		samples.push(sampleCursorPoint(bounds, startedAt));
 		const intervalId = setInterval(() => {
 			if (!running) return;
-			// In a real implementation, query cursor position from the OS.
-			// For now, emit a placeholder sample so the array is non-empty.
-			const point: CursorTelemetryPoint = {
-				x: 0,
-				y: 0,
-				timestamp: Date.now() - startedAt,
-				cursor_type: "arrow",
-				click_type: undefined,
-			};
-			samples.push(point);
-		}, 33);
+			samples.push(sampleCursorPoint(bounds, startedAt));
+		}, CURSOR_SAMPLE_INTERVAL_MS);
 
 		setState((s) => {
 			s.cursorTelemetryCapture = {
@@ -80,6 +126,7 @@ export function registerCursorHandlers(
 					clearInterval(intervalId);
 				},
 				samples,
+				bounds,
 				intervalId,
 			};
 		});
@@ -110,7 +157,7 @@ export function registerCursorHandlers(
 			setState((s) => {
 				s.cursorTelemetry = samples;
 			});
-			await writeCursorTelemetrySidecar(videoPath, samples);
+			await writeCursorTelemetrySidecar(videoPath, samples, capture.bounds);
 		} else {
 			setState((s) => {
 				s.cursorTelemetry = [];

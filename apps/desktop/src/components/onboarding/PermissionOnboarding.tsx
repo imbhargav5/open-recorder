@@ -6,9 +6,17 @@
  * a brief resize so the user gets a clear, focused permission-granting experience.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useAtom, useSetAtom } from "jotai";
+import { useCallback, useEffect, useRef } from "react";
 import { HiShieldCheck } from "react-icons/hi2";
 import { MdCheck, MdClose, MdMic, MdRefresh, MdScreenShare, MdVideocam } from "react-icons/md";
+import {
+	type OnboardingStep,
+	permissionOnboardingRequestingAtom,
+	permissionOnboardingStepAtom,
+	resetPermissionOnboardingAtom,
+	screenRecordingAwaitingRelaunchAtom,
+} from "@/atoms/launch";
 import * as backend from "@/lib/backend";
 import { invoke } from "@/lib/electronBridge";
 import type {
@@ -20,8 +28,6 @@ import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 
 const ONBOARDING_COMPLETE_KEY = "open-recorder-onboarding-v1";
-
-type OnboardingStep = "welcome" | "screen_recording" | "microphone" | "camera" | "done";
 
 interface PermissionOnboardingProps {
 	permissionsHook: UsePermissionsResult;
@@ -91,15 +97,23 @@ export function PermissionOnboarding({ permissionsHook, onComplete }: Permission
 		openPermissionSettings,
 	} = permissionsHook;
 
-	const [step, setStep] = useState<OnboardingStep>("welcome");
-	const [isRequesting, setIsRequesting] = useState(false);
+	const [step, setStep] = useAtom(permissionOnboardingStepAtom);
+	const [isRequesting, setIsRequesting] = useAtom(permissionOnboardingRequestingAtom);
 	// Screen-recording needs a relaunch before macOS picks up a new grant in
 	// the running process (the TCC status is cached per-process).  When the
 	// user has gone through "Grant Permission → open Settings" at least once,
 	// surface a "Quit & Relaunch" affordance instead of pretending the 500ms
 	// refetch will work.
-	const [screenRecordingAwaitingRelaunch, setScreenRecordingAwaitingRelaunch] = useState(false);
+	const [screenRecordingAwaitingRelaunch, setScreenRecordingAwaitingRelaunch] = useAtom(
+		screenRecordingAwaitingRelaunchAtom,
+	);
+	const resetOnboardingState = useSetAtom(resetPermissionOnboardingAtom);
 	const resizedRef = useRef(false);
+
+	useEffect(() => {
+		resetOnboardingState();
+		return () => resetOnboardingState();
+	}, [resetOnboardingState]);
 
 	// Build the step list — skip macOS-only steps on other platforms
 	const steps: OnboardingStep[] = isMacOS
@@ -140,7 +154,7 @@ export function PermissionOnboarding({ permissionsHook, onComplete }: Permission
 		if (nextIndex < steps.length) {
 			setStep(steps[nextIndex]);
 		}
-	}, [currentIndex, steps]);
+	}, [currentIndex, setStep, steps]);
 
 	const handleGrantPermission = useCallback(async () => {
 		setIsRequesting(true);
@@ -187,6 +201,8 @@ export function PermissionOnboarding({ permissionsHook, onComplete }: Permission
 		requestCameraAccess,
 		openPermissionSettings,
 		refreshPermissions,
+		setIsRequesting,
+		setScreenRecordingAwaitingRelaunch,
 	]);
 
 	const handleRelaunchApp = useCallback(async () => {
@@ -199,7 +215,7 @@ export function PermissionOnboarding({ permissionsHook, onComplete }: Permission
 		}
 		// Normal path: the app restarts before we get here — no need to reset
 		// isRequesting on success.
-	}, []);
+	}, [setIsRequesting]);
 
 	// Once the OS reports screen recording is actually granted, drop the
 	// "awaiting relaunch" banner automatically so the user can keep moving
@@ -209,7 +225,11 @@ export function PermissionOnboarding({ permissionsHook, onComplete }: Permission
 		if (permissions.screenRecording === "granted" && screenRecordingAwaitingRelaunch) {
 			setScreenRecordingAwaitingRelaunch(false);
 		}
-	}, [permissions.screenRecording, screenRecordingAwaitingRelaunch]);
+	}, [
+		permissions.screenRecording,
+		screenRecordingAwaitingRelaunch,
+		setScreenRecordingAwaitingRelaunch,
+	]);
 
 	// ─── Step Content ────────────────────────────────────────────────────────
 

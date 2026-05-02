@@ -9,6 +9,7 @@ export interface SelectedSource {
 	sourceType?: string; // "screen" | "window"
 	thumbnail?: string;
 	displayId?: string;
+	display_id?: string;
 	appIcon?: string;
 	originalName?: string;
 	appName?: string;
@@ -45,6 +46,13 @@ export interface CursorTelemetryPoint {
 	click_type?: string;
 }
 
+export interface CursorTelemetryBounds {
+	x: number;
+	y: number;
+	width: number;
+	height: number;
+}
+
 export interface ShortcutConfig {
 	startStopRecording?: string;
 	pauseResumeRecording?: string;
@@ -54,6 +62,7 @@ export interface ShortcutConfig {
 export interface CursorTelemetryCapture {
 	stop: () => void;
 	samples: CursorTelemetryPoint[];
+	bounds: CursorTelemetryBounds;
 	intervalId?: ReturnType<typeof setInterval>;
 }
 

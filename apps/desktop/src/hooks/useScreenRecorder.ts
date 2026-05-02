@@ -157,7 +157,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	const startTime = useRef<number>(0);
 	const nativeScreenRecording = useRef(false);
 	const wgcRecording = useRef(false);
-	const linuxCursorTelemetryCaptureActive = useRef(false);
+	const cursorTelemetryCaptureActive = useRef(false);
 	const startInFlight = useRef(false);
 	const hasPromptedForReselect = useRef(false);
 	const selectedSourceName = useRef<string | undefined>(undefined);
@@ -167,17 +167,17 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	const facecamPendingWrites = useRef<Promise<void>[]>([]);
 	const mountedRef = useRef(true);
 
-	const stopLinuxCursorTelemetryCapture = useCallback(async (videoPath?: string | null) => {
-		if (!linuxCursorTelemetryCaptureActive.current) {
+	const stopCursorTelemetryCapture = useCallback(async (videoPath?: string | null) => {
+		if (!cursorTelemetryCaptureActive.current) {
 			return;
 		}
 
-		linuxCursorTelemetryCaptureActive.current = false;
+		cursorTelemetryCaptureActive.current = false;
 
 		try {
 			await backend.stopCursorTelemetryCapture(videoPath ?? null);
 		} catch (error) {
-			console.warn("Failed to persist Linux cursor telemetry:", error);
+			console.warn("Failed to persist cursor telemetry:", error);
 		}
 	}, []);
 
@@ -596,7 +596,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			.onRecordingInterrupted(() => {
 				setRecording(false);
 				nativeScreenRecording.current = false;
-				void stopLinuxCursorTelemetryCapture(null);
+				void stopCursorTelemetryCapture(null);
 				cleanupCapturedMedia();
 				void backend.setRecordingState(false);
 			})
@@ -622,7 +622,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				cameraRecorder.current.stop();
 			}
 
-			void stopLinuxCursorTelemetryCapture(null);
+			void stopCursorTelemetryCapture(null);
 			cleanupCapturedMedia();
 			if (recordingFile.current.path) {
 				void backend.deleteRecordingFile(recordingFile.current.path).catch(() => null);
@@ -633,7 +633,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			resetStagedRecordingFile(recordingFile.current);
 			resetStagedRecordingFile(facecamRecordingFile.current);
 		};
-	}, [cleanupCapturedMedia, stopLinuxCursorTelemetryCapture, stopRecording, setRecording]);
+	}, [cleanupCapturedMedia, stopCursorTelemetryCapture, stopRecording, setRecording]);
 
 	const startRecording = async () => {
 		if (startInFlight.current) {
@@ -725,18 +725,16 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				}
 			}
 
-			if (platform === "linux") {
-				try {
-					await backend.startCursorTelemetryCapture();
-					linuxCursorTelemetryCaptureActive.current = true;
-				} catch (error) {
-					linuxCursorTelemetryCaptureActive.current = false;
-					console.warn("Linux cursor telemetry capture is unavailable:", error);
-				}
+			try {
+				await backend.startCursorTelemetryCapture();
+				cursorTelemetryCaptureActive.current = true;
+			} catch (error) {
+				cursorTelemetryCaptureActive.current = false;
+				console.warn("Cursor telemetry capture is unavailable:", error);
 			}
 
 			const wantsAudioCapture = microphoneEnabled || systemAudioEnabled;
-			const shouldHideSourceCursor = linuxCursorTelemetryCaptureActive.current;
+			const shouldHideSourceCursor = cursorTelemetryCaptureActive.current;
 
 			try {
 				await backend.hideCursor();
@@ -940,12 +938,12 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 					);
 					if (!storedPath) {
 						console.error("Failed to store video");
-						await stopLinuxCursorTelemetryCapture(null);
+						await stopCursorTelemetryCapture(null);
 						return;
 					}
 
 					await backend.setCurrentVideoPath(storedPath).catch(() => null);
-					await stopLinuxCursorTelemetryCapture(storedPath);
+					await stopCursorTelemetryCapture(storedPath);
 					const facecamResult = pendingFacecamResult.current
 						? await pendingFacecamResult.current
 						: null;
@@ -965,7 +963,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 					);
 				} catch (error) {
 					console.error("Error saving recording:", error);
-					await stopLinuxCursorTelemetryCapture(null);
+					await stopCursorTelemetryCapture(null);
 					if (recordingFile.current.path) {
 						await backend.deleteRecordingFile(recordingFile.current.path).catch(() => null);
 					}
@@ -988,7 +986,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			);
 			setRecording(false);
 			const facecamResultPromise = stopFacecamCapture();
-			await stopLinuxCursorTelemetryCapture(recordingFile.current.path);
+			await stopCursorTelemetryCapture(recordingFile.current.path);
 			cleanupCapturedMedia();
 			if (recordingFile.current.path) {
 				await backend.deleteRecordingFile(recordingFile.current.path).catch(() => null);

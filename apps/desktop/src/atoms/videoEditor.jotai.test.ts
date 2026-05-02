@@ -11,6 +11,10 @@
 import { createStore } from "jotai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+	addCustomFontDialogOpenAtom,
+	addCustomFontImportUrlAtom,
+	addCustomFontLoadingAtom,
+	addCustomFontNameAtom,
 	annotationRegionsAtom,
 	aspectRatioAtom,
 	audioMutedAtom,
@@ -18,15 +22,19 @@ import {
 	backgroundBlurAtom,
 	borderRadiusAtom,
 	connectZoomsAtom,
+	cropControlDragHandleAtom,
+	cropControlDragStartAtom,
+	cropControlInitialCropAtom,
 	cropRegionAtom,
-	cursorSettingsAtom,
 	currentProjectPathAtom,
+	cursorSettingsAtom,
 	durationAtom,
+	exportDialogShowSuccessAtom,
 	exportErrorAtom,
+	exportedFilePathAtom,
 	exportFormatAtom,
 	exportProgressAtom,
 	exportQualityAtom,
-	exportedFilePathAtom,
 	facecamOffsetMsAtom,
 	facecamPlaybackPathAtom,
 	facecamVideoPathAtom,
@@ -39,6 +47,9 @@ import {
 	lastSavedSnapshotAtom,
 	paddingAtom,
 	playbackReadyAtom,
+	resetAddCustomFontDialogAtom,
+	resetCropControlDragAtom,
+	resetVideoPlaybackRuntimeAtom,
 	selectedAnnotationIdAtom,
 	selectedSpeedIdAtom,
 	selectedTrimIdAtom,
@@ -52,6 +63,13 @@ import {
 	videoErrorAtom,
 	videoLoadingAtom,
 	videoPathAtom,
+	videoPlaybackAnnotationVisibilityTickAtom,
+	videoPlaybackCursorOverlayReadyAtom,
+	videoPlaybackFacecamReadyAtom,
+	videoPlaybackFirstFrameReadyAtom,
+	videoPlaybackMetadataReadyAtom,
+	videoPlaybackPixiReadyAtom,
+	videoPlaybackResolvedWallpaperAtom,
 	videoSourcePathAtom,
 	zoomMotionBlurAtom,
 	zoomRegionsAtom,
@@ -112,6 +130,16 @@ describe("videoEditor atoms – loading/error defaults", () => {
 
 	it("videoErrorAtom defaults to null", () => {
 		expect(store.get(videoErrorAtom)).toBeNull();
+	});
+
+	it("video playback runtime atoms default to not ready", () => {
+		expect(store.get(videoPlaybackPixiReadyAtom)).toBe(false);
+		expect(store.get(videoPlaybackMetadataReadyAtom)).toBe(false);
+		expect(store.get(videoPlaybackFirstFrameReadyAtom)).toBe(false);
+		expect(store.get(videoPlaybackCursorOverlayReadyAtom)).toBe(false);
+		expect(store.get(videoPlaybackFacecamReadyAtom)).toBe(false);
+		expect(store.get(videoPlaybackAnnotationVisibilityTickAtom)).toBe(0);
+		expect(store.get(videoPlaybackResolvedWallpaperAtom)).toBeNull();
 	});
 });
 
@@ -238,6 +266,12 @@ describe("videoEditor atoms – region defaults", () => {
 		expect(typeof crop).toBe("object");
 		expect(crop).not.toBeNull();
 	});
+
+	it("crop control drag atoms default to idle", () => {
+		expect(store.get(cropControlDragHandleAtom)).toBeNull();
+		expect(store.get(cropControlDragStartAtom)).toEqual({ x: 0, y: 0 });
+		expect(store.get(cropControlInitialCropAtom)).toEqual({ x: 0, y: 0, width: 1, height: 1 });
+	});
 });
 
 describe("videoEditor atoms – export defaults", () => {
@@ -261,6 +295,10 @@ describe("videoEditor atoms – export defaults", () => {
 
 	it("showExportDialogAtom defaults to false", () => {
 		expect(store.get(showExportDialogAtom)).toBe(false);
+	});
+
+	it("exportDialogShowSuccessAtom defaults to false", () => {
+		expect(store.get(exportDialogShowSuccessAtom)).toBe(false);
 	});
 
 	it("showShortcutsDialogAtom defaults to false", () => {
@@ -302,6 +340,13 @@ describe("videoEditor atoms – export defaults", () => {
 	it("lastSavedSnapshotAtom defaults to null", () => {
 		expect(store.get(lastSavedSnapshotAtom)).toBeNull();
 	});
+
+	it("add custom font dialog atoms default to closed, empty, and idle", () => {
+		expect(store.get(addCustomFontDialogOpenAtom)).toBe(false);
+		expect(store.get(addCustomFontImportUrlAtom)).toBe("");
+		expect(store.get(addCustomFontNameAtom)).toBe("");
+		expect(store.get(addCustomFontLoadingAtom)).toBe(false);
+	});
 });
 
 // ─── Mutations ───────────────────────────────────────────────────────────────
@@ -335,13 +380,55 @@ describe("videoEditor atoms – mutations", () => {
 		expect(store.get(videoLoadingAtom)).toBe(false);
 	});
 
+	it("can reset video playback runtime state", () => {
+		store.set(videoPlaybackPixiReadyAtom, true);
+		store.set(videoPlaybackMetadataReadyAtom, true);
+		store.set(videoPlaybackFirstFrameReadyAtom, true);
+		store.set(videoPlaybackCursorOverlayReadyAtom, true);
+		store.set(videoPlaybackFacecamReadyAtom, true);
+		store.set(videoPlaybackAnnotationVisibilityTickAtom, 2);
+		store.set(videoPlaybackResolvedWallpaperAtom, "/wallpaper.jpg");
+		store.set(resetVideoPlaybackRuntimeAtom);
+		expect(store.get(videoPlaybackPixiReadyAtom)).toBe(false);
+		expect(store.get(videoPlaybackMetadataReadyAtom)).toBe(false);
+		expect(store.get(videoPlaybackFirstFrameReadyAtom)).toBe(false);
+		expect(store.get(videoPlaybackCursorOverlayReadyAtom)).toBe(false);
+		expect(store.get(videoPlaybackFacecamReadyAtom)).toBe(false);
+		expect(store.get(videoPlaybackAnnotationVisibilityTickAtom)).toBe(0);
+		expect(store.get(videoPlaybackResolvedWallpaperAtom)).toBeNull();
+	});
+
+	it("can reset custom font dialog fields without closing it", () => {
+		store.set(addCustomFontDialogOpenAtom, true);
+		store.set(addCustomFontImportUrlAtom, "https://fonts.googleapis.com/css2?family=Inter");
+		store.set(addCustomFontNameAtom, "Inter");
+		store.set(addCustomFontLoadingAtom, true);
+		store.set(resetAddCustomFontDialogAtom);
+		expect(store.get(addCustomFontDialogOpenAtom)).toBe(true);
+		expect(store.get(addCustomFontImportUrlAtom)).toBe("");
+		expect(store.get(addCustomFontNameAtom)).toBe("");
+		expect(store.get(addCustomFontLoadingAtom)).toBe(false);
+	});
+
+	it("can reset crop control drag state", () => {
+		store.set(cropControlDragHandleAtom, "bottom");
+		store.set(cropControlDragStartAtom, { x: 0.25, y: 0.75 });
+		store.set(cropControlInitialCropAtom, { x: 0.1, y: 0.2, width: 0.6, height: 0.5 });
+		store.set(resetCropControlDragAtom);
+		expect(store.get(cropControlDragHandleAtom)).toBeNull();
+		expect(store.get(cropControlDragStartAtom)).toEqual({ x: 0, y: 0 });
+		expect(store.get(cropControlInitialCropAtom)).toEqual({ x: 0, y: 0, width: 1, height: 1 });
+	});
+
 	it("can set durationAtom after video loads", () => {
 		store.set(durationAtom, 120_000);
 		expect(store.get(durationAtom)).toBe(120_000);
 	});
 
 	it("can add a zoom region", () => {
-		store.set(zoomRegionsAtom, [{ id: "z1", startMs: 0, endMs: 2000, depth: 2, focus: { cx: 0.5, cy: 0.5 } }]);
+		store.set(zoomRegionsAtom, [
+			{ id: "z1", startMs: 0, endMs: 2000, depth: 2, focus: { cx: 0.5, cy: 0.5 } },
+		]);
 		expect(store.get(zoomRegionsAtom)).toHaveLength(1);
 		expect(store.get(zoomRegionsAtom)[0].id).toBe("z1");
 	});
@@ -393,7 +480,9 @@ describe("videoEditor atoms – store isolation", () => {
 	it("zoomRegionsAtom in storeA does not bleed into storeB", () => {
 		const storeA = createStore();
 		const storeB = createStore();
-		storeA.set(zoomRegionsAtom, [{ id: "z1", startMs: 0, endMs: 1000, depth: 1, focus: { cx: 0.5, cy: 0.5 } }]);
+		storeA.set(zoomRegionsAtom, [
+			{ id: "z1", startMs: 0, endMs: 1000, depth: 1, focus: { cx: 0.5, cy: 0.5 } },
+		]);
 		expect(storeB.get(zoomRegionsAtom)).toHaveLength(0);
 	});
 
@@ -432,7 +521,9 @@ describe("videoEditor atoms – subscriptions", () => {
 		const unsub = store.sub(zoomRegionsAtom, listener);
 
 		store.set(zoomRegionsAtom, []);
-		store.set(zoomRegionsAtom, [{ id: "z1", startMs: 0, endMs: 500, depth: 1, focus: { cx: 0.5, cy: 0.5 } }]);
+		store.set(zoomRegionsAtom, [
+			{ id: "z1", startMs: 0, endMs: 500, depth: 1, focus: { cx: 0.5, cy: 0.5 } },
+		]);
 
 		expect(listener).toHaveBeenCalledTimes(2);
 		unsub();

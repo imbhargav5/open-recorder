@@ -1,110 +1,126 @@
-import { useState, useEffect, type FC, type RefObject } from "react";
 import { useTimelineContext } from "dnd-timeline";
+import { useAtom } from "jotai";
+import { type FC, type RefObject, useEffect } from "react";
+import { timelineDraggingKeyframeIdAtom } from "@/atoms/timeline";
 
 interface Keyframe {
-  id: string;
-  time: number;
+	id: string;
+	time: number;
 }
 
 interface KeyframeMarkersProps {
-  keyframes: Keyframe[];
-  selectedKeyframeId: string | null;
-  setSelectedKeyframeId: (id: string | null) => void;
-  onKeyframeMove: (id: string, newTime: number) => void;
-  videoDurationMs: number;
-  timelineRef: RefObject<HTMLDivElement | null>;
+	keyframes: Keyframe[];
+	selectedKeyframeId: string | null;
+	setSelectedKeyframeId: (id: string | null) => void;
+	onKeyframeMove: (id: string, newTime: number) => void;
+	videoDurationMs: number;
+	timelineRef: RefObject<HTMLDivElement | null>;
 }
 
 const KeyframeMarkers: FC<KeyframeMarkersProps> = ({
-  keyframes,
-  selectedKeyframeId,
-  setSelectedKeyframeId,
-  onKeyframeMove,
-  videoDurationMs,
-  timelineRef
+	keyframes,
+	selectedKeyframeId,
+	setSelectedKeyframeId,
+	onKeyframeMove,
+	videoDurationMs,
+	timelineRef,
 }) => {
-  const { sidebarWidth, range, valueToPixels, pixelsToValue } = useTimelineContext();
-  const [draggingKeyframeId, setDraggingKeyframeId] = useState<string | null>(null);
+	const { sidebarWidth, range, valueToPixels, pixelsToValue } = useTimelineContext();
+	const [draggingKeyframeId, setDraggingKeyframeId] = useAtom(timelineDraggingKeyframeIdAtom);
 
-  useEffect(() => {
-    if (!draggingKeyframeId) return;
+	useEffect(() => {
+		return () => setDraggingKeyframeId(null);
+	}, [setDraggingKeyframeId]);
 
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!timelineRef.current) return;
+	useEffect(() => {
+		if (!draggingKeyframeId) return;
 
-      let rect: DOMRect;
-      try {
-        rect = timelineRef.current.getBoundingClientRect();
-      } catch {
-        return;
-      }
-      const clickX = e.clientX - rect.left - sidebarWidth;
-      const relativeMs = pixelsToValue(clickX);
-      const absoluteMs = Math.max(0, Math.min(range.start + relativeMs, videoDurationMs));
+		const handleMouseMove = (e: MouseEvent) => {
+			if (!timelineRef.current) return;
 
-      // Update the keyframe position in real-time
-      onKeyframeMove(draggingKeyframeId, absoluteMs);
-    };
+			let rect: DOMRect;
+			try {
+				rect = timelineRef.current.getBoundingClientRect();
+			} catch {
+				return;
+			}
+			const clickX = e.clientX - rect.left - sidebarWidth;
+			const relativeMs = pixelsToValue(clickX);
+			const absoluteMs = Math.max(0, Math.min(range.start + relativeMs, videoDurationMs));
 
-    const handleMouseUp = () => {
-      setDraggingKeyframeId(null);
-      document.body.style.cursor = '';
-    };
+			// Update the keyframe position in real-time
+			onKeyframeMove(draggingKeyframeId, absoluteMs);
+		};
 
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
-    document.body.style.cursor = 'ew-resize';
+		const handleMouseUp = () => {
+			setDraggingKeyframeId(null);
+			document.body.style.cursor = "";
+		};
 
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-      document.body.style.cursor = '';
-    };
-  }, [draggingKeyframeId, onKeyframeMove, timelineRef, sidebarWidth, range.start, videoDurationMs, pixelsToValue]);
+		window.addEventListener("mousemove", handleMouseMove);
+		window.addEventListener("mouseup", handleMouseUp);
+		document.body.style.cursor = "ew-resize";
 
-  return (
-    <>
-      {keyframes.map(kf => {
-        const offset = valueToPixels(kf.time - range.start);
-        const isSelected = kf.id === selectedKeyframeId;
-        const isDragging = kf.id === draggingKeyframeId;
+		return () => {
+			window.removeEventListener("mousemove", handleMouseMove);
+			window.removeEventListener("mouseup", handleMouseUp);
+			document.body.style.cursor = "";
+		};
+	}, [
+		draggingKeyframeId,
+		onKeyframeMove,
+		timelineRef,
+		sidebarWidth,
+		range.start,
+		videoDurationMs,
+		pixelsToValue,
+		setDraggingKeyframeId,
+	]);
 
-        return (
-          <div
-            key={kf.id}
-            className={`absolute top-8 cursor-grab active:cursor-grabbing ${isSelected ? 'ring-2 ring-[#2563EB]' : ''}`}
-            style={{
-              left: `${sidebarWidth + offset - 8}px`,
-              zIndex: isDragging ? 50 : 40,
-              transition: isDragging ? 'none' : 'left 0.1s ease-out'
-            }}
-            onMouseDown={e => {
-              e.stopPropagation();
-              setSelectedKeyframeId(kf.id);
-              setDraggingKeyframeId(kf.id);
-            }}
-            onContextMenu={e => {
-              e.preventDefault();
-              e.stopPropagation();
-              setSelectedKeyframeId(kf.id);
-            }}
-            title={`Keyframe @ ${Math.round(kf.time)}ms (drag to move, Delete/Backspace to remove)`}
-          >
-            <div style={{
-              width: '10px',
-              height: '10px',
-              background: '#ffe100ff',
-              transform: 'rotate(45deg)',
-              border: 'none',
-              opacity: isSelected ? 1 : 0.6,
-              transition: 'opacity 0.15s',
-            }} />
-          </div>
-        );
-      })}
-    </>
-  );
+	return (
+		<>
+			{keyframes.map((kf) => {
+				const offset = valueToPixels(kf.time - range.start);
+				const isSelected = kf.id === selectedKeyframeId;
+				const isDragging = kf.id === draggingKeyframeId;
+
+				return (
+					<div
+						key={kf.id}
+						className={`absolute top-8 cursor-grab active:cursor-grabbing ${isSelected ? "ring-2 ring-[#2563EB]" : ""}`}
+						style={{
+							left: `${sidebarWidth + offset - 8}px`,
+							zIndex: isDragging ? 50 : 40,
+							transition: isDragging ? "none" : "left 0.1s ease-out",
+						}}
+						onMouseDown={(e) => {
+							e.stopPropagation();
+							setSelectedKeyframeId(kf.id);
+							setDraggingKeyframeId(kf.id);
+						}}
+						onContextMenu={(e) => {
+							e.preventDefault();
+							e.stopPropagation();
+							setSelectedKeyframeId(kf.id);
+						}}
+						title={`Keyframe @ ${Math.round(kf.time)}ms (drag to move, Delete/Backspace to remove)`}
+					>
+						<div
+							style={{
+								width: "10px",
+								height: "10px",
+								background: "#ffe100ff",
+								transform: "rotate(45deg)",
+								border: "none",
+								opacity: isSelected ? 1 : 0.6,
+								transition: "opacity 0.15s",
+							}}
+						/>
+					</div>
+				);
+			})}
+		</>
+	);
 };
 
 export default KeyframeMarkers;
-

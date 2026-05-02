@@ -1,287 +1,286 @@
-import { useEffect, useState } from 'react';
-import { X, Download, Loader2 } from 'lucide-react';
-import { useAtomValue } from 'jotai';
-import { Button } from '@/components/ui/button';
-import { toast } from 'sonner';
-import { revealInFolder } from '@/lib/backend';
+import { useAtom, useAtomValue } from "jotai";
+import { Download, Loader2, X } from "lucide-react";
+import { useEffect } from "react";
+import { toast } from "sonner";
 import {
-  exportedFilePathAtom,
-  exportErrorAtom,
-  exportProgressAtom,
-  isExportingAtom,
-  showExportDialogAtom,
-} from '@/atoms/videoEditor';
-
+	exportDialogShowSuccessAtom,
+	exportErrorAtom,
+	exportedFilePathAtom,
+	exportFormatAtom,
+	exportProgressAtom,
+	isExportingAtom,
+	showExportDialogAtom,
+} from "@/atoms/videoEditor";
+import { Button } from "@/components/ui/button";
+import { revealInFolder } from "@/lib/backend";
 
 interface ExportDialogProps {
-  onClose: () => void;
-  onCancel?: () => void;
-  onRetrySave?: () => void;
-  canRetrySave?: boolean;
-  exportFormat?: 'mp4' | 'gif';
+	onClose: () => void;
+	onCancel?: () => void;
+	onRetrySave?: () => void;
+	canRetrySave?: boolean;
 }
 
 export function ExportDialog({
-  onClose,
-  onCancel,
-  onRetrySave,
-  canRetrySave = false,
-  exportFormat = 'mp4',
+	onClose,
+	onCancel,
+	onRetrySave,
+	canRetrySave = false,
 }: ExportDialogProps) {
-  console.log("render <ExportDialog>");
-  // Bug #7: subscribe directly so VideoEditor doesn't re-render on export state changes
-  const isOpen = useAtomValue(showExportDialogAtom);
-  const isExporting = useAtomValue(isExportingAtom);
-  const progress = useAtomValue(exportProgressAtom);
-  const error = useAtomValue(exportErrorAtom);
-  const exportedFilePath = useAtomValue(exportedFilePathAtom);
+	console.log("render <ExportDialog>");
+	// Bug #7: subscribe directly so VideoEditor doesn't re-render on export state changes
+	const isOpen = useAtomValue(showExportDialogAtom);
+	const isExporting = useAtomValue(isExportingAtom);
+	const progress = useAtomValue(exportProgressAtom);
+	const error = useAtomValue(exportErrorAtom);
+	const exportedFilePath = useAtomValue(exportedFilePathAtom);
+	const exportFormat = useAtomValue(exportFormatAtom);
 
-  const [showSuccess, setShowSuccess] = useState(false);
+	const [showSuccess, setShowSuccess] = useAtom(exportDialogShowSuccessAtom);
 
-  // Reset showSuccess when a new export starts or dialog reopens
-  useEffect(() => {
-    if (isExporting) {
-      setShowSuccess(false);
-    }
-  }, [isExporting]);
+	// Reset showSuccess when a new export starts or dialog reopens
+	useEffect(() => {
+		if (isExporting) {
+			setShowSuccess(false);
+		}
+	}, [isExporting, setShowSuccess]);
 
-  // Reset showSuccess when dialog opens fresh
-  useEffect(() => {
-    if (isOpen && !isExporting && !progress) {
-      setShowSuccess(false);
-    }
-  }, [isOpen, isExporting, progress]);
+	// Reset showSuccess when dialog opens fresh
+	useEffect(() => {
+		if (isOpen && !isExporting && !progress) {
+			setShowSuccess(false);
+		}
+	}, [isOpen, isExporting, progress, setShowSuccess]);
 
-  useEffect(() => {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    if (!isExporting && progress && progress.percentage >= 100 && !error) {
-      setShowSuccess(true);
-      timer = setTimeout(() => {
-        setShowSuccess(false);
-        onClose();
-      }, 2000);
-    }
-    return () => clearTimeout(timer);
-  }, [isExporting, progress, error, onClose]);
+	useEffect(() => {
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		if (!isExporting && progress && progress.percentage >= 100 && !error) {
+			setShowSuccess(true);
+			timer = setTimeout(() => {
+				setShowSuccess(false);
+				onClose();
+			}, 2000);
+		}
+		return () => clearTimeout(timer);
+	}, [isExporting, progress, error, onClose, setShowSuccess]);
 
-  if (!isOpen) return null;
+	if (!isOpen) return null;
 
-  const formatLabel = exportFormat === 'gif' ? 'GIF' : 'Video';
+	const formatLabel = exportFormat === "gif" ? "GIF" : "Video";
 
-  // Determine if we're in the compiling phase (frames done but still exporting)
-  const isCompiling = isExporting && progress && progress.percentage >= 100 && exportFormat === 'gif';
-  const isFinalizing = progress?.phase === 'finalizing';
-  const renderProgress = progress?.renderProgress;
+	// Determine if we're in the compiling phase (frames done but still exporting)
+	const isCompiling =
+		isExporting && progress && progress.percentage >= 100 && exportFormat === "gif";
+	const isFinalizing = progress?.phase === "finalizing";
+	const renderProgress = progress?.renderProgress;
 
-  // Get status message based on phase
-  const getStatusMessage = () => {
-    if (error) return 'Please try again';
-    if (isCompiling || isFinalizing) {
-      if (renderProgress !== undefined && renderProgress > 0) {
-        return `Compiling GIF... ${renderProgress}%`;
-      }
-      return 'Compiling GIF... This may take a while';
-    }
-    return 'This may take a moment...';
-  };
+	// Get status message based on phase
+	const getStatusMessage = () => {
+		if (error) return "Please try again";
+		if (isCompiling || isFinalizing) {
+			if (renderProgress !== undefined && renderProgress > 0) {
+				return `Compiling GIF... ${renderProgress}%`;
+			}
+			return "Compiling GIF... This may take a while";
+		}
+		return "This may take a moment...";
+	};
 
-  // Get title based on phase
-  const getTitle = () => {
-    if (error) return 'Export Failed';
-    if (isCompiling || isFinalizing) return 'Compiling GIF';
-    return `Exporting ${formatLabel}`;
-  };
+	// Get title based on phase
+	const getTitle = () => {
+		if (error) return "Export Failed";
+		if (isCompiling || isFinalizing) return "Compiling GIF";
+		return `Exporting ${formatLabel}`;
+	};
 
-  const handleClickShowInFolder = async () => {
-    if (exportedFilePath) {
-      try {
-        await revealInFolder(exportedFilePath);
-      } catch (err) {
-        const errorMessage = String(err);
-        console.error('Error calling revealInFolder:', errorMessage);
-        toast.error(`Error revealing in folder: ${errorMessage}`);
-      }
-    }
-  };
+	const handleClickShowInFolder = async () => {
+		if (exportedFilePath) {
+			try {
+				await revealInFolder(exportedFilePath);
+			} catch (err) {
+				const errorMessage = String(err);
+				console.error("Error calling revealInFolder:", errorMessage);
+				toast.error(`Error revealing in folder: ${errorMessage}`);
+			}
+		}
+	};
 
-  return (
-    <>
-      <div
-        className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 animate-in fade-in duration-200"
-        onClick={isExporting ? undefined : onClose}
-      />
-      <div className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-[60] bg-[#09090b] rounded-2xl shadow-2xl border border-white/10 p-8 w-[90vw] max-w-md animate-in zoom-in-95 duration-200">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-4">
-            {showSuccess ? (
-              <>
-                <div className="w-12 h-12 rounded-full bg-[#2563EB]/20 flex items-center justify-center ring-1 ring-[#2563EB]/50">
-                  <Download className="w-6 h-6 text-[#2563EB]" />
-                </div>
-                <div className="flex flex-col gap-2">
-                  <span className="text-xl font-bold text-slate-200 block">Export Complete</span>
-                  <span className="text-sm text-slate-400">Your {formatLabel.toLowerCase()} is ready</span>
-                  {exportedFilePath && (
-                    <Button
-                      variant="secondary"
-                      onClick={handleClickShowInFolder}
-                      className="mt-2 w-fit px-3 py-1 text-sm rounded-md bg-white/10 hover:bg-white/20 text-slate-200"
-                    >
-                      Show in Folder
-                    </Button>
-                  )}
-                  {exportedFilePath && (
-                    <span className="text-xs text-slate-500 break-all max-w-xs mt-1">
-                      {exportedFilePath.split('/').pop()}
-                    </span>
-                  )}
-                </div>
-              </>
-            ) : (
-              <>
-                {isExporting ? (
-                  <div className="w-12 h-12 rounded-full bg-[#2563EB]/10 flex items-center justify-center">
-                    <Loader2 className="w-6 h-6 text-[#2563EB] animate-spin" />
-                  </div>
-                ) : (
-                  <div className="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center border border-white/10">
-                    <Download className="w-6 h-6 text-slate-200" />
-                  </div>
-                )}
-                <div>
-                  <span className="text-xl font-bold text-slate-200 block">
-                    {getTitle()}
-                  </span>
-                  <span className="text-sm text-slate-400">
-                    {getStatusMessage()}
-                  </span>
-                </div>
-              </>
-            )}
-          </div>
-          {!isExporting && (
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={onClose}
-              className="hover:bg-white/10 text-slate-400 hover:text-white rounded-full"
-            >
-              <X className="w-5 h-5" />
-            </Button>
-          )}
-        </div>
+	return (
+		<>
+			<div
+				className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 animate-in fade-in duration-200"
+				onClick={isExporting ? undefined : onClose}
+			/>
+			<div className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-[60] bg-[#09090b] rounded-2xl shadow-2xl border border-white/10 p-8 w-[90vw] max-w-md animate-in zoom-in-95 duration-200">
+				<div className="flex items-center justify-between mb-6">
+					<div className="flex items-center gap-4">
+						{showSuccess ? (
+							<>
+								<div className="w-12 h-12 rounded-full bg-[#2563EB]/20 flex items-center justify-center ring-1 ring-[#2563EB]/50">
+									<Download className="w-6 h-6 text-[#2563EB]" />
+								</div>
+								<div className="flex flex-col gap-2">
+									<span className="text-xl font-bold text-slate-200 block">Export Complete</span>
+									<span className="text-sm text-slate-400">
+										Your {formatLabel.toLowerCase()} is ready
+									</span>
+									{exportedFilePath && (
+										<Button
+											variant="secondary"
+											onClick={handleClickShowInFolder}
+											className="mt-2 w-fit px-3 py-1 text-sm rounded-md bg-white/10 hover:bg-white/20 text-slate-200"
+										>
+											Show in Folder
+										</Button>
+									)}
+									{exportedFilePath && (
+										<span className="text-xs text-slate-500 break-all max-w-xs mt-1">
+											{exportedFilePath.split("/").pop()}
+										</span>
+									)}
+								</div>
+							</>
+						) : (
+							<>
+								{isExporting ? (
+									<div className="w-12 h-12 rounded-full bg-[#2563EB]/10 flex items-center justify-center">
+										<Loader2 className="w-6 h-6 text-[#2563EB] animate-spin" />
+									</div>
+								) : (
+									<div className="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center border border-white/10">
+										<Download className="w-6 h-6 text-slate-200" />
+									</div>
+								)}
+								<div>
+									<span className="text-xl font-bold text-slate-200 block">{getTitle()}</span>
+									<span className="text-sm text-slate-400">{getStatusMessage()}</span>
+								</div>
+							</>
+						)}
+					</div>
+					{!isExporting && (
+						<Button
+							variant="ghost"
+							size="icon"
+							onClick={onClose}
+							className="hover:bg-white/10 text-slate-400 hover:text-white rounded-full"
+						>
+							<X className="w-5 h-5" />
+						</Button>
+					)}
+				</div>
 
-        {error && (
-          <div className="mb-6 animate-in slide-in-from-top-2">
-            <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 flex items-start gap-3">
-              <div className="p-1 bg-red-500/20 rounded-full">
-                <X className="w-3 h-3 text-red-400" />
-              </div>
-              <p className="text-sm text-red-400 leading-relaxed">{error}</p>
-            </div>
-            {!isExporting && canRetrySave && onRetrySave && (
-              <Button
-                onClick={onRetrySave}
-                className="w-full mt-3 bg-[#2563EB] text-white hover:bg-[#1D4ED8]"
-              >
-                Save Again
-              </Button>
-            )}
-          </div>
-        )}
+				{error && (
+					<div className="mb-6 animate-in slide-in-from-top-2">
+						<div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 flex items-start gap-3">
+							<div className="p-1 bg-red-500/20 rounded-full">
+								<X className="w-3 h-3 text-red-400" />
+							</div>
+							<p className="text-sm text-red-400 leading-relaxed">{error}</p>
+						</div>
+						{!isExporting && canRetrySave && onRetrySave && (
+							<Button
+								onClick={onRetrySave}
+								className="w-full mt-3 bg-[#2563EB] text-white hover:bg-[#1D4ED8]"
+							>
+								Save Again
+							</Button>
+						)}
+					</div>
+				)}
 
-        {isExporting && progress && (
-          <div className="space-y-6">
-            <div className="space-y-2">
-              <div className="flex justify-between text-xs font-medium text-slate-400 uppercase tracking-wider">
-                <span>{isCompiling || isFinalizing ? 'Compiling' : 'Rendering Frames'}</span>
-                <span className="font-mono text-slate-200">
-                  {isCompiling || isFinalizing ? (
-                    renderProgress !== undefined && renderProgress > 0 ? (
-                      `${renderProgress}%`
-                    ) : (
-                      <span className="flex items-center gap-2">
-                        <Loader2 className="w-3 h-3 animate-spin" />
-                        Processing...
-                      </span>
-                    )
-                  ) : (
-                    `${progress.percentage.toFixed(0)}%`
-                  )}
-                </span>
-              </div>
-              <div className="h-2 bg-white/5 rounded-full overflow-hidden border border-white/5">
-                {isCompiling || isFinalizing ? (
-                  // Show render progress if available, otherwise animated indeterminate bar
-                  renderProgress !== undefined && renderProgress > 0 ? (
-                    <div
-                      className="h-full bg-[#2563EB] shadow-[0_0_10px_rgba(37,99,235,0.3)] transition-all duration-300 ease-out"
-                      style={{ width: `${renderProgress}%` }}
-                    />
-                  ) : (
-                    <div className="h-full w-full relative overflow-hidden">
-                      <div
-                        className="absolute h-full w-1/3 bg-[#2563EB] shadow-[0_0_10px_rgba(37,99,235,0.3)]"
-                        style={{
-                          animation: 'indeterminate 1.5s ease-in-out infinite',
-                        }}
-                      />
-                      <style>{`
+				{isExporting && progress && (
+					<div className="space-y-6">
+						<div className="space-y-2">
+							<div className="flex justify-between text-xs font-medium text-slate-400 uppercase tracking-wider">
+								<span>{isCompiling || isFinalizing ? "Compiling" : "Rendering Frames"}</span>
+								<span className="font-mono text-slate-200">
+									{isCompiling || isFinalizing ? (
+										renderProgress !== undefined && renderProgress > 0 ? (
+											`${renderProgress}%`
+										) : (
+											<span className="flex items-center gap-2">
+												<Loader2 className="w-3 h-3 animate-spin" />
+												Processing...
+											</span>
+										)
+									) : (
+										`${progress.percentage.toFixed(0)}%`
+									)}
+								</span>
+							</div>
+							<div className="h-2 bg-white/5 rounded-full overflow-hidden border border-white/5">
+								{isCompiling || isFinalizing ? (
+									// Show render progress if available, otherwise animated indeterminate bar
+									renderProgress !== undefined && renderProgress > 0 ? (
+										<div
+											className="h-full bg-[#2563EB] shadow-[0_0_10px_rgba(37,99,235,0.3)] transition-all duration-300 ease-out"
+											style={{ width: `${renderProgress}%` }}
+										/>
+									) : (
+										<div className="h-full w-full relative overflow-hidden">
+											<div
+												className="absolute h-full w-1/3 bg-[#2563EB] shadow-[0_0_10px_rgba(37,99,235,0.3)]"
+												style={{
+													animation: "indeterminate 1.5s ease-in-out infinite",
+												}}
+											/>
+											<style>{`
                         @keyframes indeterminate {
                           0% { transform: translateX(-100%); }
                           100% { transform: translateX(400%); }
                         }
                       `}</style>
-                    </div>
-                  )
-                ) : (
-                  <div
-                    className="h-full bg-[#2563EB] shadow-[0_0_10px_rgba(37,99,235,0.3)] transition-all duration-300 ease-out"
-                    style={{ width: `${Math.min(progress.percentage, 100)}%` }}
-                  />
-                )}
-              </div>
-            </div>
+										</div>
+									)
+								) : (
+									<div
+										className="h-full bg-[#2563EB] shadow-[0_0_10px_rgba(37,99,235,0.3)] transition-all duration-300 ease-out"
+										style={{ width: `${Math.min(progress.percentage, 100)}%` }}
+									/>
+								)}
+							</div>
+						</div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-white/5 rounded-xl p-3 border border-white/5">
-                <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">
-                  {isCompiling || isFinalizing ? 'Status' : 'Format'}
-                </div>
-                <div className="text-slate-200 font-medium text-sm">
-                  {isCompiling || isFinalizing ? 'Compiling...' : formatLabel}
-                </div>
-              </div>
-              <div className="bg-white/5 rounded-xl p-3 border border-white/5">
-                <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Frames</div>
-                <div className="text-slate-200 font-medium text-sm">
-                  {progress.currentFrame} / {progress.totalFrames}
-                </div>
-              </div>
-            </div>
+						<div className="grid grid-cols-2 gap-4">
+							<div className="bg-white/5 rounded-xl p-3 border border-white/5">
+								<div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">
+									{isCompiling || isFinalizing ? "Status" : "Format"}
+								</div>
+								<div className="text-slate-200 font-medium text-sm">
+									{isCompiling || isFinalizing ? "Compiling..." : formatLabel}
+								</div>
+							</div>
+							<div className="bg-white/5 rounded-xl p-3 border border-white/5">
+								<div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">
+									Frames
+								</div>
+								<div className="text-slate-200 font-medium text-sm">
+									{progress.currentFrame} / {progress.totalFrames}
+								</div>
+							</div>
+						</div>
 
-            {onCancel && (
-              <div className="pt-2">
-                <Button
-                  onClick={onCancel}
-                  variant="destructive"
-                  className="w-full py-6 bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 hover:border-red-500/30 transition-all rounded-xl"
-                >
-                  Cancel Export
-                </Button>
-              </div>
-            )}
-          </div>
-        )}
+						{onCancel && (
+							<div className="pt-2">
+								<Button
+									onClick={onCancel}
+									variant="destructive"
+									className="w-full py-6 bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 hover:border-red-500/30 transition-all rounded-xl"
+								>
+									Cancel Export
+								</Button>
+							</div>
+						)}
+					</div>
+				)}
 
-        {showSuccess && (
-          <div className="text-center py-4 animate-in zoom-in-95">
-            <p className="text-lg text-slate-200 font-medium">
-              {formatLabel} saved successfully!
-            </p>
-          </div>
-        )}
-      </div>
-    </>
-  );
+				{showSuccess && (
+					<div className="text-center py-4 animate-in zoom-in-95">
+						<p className="text-lg text-slate-200 font-medium">{formatLabel} saved successfully!</p>
+					</div>
+				)}
+			</div>
+		</>
+	);
 }

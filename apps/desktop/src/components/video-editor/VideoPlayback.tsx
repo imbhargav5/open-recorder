@@ -1,3 +1,4 @@
+import { useAtom, useSetAtom } from "jotai";
 import { MotionBlurFilter } from "pixi-filters/motion-blur";
 import type React from "react";
 import {
@@ -8,8 +9,17 @@ import {
 	useImperativeHandle,
 	useMemo,
 	useRef,
-	useState,
 } from "react";
+import {
+	resetVideoPlaybackRuntimeAtom,
+	videoPlaybackAnnotationVisibilityTickAtom,
+	videoPlaybackCursorOverlayReadyAtom,
+	videoPlaybackFacecamReadyAtom,
+	videoPlaybackFirstFrameReadyAtom,
+	videoPlaybackMetadataReadyAtom,
+	videoPlaybackPixiReadyAtom,
+	videoPlaybackResolvedWallpaperAtom,
+} from "@/atoms/videoEditor";
 import { getAssetPath, getRenderableAssetUrl, isRenderableAssetUrl } from "@/lib/assetPath";
 import {
 	Application,
@@ -230,12 +240,15 @@ const VideoPlayback = memo(
 			const facecamMaskRef = useRef<Graphics | null>(null);
 			const facecamBorderRef = useRef<Graphics | null>(null);
 			const timeUpdateAnimationRef = useRef<number | null>(null);
-			const [pixiReady, setPixiReady] = useState(false);
-			const [metadataReady, setMetadataReady] = useState(false);
-			const [firstFrameReady, setFirstFrameReady] = useState(false);
-			const [cursorOverlayReady, setCursorOverlayReady] = useState(false);
-			const [facecamReady, setFacecamReady] = useState(false);
-			const [, setAnnotationVisibilityTick] = useState(0);
+			const [pixiReady, setPixiReady] = useAtom(videoPlaybackPixiReadyAtom);
+			const [metadataReady, setMetadataReady] = useAtom(videoPlaybackMetadataReadyAtom);
+			const [firstFrameReady, setFirstFrameReady] = useAtom(videoPlaybackFirstFrameReadyAtom);
+			const [cursorOverlayReady, setCursorOverlayReady] = useAtom(
+				videoPlaybackCursorOverlayReadyAtom,
+			);
+			const [facecamReady, setFacecamReady] = useAtom(videoPlaybackFacecamReadyAtom);
+			const setAnnotationVisibilityTick = useSetAtom(videoPlaybackAnnotationVisibilityTickAtom);
+			const resetVideoPlaybackRuntime = useSetAtom(resetVideoPlaybackRuntimeAtom);
 			const annotationRegionsRef = useRef(annotationRegions);
 			const selectedAnnotationIdRef = useRef(selectedAnnotationId);
 			const overlayRef = useRef<HTMLDivElement | null>(null);
@@ -261,6 +274,11 @@ const VideoPlayback = memo(
 			const layoutVideoContentRef = useRef<(() => void) | null>(null);
 			const layoutFacecamOverlayRef = useRef<(() => void) | null>(null);
 			const trimRegionsRef = useRef<TrimRegion[]>([]);
+
+			useEffect(() => {
+				resetVideoPlaybackRuntime();
+				return () => resetVideoPlaybackRuntime();
+			}, [resetVideoPlaybackRuntime]);
 
 			useEffect(() => {
 				const video = videoRef.current;
@@ -1536,7 +1554,7 @@ const VideoPlayback = memo(
 				setFacecamReady(true);
 			};
 
-			const [resolvedWallpaper, setResolvedWallpaper] = useState<string | null>(null);
+			const [resolvedWallpaper, setResolvedWallpaper] = useAtom(videoPlaybackResolvedWallpaperAtom);
 			const wallpaperResolutionIdRef = useRef(0);
 
 			useEffect(() => {

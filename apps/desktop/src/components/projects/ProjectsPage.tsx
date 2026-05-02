@@ -1,8 +1,6 @@
-import { useSetAtom } from "jotai";
 import { FolderOpen, Plus } from "lucide-react";
 import { useCallback } from "react";
 import { toast } from "sonner";
-import { internalViewAtom } from "@/atoms/navigation";
 import { Button } from "@/components/ui/button";
 import {
 	Empty,
@@ -13,18 +11,18 @@ import {
 } from "@/components/ui/empty";
 import * as backend from "@/lib/backend";
 
-export function ProjectsPage() {
-	const setView = useSetAtom(internalViewAtom);
+interface ProjectsPageProps {
+	onOpenProject: () => Promise<void>;
+}
 
+export function ProjectsPage({ onOpenProject }: ProjectsPageProps) {
 	const handleOpenProject = useCallback(async () => {
 		try {
-			const result = await backend.loadProjectFile();
-			if (!result?.filePath) return;
-			setView("editor");
+			await onOpenProject();
 		} catch (err) {
 			toast.error(`Failed to open project: ${String(err)}`);
 		}
-	}, [setView]);
+	}, [onOpenProject]);
 
 	const handleOpenRecordingsFolder = useCallback(async () => {
 		try {
