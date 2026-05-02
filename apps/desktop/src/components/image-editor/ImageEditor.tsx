@@ -1,8 +1,10 @@
 import Block from "@uiw/react-color-block";
-import { ArrowLeft, Check, ClipboardCopy, Download, Palette } from "lucide-react";
 import { useAtom } from "jotai";
+import { ArrowLeft, Check, ClipboardCopy, Download, Palette } from "lucide-react";
 import { useCallback, useEffect, useRef } from "react";
+import { toast } from "sonner";
 import {
+	type ImageBackgroundType,
 	imageBackgroundTypeAtom,
 	imageBorderRadiusAtom,
 	imageExportingAtom,
@@ -15,9 +17,7 @@ import {
 	imageSrcAtom,
 	imageWallpaperAtom,
 	imageWallpaperPreviewPathsAtom,
-	type ImageBackgroundType,
 } from "@/atoms/imageEditor";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Toaster } from "@/components/ui/sonner";
@@ -572,7 +572,7 @@ export default function ImageEditor() {
 							min={0}
 							max={120}
 							step={1}
-							className="w-full [&_[role=slider]]:bg-[#2563EB] [&_[role=slider]]:border-[#2563EB] [&_[role=slider]]:h-3 [&_[role=slider]]:w-3"
+							className="w-full"
 						/>
 					</div>
 
@@ -590,7 +590,7 @@ export default function ImageEditor() {
 							min={0}
 							max={50}
 							step={0.5}
-							className="w-full [&_[role=slider]]:bg-[#2563EB] [&_[role=slider]]:border-[#2563EB] [&_[role=slider]]:h-3 [&_[role=slider]]:w-3"
+							className="w-full"
 						/>
 					</div>
 
@@ -610,7 +610,7 @@ export default function ImageEditor() {
 							min={0}
 							max={1}
 							step={0.01}
-							className="w-full [&_[role=slider]]:bg-[#2563EB] [&_[role=slider]]:border-[#2563EB] [&_[role=slider]]:h-3 [&_[role=slider]]:w-3"
+							className="w-full"
 						/>
 					</div>
 				</div>

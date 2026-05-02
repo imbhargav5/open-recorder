@@ -1,4 +1,5 @@
 import Block from "@uiw/react-color-block";
+import { useAtom } from "jotai";
 import {
 	Bug,
 	Camera,
@@ -13,18 +14,17 @@ import {
 	Volume2,
 	X,
 } from "lucide-react";
-import { useAtom } from "jotai";
 import { memo, type ReactNode, useMemo, useRef } from "react";
+import { toast } from "sonner";
 import {
+	type SettingsSidebarTab,
 	settingsActiveTabAtom,
 	settingsBackgroundTabAtom,
 	settingsCustomImagesAtom,
 	settingsGradientAtom,
 	settingsSelectedColorAtom,
 	settingsShowCropModalAtom,
-	type SettingsSidebarTab,
 } from "@/atoms/settingsPanel";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
@@ -96,7 +96,6 @@ const COLOR_PALETTE = [
 	"#607D8B",
 	"#795548",
 ];
-
 
 type SettingsTabDefinition = {
 	id: SettingsSidebarTab;
@@ -452,7 +451,7 @@ function SettingsPanelInner({
 			case "appearance":
 				return (
 					<div className="space-y-3">
-						<div className="grid grid-cols-2 gap-2">
+						<div className="grid grid-cols-1 gap-2">
 							<div className="p-2 rounded-lg bg-white/5 border border-white/5">
 								<div className="flex items-center justify-between mb-1">
 									<div className="text-[10px] font-medium text-slate-300">Shadow</div>
@@ -466,7 +465,7 @@ function SettingsPanelInner({
 									min={0}
 									max={1}
 									step={0.01}
-									className="w-full [&_[role=slider]]:bg-[#2563EB] [&_[role=slider]]:border-[#2563EB] [&_[role=slider]]:h-3 [&_[role=slider]]:w-3"
+									className="w-full"
 								/>
 							</div>
 							<div className="p-2 rounded-lg bg-white/5 border border-white/5">
@@ -480,11 +479,11 @@ function SettingsPanelInner({
 									min={0}
 									max={25}
 									step={0.5}
-									className="w-full [&_[role=slider]]:bg-[#2563EB] [&_[role=slider]]:border-[#2563EB] [&_[role=slider]]:h-3 [&_[role=slider]]:w-3"
+									className="w-full"
 								/>
 							</div>
 						</div>
-						<div className="grid grid-cols-2 gap-2">
+						<div className="grid grid-cols-1 gap-2">
 							<div className="p-2 rounded-lg bg-white/5 border border-white/5">
 								<div className="flex items-center justify-between mb-1">
 									<div className="text-[10px] font-medium text-slate-300">Padding</div>
@@ -496,7 +495,7 @@ function SettingsPanelInner({
 									min={0}
 									max={100}
 									step={1}
-									className="w-full [&_[role=slider]]:bg-[#2563EB] [&_[role=slider]]:border-[#2563EB] [&_[role=slider]]:h-3 [&_[role=slider]]:w-3"
+									className="w-full"
 								/>
 							</div>
 							<div className="p-2 rounded-lg bg-white/5 border border-white/5">
@@ -512,7 +511,7 @@ function SettingsPanelInner({
 									min={0}
 									max={8}
 									step={0.25}
-									className="w-full [&_[role=slider]]:bg-[#2563EB] [&_[role=slider]]:border-[#2563EB] [&_[role=slider]]:h-3 [&_[role=slider]]:w-3"
+									className="w-full"
 								/>
 							</div>
 						</div>
@@ -530,7 +529,7 @@ function SettingsPanelInner({
 			case "cursor":
 				return (
 					<div className="space-y-3">
-						<div className="grid grid-cols-2 gap-2">
+						<div className="grid grid-cols-1 gap-2">
 							<div className="flex items-center justify-between p-2 rounded-lg bg-white/5 border border-white/5">
 								<div className="text-[10px] font-medium text-slate-300">Show Cursor</div>
 								<Switch
@@ -548,7 +547,7 @@ function SettingsPanelInner({
 								/>
 							</div>
 						</div>
-						<div className="grid grid-cols-2 gap-2">
+						<div className="grid grid-cols-1 gap-2">
 							<div className="p-2 rounded-lg bg-white/5 border border-white/5">
 								<div className="flex items-center justify-between mb-1">
 									<div className="text-[10px] font-medium text-slate-300">Size</div>
@@ -562,7 +561,7 @@ function SettingsPanelInner({
 									min={0.5}
 									max={10}
 									step={0.05}
-									className="w-full [&_[role=slider]]:bg-[#2563EB] [&_[role=slider]]:border-[#2563EB] [&_[role=slider]]:h-3 [&_[role=slider]]:w-3"
+									className="w-full"
 								/>
 							</div>
 							<div className="p-2 rounded-lg bg-white/5 border border-white/5">
@@ -578,11 +577,11 @@ function SettingsPanelInner({
 									min={0}
 									max={2}
 									step={0.01}
-									className="w-full [&_[role=slider]]:bg-[#2563EB] [&_[role=slider]]:border-[#2563EB] [&_[role=slider]]:h-3 [&_[role=slider]]:w-3"
+									className="w-full"
 								/>
 							</div>
 						</div>
-						<div className="grid grid-cols-2 gap-2">
+						<div className="grid grid-cols-1 gap-2">
 							<div className="p-2 rounded-lg bg-white/5 border border-white/5">
 								<div className="flex items-center justify-between mb-1">
 									<div className="text-[10px] font-medium text-slate-300">Motion Blur</div>
@@ -596,7 +595,7 @@ function SettingsPanelInner({
 									min={0}
 									max={2}
 									step={0.05}
-									className="w-full [&_[role=slider]]:bg-[#2563EB] [&_[role=slider]]:border-[#2563EB] [&_[role=slider]]:h-3 [&_[role=slider]]:w-3"
+									className="w-full"
 								/>
 							</div>
 							<div className="p-2 rounded-lg bg-white/5 border border-white/5">
@@ -612,7 +611,7 @@ function SettingsPanelInner({
 									min={0}
 									max={5}
 									step={0.05}
-									className="w-full [&_[role=slider]]:bg-[#2563EB] [&_[role=slider]]:border-[#2563EB] [&_[role=slider]]:h-3 [&_[role=slider]]:w-3"
+									className="w-full"
 								/>
 							</div>
 						</div>
@@ -681,7 +680,7 @@ function SettingsPanelInner({
 										min={12}
 										max={40}
 										step={1}
-										className="w-full [&_[role=slider]]:bg-[#2563EB] [&_[role=slider]]:border-[#2563EB] [&_[role=slider]]:h-3 [&_[role=slider]]:w-3"
+										className="w-full"
 									/>
 								</div>
 
@@ -699,93 +698,99 @@ function SettingsPanelInner({
 											min={0}
 											max={50}
 											step={1}
-											className="w-full [&_[role=slider]]:bg-[#2563EB] [&_[role=slider]]:border-[#2563EB] [&_[role=slider]]:h-3 [&_[role=slider]]:w-3"
+											className="w-full"
 										/>
 									</div>
 								)}
-							<div className="p-2 rounded-lg bg-white/5 border border-white/5">
-								<div className="flex items-center justify-between mb-1">
-									<div className="text-[10px] font-medium text-slate-300">Border Width</div>
-									<span className="text-[10px] text-slate-500 font-mono">
-										{facecamSettings.borderWidth.toFixed(0)}px
-									</span>
-								</div>
-								<Slider
-									value={[facecamSettings.borderWidth]}
-									onValueChange={(values) => updateFacecamSettings({ borderWidth: values[0] })}
-									min={0}
-									max={16}
-									step={1}
-									className="w-full [&_[role=slider]]:bg-[#2563EB] [&_[role=slider]]:border-[#2563EB] [&_[role=slider]]:h-3 [&_[role=slider]]:w-3"
-								/>
-							</div>
-
-							<div className="p-2 rounded-lg bg-white/5 border border-white/5">
-								<div className="text-[10px] font-medium text-slate-300 mb-1.5">Border Color</div>
-								<Block
-									color={facecamSettings.borderColor}
-									colors={COLOR_PALETTE}
-									onChange={(color) => updateFacecamSettings({ borderColor: color.hex })}
-								/>
-							</div>
-
-							<div className="p-2 rounded-lg bg-white/5 border border-white/5">
-								<div className="flex items-center justify-between mb-1">
-									<div className="text-[10px] font-medium text-slate-300">Margin</div>
-									<span className="text-[10px] text-slate-500 font-mono">
-										{facecamSettings.margin.toFixed(0)}%
-									</span>
-								</div>
-								<Slider
-									value={[facecamSettings.margin]}
-									onValueChange={(values) => updateFacecamSettings({ margin: values[0] })}
-									min={0}
-									max={12}
-									step={1}
-									className="w-full [&_[role=slider]]:bg-[#2563EB] [&_[role=slider]]:border-[#2563EB] [&_[role=slider]]:h-3 [&_[role=slider]]:w-3"
-								/>
-							</div>
-
-							<div className="p-2 rounded-lg bg-white/5 border border-white/5">
-								<div className="text-[10px] font-medium text-slate-300 mb-1.5">Position</div>
-								<div className="grid grid-cols-2 gap-1.5">
-									{FACECAM_ANCHORS.map((anchorOption) => {
-										const labels: Record<string, string> = {
-											"top-left": "Top Left",
-											"top-right": "Top Right",
-											"bottom-left": "Bottom Left",
-											"bottom-right": "Bottom Right",
-										};
-										const isActive =
-											facecamSettings.anchor === anchorOption ||
-											(!facecamSettings.anchor && anchorOption === "bottom-right");
-										return (
-											<Button
-												key={anchorOption}
-												type="button"
-												variant="outline"
-												onClick={() => updateFacecamSettings({ anchor: anchorOption, customX: undefined, customY: undefined })}
-												className={cn(
-													"h-7 text-[9px] border-white/10 bg-white/5 text-slate-300 hover:bg-white/10",
-													isActive && "border-[#2563EB]/60 bg-[#2563EB]/15 text-white",
-												)}
-											>
-												{labels[anchorOption] ?? anchorOption}
-											</Button>
-										);
-									})}
-								</div>
-								{facecamSettings.anchor === "custom" && (
-									<div className="mt-1.5 text-[9px] text-slate-500">
-										Drag the bubble in the preview to reposition.
+								<div className="p-2 rounded-lg bg-white/5 border border-white/5">
+									<div className="flex items-center justify-between mb-1">
+										<div className="text-[10px] font-medium text-slate-300">Border Width</div>
+										<span className="text-[10px] text-slate-500 font-mono">
+											{facecamSettings.borderWidth.toFixed(0)}px
+										</span>
 									</div>
-								)}
+									<Slider
+										value={[facecamSettings.borderWidth]}
+										onValueChange={(values) => updateFacecamSettings({ borderWidth: values[0] })}
+										min={0}
+										max={16}
+										step={1}
+										className="w-full"
+									/>
+								</div>
+
+								<div className="p-2 rounded-lg bg-white/5 border border-white/5">
+									<div className="text-[10px] font-medium text-slate-300 mb-1.5">Border Color</div>
+									<Block
+										color={facecamSettings.borderColor}
+										colors={COLOR_PALETTE}
+										onChange={(color) => updateFacecamSettings({ borderColor: color.hex })}
+									/>
+								</div>
+
+								<div className="p-2 rounded-lg bg-white/5 border border-white/5">
+									<div className="flex items-center justify-between mb-1">
+										<div className="text-[10px] font-medium text-slate-300">Margin</div>
+										<span className="text-[10px] text-slate-500 font-mono">
+											{facecamSettings.margin.toFixed(0)}%
+										</span>
+									</div>
+									<Slider
+										value={[facecamSettings.margin]}
+										onValueChange={(values) => updateFacecamSettings({ margin: values[0] })}
+										min={0}
+										max={12}
+										step={1}
+										className="w-full"
+									/>
+								</div>
+
+								<div className="p-2 rounded-lg bg-white/5 border border-white/5">
+									<div className="text-[10px] font-medium text-slate-300 mb-1.5">Position</div>
+									<div className="grid grid-cols-2 gap-1.5">
+										{FACECAM_ANCHORS.map((anchorOption) => {
+											const labels: Record<string, string> = {
+												"top-left": "Top Left",
+												"top-right": "Top Right",
+												"bottom-left": "Bottom Left",
+												"bottom-right": "Bottom Right",
+											};
+											const isActive =
+												facecamSettings.anchor === anchorOption ||
+												(!facecamSettings.anchor && anchorOption === "bottom-right");
+											return (
+												<Button
+													key={anchorOption}
+													type="button"
+													variant="outline"
+													onClick={() =>
+														updateFacecamSettings({
+															anchor: anchorOption,
+															customX: undefined,
+															customY: undefined,
+														})
+													}
+													className={cn(
+														"h-7 text-[9px] border-white/10 bg-white/5 text-slate-300 hover:bg-white/10",
+														isActive && "border-[#2563EB]/60 bg-[#2563EB]/15 text-white",
+													)}
+												>
+													{labels[anchorOption] ?? anchorOption}
+												</Button>
+											);
+										})}
+									</div>
+									{facecamSettings.anchor === "custom" && (
+										<div className="mt-1.5 text-[9px] text-slate-500">
+											Drag the bubble in the preview to reposition.
+										</div>
+									)}
+								</div>
 							</div>
-						</div>
-					)}
-				</div>
-			);
-		case "background":
+						)}
+					</div>
+				);
+			case "background":
 				return (
 					<Tabs
 						value={backgroundTab}
@@ -939,7 +944,7 @@ function SettingsPanelInner({
 								min={0}
 								max={1}
 								step={0.01}
-								className="w-full [&_[role=slider]]:bg-[#2563EB] [&_[role=slider]]:border-[#2563EB] [&_[role=slider]]:h-3 [&_[role=slider]]:w-3"
+								className="w-full"
 							/>
 						</div>
 
@@ -1038,7 +1043,7 @@ function SettingsPanelInner({
 											min={0}
 											max={2}
 											step={0.05}
-											className="w-full [&_[role=slider]]:bg-[#2563EB] [&_[role=slider]]:border-[#2563EB] [&_[role=slider]]:h-3 [&_[role=slider]]:w-3"
+											className="w-full"
 										/>
 									</div>
 									<div className="flex items-center justify-between p-2 rounded-lg bg-white/5 border border-white/5">
