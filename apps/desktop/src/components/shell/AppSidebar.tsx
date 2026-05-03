@@ -2,6 +2,10 @@ import { useAtom, useSetAtom } from "jotai";
 import { FolderGit2, HelpCircle, Video } from "lucide-react";
 import { type InternalView, internalViewAtom, sidebarExpandedAtom } from "@/atoms/navigation";
 import { showShortcutsDialogAtom } from "@/atoms/videoEditor";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 type NavItem = {
@@ -20,64 +24,102 @@ export function AppSidebar() {
 	const [activeView, setActiveView] = useAtom(internalViewAtom);
 	const setShowShortcutsDialog = useSetAtom(showShortcutsDialogAtom);
 
+	const renderNavButton = ({
+		label,
+		icon: Icon,
+		isActive,
+		onClick,
+	}: {
+		label: string;
+		icon: typeof Video;
+		isActive?: boolean;
+		onClick: () => void;
+	}) => {
+		const button = (
+			<Button
+				type="button"
+				variant={isActive ? "secondary" : "ghost"}
+				size={expanded ? "sm" : "icon"}
+				onClick={onClick}
+				aria-label={label}
+				aria-current={isActive ? "page" : undefined}
+				className={cn(
+					"h-9 justify-start rounded-lg text-xs",
+					expanded ? "w-full px-2.5" : "size-9 px-0",
+					isActive
+						? "bg-primary/15 text-primary hover:bg-primary/20"
+						: "text-muted-foreground hover:bg-muted/70 hover:text-foreground",
+				)}
+			>
+				<Icon data-icon="inline-start" />
+				<span className={cn("truncate", !expanded && "sr-only")}>{label}</span>
+			</Button>
+		);
+
+		if (expanded) {
+			return button;
+		}
+
+		return (
+			<Tooltip>
+				<TooltipTrigger asChild>{button}</TooltipTrigger>
+				<TooltipContent side="right">{label}</TooltipContent>
+			</Tooltip>
+		);
+	};
+
 	return (
 		<aside
 			data-testid="app-sidebar"
 			aria-label="Primary navigation"
 			className={cn(
-				"flex-shrink-0 h-full bg-[#09090b] border-r border-white/5 flex flex-col py-3 transition-[width] duration-200 ease-out overflow-hidden",
-				expanded ? "w-52" : "w-12",
+				"flex h-full flex-shrink-0 flex-col overflow-hidden border-r border-border/60 bg-card/95 py-3 shadow-xl shadow-black/20 transition-[width] duration-200 ease-out",
+				expanded ? "w-56" : "w-14",
 			)}
 		>
-			<nav className="flex flex-col gap-1 px-2 mt-2">
+			<div className="flex items-center gap-2 px-2.5">
+				<div className="flex size-9 flex-shrink-0 items-center justify-center rounded-lg border border-primary/20 bg-primary/10 text-primary">
+					<Video className="size-4" />
+				</div>
+				<div
+					className={cn(
+						"min-w-0 transition-opacity duration-150",
+						expanded ? "opacity-100" : "pointer-events-none opacity-0",
+					)}
+				>
+					<div className="truncate text-sm font-semibold text-foreground">Open Recorder</div>
+					<Badge variant="secondary" className="mt-1 text-[10px]">
+						Studio
+					</Badge>
+				</div>
+			</div>
+
+			<Separator className="my-3 bg-border/70" />
+
+			<nav className="flex flex-col gap-1 px-2">
 				{NAV_ITEMS.map(({ view, label, icon: Icon }) => {
 					const isActive = activeView === view;
 					return (
-						<button
-							key={view}
-							type="button"
-							onClick={() => setActiveView(view)}
-							title={expanded ? undefined : label}
-							aria-label={label}
-							aria-current={isActive ? "page" : undefined}
-							className={cn(
-								"group flex items-center gap-3 rounded-md h-8 px-2 text-xs font-medium transition-colors cursor-pointer",
-								isActive
-									? "bg-white/10 text-white"
-									: "text-white/60 hover:bg-white/5 hover:text-white",
-							)}
-						>
-							<Icon className="h-4 w-4 flex-shrink-0" />
-							<span
-								className={cn(
-									"truncate transition-opacity duration-150",
-									expanded ? "opacity-100" : "opacity-0 pointer-events-none",
-								)}
-							>
-								{label}
-							</span>
-						</button>
+						<div key={view}>
+							{renderNavButton({
+								label,
+								icon: Icon,
+								isActive,
+								onClick: () => setActiveView(view),
+							})}
+						</div>
 					);
 				})}
-				<button
-					type="button"
-					onClick={() => setShowShortcutsDialog(true)}
-					title={expanded ? undefined : "Help"}
-					aria-label="Help"
-					aria-haspopup="dialog"
-					className="group flex h-8 cursor-pointer items-center gap-3 rounded-md px-2 text-xs font-medium text-white/60 transition-colors hover:bg-white/5 hover:text-white"
-				>
-					<HelpCircle className="h-4 w-4 flex-shrink-0" />
-					<span
-						className={cn(
-							"truncate transition-opacity duration-150",
-							expanded ? "opacity-100" : "opacity-0 pointer-events-none",
-						)}
-					>
-						Help
-					</span>
-				</button>
 			</nav>
+
+			<div className="mt-auto px-2">
+				<Separator className="mb-3 bg-border/70" />
+				{renderNavButton({
+					label: "Help",
+					icon: HelpCircle,
+					onClick: () => setShowShortcutsDialog(true),
+				})}
+			</div>
 		</aside>
 	);
 }

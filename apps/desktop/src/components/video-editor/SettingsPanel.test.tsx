@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 
-import { act } from "react";
+import { Provider } from "jotai";
+import { createStore } from "jotai/vanilla";
+import { act, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -36,14 +38,22 @@ async function click(element: Element | null) {
 	await flushEffects();
 }
 
-async function renderPanel() {
+async function renderPanel(props: Partial<ComponentProps<typeof SettingsPanel>> = {}) {
 	const container = document.createElement("div");
 	document.body.appendChild(container);
 	const root: Root = createRoot(container);
+	const store = createStore();
 
 	await act(async () => {
 		root.render(
-			<SettingsPanel selected="#000000" onWallpaperChange={vi.fn()} aspectRatio="16:9" />,
+			<Provider store={store}>
+				<SettingsPanel
+					selected="#000000"
+					onWallpaperChange={vi.fn()}
+					aspectRatio="16:9"
+					{...props}
+				/>
+			</Provider>,
 		);
 	});
 	await flushEffects();
@@ -92,11 +102,11 @@ describe("SettingsPanel", () => {
 		await harness.unmount();
 	});
 
-	it("switches background sub-tabs inside the selected background panel", async () => {
+	it("shows background controls inside the appearance panel", async () => {
 		const harness = await renderPanel();
 
-		await click(harness.container.querySelector('[aria-label="Background"]'));
-
+		expect(harness.container.querySelector('[aria-label="Background"]')).toBeNull();
+		expect(harness.container.textContent).toContain("Background");
 		expect(harness.container.textContent).toContain("Upload Custom");
 		expect(harness.container.querySelector('img[alt="Wallpaper 1"]')?.getAttribute("src")).toBe(
 			"/wallpapers/thumbs/wallpaper1.jpg",
@@ -109,6 +119,83 @@ describe("SettingsPanel", () => {
 
 		expect(harness.container.querySelector('[aria-label="Gradient 1"]')).not.toBeNull();
 		expect(harness.container.textContent).not.toContain("Upload Custom");
+
+		await harness.unmount();
+	});
+
+	it("shows a focused zoom editor without the main editor controls", async () => {
+		const onZoomEaseChange = vi.fn();
+		const harness = await renderPanel({
+			selectedZoomId: "zoom-1",
+			selectedZoomDepth: 2,
+			selectedZoomEaseIn: { durationMs: 1200, type: "linear" },
+			selectedZoomEaseOut: { durationMs: 800, type: "smooth" },
+			onZoomDepthChange: vi.fn(),
+			onZoomEaseChange,
+			onZoomDelete: vi.fn(),
+		});
+
+		expect(harness.container.textContent).toContain("Zoom Settings");
+		expect(harness.container.textContent).toContain("Ease In");
+		expect(harness.container.textContent).toContain("Ease Out");
+		expect(harness.container.textContent).toContain("Linear");
+		expect(harness.container.textContent).toContain("Smooth");
+		expect(harness.container.textContent).toContain("Delete Zoom");
+		expect(harness.container.textContent).not.toContain("Shadow");
+		expect(harness.container.textContent).not.toContain("Report Bug");
+		expect(harness.container.querySelector('[aria-label="Appearance"]')).toBeNull();
+
+		const easeInDurationInput = harness.container.querySelector(
+			'input[aria-label="Ease In duration"]',
+		) as HTMLInputElement | null;
+		expect(easeInDurationInput?.value).toBe("1.2");
+
+		await act(async () => {
+			if (!easeInDurationInput) throw new Error("Expected ease-in duration input");
+			const valueSetter = Object.getOwnPropertyDescriptor(
+				window.HTMLInputElement.prototype,
+				"value",
+			)?.set;
+			valueSetter?.call(easeInDurationInput, "0.75");
+			easeInDurationInput.dispatchEvent(new Event("input", { bubbles: true }));
+			easeInDurationInput.dispatchEvent(new Event("change", { bubbles: true }));
+		});
+		await flushEffects();
+
+		expect(onZoomEaseChange).toHaveBeenCalledWith("easeIn", { durationMs: 750 });
+
+		await harness.unmount();
+	});
+
+	it("shows a focused trim editor without the main editor controls", async () => {
+		const harness = await renderPanel({
+			selectedTrimId: "trim-1",
+			onTrimDelete: vi.fn(),
+		});
+
+		expect(harness.container.textContent).toContain("Trim Settings");
+		expect(harness.container.textContent).toContain("Delete Trim Region");
+		expect(harness.container.textContent).not.toContain("Shadow");
+		expect(harness.container.textContent).not.toContain("Report Bug");
+		expect(harness.container.querySelector('[aria-label="Appearance"]')).toBeNull();
+
+		await harness.unmount();
+	});
+
+	it("shows a focused speed editor without the main editor controls", async () => {
+		const harness = await renderPanel({
+			selectedSpeedId: "speed-1",
+			selectedSpeedValue: 1.5,
+			onSpeedChange: vi.fn(),
+			onSpeedDelete: vi.fn(),
+		});
+
+		expect(harness.container.textContent).toContain("Speed Settings");
+		expect(harness.container.textContent).toContain("Delete Speed Region");
+		expect(harness.container.textContent).toContain("1.5×");
+		expect(harness.container.textContent).not.toContain("Shadow");
+		expect(harness.container.textContent).not.toContain("Report Bug");
+		expect(harness.container.querySelector('[aria-label="Appearance"]')).toBeNull();
 
 		await harness.unmount();
 	});

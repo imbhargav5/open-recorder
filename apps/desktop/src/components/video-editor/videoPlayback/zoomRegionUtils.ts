@@ -1,8 +1,12 @@
-import type { ZoomFocus, ZoomRegion } from "../types";
-import { ZOOM_DEPTH_SCALES } from "../types";
-import { TRANSITION_WINDOW_MS, ZOOM_IN_TRANSITION_WINDOW_MS } from "./constants";
+import type { ZoomEasing, ZoomEaseType, ZoomFocus, ZoomRegion } from "../types";
+import {
+	DEFAULT_ZOOM_EASE_IN,
+	DEFAULT_ZOOM_EASE_OUT,
+	ZOOM_DEPTH_SCALES,
+	ZOOM_EASE_TYPES,
+} from "../types";
 import { clampFocusToScale } from "./focusUtils";
-import { clamp01, cubicBezier, easeOutScreenStudio } from "./mathUtils";
+import { clamp01, cubicBezier, easeInOutCubic, easeOutCubic, easeOutScreenStudio } from "./mathUtils";
 
 const CHAINED_ZOOM_PAN_GAP_MS = 1500;
 const CONNECTED_ZOOM_PAN_DURATION_MS = 1000;
@@ -35,26 +39,65 @@ function easeConnectedPan(value: number) {
   return cubicBezier(0.1, 0.0, 0.2, 1.0, value);
 }
 
+function resolveZoomEasing(easing: ZoomEasing | undefined, fallback: ZoomEasing): ZoomEasing {
+  const durationMs = easing?.durationMs;
+  const type = easing?.type;
+  const rawDuration =
+    typeof durationMs === "number" && Number.isFinite(durationMs) ? durationMs : fallback.durationMs;
+
+  return {
+    durationMs: Math.round(Math.max(0, Math.min(5000, rawDuration))),
+    type: ZOOM_EASE_TYPES.includes(type as ZoomEaseType) ? (type as ZoomEaseType) : fallback.type,
+  };
+}
+
+function applyZoomEase(type: ZoomEaseType, value: number) {
+  const clamped = clamp01(value);
+
+  switch (type) {
+    case "linear":
+      return clamped;
+    case "ease-in":
+      return clamped * clamped * clamped;
+    case "ease-out":
+      return easeOutCubic(clamped);
+    case "ease-in-out":
+      return easeInOutCubic(clamped);
+    case "smooth":
+      return easeOutScreenStudio(clamped);
+  }
+}
+
 export function computeRegionStrength(region: ZoomRegion, timeMs: number) {
-  const zoomInEnd = region.startMs + ZOOM_IN_OVERLAP_MS;
-  const leadInStart = zoomInEnd - ZOOM_IN_TRANSITION_WINDOW_MS;
-  const leadOutEnd = region.endMs + TRANSITION_WINDOW_MS;
+  const easeIn = resolveZoomEasing(region.easeIn, DEFAULT_ZOOM_EASE_IN);
+  const easeOut = resolveZoomEasing(region.easeOut, DEFAULT_ZOOM_EASE_OUT);
+  const zoomInEnd = region.startMs + Math.min(ZOOM_IN_OVERLAP_MS, easeIn.durationMs);
+  const leadInStart = zoomInEnd - easeIn.durationMs;
+  const leadOutEnd = region.endMs + easeOut.durationMs;
 
   if (timeMs < leadInStart || timeMs > leadOutEnd) {
     return 0;
   }
 
   if (timeMs < zoomInEnd) {
-    const progress = (timeMs - leadInStart) / ZOOM_IN_TRANSITION_WINDOW_MS;
-    return easeOutScreenStudio(progress);
+    if (easeIn.durationMs <= 0) {
+      return 1;
+    }
+
+    const progress = (timeMs - leadInStart) / easeIn.durationMs;
+    return applyZoomEase(easeIn.type, progress);
   }
 
   if (timeMs <= region.endMs) {
     return 1;
   }
 
-  const progress = clamp01((timeMs - region.endMs) / TRANSITION_WINDOW_MS);
-  return 1 - easeOutScreenStudio(progress);
+  if (easeOut.durationMs <= 0) {
+    return 0;
+  }
+
+  const progress = clamp01((timeMs - region.endMs) / easeOut.durationMs);
+  return 1 - applyZoomEase(easeOut.type, progress);
 }
 
 function getLinearFocus(start: ZoomFocus, end: ZoomFocus, amount: number): ZoomFocus {
@@ -217,4 +260,3 @@ export function findDominantRegion(regions: ZoomRegion[], timeMs: number, option
     ? { ...activeRegion, transition: null }
     : { region: null, strength: 0, blendedScale: null, transition: null };
 }
-

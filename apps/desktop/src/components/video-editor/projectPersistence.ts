@@ -19,13 +19,19 @@ import {
 	DEFAULT_FIGURE_DATA,
 	DEFAULT_PLAYBACK_SPEED,
 	DEFAULT_ZOOM_DEPTH,
+	DEFAULT_ZOOM_EASE_IN,
+	DEFAULT_ZOOM_EASE_OUT,
 	DEFAULT_ZOOM_MOTION_BLUR,
 	type SpeedRegion,
 	type TrimRegion,
+	ZOOM_EASE_TYPES,
+	type ZoomDepth,
+	type ZoomEaseType,
+	type ZoomEasing,
 	type ZoomRegion,
 } from "./types";
 
-export const PROJECT_VERSION = 3;
+export const PROJECT_VERSION = 4;
 
 export interface ProjectEditorState {
 	wallpaper: string;
@@ -74,6 +80,26 @@ function clamp(value: number, min: number, max: number) {
 	return Math.min(max, Math.max(min, value));
 }
 
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+	return Boolean(value && typeof value === "object");
+}
+
+function isZoomEaseType(value: unknown): value is ZoomEaseType {
+	return typeof value === "string" && ZOOM_EASE_TYPES.includes(value as ZoomEaseType);
+}
+
+function normalizeZoomEasing(value: unknown, fallback: ZoomEasing): ZoomEasing {
+	const candidate = isObjectRecord(value) ? value : {};
+	const rawDuration = candidate.durationMs;
+
+	return {
+		durationMs: isFiniteNumber(rawDuration)
+			? Math.round(clamp(rawDuration, 0, 5000))
+			: fallback.durationMs,
+		type: isZoomEaseType(candidate.type) ? candidate.type : fallback.type,
+	};
+}
+
 export { fromFileUrl, toFileUrl };
 
 export function deriveNextId(prefix: string, ids: string[]): number {
@@ -115,24 +141,35 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 			? 2
 			: 0;
 
-	const normalizedZoomRegions: ZoomRegion[] = Array.isArray(editor.zoomRegions)
-		? editor.zoomRegions
-				.filter((region): region is ZoomRegion => Boolean(region && typeof region.id === "string"))
+	const rawZoomRegions = (editor as Partial<{ zoomRegions: unknown }>).zoomRegions;
+	const normalizedZoomRegions: ZoomRegion[] = Array.isArray(rawZoomRegions)
+		? rawZoomRegions
+				.filter(
+					(region): region is Record<string, unknown> & { id: string } =>
+						isObjectRecord(region) && typeof region.id === "string",
+				)
 				.map((region) => {
 					const rawStart = isFiniteNumber(region.startMs) ? Math.round(region.startMs) : 0;
 					const rawEnd = isFiniteNumber(region.endMs) ? Math.round(region.endMs) : rawStart + 1000;
 					const startMs = Math.max(0, Math.min(rawStart, rawEnd));
 					const endMs = Math.max(startMs + 1, rawEnd);
+					const rawFocus = isObjectRecord(region.focus) ? region.focus : {};
+					const depth =
+						typeof region.depth === "number" && [1, 2, 3, 4, 5, 6].includes(region.depth)
+							? (region.depth as ZoomDepth)
+							: DEFAULT_ZOOM_DEPTH;
 
 					return {
 						id: region.id,
 						startMs,
 						endMs,
-						depth: [1, 2, 3, 4, 5, 6].includes(region.depth) ? region.depth : DEFAULT_ZOOM_DEPTH,
+						depth,
 						focus: {
-							cx: clamp(isFiniteNumber(region.focus?.cx) ? region.focus.cx : 0.5, 0, 1),
-							cy: clamp(isFiniteNumber(region.focus?.cy) ? region.focus.cy : 0.5, 0, 1),
+							cx: clamp(isFiniteNumber(rawFocus.cx) ? rawFocus.cx : 0.5, 0, 1),
+							cy: clamp(isFiniteNumber(rawFocus.cy) ? rawFocus.cy : 0.5, 0, 1),
 						},
+						easeIn: normalizeZoomEasing(region.easeIn, DEFAULT_ZOOM_EASE_IN),
+						easeOut: normalizeZoomEasing(region.easeOut, DEFAULT_ZOOM_EASE_OUT),
 					};
 				})
 		: [];

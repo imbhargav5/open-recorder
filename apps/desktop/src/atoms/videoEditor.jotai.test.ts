@@ -10,6 +10,7 @@
 
 import { createStore } from "jotai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createDefaultZoomEasing } from "@/components/video-editor/types";
 import {
 	addCustomFontDialogOpenAtom,
 	addCustomFontImportUrlAtom,
@@ -427,7 +428,14 @@ describe("videoEditor atoms – mutations", () => {
 
 	it("can add a zoom region", () => {
 		store.set(zoomRegionsAtom, [
-			{ id: "z1", startMs: 0, endMs: 2000, depth: 2, focus: { cx: 0.5, cy: 0.5 } },
+			{
+				id: "z1",
+				startMs: 0,
+				endMs: 2000,
+				depth: 2,
+				focus: { cx: 0.5, cy: 0.5 },
+				...createDefaultZoomEasing(),
+			},
 		]);
 		expect(store.get(zoomRegionsAtom)).toHaveLength(1);
 		expect(store.get(zoomRegionsAtom)[0].id).toBe("z1");
@@ -481,7 +489,14 @@ describe("videoEditor atoms – store isolation", () => {
 		const storeA = createStore();
 		const storeB = createStore();
 		storeA.set(zoomRegionsAtom, [
-			{ id: "z1", startMs: 0, endMs: 1000, depth: 1, focus: { cx: 0.5, cy: 0.5 } },
+			{
+				id: "z1",
+				startMs: 0,
+				endMs: 1000,
+				depth: 1,
+				focus: { cx: 0.5, cy: 0.5 },
+				...createDefaultZoomEasing(),
+			},
 		]);
 		expect(storeB.get(zoomRegionsAtom)).toHaveLength(0);
 	});
@@ -522,7 +537,14 @@ describe("videoEditor atoms – subscriptions", () => {
 
 		store.set(zoomRegionsAtom, []);
 		store.set(zoomRegionsAtom, [
-			{ id: "z1", startMs: 0, endMs: 500, depth: 1, focus: { cx: 0.5, cy: 0.5 } },
+			{
+				id: "z1",
+				startMs: 0,
+				endMs: 500,
+				depth: 1,
+				focus: { cx: 0.5, cy: 0.5 },
+				...createDefaultZoomEasing(),
+			},
 		]);
 
 		expect(listener).toHaveBeenCalledTimes(2);

@@ -4,6 +4,7 @@ import {
 	DEFAULT_ANNOTATION_SIZE,
 	DEFAULT_ANNOTATION_STYLE,
 	DEFAULT_FIGURE_DATA,
+	createDefaultZoomEasing,
 } from "./types";
 import {
 	cloneEditorHistorySnapshot,
@@ -56,7 +57,14 @@ describe("videoEditorHistory", () => {
 	it("clones region arrays so history snapshots are not structurally shared", () => {
 		const original = createEditorHistorySnapshot({
 			zoomRegions: [
-				{ id: "zoom-1", startMs: 0, endMs: 500, depth: 3, focus: { cx: 0.5, cy: 0.5 } },
+				{
+					id: "zoom-1",
+					startMs: 0,
+					endMs: 500,
+					depth: 3,
+					focus: { cx: 0.5, cy: 0.5 },
+					...createDefaultZoomEasing(),
+				},
 			],
 			trimRegions: [{ id: "trim-1", startMs: 0, endMs: 500 }],
 			speedRegions: [{ id: "speed-1", startMs: 0, endMs: 500, speed: 1.5 }],
@@ -76,12 +84,63 @@ describe("videoEditorHistory", () => {
 		expect(cloned.annotationRegions).not.toBe(original.annotationRegions);
 	});
 
+	it("changes the signature when zoom easing changes", () => {
+		const baseSnapshot = createEditorHistorySnapshot({
+			zoomRegions: [
+				{
+					id: "zoom-1",
+					startMs: 0,
+					endMs: 500,
+					depth: 3,
+					focus: { cx: 0.5, cy: 0.5 },
+					...createDefaultZoomEasing(),
+				},
+			],
+			trimRegions: [],
+			speedRegions: [],
+			annotationRegions: [],
+			selectedZoomId: "zoom-1",
+			selectedTrimId: null,
+			selectedSpeedId: null,
+			selectedAnnotationId: null,
+		});
+
+		const changedSnapshot = createEditorHistorySnapshot({
+			...baseSnapshot,
+			zoomRegions: [
+				{
+					...baseSnapshot.zoomRegions[0],
+					easeOut: {
+						durationMs: 250,
+						type: "linear",
+					},
+				},
+			],
+		});
+
+		expect(changedSnapshot.signature).not.toBe(baseSnapshot.signature);
+	});
+
 	it("derives the next region ids and annotation z-index from restored history", () => {
 		expect(
 			deriveEditorHistoryCounters({
 				zoomRegions: [
-					{ id: "zoom-2", startMs: 0, endMs: 500, depth: 3, focus: { cx: 0.5, cy: 0.5 } },
-					{ id: "zoom-9", startMs: 600, endMs: 900, depth: 4, focus: { cx: 0.4, cy: 0.4 } },
+					{
+						id: "zoom-2",
+						startMs: 0,
+						endMs: 500,
+						depth: 3,
+						focus: { cx: 0.5, cy: 0.5 },
+						...createDefaultZoomEasing(),
+					},
+					{
+						id: "zoom-9",
+						startMs: 600,
+						endMs: 900,
+						depth: 4,
+						focus: { cx: 0.4, cy: 0.4 },
+						...createDefaultZoomEasing(),
+					},
 				],
 				trimRegions: [{ id: "trim-4", startMs: 0, endMs: 900 }],
 				speedRegions: [{ id: "speed-5", startMs: 0, endMs: 900, speed: 2 }],

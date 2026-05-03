@@ -1,7 +1,9 @@
 import { FolderOpen, Plus } from "lucide-react";
 import { useCallback } from "react";
 import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
 	Empty,
 	EmptyDescription,
@@ -9,6 +11,7 @@ import {
 	EmptyMedia,
 	EmptyTitle,
 } from "@/components/ui/empty";
+import { Separator } from "@/components/ui/separator";
 import * as backend from "@/lib/backend";
 
 interface ProjectsPageProps {
@@ -33,56 +36,84 @@ export function ProjectsPage({ onOpenProject }: ProjectsPageProps) {
 	}, []);
 
 	return (
-		<div className="flex-1 min-h-0 overflow-auto bg-[#09090b] text-slate-200">
-			<div className="mx-auto w-full max-w-4xl px-8 py-10">
-				<div className="flex items-end justify-between gap-4 mb-8">
+		<div className="min-h-0 flex-1 overflow-auto bg-background text-foreground">
+			<div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-8 py-8">
+				<div className="flex items-end justify-between gap-4">
 					<div>
-						<h1 className="text-2xl font-semibold tracking-tight text-white">Projects</h1>
-						<p className="mt-1 text-sm text-white/60">
-							Open a saved project or jump back into the editor.
+						<div className="flex items-center gap-2">
+							<h1 className="text-2xl font-semibold tracking-tight">Projects</h1>
+							<Badge variant="secondary">Local</Badge>
+						</div>
+						<p className="mt-1 text-sm text-muted-foreground">
+							Open a saved project or browse recordings from this device.
 						</p>
 					</div>
 					<Button
 						type="button"
 						size="sm"
 						onClick={handleOpenProject}
-						className="h-8 gap-1.5 bg-[#2563EB] text-white text-xs font-medium hover:bg-[#2563EB]/90"
+						className="h-8 gap-1.5 text-xs font-medium"
 					>
-						<Plus className="h-3.5 w-3.5" />
+						<Plus data-icon="inline-start" />
 						Open project file
 					</Button>
 				</div>
 
-				<Empty className="max-w-none border-white/10 bg-white/[0.02]">
+				<div className="grid gap-4 md:grid-cols-2">
+					<Card className="border-border/70 bg-card/80 shadow-xl shadow-black/10">
+						<CardHeader className="p-5">
+							<CardTitle className="flex items-center gap-2 text-base">
+								<Plus className="size-4 text-primary" />
+								Open project
+							</CardTitle>
+							<CardDescription>Load an Open Recorder editing session.</CardDescription>
+						</CardHeader>
+						<CardContent className="p-5 pt-0">
+							<Button type="button" className="w-full" onClick={handleOpenProject}>
+								<Plus data-icon="inline-start" />
+								Choose file
+							</Button>
+						</CardContent>
+					</Card>
+
+					<Card className="border-border/70 bg-card/80 shadow-xl shadow-black/10">
+						<CardHeader className="p-5">
+							<CardTitle className="flex items-center gap-2 text-base">
+								<FolderOpen className="size-4 text-primary" />
+								Recordings folder
+							</CardTitle>
+							<CardDescription>Jump to saved captures and exported videos.</CardDescription>
+						</CardHeader>
+						<CardContent className="p-5 pt-0">
+							<Button
+								type="button"
+								variant="outline"
+								className="w-full"
+								onClick={handleOpenRecordingsFolder}
+							>
+								<FolderOpen data-icon="inline-start" />
+								Browse recordings
+							</Button>
+						</CardContent>
+					</Card>
+				</div>
+
+				<Separator />
+
+				<Empty className="max-w-none border-dashed bg-card/40">
 					<EmptyHeader>
-						<EmptyMedia className="size-16 border-[#2563EB]/20 bg-[#2563EB]/10 text-[#93c5fd]">
+						<EmptyMedia className="size-16 border-primary/20 bg-primary/10 text-primary">
 							<FolderOpen className="size-7" />
 						</EmptyMedia>
 						<EmptyTitle>No recent projects yet</EmptyTitle>
 						<EmptyDescription>
-							Load a saved project file, or open your recordings folder to browse existing captures.
+							Recent project shortcuts will appear here after you save or open one.
 						</EmptyDescription>
 					</EmptyHeader>
 					<div className="flex items-center justify-center gap-2">
-						<Button
-							type="button"
-							variant="outline"
-							size="sm"
-							onClick={handleOpenProject}
-							className="h-8 gap-1.5 border-white/10 bg-white/5 text-xs text-white hover:bg-white/10"
-						>
-							<Plus className="h-3.5 w-3.5" />
+						<Button type="button" variant="outline" size="sm" onClick={handleOpenProject}>
+							<Plus data-icon="inline-start" />
 							Open project
-						</Button>
-						<Button
-							type="button"
-							variant="outline"
-							size="sm"
-							onClick={handleOpenRecordingsFolder}
-							className="h-8 gap-1.5 border-white/10 bg-white/5 text-xs text-white hover:bg-white/10"
-						>
-							<FolderOpen className="h-3.5 w-3.5" />
-							Browse recordings
 						</Button>
 					</div>
 				</Empty>
