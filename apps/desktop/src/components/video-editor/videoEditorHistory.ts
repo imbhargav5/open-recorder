@@ -24,7 +24,18 @@ export type EditorHistoryCounters = {
 };
 
 function getZoomRegionSignature(region: ZoomRegion) {
-	return `${region.id}:${region.startMs}:${region.endMs}:${region.depth}:${region.focus.cx}:${region.focus.cy}`;
+	return [
+		region.id,
+		region.startMs,
+		region.endMs,
+		region.depth,
+		region.focus.cx,
+		region.focus.cy,
+		region.easeIn.durationMs,
+		region.easeIn.type,
+		region.easeOut.durationMs,
+		region.easeOut.type,
+	].join(":");
 }
 
 function getTrimRegionSignature(region: TrimRegion) {

@@ -12,7 +12,7 @@
 		"url": "https://github.com/imbhargav5/open-recorder/issues"
 	},
 	"private": true,
-	"version": "0.0.33",
+	"version": "0.0.34",
 	"packageManager": "pnpm@10.17.1",
 	"type": "module",
 	"main": "dist-electron/main.js",
@@ -71,6 +71,7 @@
 		"mp4box": "^2.2.0",
 		"pixi-filters": "^6.1.5",
 		"pixi.js": "^8.14.0",
+		"radix-ui": "^1.4.3",
 		"react": "^19.2.5",
 		"react-dom": "^19.2.5",
 		"react-icons": "^5.5.0",

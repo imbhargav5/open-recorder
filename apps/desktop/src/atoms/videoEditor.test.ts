@@ -1,11 +1,12 @@
 import { createStore } from "jotai/vanilla";
 import { describe, expect, it } from "vitest";
-import type {
-	AnnotationRegion,
-	CropRegion,
-	SpeedRegion,
-	TrimRegion,
-	ZoomRegion,
+import {
+	createDefaultZoomEasing,
+	type AnnotationRegion,
+	type CropRegion,
+	type SpeedRegion,
+	type TrimRegion,
+	type ZoomRegion,
 } from "@/components/video-editor/types";
 import type { ExportProgress } from "@/lib/exporter";
 import type { AspectRatio } from "@/utils/aspectRatioUtils";
@@ -318,6 +319,7 @@ describe("videoEditor atoms – regions and selections", () => {
 			endMs: 1000,
 			depth: 2,
 			focus: { cx: 0.5, cy: 0.5 },
+			...createDefaultZoomEasing(),
 		};
 		store.set(zoomRegionsAtom, [region]);
 		expect(store.get(zoomRegionsAtom)).toHaveLength(1);

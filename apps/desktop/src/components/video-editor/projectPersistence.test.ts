@@ -16,6 +16,8 @@ import {
 	DEFAULT_CURSOR_MOTION_BLUR,
 	DEFAULT_CURSOR_SIZE,
 	DEFAULT_CURSOR_SMOOTHING,
+	DEFAULT_ZOOM_EASE_IN,
+	DEFAULT_ZOOM_EASE_OUT,
 	DEFAULT_ZOOM_MOTION_BLUR,
 } from "./types";
 
@@ -98,7 +100,7 @@ describe("projectPersistence", () => {
 					depth: 9 as never,
 					focus: { cx: -3, cy: 4 },
 				},
-			],
+			] as never,
 			trimRegions: [
 				{
 					id: "trim-1",
@@ -177,6 +179,8 @@ describe("projectPersistence", () => {
 				endMs: 1001,
 				depth: 3,
 				focus: { cx: 0, cy: 1 },
+				easeIn: DEFAULT_ZOOM_EASE_IN,
+				easeOut: DEFAULT_ZOOM_EASE_OUT,
 			},
 		]);
 		expect(normalized.trimRegions).toEqual([
@@ -237,6 +241,33 @@ describe("projectPersistence", () => {
 		});
 
 		expect(normalized.annotationRegions[0]?.style.color).toBe("#000");
+	});
+
+	it("sanitizes persisted zoom easing values", () => {
+		const normalized = normalizeProjectEditor({
+			zoomRegions: [
+				{
+					id: "zoom-1",
+					startMs: 0,
+					endMs: 1000,
+					depth: 3,
+					focus: { cx: 0.5, cy: 0.5 },
+					easeIn: { durationMs: -250, type: "broken" },
+					easeOut: { durationMs: 7000, type: "ease-in-out" },
+				},
+			] as never,
+		});
+
+		expect(normalized.zoomRegions[0]).toMatchObject({
+			easeIn: {
+				durationMs: 0,
+				type: DEFAULT_ZOOM_EASE_IN.type,
+			},
+			easeOut: {
+				durationMs: 5000,
+				type: "ease-in-out",
+			},
+		});
 	});
 
 	it("keeps numeric editor state within bounds for a wide range of inputs", () => {

@@ -5,12 +5,46 @@ export interface ZoomFocus {
 	cy: number; // normalized vertical center (0-1)
 }
 
+export type ZoomEaseType = "smooth" | "linear" | "ease-in" | "ease-out" | "ease-in-out";
+
+export interface ZoomEasing {
+	durationMs: number;
+	type: ZoomEaseType;
+}
+
 export interface ZoomRegion {
 	id: string;
 	startMs: number;
 	endMs: number;
 	depth: ZoomDepth;
 	focus: ZoomFocus;
+	easeIn: ZoomEasing;
+	easeOut: ZoomEasing;
+}
+
+export const ZOOM_EASE_TYPES: ZoomEaseType[] = [
+	"smooth",
+	"linear",
+	"ease-in",
+	"ease-out",
+	"ease-in-out",
+];
+
+export const DEFAULT_ZOOM_EASE_IN: ZoomEasing = {
+	durationMs: 1523,
+	type: "smooth",
+};
+
+export const DEFAULT_ZOOM_EASE_OUT: ZoomEasing = {
+	durationMs: 1015,
+	type: "smooth",
+};
+
+export function createDefaultZoomEasing() {
+	return {
+		easeIn: { ...DEFAULT_ZOOM_EASE_IN },
+		easeOut: { ...DEFAULT_ZOOM_EASE_OUT },
+	};
 }
 
 export interface CursorTelemetryPoint {
