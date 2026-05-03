@@ -11,7 +11,11 @@ import {
 } from "@/atoms/sourceSelector";
 import { flashSelectedScreen, getSources, selectSource } from "@/lib/backend";
 import { cn } from "@/lib/utils";
+import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "../ui/card";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "../ui/empty";
+import { Separator } from "../ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
 import { getSourceGridColumnClass } from "./sourceGridLayout";
 import { type DesktopSource, mapSources, mergeSources } from "./sourceSelectorState";
@@ -27,14 +31,15 @@ interface SourceGridProps {
 function SourceGrid({ sources, selectedSource, onSelect, type, emptyMessage }: SourceGridProps) {
 	if (sources.length === 0) {
 		return (
-			<div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-border bg-muted/50 py-12">
-				{type === "screen" ? (
-					<Monitor className="h-5 w-5 text-muted-foreground" />
-				) : (
-					<AppWindow className="h-5 w-5 text-muted-foreground" />
-				)}
-				<p className="text-sm text-muted-foreground">{emptyMessage}</p>
-			</div>
+			<Empty className="min-h-48 border-dashed bg-muted/30">
+				<EmptyHeader>
+					<EmptyMedia>{type === "screen" ? <Monitor /> : <AppWindow />}</EmptyMedia>
+					<EmptyTitle>{emptyMessage}</EmptyTitle>
+					<EmptyDescription>
+						Try a different tab or make sure the source is visible.
+					</EmptyDescription>
+				</EmptyHeader>
+			</Empty>
 		);
 	}
 
@@ -54,10 +59,11 @@ function SourceGrid({ sources, selectedSource, onSelect, type, emptyMessage }: S
 					<button
 						type="button"
 						key={source.id}
+						aria-pressed={isSelected}
 						className={cn(
-							"rounded-lg border bg-card text-left transition-colors hover:bg-accent",
+							"group rounded-lg border bg-card/80 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:bg-accent/60 hover:shadow-md",
 							isWindow ? "p-1.5" : "p-2",
-							isSelected ? "border-primary ring-2 ring-primary/30" : "border-border",
+							isSelected ? "border-primary ring-2 ring-primary/25" : "border-border/70",
 						)}
 						onClick={() => onSelect(source)}
 					>
@@ -89,14 +95,21 @@ function SourceGrid({ sources, selectedSource, onSelect, type, emptyMessage }: S
 								</div>
 							)}
 							{isSelected && (
-								<div className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-primary-foreground">
+								<div className="absolute top-1 right-1 flex size-4 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm">
 									<MdCheck className="h-2.5 w-2.5" />
 								</div>
 							)}
 						</div>
-						<p className={cn("truncate font-medium", isWindow ? "text-xs" : "text-sm")}>
-							{source.name}
-						</p>
+						<div className="flex items-center gap-2">
+							<p className={cn("truncate font-medium", isWindow ? "text-xs" : "text-sm")}>
+								{source.name}
+							</p>
+							{isSelected ? (
+								<Badge variant="secondary" className="ml-auto text-[10px]">
+									Selected
+								</Badge>
+							) : null}
+						</div>
 					</button>
 				);
 			})}
@@ -234,70 +247,89 @@ export function SourceSelector() {
 
 	if (loading) {
 		return (
-			<div className="rounded-2xl border border-border bg-background p-6 shadow-xl">
-				<div className="flex flex-col items-center gap-3">
-					<Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-					<p className="text-sm text-muted-foreground">Finding sources...</p>
-				</div>
-			</div>
+			<Card className="w-[520px] border-border/70 bg-background/95 shadow-2xl">
+				<CardContent className="p-6">
+					<Empty className="border-0 p-0">
+						<EmptyHeader>
+							<EmptyMedia>
+								<Loader2 className="animate-spin" />
+							</EmptyMedia>
+							<EmptyTitle>Finding sources</EmptyTitle>
+							<EmptyDescription>Collecting screens and open windows.</EmptyDescription>
+						</EmptyHeader>
+					</Empty>
+				</CardContent>
+			</Card>
 		);
 	}
 
 	return (
-		<div className="rounded-2xl border border-border bg-background p-4 shadow-xl">
-			<h1 className="mb-4 text-lg font-semibold">Choose what to share</h1>
+		<Card className="w-[min(860px,calc(100vw-32px))] border-border/70 bg-background/95 shadow-2xl">
+			<CardHeader className="p-4 pb-3">
+				<div className="flex items-center justify-between gap-4">
+					<div>
+						<CardTitle className="text-lg">Choose what to share</CardTitle>
+						<p className="mt-1 text-xs text-muted-foreground">
+							Pick a screen or a single app window for the next recording.
+						</p>
+					</div>
+					<Badge variant="outline">{screenSources.length + windowSources.length} sources</Badge>
+				</div>
+			</CardHeader>
+			<CardContent className="p-4 pt-0">
+				<Tabs
+					value={activeTab}
+					onValueChange={(value) => setActiveTab(value as "screens" | "windows")}
+				>
+					<TabsList className="grid w-full grid-cols-2">
+						<TabsTrigger value="screens" className="gap-1.5">
+							<Monitor data-icon="inline-start" />
+							Screens
+							<Badge variant="secondary" className="ml-1 text-[10px]">
+								{screenSources.length}
+							</Badge>
+						</TabsTrigger>
+						<TabsTrigger value="windows" className="gap-1.5">
+							<AppWindow data-icon="inline-start" />
+							Windows
+							<Badge variant="secondary" className="ml-1 text-[10px]">
+								{windowSources.length}
+								{windowsLoading ? "..." : ""}
+							</Badge>
+						</TabsTrigger>
+					</TabsList>
 
-			<Tabs
-				value={activeTab}
-				onValueChange={(value) => setActiveTab(value as "screens" | "windows")}
-			>
-				<TabsList>
-					<TabsTrigger value="screens" className="gap-1.5">
-						<Monitor className="h-3.5 w-3.5" />
-						Screens
-						<span className="ml-0.5 rounded-full bg-foreground/10 px-1.5 py-0.5 text-xs leading-none">
-							{screenSources.length}
-						</span>
-					</TabsTrigger>
-					<TabsTrigger value="windows" className="gap-1.5">
-						<AppWindow className="h-3.5 w-3.5" />
-						Windows
-						<span className="ml-0.5 rounded-full bg-foreground/10 px-1.5 py-0.5 text-xs leading-none">
-							{windowSources.length}
-							{windowsLoading ? "..." : ""}
-						</span>
-					</TabsTrigger>
-				</TabsList>
+					<TabsContent value="screens" className="mt-3">
+						<SourceGrid
+							sources={screenSources}
+							selectedSource={selectedSource}
+							onSelect={handleSourceSelect}
+							type="screen"
+							emptyMessage="No screens available"
+						/>
+					</TabsContent>
 
-				<TabsContent value="screens" className="mt-3">
-					<SourceGrid
-						sources={screenSources}
-						selectedSource={selectedSource}
-						onSelect={handleSourceSelect}
-						type="screen"
-						emptyMessage="No screens available"
-					/>
-				</TabsContent>
+					<TabsContent value="windows" className="mt-3">
+						<SourceGrid
+							sources={windowSources}
+							selectedSource={selectedSource}
+							onSelect={handleSourceSelect}
+							type="window"
+							emptyMessage="No windows available"
+						/>
+					</TabsContent>
+				</Tabs>
+			</CardContent>
 
-				<TabsContent value="windows" className="mt-3">
-					<SourceGrid
-						sources={windowSources}
-						selectedSource={selectedSource}
-						onSelect={handleSourceSelect}
-						type="window"
-						emptyMessage="No windows available"
-					/>
-				</TabsContent>
-			</Tabs>
-
-			<div className="mt-4 flex justify-end gap-2 border-t border-border pt-4">
+			<Separator />
+			<CardFooter className="flex justify-end gap-2 p-4">
 				<Button variant="outline" onClick={() => window.close()}>
 					Cancel
 				</Button>
 				<Button onClick={() => void handleShare()} disabled={!selectedSource}>
 					Share Source
 				</Button>
-			</div>
-		</div>
+			</CardFooter>
+		</Card>
 	);
 }

@@ -1,16 +1,17 @@
-import { invoke } from "@/lib/electronBridge";
 import { useAtom } from "jotai";
-import { useEffect, type ReactElement } from "react";
+import { type ReactElement, useEffect } from "react";
+import { invoke } from "@/lib/electronBridge";
+import { appNameAtom, windowTypeAtom } from "./atoms/app";
 import { AppUpdaterDialog } from "./components/AppUpdaterDialog";
 import ImageEditor from "./components/image-editor/ImageEditor";
 import { LaunchWindow } from "./components/launch/LaunchWindow";
 import { SourceSelector } from "./components/launch/SourceSelector";
+import { TooltipProvider } from "./components/ui/tooltip";
 import { ShortcutsConfigDialog } from "./components/video-editor/ShortcutsConfigDialog";
 import VideoEditor from "./components/video-editor/VideoEditor";
 import { useI18n } from "./contexts/I18nContext";
 import { ShortcutsProvider } from "./contexts/ShortcutsContext";
 import { loadAllCustomFonts } from "./lib/customFonts";
-import { appNameAtom, windowTypeAtom } from "./atoms/app";
 
 export default function App() {
 	const [windowType, setWindowType] = useAtom(windowTypeAtom);
@@ -26,8 +27,14 @@ export default function App() {
 			document.body.style.background = "transparent";
 			document.documentElement.style.background = "transparent";
 			document.getElementById("root")?.style.setProperty("background", "transparent");
-			document.documentElement.classList.add("dark");
 		}
+		document.documentElement.classList.toggle(
+			"dark",
+			type === "hud-overlay" ||
+				type === "source-selector" ||
+				type === "editor" ||
+				type === "image-editor",
+		);
 
 		// Load custom fonts on app initialization
 		loadAllCustomFonts().catch((error) => {
@@ -93,11 +100,11 @@ export default function App() {
 		windowType === "editor" || windowType === "image-editor" || windowType === "";
 
 	return (
-		<>
+		<TooltipProvider delayDuration={350}>
 			{content}
 			{shouldRenderUpdater ? (
 				<AppUpdaterDialog enableAutoCheck={windowType !== "image-editor"} />
 			) : null}
-		</>
+		</TooltipProvider>
 	);
 }
