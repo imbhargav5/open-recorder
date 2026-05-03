@@ -1,4 +1,5 @@
 import os from "node:os";
+import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mkdirMock = vi.fn();
@@ -62,8 +63,8 @@ describe("screenshot destination semantics", () => {
 		const paths = await import("../../electron/app-paths.ts");
 		const home = os.homedir();
 
-		expect(paths.defaultRecordingsDir()).toBe(`${home}/Movies/Open Recorder`);
-		expect(paths.defaultScreenshotsDir()).toBe(`${home}/Pictures/Open Recorder`);
+		expect(paths.defaultRecordingsDir()).toBe(path.join(home, "Movies", "Open Recorder"));
+		expect(paths.defaultScreenshotsDir()).toBe(path.join(home, "Pictures", "Open Recorder"));
 		expect(paths.defaultScreenshotsDir()).not.toBe(paths.defaultRecordingsDir());
 	});
 
@@ -90,13 +91,14 @@ describe("screenshot destination semantics", () => {
 		expect(takeScreenshot).toBeTypeOf("function");
 
 		const screenshotPath = await takeScreenshot?.({ captureType: "screen" });
+		const outputPath = execFileMock.mock.calls[0]?.[1]?.at(-1);
 
 		expect(mkdirMock).toHaveBeenCalledWith("/tmp/default-screenshots", { recursive: true });
 		expect(execFileMock).toHaveBeenCalledOnce();
-		expect(execFileMock.mock.calls[0]?.[1]?.at(-1)).toMatch(
-			/^\/tmp\/default-screenshots\/screenshot-\d+\.png$/,
-		);
-		expect(screenshotPath).toMatch(/^\/tmp\/default-screenshots\/screenshot-\d+\.png$/);
+		expect(outputPath).toBeTypeOf("string");
+		expect(path.dirname(outputPath as string)).toBe(path.normalize("/tmp/default-screenshots"));
+		expect(path.basename(outputPath as string)).toMatch(/^screenshot-\d+\.png$/);
+		expect(screenshotPath).toBe(outputPath);
 		expect(state.currentScreenshotPath).toBe(screenshotPath);
 	});
 });
