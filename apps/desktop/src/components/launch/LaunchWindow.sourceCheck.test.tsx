@@ -13,16 +13,11 @@
  * manipulation is needed (avoiding the act()+fakeTimers deadlock).
  */
 
-import { Provider, createStore, useAtom } from "jotai";
-import { useEffect } from "react";
-import { act } from "react";
+import { createStore, Provider, useAtom } from "jotai";
+import { act, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-	hasSelectedSourceAtom,
-	selectedSourceAtom,
-	sourceCheckErrorAtom,
-} from "@/atoms/launch";
+import { hasSelectedSourceAtom, selectedSourceAtom, sourceCheckErrorAtom } from "@/atoms/launch";
 import { resolveSelectedSourceState } from "./launchWindowState";
 
 // ─── Mock backend ─────────────────────────────────────────────────────────────
@@ -53,6 +48,7 @@ async function flushMicrotasks() {
  * `intervalMs` defaults to 500 (matching the real component) but can be
  * reduced in tests that need to observe the interval tick without fake timers.
  */
+// biome-ignore lint/style/useComponentExportOnlyModules: Test-only harness mirrors LaunchWindow's source-check effect.
 function SourceCheckHarness({ intervalMs = 500 }: { intervalMs?: number }) {
 	const [, setSelectedSource] = useAtom(selectedSourceAtom);
 	const [, setHasSelectedSource] = useAtom(hasSelectedSourceAtom);
@@ -125,14 +121,11 @@ describe("LaunchWindow source-check interval – error handling", () => {
 	it("logs a warning when getSelectedSource rejects", async () => {
 		const networkError = new Error("IPC call failed");
 		backend.getSelectedSource.mockRejectedValue(networkError);
-		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
 
 		const { unmount } = await mountHarness();
 
-		expect(warnSpy).toHaveBeenCalledWith(
-			"[LaunchWindow] source check failed:",
-			networkError,
-		);
+		expect(warnSpy).toHaveBeenCalledWith("[LaunchWindow] source check failed:", networkError);
 
 		await unmount();
 	});
@@ -140,7 +133,7 @@ describe("LaunchWindow source-check interval – error handling", () => {
 	it("sets sourceCheckErrorAtom when getSelectedSource rejects", async () => {
 		const networkError = new Error("IPC call failed");
 		backend.getSelectedSource.mockRejectedValue(networkError);
-		vi.spyOn(console, "warn").mockImplementation(() => {});
+		vi.spyOn(console, "warn").mockImplementation(() => undefined);
 
 		const { store, unmount } = await mountHarness();
 
@@ -153,7 +146,7 @@ describe("LaunchWindow source-check interval – error handling", () => {
 
 	it("does not crash the component when getSelectedSource rejects", async () => {
 		backend.getSelectedSource.mockRejectedValue(new Error("backend down"));
-		vi.spyOn(console, "warn").mockImplementation(() => {});
+		vi.spyOn(console, "warn").mockImplementation(() => undefined);
 
 		// Should resolve without throwing – the component must stay alive
 		const { unmount } = await mountHarness();
@@ -165,17 +158,18 @@ describe("LaunchWindow source-check interval – error handling", () => {
 		backend.getSelectedSource
 			.mockRejectedValueOnce(networkError)
 			.mockResolvedValue({ name: "Display 1" });
-		vi.spyOn(console, "warn").mockImplementation(() => {});
+		vi.spyOn(console, "warn").mockImplementation(() => undefined);
 
-		// Use a 10 ms interval so we can wait for the second tick with real timers
-		const { store, unmount } = await mountHarness({ intervalMs: 10 });
+		// Keep the interval comfortably above mount/flush time so the initial error
+		// can be observed before the recovery tick runs on slower CI hosts.
+		const { store, unmount } = await mountHarness();
 
 		// Initial (on-mount) call failed – error must be set
 		expect(store.get(sourceCheckErrorAtom)).toBeInstanceOf(Error);
 
-		// Wait for the interval to fire at least once (>10 ms) and flush React
+		// Wait for the interval to fire at least once (>500 ms) and flush React
 		await act(async () => {
-			await new Promise<void>((resolve) => setTimeout(resolve, 30));
+			await new Promise<void>((resolve) => setTimeout(resolve, 550));
 		});
 		await flushMicrotasks();
 
@@ -188,7 +182,7 @@ describe("LaunchWindow source-check interval – error handling", () => {
 
 	it("does not warn or set error when getSelectedSource succeeds", async () => {
 		backend.getSelectedSource.mockResolvedValue({ name: "Screen 2" });
-		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
 
 		const { store, unmount } = await mountHarness();
 
