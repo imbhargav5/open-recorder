@@ -84,7 +84,7 @@ export const ELECTRON_SHIM_SCRIPT = /* javascript */ `
       error: null,
     },
     // Platform
-    get_platform: 'linux',
+    get_platform: window.__OPEN_RECORDER_E2E_PLATFORM__ || 'linux',
     get_asset_base_path: '/assets',
     hide_cursor: null,
     open_external_url: null,
@@ -225,10 +225,98 @@ export const ELECTRON_SHIM_SCRIPT = /* javascript */ `
  * Installs the Electron IPC shim on a Playwright page via addInitScript.
  * Call this BEFORE page.goto() to ensure the shim is ready when the app boots.
  */
-export async function installTauriShim(
-  page: import("@playwright/test").Page,
+export async function installTauriShim(page: import("@playwright/test").Page): Promise<void> {
+	const platform = process.env.OPEN_RECORDER_E2E_PLATFORM ?? "linux";
+	await page.addInitScript((value) => {
+		// biome-ignore lint/suspicious/noExplicitAny: test shim
+		(window as any).__OPEN_RECORDER_E2E_PLATFORM__ = value;
+	}, platform);
+	await page.addInitScript({ content: ELECTRON_SHIM_SCRIPT });
+}
+
+/**
+ * Installs deterministic capture primitives for renderer-only recording tests.
+ * The app still exercises its real recording state machine and IPC calls, while
+ * the browser media APIs are kept stable on headless macOS/Windows/Linux CI.
+ */
+export async function installMediaCaptureShim(
+	page: import("@playwright/test").Page,
 ): Promise<void> {
-  await page.addInitScript({ content: ELECTRON_SHIM_SCRIPT });
+	await page.addInitScript(() => {
+		// biome-ignore lint/suspicious/noExplicitAny: test shim
+		const target = window as any;
+		target.__TEST_MEDIA_LOG__ = [];
+
+		const makeStream = () => {
+			const canvas = document.createElement("canvas");
+			canvas.width = 640;
+			canvas.height = 360;
+			const context = canvas.getContext("2d");
+			context!.fillStyle = "#1d4ed8";
+			context!.fillRect(0, 0, canvas.width, canvas.height);
+			context!.fillStyle = "#ffffff";
+			context!.fillRect(24, 24, 160, 90);
+			return canvas.captureStream(30);
+		};
+
+		class TestMediaRecorder {
+			ondataavailable: ((event: { data: Blob }) => void) | null = null;
+			onstop: (() => Promise<void> | void) | null = null;
+			onerror: (() => void) | null = null;
+			state: "inactive" | "recording" = "inactive";
+
+			constructor(
+				public stream: MediaStream,
+				public options?: MediaRecorderOptions,
+			) {
+				target.__TEST_MEDIA_LOG__.push({
+					cmd: "MediaRecorder.constructor",
+					options,
+					tracks: stream.getTracks().map((track) => track.kind),
+				});
+			}
+
+			start(timeslice?: number) {
+				this.state = "recording";
+				target.__TEST_MEDIA_LOG__.push({ cmd: "MediaRecorder.start", timeslice });
+			}
+
+			stop() {
+				this.state = "inactive";
+				target.__TEST_MEDIA_LOG__.push({ cmd: "MediaRecorder.stop" });
+				const blob = new Blob(["open-recorder-test-data"], {
+					type: this.options?.mimeType ?? "video/webm",
+				});
+				this.ondataavailable?.({ data: blob });
+				queueMicrotask(() => {
+					void this.onstop?.();
+				});
+			}
+
+			static isTypeSupported(type: string) {
+				return type.startsWith("video/webm");
+			}
+		}
+
+		target.MediaRecorder = TestMediaRecorder;
+
+		const mediaDevices = navigator.mediaDevices ?? {};
+		Object.defineProperty(navigator, "mediaDevices", {
+			configurable: true,
+			value: {
+				...mediaDevices,
+				getDisplayMedia: async (constraints?: DisplayMediaStreamOptions) => {
+					target.__TEST_MEDIA_LOG__.push({ cmd: "getDisplayMedia", constraints });
+					return makeStream();
+				},
+				getUserMedia: async (constraints?: MediaStreamConstraints) => {
+					target.__TEST_MEDIA_LOG__.push({ cmd: "getUserMedia", constraints });
+					return makeStream();
+				},
+				enumerateDevices: async () => [],
+			},
+		});
+	});
 }
 
 /**
@@ -236,15 +324,15 @@ export async function installTauriShim(
  * Values must be JSON-serializable. Each handler returns the value statically.
  */
 export async function configureHandlers(
-  page: import("@playwright/test").Page,
-  handlers: Record<string, unknown>,
+	page: import("@playwright/test").Page,
+	handlers: Record<string, unknown>,
 ): Promise<void> {
-  await page.addInitScript((h) => {
-    for (const [cmd, val] of Object.entries(h)) {
-      // biome-ignore lint/suspicious/noExplicitAny: test shim
-      (window as any).__TEST_HANDLERS__[cmd] = () => val;
-    }
-  }, handlers);
+	await page.addInitScript((h) => {
+		for (const [cmd, val] of Object.entries(h)) {
+			// biome-ignore lint/suspicious/noExplicitAny: test shim
+			(window as any).__TEST_HANDLERS__[cmd] = () => val;
+		}
+	}, handlers);
 }
 
 /**
@@ -252,40 +340,38 @@ export async function configureHandlers(
  * whether the call is requesting screen sources or window sources.
  */
 export async function configureSourceHandlers(
-  page: import("@playwright/test").Page,
-  {
-    screenSources,
-    windowSources,
-  }: {
-    screenSources: unknown[];
-    windowSources: unknown[];
-  },
+	page: import("@playwright/test").Page,
+	{
+		screenSources,
+		windowSources,
+	}: {
+		screenSources: unknown[];
+		windowSources: unknown[];
+	},
 ): Promise<void> {
-  await page.addInitScript(
-    ({ screens, windows }) => {
-      // biome-ignore lint/suspicious/noExplicitAny: test shim
-      (window as any).__TEST_HANDLERS__.get_sources = (args: {
-        opts?: { types?: string[] };
-      }) => {
-        const types = (args.opts && args.opts.types) || [];
-        if (types.indexOf("window") >= 0) return windows;
-        return screens;
-      };
-    },
-    { screens: screenSources, windows: windowSources },
-  );
+	await page.addInitScript(
+		({ screens, windows }) => {
+			// biome-ignore lint/suspicious/noExplicitAny: test shim
+			(window as any).__TEST_HANDLERS__.get_sources = (args: { opts?: { types?: string[] } }) => {
+				const types = (args.opts && args.opts.types) || [];
+				if (types.indexOf("window") >= 0) return windows;
+				return screens;
+			};
+		},
+		{ screens: screenSources, windows: windowSources },
+	);
 }
 
 /**
  * Pre-sets localStorage items as an init script (runs before page JS).
  */
 export async function setLocalStorage(
-  page: import("@playwright/test").Page,
-  items: Record<string, string>,
+	page: import("@playwright/test").Page,
+	items: Record<string, string>,
 ): Promise<void> {
-  await page.addInitScript((kv) => {
-    for (const [key, value] of Object.entries(kv)) {
-      localStorage.setItem(key, value);
-    }
-  }, items);
+	await page.addInitScript((kv) => {
+		for (const [key, value] of Object.entries(kv)) {
+			localStorage.setItem(key, value);
+		}
+	}, items);
 }

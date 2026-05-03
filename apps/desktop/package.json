@@ -30,7 +30,8 @@
 		"test": "vitest --run",
 		"test:watch": "vitest",
 		"typecheck": "tsc --noEmit",
-		"e2e": "playwright test --config e2e/playwright.config.ts",
+		"e2e": "pnpm run e2e:coverage && playwright test --config e2e/playwright.config.ts",
+		"e2e:coverage": "node scripts/assert-critical-flow-coverage.mjs",
 		"e2e:ui": "playwright test --config e2e/playwright.config.ts --ui"
 	},
 	"dependencies": {

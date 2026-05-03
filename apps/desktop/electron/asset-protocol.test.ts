@@ -1,7 +1,7 @@
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 vi.mock("electron", () => ({}));
 
@@ -77,9 +77,7 @@ describe("registerAssetProtocolHandler", () => {
 
 describe("assetUrlToFilePath", () => {
 	it("decodes a POSIX path", () => {
-		expect(assetUrlToFilePath("asset://localhost/Users/foo/bar.webm")).toBe(
-			"/Users/foo/bar.webm",
-		);
+		expect(assetUrlToFilePath("asset://localhost/Users/foo/bar.webm")).toBe("/Users/foo/bar.webm");
 	});
 
 	it("decodes percent-encoded segments", () => {
@@ -107,9 +105,30 @@ describe("assetUrlToFilePath", () => {
 describe("handleAssetRequest", () => {
 	let tempDir: string;
 	let testFile: string;
-	const FILE_BYTES = new Uint8Array(
-		Array.from({ length: 1024 }, (_, i) => i % 256),
-	);
+	const FILE_BYTES = new Uint8Array(Array.from({ length: 1024 }, (_, i) => i % 256));
+
+	function encodeAssetPathSegments(pathname: string, keepWindowsDrive = false): string {
+		return pathname
+			.split("/")
+			.map((segment, index) => {
+				if (!segment) return "";
+				if (keepWindowsDrive && index === 1 && /^[a-zA-Z]:$/.test(segment)) {
+					return segment;
+				}
+				return encodeURIComponent(segment);
+			})
+			.join("/");
+	}
+
+	function testAssetUrl(filePath: string): string {
+		const normalized = filePath.replace(/\\/g, "/");
+		if (/^[a-zA-Z]:\//.test(normalized)) {
+			return `asset://localhost${encodeAssetPathSegments(`/${normalized}`, true)}`;
+		}
+
+		const absolutePath = normalized.startsWith("/") ? normalized : `/${normalized}`;
+		return `asset://localhost${encodeAssetPathSegments(absolutePath)}`;
+	}
 
 	beforeAll(async () => {
 		tempDir = await mkdtemp(path.join(tmpdir(), "asset-protocol-test-"));
@@ -122,13 +141,7 @@ describe("handleAssetRequest", () => {
 	});
 
 	function assetUrl(): string {
-		// Build the URL the way the renderer would — POSIX paths only in this
-		// suite (Windows path handling is covered by `assetUrlToFilePath` above).
-		const encoded = testFile
-			.split("/")
-			.map((seg) => (seg ? encodeURIComponent(seg) : ""))
-			.join("/");
-		return `asset://localhost${encoded}`;
+		return testAssetUrl(testFile);
 	}
 
 	it("returns 200 + full body when no Range header is present", async () => {
@@ -196,7 +209,7 @@ describe("handleAssetRequest", () => {
 	});
 
 	it("returns 404 for a missing file", async () => {
-		const missing = `asset://localhost${tempDir}/does-not-exist.webm`;
+		const missing = testAssetUrl(path.join(tempDir, "does-not-exist.webm"));
 		const res = await handleAssetRequest(new Request(missing));
 		expect(res.status).toBe(404);
 	});
@@ -209,11 +222,7 @@ describe("handleAssetRequest", () => {
 	it("infers Content-Type from extension", async () => {
 		const mp4Path = path.join(tempDir, "clip.mp4");
 		await writeFile(mp4Path, FILE_BYTES);
-		const url = `asset://localhost${mp4Path
-			.split("/")
-			.map((s) => (s ? encodeURIComponent(s) : ""))
-			.join("/")}`;
-		const res = await handleAssetRequest(new Request(url));
+		const res = await handleAssetRequest(new Request(testAssetUrl(mp4Path)));
 		expect(res.headers.get("Content-Type")).toBe("video/mp4");
 	});
 });
