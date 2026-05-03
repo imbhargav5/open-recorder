@@ -7,6 +7,7 @@
 
 import { createStore } from "jotai/vanilla";
 import { describe, expect, it } from "vitest";
+import { createDefaultZoomEasing } from "@/components/video-editor/types";
 import {
 	annotationRegionsAtom,
 	aspectRatioAtom,
@@ -265,7 +266,14 @@ describe("video editor – zoom regions", () => {
 	it("adding zoom region updates zoomRegionsAtom", () => {
 		const store = makeFreshStore();
 		store.set(zoomRegionsAtom, [
-			{ id: "zoom-1", startMs: 0, endMs: 3000, depth: 3, focus: { cx: 0.5, cy: 0.5 } },
+			{
+				id: "zoom-1",
+				startMs: 0,
+				endMs: 3000,
+				depth: 3,
+				focus: { cx: 0.5, cy: 0.5 },
+				...createDefaultZoomEasing(),
+			},
 		]);
 		expect(store.get(zoomRegionsAtom)).toHaveLength(1);
 	});

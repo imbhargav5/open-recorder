@@ -56,7 +56,9 @@ import {
 } from "@/atoms/videoEditor";
 import { ProjectsPage } from "@/components/projects/ProjectsPage";
 import { AppSidebar } from "@/components/shell/AppSidebar";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
 	Empty,
 	EmptyDescription,
@@ -65,8 +67,10 @@ import {
 	EmptyTitle,
 } from "@/components/ui/empty";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Separator } from "@/components/ui/separator";
 import { Toaster } from "@/components/ui/sonner";
 import { Switch } from "@/components/ui/switch";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useShortcuts } from "@/contexts/ShortcutsContext";
 import { useWaveformData } from "@/hooks/useWaveformData";
 import { getAssetPath } from "@/lib/assetPath";
@@ -91,7 +95,6 @@ import {
 	normalizeFacecamSettings,
 } from "@/lib/recordingSession";
 import { matchesShortcut } from "@/lib/shortcuts";
-import { cn } from "@/lib/utils";
 import { DEFAULT_WALLPAPER_RELATIVE_PATH, WALLPAPER_PATHS } from "@/lib/wallpapers";
 import { getAspectRatioValue } from "@/utils/aspectRatioUtils";
 import { AllShortcutsDialog } from "./AllShortcutsDialog";
@@ -114,6 +117,7 @@ import {
 	type AnnotationRegion,
 	type CursorTelemetryPoint,
 	clampFocusToDepth,
+	createDefaultZoomEasing,
 	DEFAULT_ANNOTATION_POSITION,
 	DEFAULT_ANNOTATION_SIZE,
 	DEFAULT_ANNOTATION_STYLE,
@@ -125,6 +129,7 @@ import {
 	type SpeedRegion,
 	type TrimRegion,
 	type ZoomDepth,
+	type ZoomEasing,
 	type ZoomFocus,
 	type ZoomRegion,
 } from "./types";
@@ -324,27 +329,36 @@ function EditorTitleBar({
 
 	return (
 		<div
-			className="relative h-10 flex-shrink-0 bg-[#09090b]/80 backdrop-blur-md border-b border-white/5 flex items-center justify-center px-6 z-50"
+			className="relative z-50 flex h-12 flex-shrink-0 items-center justify-center border-b border-border/60 bg-card/95 px-4 shadow-sm backdrop-blur-md"
 			style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
 		>
 			<div
-				className="absolute left-2 flex items-center"
+				className="absolute left-2 flex items-center gap-2"
 				style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
 			>
-				<button
+				<Button
 					type="button"
 					onClick={() => setSidebarExpanded(!sidebarExpanded)}
 					aria-label={sidebarExpanded ? "Collapse sidebar" : "Expand sidebar"}
 					aria-expanded={sidebarExpanded}
 					title={sidebarExpanded ? "Collapse sidebar" : "Expand sidebar"}
-					className="inline-flex h-7 w-7 items-center justify-center rounded-md text-white/60 transition hover:bg-white/8 hover:text-white cursor-pointer"
+					variant="ghost"
+					size="icon"
+					className="size-8"
 				>
-					<PanelLeft className="h-4 w-4" />
-				</button>
+					<PanelLeft />
+				</Button>
 			</div>
-			<span className="text-sm font-semibold tracking-tight text-white/90">
-				{internalView === "projects" ? "Projects" : editorNavbarTitle}
-			</span>
+			<div className="flex min-w-0 items-center gap-2">
+				<span className="max-w-[46vw] truncate text-sm font-semibold tracking-tight text-foreground">
+					{internalView === "projects" ? "Projects" : editorNavbarTitle}
+				</span>
+				{internalView === "editor" ? (
+					<Badge variant="secondary" className="text-[10px]">
+						{exportFormat.toUpperCase()}
+					</Badge>
+				) : null}
+			</div>
 			{internalView === "editor" && (
 				<div
 					className="absolute right-4 flex items-center gap-2"
@@ -356,18 +370,19 @@ function EditorTitleBar({
 								type="button"
 								size="sm"
 								onClick={onOpenExportDialog}
-								className="h-7 rounded-r-none gap-1.5 bg-[#2563EB] text-white text-xs font-medium hover:bg-[#2563EB]/90 active:scale-[0.98] transition-all"
+								className="h-8 rounded-r-none text-xs font-medium"
 							>
-								<Download className="w-3.5 h-3.5" />
+								<Download data-icon="inline-start" />
 								Export {exportFormat === "gif" ? "GIF" : "Video"}
 							</Button>
 							<PopoverTrigger asChild>
 								<Button
 									type="button"
 									size="sm"
-									className="h-7 w-7 p-0 rounded-l-none border-l border-[#2563EB]/50 bg-[#2563EB] text-white hover:bg-[#2563EB]/90 active:scale-[0.98] transition-all"
+									className="h-8 w-8 rounded-l-none border-l border-primary-foreground/20 px-0"
+									aria-label="Export settings"
 								>
-									<ChevronDown className="w-3.5 h-3.5" />
+									<ChevronDown />
 								</Button>
 							</PopoverTrigger>
 						</div>
@@ -375,128 +390,124 @@ function EditorTitleBar({
 							side="bottom"
 							align="end"
 							sideOffset={8}
-							className="w-[280px] bg-[#09090b] border-white/10 p-3 rounded-xl"
+							className="w-[320px] border-border/70 bg-popover p-0 shadow-2xl"
 						>
-							<div className="space-y-3">
-								<div className="flex items-center gap-2">
-									<button
-										onClick={() => setExportFormat("mp4")}
-										className={cn(
-											"flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg border transition-all text-xs font-medium",
-											exportFormat === "mp4"
-												? "bg-[#2563EB]/10 border-[#2563EB]/50 text-white"
-												: "bg-white/5 border-white/10 text-slate-400 hover:bg-white/10 hover:text-slate-200",
-										)}
-									>
-										<Film className="w-3.5 h-3.5" />
-										MP4
-									</button>
-									<button
-										onClick={() => setExportFormat("gif")}
-										className={cn(
-											"flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg border transition-all text-xs font-medium",
-											exportFormat === "gif"
-												? "bg-[#2563EB]/10 border-[#2563EB]/50 text-white"
-												: "bg-white/5 border-white/10 text-slate-400 hover:bg-white/10 hover:text-slate-200",
-										)}
-									>
-										<Image className="w-3.5 h-3.5" />
-										GIF
-									</button>
-								</div>
-
-								{exportFormat === "mp4" && (
-									<div className="bg-white/5 border border-white/5 p-0.5 w-full grid grid-cols-3 h-7 rounded-lg">
-										<button
-											onClick={() => setExportQuality("medium")}
-											className={cn(
-												"rounded-md transition-all text-[10px] font-medium",
-												exportQuality === "medium"
-													? "bg-white text-black"
-													: "text-slate-400 hover:text-slate-200",
-											)}
-										>
-											Low
-										</button>
-										<button
-											onClick={() => setExportQuality("good")}
-											className={cn(
-												"rounded-md transition-all text-[10px] font-medium",
-												exportQuality === "good"
-													? "bg-white text-black"
-													: "text-slate-400 hover:text-slate-200",
-											)}
-										>
-											Medium
-										</button>
-										<button
-											onClick={() => setExportQuality("source")}
-											className={cn(
-												"rounded-md transition-all text-[10px] font-medium",
-												exportQuality === "source"
-													? "bg-white text-black"
-													: "text-slate-400 hover:text-slate-200",
-											)}
-										>
-											High
-										</button>
+							<Card className="border-0 bg-transparent shadow-none">
+								<CardHeader className="p-3 pb-2">
+									<div className="flex items-center justify-between gap-3">
+										<CardTitle className="text-sm">Export</CardTitle>
+										<Badge variant="outline" className="text-[10px]">
+											Quick settings
+										</Badge>
 									</div>
-								)}
+								</CardHeader>
+								<CardContent className="flex flex-col gap-3 p-3 pt-0">
+									<ToggleGroup
+										type="single"
+										value={exportFormat}
+										onValueChange={(value) => {
+											if (value === "mp4" || value === "gif") {
+												setExportFormat(value);
+											}
+										}}
+										className="grid grid-cols-2 rounded-lg border border-border bg-muted/30 p-1"
+									>
+										<ToggleGroupItem value="mp4" className="h-8 gap-1.5 text-xs">
+											<Film data-icon="inline-start" />
+											MP4
+										</ToggleGroupItem>
+										<ToggleGroupItem value="gif" className="h-8 gap-1.5 text-xs">
+											<Image data-icon="inline-start" />
+											GIF
+										</ToggleGroupItem>
+									</ToggleGroup>
 
-								{exportFormat === "gif" && (
-									<div className="space-y-2">
-										<div className="flex items-center gap-2">
-											<div className="flex-1 bg-white/5 border border-white/5 p-0.5 grid grid-cols-4 h-7 rounded-lg">
-												{GIF_FRAME_RATES.map((rate) => (
-													<button
-														key={rate.value}
-														onClick={() => setGifFrameRate(rate.value)}
-														className={cn(
-															"rounded-md transition-all text-[10px] font-medium",
-															gifFrameRate === rate.value
-																? "bg-white text-black"
-																: "text-slate-400 hover:text-slate-200",
-														)}
-													>
-														{rate.value}
-													</button>
-												))}
+									{exportFormat === "mp4" && (
+										<ToggleGroup
+											type="single"
+											value={exportQuality}
+											onValueChange={(value) => {
+												if (value === "medium" || value === "good" || value === "source") {
+													setExportQuality(value);
+												}
+											}}
+											className="grid grid-cols-3 rounded-lg border border-border bg-muted/30 p-1"
+										>
+											<ToggleGroupItem value="medium" className="h-7 text-[10px]">
+												Low
+											</ToggleGroupItem>
+											<ToggleGroupItem value="good" className="h-7 text-[10px]">
+												Medium
+											</ToggleGroupItem>
+											<ToggleGroupItem value="source" className="h-7 text-[10px]">
+												High
+											</ToggleGroupItem>
+										</ToggleGroup>
+									)}
+
+									{exportFormat === "gif" && (
+										<div className="flex flex-col gap-2">
+											<div className="grid grid-cols-[1.2fr_1fr] gap-2">
+												<ToggleGroup
+													type="single"
+													value={String(gifFrameRate)}
+													onValueChange={(value) => {
+														const nextRate = GIF_FRAME_RATES.find(
+															(rate) => String(rate.value) === value,
+														)?.value;
+														if (nextRate !== undefined) {
+															setGifFrameRate(nextRate);
+														}
+													}}
+													className="grid grid-cols-4 rounded-lg border border-border bg-muted/30 p-1"
+												>
+													{GIF_FRAME_RATES.map((rate) => (
+														<ToggleGroupItem
+															key={rate.value}
+															value={String(rate.value)}
+															className="h-7 text-[10px]"
+														>
+															{rate.value}
+														</ToggleGroupItem>
+													))}
+												</ToggleGroup>
+												<ToggleGroup
+													type="single"
+													value={gifSizePreset}
+													onValueChange={(value) => {
+														if (value in GIF_SIZE_PRESETS) {
+															setGifSizePreset(value as GifSizePreset);
+														}
+													}}
+													className="grid grid-cols-3 rounded-lg border border-border bg-muted/30 p-1"
+												>
+													{Object.entries(GIF_SIZE_PRESETS).map(([key]) => (
+														<ToggleGroupItem key={key} value={key} className="h-7 text-[10px]">
+															{key === "original"
+																? "Orig"
+																: key.charAt(0).toUpperCase() + key.slice(1, 3)}
+														</ToggleGroupItem>
+													))}
+												</ToggleGroup>
 											</div>
-											<div className="flex-1 bg-white/5 border border-white/5 p-0.5 grid grid-cols-3 h-7 rounded-lg">
-												{Object.entries(GIF_SIZE_PRESETS).map(([key]) => (
-													<button
-														key={key}
-														onClick={() => setGifSizePreset(key as GifSizePreset)}
-														className={cn(
-															"rounded-md transition-all text-[10px] font-medium",
-															gifSizePreset === key
-																? "bg-white text-black"
-																: "text-slate-400 hover:text-slate-200",
-														)}
-													>
-														{key === "original"
-															? "Orig"
-															: key.charAt(0).toUpperCase() + key.slice(1, 3)}
-													</button>
-												))}
+											<Separator />
+											<div className="flex items-center justify-between text-[10px] text-muted-foreground">
+												<span>
+													{gifOutputDimensions.width} × {gifOutputDimensions.height}px
+												</span>
+												<div className="flex items-center gap-2">
+													<span>Loop</span>
+													<Switch
+														checked={gifLoop}
+														onCheckedChange={setGifLoop}
+														className="scale-75 data-[state=checked]:bg-primary"
+													/>
+												</div>
 											</div>
 										</div>
-										<div className="flex items-center justify-between">
-											<span className="text-[10px] text-slate-500">
-												{gifOutputDimensions.width} × {gifOutputDimensions.height}px
-											</span>
-											<div className="flex items-center gap-2">
-												<span className="text-[10px] text-slate-400">Loop</span>
-												<Switch
-													checked={gifLoop}
-													onCheckedChange={setGifLoop}
-													className="data-[state=checked]:bg-[#2563EB] scale-75"
-												/>
-											</div>
-										</div>
-									</div>
-								)}
-							</div>
+									)}
+								</CardContent>
+							</Card>
 						</PopoverContent>
 					</Popover>
 				</div>
@@ -1160,6 +1171,8 @@ export default function VideoEditor() {
 				cx: dominantAtStart.focus.cx,
 				cy: dominantAtStart.focus.cy,
 			},
+			easeIn: { ...dominantAtStart.easeIn },
+			easeOut: { ...dominantAtStart.easeOut },
 		};
 
 		return [...zoomRegions.filter((region) => region.id !== loopEndRegion.id), loopEndRegion];
@@ -1227,6 +1240,7 @@ export default function VideoEditor() {
 					endMs,
 					depth: DEFAULT_ZOOM_DEPTH,
 					focus: clampFocusToDepth(candidate.focus, DEFAULT_ZOOM_DEPTH),
+					...createDefaultZoomEasing(),
 				});
 				reservedSpans.push({ start: startMs, end: endMs });
 				acceptedCenters.push(candidate.centerTimeMs);
@@ -1324,6 +1338,17 @@ export default function VideoEditor() {
 		return zoomRegions.find((z) => z.id === selectedZoomId)?.depth ?? null;
 	}, [selectedZoomId, zoomRegions]);
 
+	const selectedZoomEasing = useMemo(() => {
+		if (!selectedZoomId) return null;
+		const selectedZoom = zoomRegions.find((z) => z.id === selectedZoomId);
+		if (!selectedZoom) return null;
+
+		return {
+			easeIn: selectedZoom.easeIn,
+			easeOut: selectedZoom.easeOut,
+		};
+	}, [selectedZoomId, zoomRegions]);
+
 	const selectedSpeedValue = useMemo(() => {
 		if (!selectedSpeedId) return null;
 		return speedRegions.find((r) => r.id === selectedSpeedId)?.speed ?? null;
@@ -1331,13 +1356,18 @@ export default function VideoEditor() {
 
 	const handleSelectZoom = useCallback((id: string | null) => {
 		setSelectedZoomId(id);
-		if (id) setSelectedTrimId(null);
+		if (id) {
+			setSelectedTrimId(null);
+			setSelectedSpeedId(null);
+			setSelectedAnnotationId(null);
+		}
 	}, []);
 
 	const handleSelectTrim = useCallback((id: string | null) => {
 		setSelectedTrimId(id);
 		if (id) {
 			setSelectedZoomId(null);
+			setSelectedSpeedId(null);
 			setSelectedAnnotationId(null);
 		}
 	}, []);
@@ -1347,6 +1377,7 @@ export default function VideoEditor() {
 		if (id) {
 			setSelectedZoomId(null);
 			setSelectedTrimId(null);
+			setSelectedSpeedId(null);
 		}
 	}, []);
 
@@ -1358,10 +1389,12 @@ export default function VideoEditor() {
 			endMs: Math.round(span.end),
 			depth: DEFAULT_ZOOM_DEPTH,
 			focus: { cx: 0.5, cy: 0.5 },
+			...createDefaultZoomEasing(),
 		};
 		setZoomRegions((prev) => [...prev, newRegion]);
 		setSelectedZoomId(id);
 		setSelectedTrimId(null);
+		setSelectedSpeedId(null);
 		setSelectedAnnotationId(null);
 	}, []);
 
@@ -1373,10 +1406,12 @@ export default function VideoEditor() {
 			endMs: Math.round(span.end),
 			depth: DEFAULT_ZOOM_DEPTH,
 			focus: clampFocusToDepth(focus, DEFAULT_ZOOM_DEPTH),
+			...createDefaultZoomEasing(),
 		};
 		setZoomRegions((prev) => [...prev, newRegion]);
 		setSelectedZoomId(id);
 		setSelectedTrimId(null);
+		setSelectedSpeedId(null);
 		setSelectedAnnotationId(null);
 	}, []);
 
@@ -1390,6 +1425,7 @@ export default function VideoEditor() {
 		setTrimRegions((prev) => [...prev, newRegion]);
 		setSelectedTrimId(id);
 		setSelectedZoomId(null);
+		setSelectedSpeedId(null);
 		setSelectedAnnotationId(null);
 	}, []);
 
@@ -1444,6 +1480,26 @@ export default function VideoEditor() {
 								...region,
 								depth,
 								focus: clampFocusToDepth(region.focus, depth),
+							}
+						: region,
+				),
+			);
+		},
+		[selectedZoomId],
+	);
+
+	const handleZoomEaseChange = useCallback(
+		(side: "easeIn" | "easeOut", patch: Partial<ZoomEasing>) => {
+			if (!selectedZoomId) return;
+			setZoomRegions((prev) =>
+				prev.map((region) =>
+					region.id === selectedZoomId
+						? {
+								...region,
+								[side]: {
+									...region[side],
+									...patch,
+								},
 							}
 						: region,
 				),
@@ -1548,6 +1604,7 @@ export default function VideoEditor() {
 		setSelectedAnnotationId(id);
 		setSelectedZoomId(null);
 		setSelectedTrimId(null);
+		setSelectedSpeedId(null);
 	}, []);
 
 	const handleAnnotationSpanChange = useCallback((id: string, span: Span) => {
@@ -2229,7 +2286,7 @@ export default function VideoEditor() {
 	}
 
 	return (
-		<div className="flex h-screen bg-[#09090b] text-slate-200 overflow-hidden selection:bg-[#2563EB]/30">
+		<div className="flex h-screen overflow-hidden bg-background text-foreground selection:bg-primary/30">
 			{showPlaybackLoadingOverlay && (
 				<div className="fixed inset-0 z-[120] flex items-center justify-center bg-[#09090b]/92 px-6 backdrop-blur-sm">
 					<Empty className="border-white/10 bg-white/[0.02]">
@@ -2256,156 +2313,160 @@ export default function VideoEditor() {
 				{internalView === "projects" ? (
 					<ProjectsPage onOpenProject={handleLoadProject} />
 				) : (
-					<div className="flex-1 p-5 gap-4 flex min-h-0 relative">
+					<div className="relative flex min-h-0 flex-1 gap-4 bg-muted/20 p-4">
 						{/* Left Column - Video & Timeline */}
 						<div className="flex-[7] flex flex-col gap-3 min-w-0 h-full">
 							<PanelGroup direction="vertical" className="gap-3">
 								{/* Top section: video preview and controls */}
 								<Panel defaultSize={70} minSize={40}>
-									<div className="w-full h-full flex flex-col items-center justify-center bg-black/40 rounded-2xl border border-white/5 shadow-2xl overflow-hidden">
-										{/* Video preview */}
-										<div
-											className="w-full flex justify-center items-center"
-											style={{ flex: "1 1 auto", margin: "6px 0 0" }}
-										>
+									<Card className="h-full overflow-hidden border-border/70 bg-card/80 shadow-2xl shadow-black/20">
+										<CardContent className="flex h-full flex-col items-center justify-center p-0">
+											{/* Video preview */}
 											<div
-												className="relative"
+												className="w-full flex justify-center items-center"
+												style={{ flex: "1 1 auto", margin: "6px 0 0" }}
+											>
+												<div
+													className="relative"
+													style={{
+														width: "auto",
+														height: "100%",
+														aspectRatio: getAspectRatioValue(
+															aspectRatio,
+															(() => {
+																const previewVideo = videoPlaybackRef.current?.video;
+																if (previewVideo && previewVideo.videoHeight > 0) {
+																	return previewVideo.videoWidth / previewVideo.videoHeight;
+																}
+																return 16 / 9;
+															})(),
+														),
+														maxWidth: "100%",
+														margin: "0 auto",
+														boxSizing: "border-box",
+													}}
+												>
+													<Profiler id="VideoPlayback" onRender={onRenderProfiler}>
+														<VideoPlayback
+															aspectRatio={aspectRatio}
+															ref={videoPlaybackRef}
+															videoPath={videoPath || ""}
+															facecamVideoPath={facecamPlaybackPath || undefined}
+															facecamOffsetMs={facecamOffsetMs}
+															facecamSettings={facecamSettings}
+															onDurationChange={setDuration}
+															onTimeUpdate={timeStore.setTime}
+															onPlayStateChange={setIsPlaying}
+															onError={setError}
+															wallpaper={wallpaper}
+															audioMuted={audioMuted}
+															audioVolume={audioVolume}
+															zoomRegions={effectiveZoomRegions}
+															selectedZoomId={selectedZoomId}
+															onSelectZoom={handleSelectZoom}
+															onZoomFocusChange={handleZoomFocusChange}
+															isPlaying={isPlaying}
+															showShadow={shadowIntensity > 0}
+															shadowIntensity={shadowIntensity}
+															backgroundBlur={backgroundBlur}
+															zoomMotionBlur={zoomMotionBlur}
+															connectZooms={connectZooms}
+															borderRadius={borderRadius}
+															padding={padding}
+															cropRegion={cropRegion}
+															trimRegions={trimRegions}
+															speedRegions={speedRegions}
+															annotationRegions={annotationRegions}
+															selectedAnnotationId={selectedAnnotationId}
+															onSelectAnnotation={handleSelectAnnotation}
+															onAnnotationPositionChange={handleAnnotationPositionChange}
+															onAnnotationSizeChange={handleAnnotationSizeChange}
+															cursorTelemetry={effectiveCursorTelemetry}
+															showCursor={showCursor}
+															cursorSize={cursorSize}
+															cursorSmoothing={cursorSmoothing}
+															cursorMotionBlur={cursorMotionBlur}
+															cursorClickBounce={cursorClickBounce}
+															onReadyChange={setPlaybackReady}
+															onFacecamPositionChange={handleFacecamPositionChange}
+														/>
+													</Profiler>
+												</div>
+											</div>
+											{/* Playback controls */}
+											<div
+												className="w-full flex justify-center items-center"
 												style={{
-													width: "auto",
-													height: "100%",
-													aspectRatio: getAspectRatioValue(
-														aspectRatio,
-														(() => {
-															const previewVideo = videoPlaybackRef.current?.video;
-															if (previewVideo && previewVideo.videoHeight > 0) {
-																return previewVideo.videoWidth / previewVideo.videoHeight;
-															}
-															return 16 / 9;
-														})(),
-													),
-													maxWidth: "100%",
-													margin: "0 auto",
-													boxSizing: "border-box",
+													height: "48px",
+													flexShrink: 0,
+													padding: "6px 12px",
+													margin: "6px 0 6px 0",
 												}}
 											>
-												<Profiler id="VideoPlayback" onRender={onRenderProfiler}>
-													<VideoPlayback
-														aspectRatio={aspectRatio}
-														ref={videoPlaybackRef}
-														videoPath={videoPath || ""}
-														facecamVideoPath={facecamPlaybackPath || undefined}
-														facecamOffsetMs={facecamOffsetMs}
-														facecamSettings={facecamSettings}
-														onDurationChange={setDuration}
-														onTimeUpdate={timeStore.setTime}
-														onPlayStateChange={setIsPlaying}
-														onError={setError}
-														wallpaper={wallpaper}
-														audioMuted={audioMuted}
-														audioVolume={audioVolume}
-														zoomRegions={effectiveZoomRegions}
-														selectedZoomId={selectedZoomId}
-														onSelectZoom={handleSelectZoom}
-														onZoomFocusChange={handleZoomFocusChange}
-														isPlaying={isPlaying}
-														showShadow={shadowIntensity > 0}
-														shadowIntensity={shadowIntensity}
-														backgroundBlur={backgroundBlur}
-														zoomMotionBlur={zoomMotionBlur}
-														connectZooms={connectZooms}
-														borderRadius={borderRadius}
-														padding={padding}
-														cropRegion={cropRegion}
-														trimRegions={trimRegions}
-														speedRegions={speedRegions}
-														annotationRegions={annotationRegions}
-														selectedAnnotationId={selectedAnnotationId}
-														onSelectAnnotation={handleSelectAnnotation}
-														onAnnotationPositionChange={handleAnnotationPositionChange}
-														onAnnotationSizeChange={handleAnnotationSizeChange}
-														cursorTelemetry={effectiveCursorTelemetry}
-														showCursor={showCursor}
-														cursorSize={cursorSize}
-														cursorSmoothing={cursorSmoothing}
-														cursorMotionBlur={cursorMotionBlur}
-														cursorClickBounce={cursorClickBounce}
-														onReadyChange={setPlaybackReady}
-														onFacecamPositionChange={handleFacecamPositionChange}
-													/>
-												</Profiler>
+												<div style={{ width: "100%", maxWidth: "700px" }}>
+													<Profiler id="PlaybackControls" onRender={onRenderProfiler}>
+														<PlaybackControls
+															isPlaying={isPlaying}
+															timeStore={timeStore}
+															duration={duration}
+															onTogglePlayPause={togglePlayPause}
+															onSeek={handleSeek}
+														/>
+													</Profiler>
+												</div>
 											</div>
-										</div>
-										{/* Playback controls */}
-										<div
-											className="w-full flex justify-center items-center"
-											style={{
-												height: "48px",
-												flexShrink: 0,
-												padding: "6px 12px",
-												margin: "6px 0 6px 0",
-											}}
-										>
-											<div style={{ width: "100%", maxWidth: "700px" }}>
-												<Profiler id="PlaybackControls" onRender={onRenderProfiler}>
-													<PlaybackControls
-														isPlaying={isPlaying}
-														timeStore={timeStore}
-														duration={duration}
-														onTogglePlayPause={togglePlayPause}
-														onSeek={handleSeek}
-													/>
-												</Profiler>
-											</div>
-										</div>
-									</div>
+										</CardContent>
+									</Card>
 								</Panel>
 
-								<PanelResizeHandle className="h-3 bg-[#09090b]/80 hover:bg-[#09090b] transition-colors rounded-full mx-4 flex items-center justify-center">
-									<div className="w-8 h-1 bg-white/20 rounded-full"></div>
+								<PanelResizeHandle className="mx-4 flex h-3 items-center justify-center rounded-full bg-background/80 transition-colors hover:bg-background">
+									<div className="h-1 w-8 rounded-full bg-border"></div>
 								</PanelResizeHandle>
 
 								{/* Timeline section */}
 								<Panel defaultSize={30} minSize={20}>
-									<div className="h-full min-h-0 bg-[#09090b] rounded-2xl border border-white/5 shadow-lg overflow-auto flex flex-col">
-										<Profiler id="TimelineEditor" onRender={onRenderProfiler}>
-											<TimelineEditor
-												videoDuration={duration}
-												timeStore={timeStore}
-												onSeek={handleSeek}
-												cursorTelemetry={effectiveCursorTelemetry}
-												zoomRegions={effectiveZoomRegions}
-												onZoomAdded={handleZoomAdded}
-												onZoomSuggested={handleZoomSuggested}
-												onZoomSpanChange={handleZoomSpanChange}
-												onZoomDelete={handleZoomDelete}
-												selectedZoomId={selectedZoomId}
-												onSelectZoom={handleSelectZoom}
-												trimRegions={trimRegions}
-												onTrimAdded={handleTrimAdded}
-												onTrimSpanChange={handleTrimSpanChange}
-												onTrimDelete={handleTrimDelete}
-												selectedTrimId={selectedTrimId}
-												onSelectTrim={handleSelectTrim}
-												speedRegions={speedRegions}
-												onSpeedAdded={handleSpeedAdded}
-												onSpeedSpanChange={handleSpeedSpanChange}
-												onSpeedDelete={handleSpeedDelete}
-												selectedSpeedId={selectedSpeedId}
-												onSelectSpeed={handleSelectSpeed}
-												annotationRegions={annotationRegions}
-												onAnnotationAdded={handleAnnotationAdded}
-												onAnnotationSpanChange={handleAnnotationSpanChange}
-												onAnnotationDelete={handleAnnotationDelete}
-												selectedAnnotationId={selectedAnnotationId}
-												onSelectAnnotation={handleSelectAnnotation}
-												aspectRatio={aspectRatio}
-												onAspectRatioChange={setAspectRatio}
-												waveformData={waveformData}
-												waveformLoading={waveformLoading}
-												audioMuted={audioMuted}
-											/>
-										</Profiler>
-									</div>
+									<Card className="flex h-full min-h-0 flex-col overflow-auto border-border/70 bg-card/80 shadow-xl shadow-black/10">
+										<CardContent className="flex min-h-0 flex-1 flex-col p-0">
+											<Profiler id="TimelineEditor" onRender={onRenderProfiler}>
+												<TimelineEditor
+													videoDuration={duration}
+													timeStore={timeStore}
+													onSeek={handleSeek}
+													cursorTelemetry={effectiveCursorTelemetry}
+													zoomRegions={effectiveZoomRegions}
+													onZoomAdded={handleZoomAdded}
+													onZoomSuggested={handleZoomSuggested}
+													onZoomSpanChange={handleZoomSpanChange}
+													onZoomDelete={handleZoomDelete}
+													selectedZoomId={selectedZoomId}
+													onSelectZoom={handleSelectZoom}
+													trimRegions={trimRegions}
+													onTrimAdded={handleTrimAdded}
+													onTrimSpanChange={handleTrimSpanChange}
+													onTrimDelete={handleTrimDelete}
+													selectedTrimId={selectedTrimId}
+													onSelectTrim={handleSelectTrim}
+													speedRegions={speedRegions}
+													onSpeedAdded={handleSpeedAdded}
+													onSpeedSpanChange={handleSpeedSpanChange}
+													onSpeedDelete={handleSpeedDelete}
+													selectedSpeedId={selectedSpeedId}
+													onSelectSpeed={handleSelectSpeed}
+													annotationRegions={annotationRegions}
+													onAnnotationAdded={handleAnnotationAdded}
+													onAnnotationSpanChange={handleAnnotationSpanChange}
+													onAnnotationDelete={handleAnnotationDelete}
+													selectedAnnotationId={selectedAnnotationId}
+													onSelectAnnotation={handleSelectAnnotation}
+													aspectRatio={aspectRatio}
+													onAspectRatioChange={setAspectRatio}
+													waveformData={waveformData}
+													waveformLoading={waveformLoading}
+													audioMuted={audioMuted}
+												/>
+											</Profiler>
+										</CardContent>
+									</Card>
 								</Panel>
 							</PanelGroup>
 						</div>
@@ -2421,6 +2482,9 @@ export default function VideoEditor() {
 								onAudioVolumeChange={setAudioVolume}
 								selectedZoomDepth={selectedZoomDepth}
 								onZoomDepthChange={handleZoomDepthChange}
+								selectedZoomEaseIn={selectedZoomEasing?.easeIn ?? null}
+								selectedZoomEaseOut={selectedZoomEasing?.easeOut ?? null}
+								onZoomEaseChange={handleZoomEaseChange}
 								selectedZoomId={selectedZoomId}
 								onZoomDelete={handleZoomDelete}
 								selectedTrimId={selectedTrimId}

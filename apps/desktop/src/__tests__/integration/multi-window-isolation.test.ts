@@ -9,6 +9,7 @@
 import { createStore } from "jotai/vanilla";
 import { describe, expect, it } from "vitest";
 import { appNameAtom, isMacOSAtom, windowTypeAtom } from "@/atoms/app";
+import { createDefaultZoomEasing } from "@/components/video-editor/types";
 import {
 	imageBackgroundTypeAtom,
 	imageBorderRadiusAtom,
@@ -208,7 +209,14 @@ describe("multi-window isolation – video editor atoms", () => {
 	it("zoomRegionsAtom is independent per store", () => {
 		const { storeA, storeB } = makeTwoStores();
 		storeA.set(zoomRegionsAtom, [
-			{ id: "z1", startMs: 0, endMs: 2000, depth: 2, focus: { cx: 0.5, cy: 0.5 } },
+			{
+				id: "z1",
+				startMs: 0,
+				endMs: 2000,
+				depth: 2,
+				focus: { cx: 0.5, cy: 0.5 },
+				...createDefaultZoomEasing(),
+			},
 		]);
 		expect(storeB.get(zoomRegionsAtom)).toHaveLength(0);
 	});
