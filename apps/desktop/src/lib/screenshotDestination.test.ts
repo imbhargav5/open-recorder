@@ -1,4 +1,5 @@
 import os from "node:os";
+import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mkdirMock = vi.fn();
@@ -62,8 +63,8 @@ describe("screenshot destination semantics", () => {
 		const paths = await import("../../electron/app-paths.ts");
 		const home = os.homedir();
 
-		expect(paths.defaultRecordingsDir()).toBe(`${home}/Movies/Open Recorder`);
-		expect(paths.defaultScreenshotsDir()).toBe(`${home}/Pictures/Open Recorder`);
+		expect(paths.defaultRecordingsDir()).toBe(path.join(home, "Movies", "Open Recorder"));
+		expect(paths.defaultScreenshotsDir()).toBe(path.join(home, "Pictures", "Open Recorder"));
 		expect(paths.defaultScreenshotsDir()).not.toBe(paths.defaultRecordingsDir());
 	});
 
