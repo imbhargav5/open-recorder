@@ -637,6 +637,40 @@ const VideoPlayback = memo(
 				}
 			}, []);
 
+			const scheduleFirstFrameTimeout = useCallback(
+				(video: HTMLVideoElement) => {
+					clearFirstFrameTimeout();
+					firstFrameTimeoutRef.current = window.setTimeout(() => {
+						if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+							onError("Timed out while loading the first video frame");
+						}
+					}, FIRST_FRAME_TIMEOUT_MS);
+				},
+				[clearFirstFrameTimeout, onError],
+			);
+
+			const syncPrimaryVideoReadiness = useCallback(
+				(video: HTMLVideoElement) => {
+					const hasDimensions = video.videoWidth > 0 && video.videoHeight > 0;
+					if (!hasDimensions) {
+						return;
+					}
+
+					setMetadataReady(true);
+
+					if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+						clearFirstFrameTimeout();
+						setFirstFrameReady(true);
+						return;
+					}
+
+					if (video.readyState >= HTMLMediaElement.HAVE_METADATA) {
+						scheduleFirstFrameTimeout(video);
+					}
+				},
+				[clearFirstFrameTimeout, scheduleFirstFrameTimeout, setFirstFrameReady, setMetadataReady],
+			);
+
 			useEffect(() => {
 				zoomRegionsRef.current = zoomRegions;
 			}, [zoomRegions]);
@@ -988,7 +1022,39 @@ const VideoPlayback = memo(
 				setFirstFrameReady(false);
 				clearFirstFrameTimeout();
 				cursorOverlayRef.current?.reset();
-			}, [clearFirstFrameTimeout, videoPath]);
+				syncPrimaryVideoReadiness(video);
+			}, [
+				clearFirstFrameTimeout,
+				setFirstFrameReady,
+				setMetadataReady,
+				syncPrimaryVideoReadiness,
+				videoPath,
+			]);
+
+			useEffect(() => {
+				if (firstFrameReady) {
+					return;
+				}
+
+				const video = videoRef.current;
+				if (!video) {
+					return;
+				}
+
+				syncPrimaryVideoReadiness(video);
+
+				if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+					return;
+				}
+
+				const intervalId = window.setInterval(() => {
+					syncPrimaryVideoReadiness(video);
+				}, 250);
+
+				return () => {
+					window.clearInterval(intervalId);
+				};
+			}, [firstFrameReady, syncPrimaryVideoReadiness, videoPath]);
 
 			useEffect(() => {
 				void facecamVideoPath;
@@ -1525,11 +1591,7 @@ const VideoPlayback = memo(
 					return;
 				}
 
-				firstFrameTimeoutRef.current = window.setTimeout(() => {
-					if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
-						onError("Timed out while loading the first video frame");
-					}
-				}, FIRST_FRAME_TIMEOUT_MS);
+				scheduleFirstFrameTimeout(video);
 			};
 
 			const handleLoadedData = (e: React.SyntheticEvent<HTMLVideoElement, Event>) => {

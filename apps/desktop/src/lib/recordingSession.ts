@@ -20,6 +20,7 @@ export interface RecordingSession {
 	facecamOffsetMs?: number;
 	facecamSettings?: FacecamSettings;
 	sourceName?: string;
+	showCursorOverlay?: boolean;
 }
 
 export interface PersistedRecordingSession extends RecordingSession {
@@ -154,6 +155,8 @@ export function normalizeRecordingSession(
 			typeof candidate.sourceName === "string" && candidate.sourceName.trim()
 				? candidate.sourceName
 				: undefined,
+		showCursorOverlay:
+			typeof candidate.showCursorOverlay === "boolean" ? candidate.showCursorOverlay : undefined,
 	};
 }
 

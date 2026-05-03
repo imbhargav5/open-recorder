@@ -13,6 +13,7 @@ type RecordingSessionLike = {
 	facecamOffsetMs?: number | null;
 	facecamSettings?: Partial<FacecamSettings> | null;
 	sourceName?: string | null;
+	showCursorOverlay?: boolean | null;
 } | null;
 
 export type InitialVideoEditorLoadResult =
@@ -28,6 +29,7 @@ export type InitialVideoEditorLoadResult =
 			facecamOffsetMs: number;
 			facecamSettings: Partial<FacecamSettings> | null | undefined;
 			sourceName: string | null;
+			showCursorOverlay: boolean;
 	  }
 	| {
 			kind: "video";
@@ -95,6 +97,7 @@ export async function loadInitialVideoEditorState({
 			facecamOffsetMs: launchParams.facecamOffsetMs ?? 0,
 			facecamSettings: launchParams.facecamSettings,
 			sourceName: launchParams.sourceName ?? null,
+			showCursorOverlay: launchParams.showCursorOverlay ?? false,
 		};
 	}
 
@@ -128,6 +131,7 @@ export async function loadInitialVideoEditorState({
 			facecamOffsetMs: session.facecamOffsetMs ?? 0,
 			facecamSettings: session.facecamSettings,
 			sourceName: typeof session.sourceName === "string" ? session.sourceName : null,
+			showCursorOverlay: session.showCursorOverlay === true,
 		};
 	}
 

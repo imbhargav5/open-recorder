@@ -15,10 +15,10 @@
  * Run: pnpm typecheck
  */
 
-import type { RecordingSession, FacecamSettings } from "@/lib/recordingSession";
-import type { ShortcutsConfig, ShortcutBinding } from "@/lib/shortcuts";
 import type { DesktopSource } from "@/components/launch/sourceSelectorState";
-import type { SourceListOptions, NativeRecordingOptions } from "@/lib/backend";
+import type { NativeRecordingOptions, SourceListOptions } from "@/lib/backend";
+import type { FacecamSettings, RecordingSession } from "@/lib/recordingSession";
+import type { ShortcutBinding, ShortcutsConfig } from "@/lib/shortcuts";
 
 // ─── RecordingSession ────────────────────────────────────────────────────────
 
@@ -32,6 +32,7 @@ void (session.facecamVideoPath satisfies string | undefined);
 void (session.facecamOffsetMs satisfies number | undefined);
 void (session.facecamSettings satisfies FacecamSettings | undefined);
 void (session.sourceName satisfies string | undefined);
+void (session.showCursorOverlay satisfies boolean | undefined);
 
 // @ts-expect-error: 'nonExistentField' does not exist on RecordingSession
 void session.nonExistentField;

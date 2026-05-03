@@ -85,7 +85,7 @@ export const paddingAtom = atom<number>(50);
 
 // --- Cursor settings (composite) ---
 export const cursorSettingsAtom = atom<CursorSettings>({
-	showCursor: true,
+	showCursor: false,
 	loopCursor: false,
 	cursorSize: DEFAULT_CURSOR_SIZE,
 	cursorSmoothing: DEFAULT_CURSOR_SMOOTHING,

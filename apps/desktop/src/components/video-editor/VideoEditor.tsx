@@ -514,7 +514,7 @@ export default function VideoEditor() {
 	const setFacecamVideoPath = useSetAtom(facecamVideoPathAtom);
 	const [facecamPlaybackPath, setFacecamPlaybackPath] = useAtom(facecamPlaybackPathAtom);
 	const [facecamOffsetMs, setFacecamOffsetMs] = useAtom(facecamOffsetMsAtom);
-	const setCurrentProjectPath = useSetAtom(currentProjectPathAtom);
+	const [currentProjectPath, setCurrentProjectPath] = useAtom(currentProjectPathAtom);
 	const [loading, setLoading] = useAtom(videoLoadingAtom);
 	const [playbackReady, setPlaybackReady] = useAtom(playbackReadyAtom);
 	const [error, setError] = useAtom(videoErrorAtom);
@@ -592,6 +592,19 @@ export default function VideoEditor() {
 	const autoSuggestedVideoPathRef = useRef<string | null>(null);
 	const pendingExportSaveRef = useRef<PendingExportSave | null>(null);
 	const playbackOverlayWasVisibleRef = useRef(false);
+	const sessionCursorOverlayDefaultAppliedRef = useRef<string | null>(null);
+
+	const applyCursorOverlayDefaultForSession = useCallback(
+		(sourcePath: string, showCursorOverlay: boolean) => {
+			sessionCursorOverlayDefaultAppliedRef.current = sourcePath;
+			setCursorSettings((current) =>
+				current.showCursor === showCursorOverlay
+					? current
+					: { ...current, showCursor: showCursorOverlay },
+			);
+		},
+		[setCursorSettings],
+	);
 
 	const { handleUndo, handleRedo } = useVideoEditorHistory({
 		zoomRegions,
@@ -800,6 +813,10 @@ export default function VideoEditor() {
 							defaultEnabled: Boolean(nextFacecamPath),
 						}),
 					);
+					applyCursorOverlayDefaultForSession(
+						initialState.sourcePath,
+						initialState.showCursorOverlay,
+					);
 					setCurrentProjectPath(null);
 					setLastSavedSnapshot(null);
 				} else if (initialState.kind === "video") {
@@ -828,7 +845,30 @@ export default function VideoEditor() {
 		}
 
 		loadInitialData();
-	}, [applyLoadedProject, resetPlaybackStateForSourceChange, resolvePlaybackPaths]);
+	}, [
+		applyLoadedProject,
+		applyCursorOverlayDefaultForSession,
+		resetPlaybackStateForSourceChange,
+		resolvePlaybackPaths,
+	]);
+
+	useEffect(() => {
+		if (
+			!videoSourcePath ||
+			currentProjectPath ||
+			sessionCursorOverlayDefaultAppliedRef.current === videoSourcePath
+		) {
+			return;
+		}
+
+		const searchParams = new URLSearchParams(window.location.search);
+		if (
+			searchParams.get("editorMode") === "session" &&
+			searchParams.get("showCursorOverlay") !== "true"
+		) {
+			applyCursorOverlayDefaultForSession(videoSourcePath, false);
+		}
+	}, [applyCursorOverlayDefaultForSession, currentProjectPath, videoSourcePath]);
 
 	const saveProject = useCallback(
 		async (forceSaveAs: boolean) => {

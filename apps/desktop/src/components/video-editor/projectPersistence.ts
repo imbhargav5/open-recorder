@@ -283,7 +283,7 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 		backgroundBlur: normalizedBackgroundBlur,
 		zoomMotionBlur: normalizedZoomMotionBlur,
 		connectZooms: typeof editor.connectZooms === "boolean" ? editor.connectZooms : true,
-		showCursor: typeof editor.showCursor === "boolean" ? editor.showCursor : true,
+		showCursor: typeof editor.showCursor === "boolean" ? editor.showCursor : false,
 		loopCursor: typeof editor.loopCursor === "boolean" ? editor.loopCursor : false,
 		cursorSize: isFiniteNumber(editor.cursorSize)
 			? clamp(editor.cursorSize, 0.5, 10)
