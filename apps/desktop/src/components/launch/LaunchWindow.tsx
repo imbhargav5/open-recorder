@@ -35,7 +35,6 @@ import { useScreenRecorder } from "../../hooks/useScreenRecorder";
 import { microphoneMachine } from "../../machines/microphoneMachine";
 import { PermissionOnboarding } from "../onboarding/PermissionOnboarding";
 import { Button } from "../ui/button";
-import { ContentClamp } from "../ui/content-clamp";
 import { Popover, PopoverAnchor, PopoverContent } from "../ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
@@ -679,12 +678,12 @@ export function LaunchWindow() {
 								<Button
 									variant="link"
 									size="sm"
-									className="hud-no-drag gap-1 bg-transparent px-0 text-xs text-white/60 hover:bg-transparent"
+									className="hud-no-drag min-w-fit shrink-0 gap-1 bg-transparent px-0 text-xs text-white/60 hover:bg-transparent"
 									onClick={() => openSourceSelector()}
 									title={selectedSource}
 								>
 									<MdMonitor size={14} className="text-white/60" />
-									<ContentClamp truncateLength={10}>{selectedSource}</ContentClamp>
+									<span>{selectedSource}</span>
 								</Button>
 
 								<div className={dividerClass} />
@@ -742,13 +741,13 @@ export function LaunchWindow() {
 						<Button
 							variant="link"
 							size="sm"
-							className="hud-no-drag gap-1 bg-transparent px-0 text-xs text-white/80 hover:bg-transparent"
+							className="hud-no-drag min-w-fit shrink-0 gap-1 bg-transparent px-0 text-xs text-white/80 hover:bg-transparent"
 							onClick={() => openSourceSelector()}
 							disabled={recording}
 							title={selectedSource}
 						>
 							<MdMonitor size={14} className="text-white/80" />
-							<ContentClamp truncateLength={6}>{selectedSource}</ContentClamp>
+							<span>{selectedSource}</span>
 						</Button>
 
 						<div className={dividerClass} />
