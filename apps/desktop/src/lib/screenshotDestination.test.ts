@@ -91,13 +91,14 @@ describe("screenshot destination semantics", () => {
 		expect(takeScreenshot).toBeTypeOf("function");
 
 		const screenshotPath = await takeScreenshot?.({ captureType: "screen" });
+		const outputPath = execFileMock.mock.calls[0]?.[1]?.at(-1);
 
 		expect(mkdirMock).toHaveBeenCalledWith("/tmp/default-screenshots", { recursive: true });
 		expect(execFileMock).toHaveBeenCalledOnce();
-		expect(execFileMock.mock.calls[0]?.[1]?.at(-1)).toMatch(
-			/^\/tmp\/default-screenshots\/screenshot-\d+\.png$/,
-		);
-		expect(screenshotPath).toMatch(/^\/tmp\/default-screenshots\/screenshot-\d+\.png$/);
+		expect(outputPath).toBeTypeOf("string");
+		expect(path.dirname(outputPath as string)).toBe(path.normalize("/tmp/default-screenshots"));
+		expect(path.basename(outputPath as string)).toMatch(/^screenshot-\d+\.png$/);
+		expect(screenshotPath).toBe(outputPath);
 		expect(state.currentScreenshotPath).toBe(screenshotPath);
 	});
 });
