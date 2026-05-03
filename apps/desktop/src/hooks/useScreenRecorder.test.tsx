@@ -299,8 +299,57 @@ describe("useScreenRecorder — permission preparation", () => {
 	});
 });
 
-describe("useScreenRecorder — Electron capture path", () => {
-	it("does not call unavailable native ScreenCaptureKit recording on macOS", async () => {
+describe("useScreenRecorder — platform routing", () => {
+	it("routes macOS screen capture to native ScreenCaptureKit recording", async () => {
+		const getDisplayMedia = vi.fn();
+		const getUserMedia = vi.fn();
+
+		Object.defineProperty(navigator, "mediaDevices", {
+			configurable: true,
+			writable: true,
+			value: {
+				getDisplayMedia,
+				getUserMedia,
+				enumerateDevices: vi.fn().mockResolvedValue([]),
+			},
+		});
+
+		backend.getPlatform.mockResolvedValue("darwin");
+		backend.startNativeScreenRecording.mockResolvedValue("/tmp/native-recording.mov");
+		backend.startCursorTelemetryCapture.mockResolvedValue(undefined);
+		backend.getSelectedSource.mockResolvedValue({
+			id: "screen:42",
+			name: "External Display",
+		});
+
+		const hook = await mountHook();
+
+		await act(async () => {
+			hook.getCurrent().toggleRecording();
+		});
+		await flushEffects();
+
+		expect(backend.startNativeScreenRecording).toHaveBeenCalledWith(
+			{
+				id: "screen:42",
+				name: "External Display",
+			},
+			{
+				captureCursor: false,
+				capturesMicrophone: false,
+				capturesSystemAudio: false,
+				microphoneDeviceId: undefined,
+			},
+		);
+		expect(getDisplayMedia).not.toHaveBeenCalled();
+		expect(getUserMedia).not.toHaveBeenCalled();
+		expect(mediaRecorderInstances).toHaveLength(0);
+		expect(backend.setRecordingState).toHaveBeenCalledWith(true);
+
+		await hook.unmount();
+	});
+
+	it("routes Linux screen capture to Chromium recording", async () => {
 		const screenStream = makeStream();
 		const getDisplayMedia = vi.fn().mockResolvedValue(screenStream);
 		const getUserMedia = vi.fn();
@@ -315,7 +364,7 @@ describe("useScreenRecorder — Electron capture path", () => {
 			},
 		});
 
-		backend.getPlatform.mockResolvedValue("darwin");
+		backend.getPlatform.mockResolvedValue("linux");
 		backend.getSelectedSource.mockResolvedValue({
 			id: "screen:42",
 			name: "External Display",

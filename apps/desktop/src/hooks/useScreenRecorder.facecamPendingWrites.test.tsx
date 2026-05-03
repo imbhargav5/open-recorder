@@ -173,9 +173,9 @@ function setupBackendMocks() {
 	backend.startCursorTelemetryCapture.mockResolvedValue(undefined);
 	backend.stopCursorTelemetryCapture.mockResolvedValue(undefined);
 	backend.hideCursor.mockResolvedValue(undefined);
-	backend.onStopRecordingFromTray.mockResolvedValue(() => {});
-	backend.onRecordingStateChanged.mockResolvedValue(() => {});
-	backend.onRecordingInterrupted.mockResolvedValue(() => {});
+	backend.onStopRecordingFromTray.mockResolvedValue(() => undefined);
+	backend.onRecordingStateChanged.mockResolvedValue(() => undefined);
+	backend.onRecordingInterrupted.mockResolvedValue(() => undefined);
 }
 
 beforeEach(() => {
