@@ -14,6 +14,7 @@ vi.mock("@uiw/react-color-block", () => ({
 	default: () => <div data-testid="color-block" />,
 }));
 
+const { TooltipProvider } = await import("@/components/ui/tooltip");
 const { SettingsPanel } = await import("./SettingsPanel");
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -47,12 +48,14 @@ async function renderPanel(props: Partial<ComponentProps<typeof SettingsPanel>> 
 	await act(async () => {
 		root.render(
 			<Provider store={store}>
-				<SettingsPanel
-					selected="#000000"
-					onWallpaperChange={vi.fn()}
-					aspectRatio="16:9"
-					{...props}
-				/>
+				<TooltipProvider>
+					<SettingsPanel
+						selected="#000000"
+						onWallpaperChange={vi.fn()}
+						aspectRatio="16:9"
+						{...props}
+					/>
+				</TooltipProvider>
 			</Provider>,
 		);
 	});
