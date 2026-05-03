@@ -36,6 +36,7 @@ export interface RecordingSession {
 	facecamOffsetMs?: number;
 	facecamSettings?: FacecamSettings;
 	sourceName?: string;
+	showCursorOverlay?: boolean;
 }
 
 export interface CursorTelemetryPoint {

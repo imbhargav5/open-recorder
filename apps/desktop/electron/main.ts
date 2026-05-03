@@ -31,6 +31,7 @@ import { registerScreenshotHandlers } from "./handlers/screenshot.js";
 import { registerWindowMgmtHandlers } from "./handlers/window-mgmt.js";
 import { isEditorWindowLabel } from "./window-routing.js";
 import { AppUpdaterService } from "./updater.js";
+import { resolveDisplayMediaSource } from "./display-media-source.js";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -226,16 +227,12 @@ app.whenReady().then(() => {
 	// to the WebRTC pipeline. If nothing is selected, fall back to the first screen.
 	session.defaultSession.setDisplayMediaRequestHandler(
 		async (_request, callback) => {
-			const wantedId = appState.selectedSource?.id;
 			try {
 				const sources = await desktopCapturer.getSources({
 					types: ["screen", "window"],
 					thumbnailSize: { width: 0, height: 0 },
 				});
-				const match =
-					(wantedId && sources.find((s) => s.id === wantedId)) ??
-					sources.find((s) => s.id.startsWith("screen:")) ??
-					sources[0];
+				const match = resolveDisplayMediaSource(appState.selectedSource, sources);
 				if (!match) {
 					callback({});
 					return;

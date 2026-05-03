@@ -209,8 +209,8 @@ describe("videoEditor atoms – cursor defaults", () => {
 		store = createStore();
 	});
 
-	it("cursorSettingsAtom.showCursor defaults to true", () => {
-		expect(store.get(cursorSettingsAtom).showCursor).toBe(true);
+	it("cursorSettingsAtom.showCursor defaults to false", () => {
+		expect(store.get(cursorSettingsAtom).showCursor).toBe(false);
 	});
 
 	it("cursorSettingsAtom.loopCursor defaults to false", () => {
