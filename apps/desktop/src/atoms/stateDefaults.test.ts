@@ -226,7 +226,7 @@ describe("atom defaults", () => {
 			"video cursor settings",
 			cursorSettingsAtom,
 			{
-				showCursor: true,
+				showCursor: false,
 				loopCursor: false,
 				cursorSize: 3,
 				cursorSmoothing: 0.67,

@@ -97,6 +97,7 @@ describe("loadInitialVideoEditorState", () => {
 			facecamOffsetMs: 240,
 			facecamSettings: undefined,
 			sourceName: "Display 1",
+			showCursorOverlay: false,
 		});
 
 		expect(loadCurrentProjectFile).not.toHaveBeenCalled();
@@ -161,6 +162,7 @@ describe("loadInitialVideoEditorState", () => {
 			facecamOffsetMs: 240,
 			facecamSettings: { enabled: true },
 			sourceName: null,
+			showCursorOverlay: false,
 		});
 	});
 

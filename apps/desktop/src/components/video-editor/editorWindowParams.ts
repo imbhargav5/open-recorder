@@ -18,6 +18,7 @@ export type EditorWindowLaunchParams =
 			facecamOffsetMs?: number;
 			facecamSettings?: Partial<FacecamSettings> | null;
 			sourceName?: string | null;
+			showCursorOverlay?: boolean;
 	  };
 
 function normalizeSourceName(value: string | null | undefined) {
@@ -47,6 +48,16 @@ function parseJson<T>(value: string | null): T | undefined {
 	} catch {
 		return undefined;
 	}
+}
+
+function parseBoolean(value: string | null): boolean | undefined {
+	if (value === "true") {
+		return true;
+	}
+	if (value === "false") {
+		return false;
+	}
+	return undefined;
 }
 
 function basenameWithoutExtension(filePath: string) {
@@ -81,6 +92,9 @@ export function buildEditorWindowQuery(params: EditorWindowLaunchParams) {
 		}
 		if (params.facecamSettings) {
 			searchParams.set("facecamSettings", JSON.stringify(params.facecamSettings));
+		}
+		if (typeof params.showCursorOverlay === "boolean") {
+			searchParams.set("showCursorOverlay", String(params.showCursorOverlay));
 		}
 	}
 
@@ -126,6 +140,7 @@ export function parseEditorWindowLaunchParams(
 			facecamOffsetMs: Number.isFinite(rawOffset) ? rawOffset : undefined,
 			facecamSettings: parseJson<Partial<FacecamSettings>>(searchParams.get("facecamSettings")),
 			sourceName: normalizeSourceName(searchParams.get("sourceName")) ?? null,
+			showCursorOverlay: parseBoolean(searchParams.get("showCursorOverlay")) ?? false,
 		};
 	}
 

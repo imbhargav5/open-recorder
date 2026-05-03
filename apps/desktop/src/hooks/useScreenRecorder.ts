@@ -336,12 +336,17 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	}, []);
 
 	const buildRecordingSession = useCallback(
-		(screenVideoPath: string, facecamResult: FacecamCaptureResult): RecordingSession => ({
+		(
+			screenVideoPath: string,
+			facecamResult: FacecamCaptureResult,
+			showCursorOverlay: boolean,
+		): RecordingSession => ({
 			screenVideoPath,
 			...(facecamResult?.path ? { facecamVideoPath: facecamResult.path } : {}),
 			...(facecamResult?.offsetMs !== undefined ? { facecamOffsetMs: facecamResult.offsetMs } : {}),
 			facecamSettings: createDefaultFacecamSettings(Boolean(facecamResult?.path)),
 			...(selectedSourceName.current ? { sourceName: selectedSourceName.current } : {}),
+			showCursorOverlay,
 		}),
 		[],
 	);
@@ -527,7 +532,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				const facecamResult = await facecamResultPromise.catch(() => null);
 				if (!mountedRef.current) return;
 
-				const recordingSession = buildRecordingSession(finalPath, facecamResult);
+				const recordingSession = buildRecordingSession(finalPath, facecamResult, true);
 				await backend.setCurrentVideoPath(finalPath).catch(() => null);
 				if (!mountedRef.current) return;
 
@@ -542,6 +547,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 						facecamOffsetMs: recordingSession.facecamOffsetMs,
 						facecamSettings: recordingSession.facecamSettings,
 						sourceName: recordingSession.sourceName,
+						showCursorOverlay: recordingSession.showCursorOverlay,
 					}),
 				);
 			})();
@@ -948,7 +954,11 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 						? await pendingFacecamResult.current
 						: null;
 					pendingFacecamResult.current = null;
-					const recordingSession = buildRecordingSession(storedPath, facecamResult);
+					const recordingSession = buildRecordingSession(
+						storedPath,
+						facecamResult,
+						platform !== "darwin",
+					);
 
 					await backend.setCurrentRecordingSession(recordingSession);
 					await backend.switchToEditor(
@@ -959,6 +969,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 							facecamOffsetMs: recordingSession.facecamOffsetMs,
 							facecamSettings: recordingSession.facecamSettings,
 							sourceName: recordingSession.sourceName,
+							showCursorOverlay: recordingSession.showCursorOverlay,
 						}),
 					);
 				} catch (error) {

@@ -415,6 +415,25 @@ describe("VideoPlayback", () => {
 		await harness.unmount();
 	});
 
+	it("reports ready when a local video is already decoded before media events are observed", async () => {
+		const onReadyChange = vi.fn();
+		const harness = await renderPlayback({ onReadyChange });
+		const video = getPrimaryVideo(harness.container);
+
+		defineMediaProperty(video, "videoWidth", 1920);
+		defineMediaProperty(video, "videoHeight", 1080);
+		defineMediaProperty(video, "duration", 12);
+		defineMediaProperty(video, "readyState", HTMLMediaElement.HAVE_CURRENT_DATA);
+
+		await harness.rerender({
+			videoPath: "asset://localhost/video-fast-local.webm",
+		});
+		await flushEffects();
+
+		expect(onReadyChange).toHaveBeenLastCalledWith(true);
+		await harness.unmount();
+	});
+
 	it("does not block first paint if cursor asset preloading fails", async () => {
 		mockState.preloadCursorAssets.mockRejectedValue(new Error("cursor assets unavailable"));
 		vi.spyOn(console, "warn").mockImplementation(() => undefined);

@@ -14,6 +14,7 @@ describe("editorWindowParams", () => {
 			facecamOffsetMs: 240,
 			facecamSettings: { enabled: true, shape: "circle" },
 			sourceName: "Browser Window",
+			showCursorOverlay: true,
 		});
 
 		expect(parseEditorWindowLaunchParams(query)).toEqual({
@@ -23,6 +24,23 @@ describe("editorWindowParams", () => {
 			facecamOffsetMs: 240,
 			facecamSettings: { enabled: true, shape: "circle" },
 			sourceName: "Browser Window",
+			showCursorOverlay: true,
+		});
+	});
+
+	it("defaults legacy recording session queries to the non-doubled cursor behavior", () => {
+		expect(
+			parseEditorWindowLaunchParams(
+				"?windowType=editor&editorMode=session&videoPath=file%3A%2F%2F%2FUsers%2Fdemo%2Fsession.mov",
+			),
+		).toEqual({
+			mode: "session",
+			videoPath: "/Users/demo/session.mov",
+			facecamVideoPath: null,
+			facecamOffsetMs: 0,
+			facecamSettings: undefined,
+			sourceName: null,
+			showCursorOverlay: false,
 		});
 	});
 
