@@ -393,4 +393,25 @@ describe("LaunchWindow event listener cleanup", () => {
 
 		await harness.unmount();
 	});
+
+	it("renders the selected source name in full in the recording HUD", async () => {
+		setupDefaultMocks();
+		const harness = await mountLaunchWindow();
+
+		const recordButton = Array.from(document.querySelectorAll("button")).find((button) =>
+			button.textContent?.includes("Record Video"),
+		);
+
+		expect(recordButton).toBeDefined();
+
+		await act(async () => {
+			recordButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+		});
+		await flushEffects();
+
+		expect(document.body.textContent).toContain("Main Display");
+		expect(document.body.textContent).not.toContain("Main D...");
+
+		await harness.unmount();
+	});
 });
