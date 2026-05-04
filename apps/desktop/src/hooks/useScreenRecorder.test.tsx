@@ -386,4 +386,40 @@ describe("useScreenRecorder — platform routing", () => {
 		mediaRecorderInstances[0].state = "inactive";
 		await hook.unmount();
 	});
+
+	it("ignores a second start request while the first start is in progress", async () => {
+		const screenStream = makeStream();
+		const getDisplayMedia = vi.fn().mockResolvedValue(screenStream);
+		const getUserMedia = vi.fn();
+
+		Object.defineProperty(navigator, "mediaDevices", {
+			configurable: true,
+			writable: true,
+			value: {
+				getDisplayMedia,
+				getUserMedia,
+				enumerateDevices: vi.fn().mockResolvedValue([]),
+			},
+		});
+
+		backend.getSelectedSource.mockResolvedValue({
+			id: "screen:42",
+			name: "External Display",
+		});
+
+		const hook = await mountHook();
+
+		await act(async () => {
+			hook.getCurrent().toggleRecording();
+			hook.getCurrent().toggleRecording();
+		});
+		await flushEffects();
+
+		expect(backend.getSelectedSource).toHaveBeenCalledOnce();
+		expect(getDisplayMedia).toHaveBeenCalledOnce();
+		expect(mediaRecorderInstances).toHaveLength(1);
+
+		mediaRecorderInstances[0].state = "inactive";
+		await hook.unmount();
+	});
 });
