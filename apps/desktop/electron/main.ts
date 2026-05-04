@@ -124,7 +124,7 @@ function registerAllHandlers(): AppUpdaterService {
 	registerRecordingHandlers(handle, getState, setState, defaultRecordingsDir, emit);
 	registerCursorHandlers(handle, getState, setState);
 	registerPermissionHandlers(handle);
-	registerDialogHandlers(handle, getState, setState);
+	registerDialogHandlers(handle, getState, setState, defaultRecordingsDir, appConfigDir);
 	registerScreenshotHandlers(handle, getState, setState, defaultScreenshotsDir);
 
 	// Pass a resolver function for the renderer URL

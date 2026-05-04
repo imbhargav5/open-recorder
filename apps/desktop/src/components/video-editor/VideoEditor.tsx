@@ -7,6 +7,9 @@ import { toast } from "sonner";
 import { internalViewAtom, sidebarExpandedAtom } from "@/atoms/navigation";
 import {
 	annotationRegionsAtom,
+	applyLoadedProjectAtom,
+	applyLoadedSessionAtom,
+	applyLoadedVideoAtom,
 	aspectRatioAtom,
 	audioMutedAtom,
 	audioVolumeAtom,
@@ -37,10 +40,15 @@ import {
 	lastSavedSnapshotAtom,
 	paddingAtom,
 	playbackReadyAtom,
+	resetEditorPlaybackForSourceAtom,
+	selectAnnotationAtom,
 	selectedAnnotationIdAtom,
 	selectedSpeedIdAtom,
 	selectedTrimIdAtom,
 	selectedZoomIdAtom,
+	selectSpeedAtom,
+	selectTrimAtom,
+	selectZoomAtom,
 	shadowIntensityAtom,
 	showExportDialogAtom,
 	sourceNameAtom,
@@ -137,7 +145,7 @@ import { useTimeStore } from "./useTimeStore";
 import { useVideoEditorHistory } from "./useVideoEditorHistory";
 import VideoPlayback, { VideoPlaybackRef } from "./VideoPlayback";
 import { buildImmediateExportSettings, buildMp4ExportPlan } from "./videoEditorExportUtils";
-import { deriveEditorHistoryCounters } from "./videoEditorHistory";
+import { deriveEditorHistoryCounters, resetEditorHistoryAtom } from "./videoEditorHistory";
 import { loadInitialVideoEditorState } from "./videoEditorLoadState";
 import { markVideoEditorTiming } from "./videoEditorPerf";
 import {
@@ -518,13 +526,12 @@ function EditorTitleBar({
 
 export default function VideoEditor() {
 	const jotaiStore = useStore();
-	const [videoPath, setVideoPath] = useAtom(videoPathAtom);
-	const [videoSourcePath, setVideoSourcePath] = useAtom(videoSourcePathAtom);
+	const videoPath = useAtomValue(videoPathAtom);
+	const videoSourcePath = useAtomValue(videoSourcePathAtom);
 	const setSourceName = useSetAtom(sourceNameAtom);
 	const facecamVideoPath = useAtomValue(facecamVideoPathAtom);
-	const setFacecamVideoPath = useSetAtom(facecamVideoPathAtom);
-	const [facecamPlaybackPath, setFacecamPlaybackPath] = useAtom(facecamPlaybackPathAtom);
-	const [facecamOffsetMs, setFacecamOffsetMs] = useAtom(facecamOffsetMsAtom);
+	const facecamPlaybackPath = useAtomValue(facecamPlaybackPathAtom);
+	const facecamOffsetMs = useAtomValue(facecamOffsetMsAtom);
 	const [currentProjectPath, setCurrentProjectPath] = useAtom(currentProjectPathAtom);
 	const [loading, setLoading] = useAtom(videoLoadingAtom);
 	const [playbackReady, setPlaybackReady] = useAtom(playbackReadyAtom);
@@ -568,15 +575,19 @@ export default function VideoEditor() {
 	const setExportError = useSetAtom(exportErrorAtom);
 	const setShowExportDialog = useSetAtom(showExportDialogAtom);
 	const [aspectRatio, setAspectRatio] = useAtom(aspectRatioAtom);
-	const setExportQuality = useSetAtom(exportQualityAtom);
-	const setExportFormat = useSetAtom(exportFormatAtom);
-	const setGifFrameRate = useSetAtom(gifFrameRateAtom);
-	const setGifLoop = useSetAtom(gifLoopAtom);
-	const setGifSizePreset = useSetAtom(gifSizePresetAtom);
 	const setExportedFilePath = useSetAtom(exportedFilePathAtom);
 	const [hasPendingExportSave, setHasPendingExportSave] = useAtom(hasPendingExportSaveAtom);
 	const setLastSavedSnapshot = useSetAtom(lastSavedSnapshotAtom);
 	const [internalView, setInternalView] = useAtom(internalViewAtom);
+	const resetEditorPlaybackForSource = useSetAtom(resetEditorPlaybackForSourceAtom);
+	const applyLoadedProjectState = useSetAtom(applyLoadedProjectAtom);
+	const applyLoadedSessionState = useSetAtom(applyLoadedSessionAtom);
+	const applyLoadedVideoState = useSetAtom(applyLoadedVideoAtom);
+	const resetEditorHistory = useSetAtom(resetEditorHistoryAtom);
+	const selectZoom = useSetAtom(selectZoomAtom);
+	const selectTrim = useSetAtom(selectTrimAtom);
+	const selectSpeed = useSetAtom(selectSpeedAtom);
+	const selectAnnotation = useSetAtom(selectAnnotationAtom);
 
 	const readExportState = useCallback(
 		() => ({
@@ -663,13 +674,9 @@ export default function VideoEditor() {
 			// no-op
 		}
 
-		setIsPlaying(false);
 		timeStore.setTime(0);
-		setDuration(0);
-		setError(null);
-		setPlaybackReady(false);
-		setCursorTelemetry([]);
-	}, [timeStore]);
+		resetEditorPlaybackForSource();
+	}, [resetEditorPlaybackForSource, timeStore]);
 
 	const applyLoadedProject = useCallback(
 		async (candidate: unknown, path?: string | null) => {
@@ -697,50 +704,6 @@ export default function VideoEditor() {
 				normalizedFacecamVideoPath,
 			);
 
-			resetPlaybackStateForSourceChange();
-			setVideoSourcePath(sourcePath);
-			setVideoPath(resolvedVideoPath);
-			setSourceName(typeof project.sourceName === "string" ? project.sourceName : null);
-			setFacecamVideoPath(normalizedFacecamVideoPath);
-			setFacecamPlaybackPath(resolvedFacecamPath);
-			setFacecamOffsetMs(normalizedFacecamOffsetMs);
-			setCurrentProjectPath(path ?? null);
-
-			setWallpaper(normalizedEditor.wallpaper);
-			setAudioMuted(normalizedEditor.audioMuted);
-			setAudioVolume(normalizedEditor.audioVolume);
-			setShadowIntensity(normalizedEditor.shadowIntensity);
-			setBackgroundBlur(normalizedEditor.backgroundBlur);
-			setZoomMotionBlur(normalizedEditor.zoomMotionBlur);
-			setConnectZooms(normalizedEditor.connectZooms);
-			setCursorSettings({
-				showCursor: normalizedEditor.showCursor,
-				loopCursor: normalizedEditor.loopCursor,
-				cursorSize: normalizedEditor.cursorSize,
-				cursorSmoothing: normalizedEditor.cursorSmoothing,
-				cursorMotionBlur: normalizedEditor.cursorMotionBlur,
-				cursorClickBounce: normalizedEditor.cursorClickBounce,
-			});
-			setBorderRadius(normalizedEditor.borderRadius);
-			setPadding(normalizedEditor.padding);
-			setCropRegion(normalizedEditor.cropRegion);
-			setFacecamSettings(normalizedFacecam);
-			setZoomRegions(normalizedEditor.zoomRegions);
-			setTrimRegions(normalizedEditor.trimRegions);
-			setSpeedRegions(normalizedEditor.speedRegions);
-			setAnnotationRegions(normalizedEditor.annotationRegions);
-			setAspectRatio(normalizedEditor.aspectRatio);
-			setExportQuality(normalizedEditor.exportQuality);
-			setExportFormat(normalizedEditor.exportFormat);
-			setGifFrameRate(normalizedEditor.gifFrameRate);
-			setGifLoop(normalizedEditor.gifLoop);
-			setGifSizePreset(normalizedEditor.gifSizePreset);
-
-			setSelectedZoomId(null);
-			setSelectedTrimId(null);
-			setSelectedSpeedId(null);
-			setSelectedAnnotationId(null);
-
 			const counters = deriveEditorHistoryCounters({
 				zoomRegions: normalizedEditor.zoomRegions,
 				trimRegions: normalizedEditor.trimRegions,
@@ -753,25 +716,72 @@ export default function VideoEditor() {
 			nextAnnotationIdRef.current = counters.nextAnnotationId;
 			nextAnnotationZIndexRef.current = counters.nextAnnotationZIndex;
 
-			setLastSavedSnapshot(
-				JSON.stringify(
-					createProjectData(
-						sourcePath,
-						{
-							...normalizedEditor,
-							facecamSettings: normalizedFacecam,
-						},
-						{
-							facecamVideoPath: normalizedFacecamVideoPath,
-							facecamOffsetMs: normalizedFacecamOffsetMs,
-							sourceName: typeof project.sourceName === "string" ? project.sourceName : null,
-						},
-					),
+			const sourceName = typeof project.sourceName === "string" ? project.sourceName : null;
+			const lastSavedSnapshot = JSON.stringify(
+				createProjectData(
+					sourcePath,
+					{
+						...normalizedEditor,
+						facecamSettings: normalizedFacecam,
+					},
+					{
+						facecamVideoPath: normalizedFacecamVideoPath,
+						facecamOffsetMs: normalizedFacecamOffsetMs,
+						sourceName,
+					},
 				),
 			);
+			resetPlaybackStateForSourceChange();
+			resetEditorHistory();
+			applyLoadedProjectState({
+				sourcePath,
+				resolvedVideoPath,
+				sourceName,
+				facecamVideoPath: normalizedFacecamVideoPath,
+				facecamPlaybackPath: resolvedFacecamPath,
+				facecamOffsetMs: normalizedFacecamOffsetMs,
+				currentProjectPath: path ?? null,
+				editor: {
+					wallpaper: normalizedEditor.wallpaper,
+					audioMuted: normalizedEditor.audioMuted,
+					audioVolume: normalizedEditor.audioVolume,
+					shadowIntensity: normalizedEditor.shadowIntensity,
+					backgroundBlur: normalizedEditor.backgroundBlur,
+					zoomMotionBlur: normalizedEditor.zoomMotionBlur,
+					connectZooms: normalizedEditor.connectZooms,
+					cursorSettings: {
+						showCursor: normalizedEditor.showCursor,
+						loopCursor: normalizedEditor.loopCursor,
+						cursorSize: normalizedEditor.cursorSize,
+						cursorSmoothing: normalizedEditor.cursorSmoothing,
+						cursorMotionBlur: normalizedEditor.cursorMotionBlur,
+						cursorClickBounce: normalizedEditor.cursorClickBounce,
+					},
+					borderRadius: normalizedEditor.borderRadius,
+					padding: normalizedEditor.padding,
+					cropRegion: normalizedEditor.cropRegion,
+					facecamSettings: normalizedFacecam,
+					zoomRegions: normalizedEditor.zoomRegions,
+					trimRegions: normalizedEditor.trimRegions,
+					speedRegions: normalizedEditor.speedRegions,
+					annotationRegions: normalizedEditor.annotationRegions,
+					aspectRatio: normalizedEditor.aspectRatio,
+					exportQuality: normalizedEditor.exportQuality,
+					exportFormat: normalizedEditor.exportFormat,
+					gifFrameRate: normalizedEditor.gifFrameRate,
+					gifLoop: normalizedEditor.gifLoop,
+					gifSizePreset: normalizedEditor.gifSizePreset,
+				},
+				lastSavedSnapshot,
+			});
 			return true;
 		},
-		[resetPlaybackStateForSourceChange, resolvePlaybackPaths],
+		[
+			applyLoadedProjectState,
+			resetEditorHistory,
+			resetPlaybackStateForSourceChange,
+			resolvePlaybackPaths,
+		],
 	);
 
 	useEffect(() => {
@@ -812,36 +822,35 @@ export default function VideoEditor() {
 						initialState.sourcePath,
 						nextFacecamPath,
 					);
+					const facecamSettings = normalizeFacecamSettings(initialState.facecamSettings, {
+						defaultEnabled: Boolean(nextFacecamPath),
+					});
 					resetPlaybackStateForSourceChange();
-					setVideoSourcePath(initialState.sourcePath);
-					setVideoPath(resolvedVideoPath);
-					setSourceName(initialState.sourceName);
-					setFacecamVideoPath(nextFacecamPath);
-					setFacecamPlaybackPath(resolvedFacecamPath);
-					setFacecamOffsetMs(initialState.facecamOffsetMs);
-					setFacecamSettings(
-						normalizeFacecamSettings(initialState.facecamSettings, {
-							defaultEnabled: Boolean(nextFacecamPath),
-						}),
-					);
+					resetEditorHistory();
+					applyLoadedSessionState({
+						sourcePath: initialState.sourcePath,
+						resolvedVideoPath,
+						sourceName: initialState.sourceName,
+						facecamVideoPath: nextFacecamPath,
+						facecamPlaybackPath: resolvedFacecamPath,
+						facecamOffsetMs: initialState.facecamOffsetMs,
+						facecamSettings,
+						showCursorOverlay: initialState.showCursorOverlay,
+					});
 					applyCursorOverlayDefaultForSession(
 						initialState.sourcePath,
 						initialState.showCursorOverlay,
 					);
-					setCurrentProjectPath(null);
-					setLastSavedSnapshot(null);
 				} else if (initialState.kind === "video") {
 					const resolvedVideoPath = await backend.resolveMediaPlaybackUrl(initialState.sourcePath);
 					resetPlaybackStateForSourceChange();
-					setVideoSourcePath(initialState.sourcePath);
-					setVideoPath(resolvedVideoPath);
-					setSourceName(initialState.sourceName);
-					setFacecamVideoPath(null);
-					setFacecamPlaybackPath(null);
-					setFacecamOffsetMs(0);
-					setFacecamSettings(createDefaultFacecamSettings(false));
-					setCurrentProjectPath(null);
-					setLastSavedSnapshot(null);
+					resetEditorHistory();
+					applyLoadedVideoState({
+						sourcePath: initialState.sourcePath,
+						resolvedVideoPath,
+						sourceName: initialState.sourceName,
+						facecamSettings: createDefaultFacecamSettings(false),
+					});
 				} else {
 					setSourceName(null);
 					setError("No video to load. Please record or select a video.");
@@ -858,7 +867,10 @@ export default function VideoEditor() {
 		loadInitialData();
 	}, [
 		applyLoadedProject,
+		applyLoadedSessionState,
+		applyLoadedVideoState,
 		applyCursorOverlayDefaultForSession,
+		resetEditorHistory,
 		resetPlaybackStateForSourceChange,
 		resolvePlaybackPaths,
 	]);
@@ -947,6 +959,7 @@ export default function VideoEditor() {
 				JSON.stringify(projectData),
 				`${fileNameBase}.openrecorder`,
 				forceSaveAs ? undefined : (currentProjectPath ?? undefined),
+				forceSaveAs,
 			);
 
 			if (!savedPath) {
@@ -1026,6 +1039,31 @@ export default function VideoEditor() {
 			toast.error(`Failed to load project: ${String(loadError)}`);
 		}
 	}, [applyLoadedProject, setInternalView]);
+
+	const handleOpenProjectPath = useCallback(
+		async (projectPath: string) => {
+			try {
+				const result = await backend.openProjectAtPath(projectPath);
+
+				if (!result) {
+					toast.error("Project could not be opened");
+					return;
+				}
+
+				const restored = await applyLoadedProject(result.data, result.filePath ?? null);
+				if (!restored) {
+					toast.error("Invalid project file format");
+					return;
+				}
+
+				setInternalView("editor");
+				toast.success(`Project loaded from ${result.filePath}`);
+			} catch (loadError) {
+				toast.error(`Failed to load project: ${String(loadError)}`);
+			}
+		},
+		[applyLoadedProject, setInternalView],
+	);
 
 	useEffect(() => {
 		let unlistenLoad: (() => void) | undefined;
@@ -1354,80 +1392,74 @@ export default function VideoEditor() {
 		return speedRegions.find((r) => r.id === selectedSpeedId)?.speed ?? null;
 	}, [selectedSpeedId, speedRegions]);
 
-	const handleSelectZoom = useCallback((id: string | null) => {
-		setSelectedZoomId(id);
-		if (id) {
-			setSelectedTrimId(null);
-			setSelectedSpeedId(null);
-			setSelectedAnnotationId(null);
-		}
-	}, []);
+	const handleSelectZoom = useCallback(
+		(id: string | null) => {
+			selectZoom(id);
+		},
+		[selectZoom],
+	);
 
-	const handleSelectTrim = useCallback((id: string | null) => {
-		setSelectedTrimId(id);
-		if (id) {
-			setSelectedZoomId(null);
-			setSelectedSpeedId(null);
-			setSelectedAnnotationId(null);
-		}
-	}, []);
+	const handleSelectTrim = useCallback(
+		(id: string | null) => {
+			selectTrim(id);
+		},
+		[selectTrim],
+	);
 
-	const handleSelectAnnotation = useCallback((id: string | null) => {
-		setSelectedAnnotationId(id);
-		if (id) {
-			setSelectedZoomId(null);
-			setSelectedTrimId(null);
-			setSelectedSpeedId(null);
-		}
-	}, []);
+	const handleSelectAnnotation = useCallback(
+		(id: string | null) => {
+			selectAnnotation(id);
+		},
+		[selectAnnotation],
+	);
 
-	const handleZoomAdded = useCallback((span: Span) => {
-		const id = `zoom-${nextZoomIdRef.current++}`;
-		const newRegion: ZoomRegion = {
-			id,
-			startMs: Math.round(span.start),
-			endMs: Math.round(span.end),
-			depth: DEFAULT_ZOOM_DEPTH,
-			focus: { cx: 0.5, cy: 0.5 },
-			...createDefaultZoomEasing(),
-		};
-		setZoomRegions((prev) => [...prev, newRegion]);
-		setSelectedZoomId(id);
-		setSelectedTrimId(null);
-		setSelectedSpeedId(null);
-		setSelectedAnnotationId(null);
-	}, []);
+	const handleZoomAdded = useCallback(
+		(span: Span) => {
+			const id = `zoom-${nextZoomIdRef.current++}`;
+			const newRegion: ZoomRegion = {
+				id,
+				startMs: Math.round(span.start),
+				endMs: Math.round(span.end),
+				depth: DEFAULT_ZOOM_DEPTH,
+				focus: { cx: 0.5, cy: 0.5 },
+				...createDefaultZoomEasing(),
+			};
+			setZoomRegions((prev) => [...prev, newRegion]);
+			selectZoom(id);
+		},
+		[selectZoom],
+	);
 
-	const handleZoomSuggested = useCallback((span: Span, focus: ZoomFocus) => {
-		const id = `zoom-${nextZoomIdRef.current++}`;
-		const newRegion: ZoomRegion = {
-			id,
-			startMs: Math.round(span.start),
-			endMs: Math.round(span.end),
-			depth: DEFAULT_ZOOM_DEPTH,
-			focus: clampFocusToDepth(focus, DEFAULT_ZOOM_DEPTH),
-			...createDefaultZoomEasing(),
-		};
-		setZoomRegions((prev) => [...prev, newRegion]);
-		setSelectedZoomId(id);
-		setSelectedTrimId(null);
-		setSelectedSpeedId(null);
-		setSelectedAnnotationId(null);
-	}, []);
+	const handleZoomSuggested = useCallback(
+		(span: Span, focus: ZoomFocus) => {
+			const id = `zoom-${nextZoomIdRef.current++}`;
+			const newRegion: ZoomRegion = {
+				id,
+				startMs: Math.round(span.start),
+				endMs: Math.round(span.end),
+				depth: DEFAULT_ZOOM_DEPTH,
+				focus: clampFocusToDepth(focus, DEFAULT_ZOOM_DEPTH),
+				...createDefaultZoomEasing(),
+			};
+			setZoomRegions((prev) => [...prev, newRegion]);
+			selectZoom(id);
+		},
+		[selectZoom],
+	);
 
-	const handleTrimAdded = useCallback((span: Span) => {
-		const id = `trim-${nextTrimIdRef.current++}`;
-		const newRegion: TrimRegion = {
-			id,
-			startMs: Math.round(span.start),
-			endMs: Math.round(span.end),
-		};
-		setTrimRegions((prev) => [...prev, newRegion]);
-		setSelectedTrimId(id);
-		setSelectedZoomId(null);
-		setSelectedSpeedId(null);
-		setSelectedAnnotationId(null);
-	}, []);
+	const handleTrimAdded = useCallback(
+		(span: Span) => {
+			const id = `trim-${nextTrimIdRef.current++}`;
+			const newRegion: TrimRegion = {
+				id,
+				startMs: Math.round(span.start),
+				endMs: Math.round(span.end),
+			};
+			setTrimRegions((prev) => [...prev, newRegion]);
+			selectTrim(id);
+		},
+		[selectTrim],
+	);
 
 	const handleZoomSpanChange = useCallback((id: string, span: Span) => {
 		setZoomRegions((prev) =>
@@ -1512,45 +1544,43 @@ export default function VideoEditor() {
 		(id: string) => {
 			setZoomRegions((prev) => prev.filter((region) => region.id !== id));
 			if (selectedZoomId === id) {
-				setSelectedZoomId(null);
+				selectZoom(null);
 			}
 		},
-		[selectedZoomId],
+		[selectedZoomId, selectZoom],
 	);
 
 	const handleTrimDelete = useCallback(
 		(id: string) => {
 			setTrimRegions((prev) => prev.filter((region) => region.id !== id));
 			if (selectedTrimId === id) {
-				setSelectedTrimId(null);
+				selectTrim(null);
 			}
 		},
-		[selectedTrimId],
+		[selectedTrimId, selectTrim],
 	);
 
-	const handleSelectSpeed = useCallback((id: string | null) => {
-		setSelectedSpeedId(id);
-		if (id) {
-			setSelectedZoomId(null);
-			setSelectedTrimId(null);
-			setSelectedAnnotationId(null);
-		}
-	}, []);
+	const handleSelectSpeed = useCallback(
+		(id: string | null) => {
+			selectSpeed(id);
+		},
+		[selectSpeed],
+	);
 
-	const handleSpeedAdded = useCallback((span: Span) => {
-		const id = `speed-${nextSpeedIdRef.current++}`;
-		const newRegion: SpeedRegion = {
-			id,
-			startMs: Math.round(span.start),
-			endMs: Math.round(span.end),
-			speed: DEFAULT_PLAYBACK_SPEED,
-		};
-		setSpeedRegions((prev) => [...prev, newRegion]);
-		setSelectedSpeedId(id);
-		setSelectedZoomId(null);
-		setSelectedTrimId(null);
-		setSelectedAnnotationId(null);
-	}, []);
+	const handleSpeedAdded = useCallback(
+		(span: Span) => {
+			const id = `speed-${nextSpeedIdRef.current++}`;
+			const newRegion: SpeedRegion = {
+				id,
+				startMs: Math.round(span.start),
+				endMs: Math.round(span.end),
+				speed: DEFAULT_PLAYBACK_SPEED,
+			};
+			setSpeedRegions((prev) => [...prev, newRegion]);
+			selectSpeed(id);
+		},
+		[selectSpeed],
+	);
 
 	const handleSpeedSpanChange = useCallback((id: string, span: Span) => {
 		setSpeedRegions((prev) =>
@@ -1570,10 +1600,10 @@ export default function VideoEditor() {
 		(id: string) => {
 			setSpeedRegions((prev) => prev.filter((region) => region.id !== id));
 			if (selectedSpeedId === id) {
-				setSelectedSpeedId(null);
+				selectSpeed(null);
 			}
 		},
-		[selectedSpeedId],
+		[selectedSpeedId, selectSpeed],
 	);
 
 	const handleSpeedChange = useCallback(
@@ -1586,26 +1616,26 @@ export default function VideoEditor() {
 		[selectedSpeedId],
 	);
 
-	const handleAnnotationAdded = useCallback((span: Span) => {
-		const id = `annotation-${nextAnnotationIdRef.current++}`;
-		const zIndex = nextAnnotationZIndexRef.current++; // Assign z-index based on creation order
-		const newRegion: AnnotationRegion = {
-			id,
-			startMs: Math.round(span.start),
-			endMs: Math.round(span.end),
-			type: "text",
-			content: "Enter text...",
-			position: { ...DEFAULT_ANNOTATION_POSITION },
-			size: { ...DEFAULT_ANNOTATION_SIZE },
-			style: { ...DEFAULT_ANNOTATION_STYLE },
-			zIndex,
-		};
-		setAnnotationRegions((prev) => [...prev, newRegion]);
-		setSelectedAnnotationId(id);
-		setSelectedZoomId(null);
-		setSelectedTrimId(null);
-		setSelectedSpeedId(null);
-	}, []);
+	const handleAnnotationAdded = useCallback(
+		(span: Span) => {
+			const id = `annotation-${nextAnnotationIdRef.current++}`;
+			const zIndex = nextAnnotationZIndexRef.current++; // Assign z-index based on creation order
+			const newRegion: AnnotationRegion = {
+				id,
+				startMs: Math.round(span.start),
+				endMs: Math.round(span.end),
+				type: "text",
+				content: "Enter text...",
+				position: { ...DEFAULT_ANNOTATION_POSITION },
+				size: { ...DEFAULT_ANNOTATION_SIZE },
+				style: { ...DEFAULT_ANNOTATION_STYLE },
+				zIndex,
+			};
+			setAnnotationRegions((prev) => [...prev, newRegion]);
+			selectAnnotation(id);
+		},
+		[selectAnnotation],
+	);
 
 	const handleAnnotationSpanChange = useCallback((id: string, span: Span) => {
 		setAnnotationRegions((prev) =>
@@ -1625,10 +1655,10 @@ export default function VideoEditor() {
 		(id: string) => {
 			setAnnotationRegions((prev) => prev.filter((region) => region.id !== id));
 			if (selectedAnnotationId === id) {
-				setSelectedAnnotationId(null);
+				selectAnnotation(null);
 			}
 		},
-		[selectedAnnotationId],
+		[selectedAnnotationId, selectAnnotation],
 	);
 
 	const handleAnnotationContentChange = useCallback((id: string, content: string) => {
@@ -1792,30 +1822,30 @@ export default function VideoEditor() {
 
 	useEffect(() => {
 		if (selectedZoomId && !zoomRegions.some((region) => region.id === selectedZoomId)) {
-			setSelectedZoomId(null);
+			selectZoom(null);
 		}
-	}, [selectedZoomId, zoomRegions]);
+	}, [selectedZoomId, selectZoom, zoomRegions]);
 
 	useEffect(() => {
 		if (selectedTrimId && !trimRegions.some((region) => region.id === selectedTrimId)) {
-			setSelectedTrimId(null);
+			selectTrim(null);
 		}
-	}, [selectedTrimId, trimRegions]);
+	}, [selectedTrimId, selectTrim, trimRegions]);
 
 	useEffect(() => {
 		if (
 			selectedAnnotationId &&
 			!annotationRegions.some((region) => region.id === selectedAnnotationId)
 		) {
-			setSelectedAnnotationId(null);
+			selectAnnotation(null);
 		}
-	}, [selectedAnnotationId, annotationRegions]);
+	}, [selectedAnnotationId, selectAnnotation, annotationRegions]);
 
 	useEffect(() => {
 		if (selectedSpeedId && !speedRegions.some((region) => region.id === selectedSpeedId)) {
-			setSelectedSpeedId(null);
+			selectSpeed(null);
 		}
-	}, [selectedSpeedId, speedRegions]);
+	}, [selectedSpeedId, selectSpeed, speedRegions]);
 
 	const showExportSuccessToast = useCallback((filePath: string) => {
 		toast.success(`Exported successfully to ${filePath}`, {
@@ -2311,7 +2341,10 @@ export default function VideoEditor() {
 				/>
 
 				{internalView === "projects" ? (
-					<ProjectsPage onOpenProject={handleLoadProject} />
+					<ProjectsPage
+						onOpenProject={handleLoadProject}
+						onOpenProjectPath={handleOpenProjectPath}
+					/>
 				) : (
 					<div className="relative flex min-h-0 flex-1 gap-4 bg-muted/20 p-4">
 						{/* Left Column - Video & Timeline */}

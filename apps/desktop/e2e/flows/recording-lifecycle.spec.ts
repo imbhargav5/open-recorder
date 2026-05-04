@@ -68,6 +68,43 @@ async function setupPlatformRecordingPage(
 	await setLocalStorage(page, { [ONBOARDING_KEY]: "true" });
 }
 
+async function setupAreaRecordingPage(page: import("@playwright/test").Page) {
+	await installTauriShim(page);
+	await installMediaCaptureShim(page);
+	await configureHandlers(page, {
+		...permissionsGranted(),
+		get_platform: "darwin",
+		get_selected_source: {
+			id: "area:0:24:32:960:540",
+			name: "Area 960x540",
+			sourceType: "area",
+			display_id: "0",
+			captureSourceId: "screen:0:0",
+			areaSelection: {
+				x: 24,
+				y: 32,
+				width: 960,
+				height: 540,
+				displayId: 0,
+				displayBounds: { x: 0, y: 0, width: 1920, height: 1080 },
+			},
+		},
+		prepare_recording_file: "/tmp/area-recording-e2e.webm",
+		append_recording_data: null,
+		replace_recording_data: "/tmp/area-recording-e2e.webm",
+		set_current_video_path: null,
+		set_current_recording_session: null,
+		start_cursor_telemetry_capture: null,
+		stop_cursor_telemetry_capture: null,
+		start_native_screen_recording: "/tmp/native-recording.mov",
+		stop_native_screen_recording: "/tmp/native-recording.mov",
+		switch_to_editor: null,
+		set_recording_state: null,
+		hide_cursor: null,
+	});
+	await setLocalStorage(page, { [ONBOARDING_KEY]: "true" });
+}
+
 async function openRecordingControls(page: import("@playwright/test").Page) {
 	await page.goto(HUD_URL);
 	await expect(page.getByText("Record Video")).toBeVisible({ timeout: 10_000 });
@@ -79,15 +116,16 @@ async function openRecordingControls(page: import("@playwright/test").Page) {
 
 async function startRecordingFromHud(page: import("@playwright/test").Page) {
 	await page.getByRole("button", { name: /^Record$/ }).click();
-	await expect(page.getByText(/\d{2}:\d{2}/)).toBeVisible({ timeout: 5_000 });
+	await expect(recordingTimerButton(page)).toBeVisible({ timeout: 5_000 });
 }
 
 async function stopRecordingFromHud(page: import("@playwright/test").Page) {
-	await page
-		.locator("button")
-		.filter({ hasText: /\d{2}:\d{2}/ })
-		.click();
+	await recordingTimerButton(page).click();
 	await expect(page.getByText("Record Video")).toBeVisible({ timeout: 5_000 });
+}
+
+function recordingTimerButton(page: import("@playwright/test").Page) {
+	return page.locator("button").filter({ hasText: /\d{2}:\d{2}/ });
 }
 
 async function waitForIpcCommand(page: import("@playwright/test").Page, command: string) {
@@ -152,7 +190,7 @@ test.describe("Recording lifecycle", () => {
 		});
 
 		// When recording is active, the timer "00:00" appears in the HUD
-		await expect(page.getByText(/\d{2}:\d{2}/)).toBeVisible({ timeout: 5_000 });
+		await expect(recordingTimerButton(page)).toBeVisible({ timeout: 5_000 });
 	});
 
 	test("stop recording resets to choice view after recording-state-changed false", async ({
@@ -166,7 +204,7 @@ test.describe("Recording lifecycle", () => {
 		await page.evaluate(() => {
 			window.__TAURI_FIRE_EVENT__("recording-state-changed", true);
 		});
-		await expect(page.getByText(/\d{2}:\d{2}/)).toBeVisible({ timeout: 5_000 });
+		await expect(recordingTimerButton(page)).toBeVisible({ timeout: 5_000 });
 
 		// Simulate recording stopped
 		await page.evaluate(() => {
@@ -267,6 +305,42 @@ test.describe("Recording lifecycle", () => {
 		expect(commandNames).toContain("stop_native_screen_recording");
 		expect(commandNames).toContain("stop_cursor_telemetry_capture");
 		expect(commandNames).toContain("set_current_video_path");
+		expect(commandNames).toContain("set_current_recording_session");
+		expect(commandNames).toContain("switch_to_editor");
+	});
+
+	test("macOS area recording uses Chromium crop path instead of native recording", async ({
+		page,
+	}) => {
+		await setupAreaRecordingPage(page);
+		await openRecordingControls(page);
+
+		await startRecordingFromHud(page);
+
+		const nativeStartWasCalled = await page.evaluate(() =>
+			window.__IPC_WAS_CALLED__("start_native_screen_recording"),
+		);
+		expect(nativeStartWasCalled).toBe(false);
+
+		const mediaLogAfterStart = await page.evaluate(() => window.__TEST_MEDIA_LOG__);
+		const mediaCommands = mediaLogAfterStart.map((entry: { cmd: string }) => entry.cmd);
+		expect(mediaCommands).toContain("getDisplayMedia");
+		expect(mediaCommands).toContain("canvas.captureStream");
+		expect(
+			mediaLogAfterStart.some(
+				(entry: { cmd: string; frameRate?: number }) =>
+					entry.cmd === "canvas.captureStream" && entry.frameRate === 60,
+			),
+		).toBe(true);
+		expect(mediaCommands).toContain("MediaRecorder.start");
+
+		await stopRecordingFromHud(page);
+		await waitForIpcCommand(page, "switch_to_editor");
+
+		const commandNames = await page.evaluate(() =>
+			window.__TEST_IPC_LOG__.map((entry: { cmd: string }) => entry.cmd),
+		);
+		expect(commandNames).toContain("prepare_recording_file");
 		expect(commandNames).toContain("set_current_recording_session");
 		expect(commandNames).toContain("switch_to_editor");
 	});
