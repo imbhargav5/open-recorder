@@ -1,4 +1,5 @@
 import { atom } from "jotai";
+import type { Setter } from "jotai/vanilla";
 import {
 	type AnnotationRegion,
 	type CropRegion,
@@ -26,6 +27,7 @@ import type {
 import { createDefaultFacecamSettings, type FacecamSettings } from "@/lib/recordingSession";
 import { DEFAULT_WALLPAPER_PATH } from "@/lib/wallpapers";
 import type { AspectRatio } from "@/utils/aspectRatioUtils";
+import { resetTimelineRuntimeAtom } from "./timeline";
 
 // --- Composite types ---
 export type CursorSettings = {
@@ -66,6 +68,17 @@ export const resetVideoPlaybackRuntimeAtom = atom(null, (_get, set) => {
 	set(videoPlaybackFacecamReadyAtom, false);
 	set(videoPlaybackAnnotationVisibilityTickAtom, 0);
 	set(videoPlaybackResolvedWallpaperAtom, null);
+});
+
+export const resetEditorPlaybackForSourceAtom = atom(null, (_get, set) => {
+	set(isPlayingAtom, false);
+	set(durationAtom, 0);
+	set(videoErrorAtom, null);
+	set(playbackReadyAtom, false);
+	set(cursorTelemetryAtom, []);
+	set(resetVideoPlaybackRuntimeAtom);
+	set(resetTimelineRuntimeAtom);
+	set(clearTimelineSelectionAtom);
 });
 
 // --- Playback state ---
@@ -115,6 +128,178 @@ export const speedRegionsAtom = atom<SpeedRegion[]>([]);
 export const selectedSpeedIdAtom = atom<string | null>(null);
 export const annotationRegionsAtom = atom<AnnotationRegion[]>([]);
 export const selectedAnnotationIdAtom = atom<string | null>(null);
+
+export const clearTimelineSelectionAtom = atom(null, (_get, set) => {
+	set(selectedZoomIdAtom, null);
+	set(selectedTrimIdAtom, null);
+	set(selectedSpeedIdAtom, null);
+	set(selectedAnnotationIdAtom, null);
+});
+export const selectZoomAtom = atom(null, (_get, set, id: string | null) => {
+	set(selectedZoomIdAtom, id);
+	if (id) {
+		set(selectedTrimIdAtom, null);
+		set(selectedSpeedIdAtom, null);
+		set(selectedAnnotationIdAtom, null);
+	}
+});
+export const selectTrimAtom = atom(null, (_get, set, id: string | null) => {
+	set(selectedTrimIdAtom, id);
+	if (id) {
+		set(selectedZoomIdAtom, null);
+		set(selectedSpeedIdAtom, null);
+		set(selectedAnnotationIdAtom, null);
+	}
+});
+export const selectSpeedAtom = atom(null, (_get, set, id: string | null) => {
+	set(selectedSpeedIdAtom, id);
+	if (id) {
+		set(selectedZoomIdAtom, null);
+		set(selectedTrimIdAtom, null);
+		set(selectedAnnotationIdAtom, null);
+	}
+});
+export const selectAnnotationAtom = atom(null, (_get, set, id: string | null) => {
+	set(selectedAnnotationIdAtom, id);
+	if (id) {
+		set(selectedZoomIdAtom, null);
+		set(selectedTrimIdAtom, null);
+		set(selectedSpeedIdAtom, null);
+	}
+});
+
+type LoadedEditorStatePayload = {
+	wallpaper: string;
+	audioMuted: boolean;
+	audioVolume: number;
+	shadowIntensity: number;
+	backgroundBlur: number;
+	zoomMotionBlur: number;
+	connectZooms: boolean;
+	cursorSettings: CursorSettings;
+	borderRadius: number;
+	padding: number;
+	cropRegion: CropRegion;
+	facecamSettings: FacecamSettings;
+	zoomRegions: ZoomRegion[];
+	trimRegions: TrimRegion[];
+	speedRegions: SpeedRegion[];
+	annotationRegions: AnnotationRegion[];
+	aspectRatio: AspectRatio;
+	exportQuality: ExportQuality;
+	exportFormat: ExportFormat;
+	gifFrameRate: GifFrameRate;
+	gifLoop: boolean;
+	gifSizePreset: GifSizePreset;
+};
+
+type ApplyLoadedProjectPayload = {
+	sourcePath: string;
+	resolvedVideoPath: string;
+	sourceName: string | null;
+	facecamVideoPath: string | null;
+	facecamPlaybackPath: string | null;
+	facecamOffsetMs: number;
+	currentProjectPath: string | null;
+	editor: LoadedEditorStatePayload;
+	lastSavedSnapshot: string;
+};
+
+type ApplyLoadedSessionPayload = {
+	sourcePath: string;
+	resolvedVideoPath: string;
+	sourceName: string | null;
+	facecamVideoPath: string | null;
+	facecamPlaybackPath: string | null;
+	facecamOffsetMs: number;
+	facecamSettings: FacecamSettings;
+	showCursorOverlay: boolean;
+};
+
+type ApplyLoadedVideoPayload = {
+	sourcePath: string;
+	resolvedVideoPath: string;
+	sourceName: string | null;
+	facecamSettings: FacecamSettings;
+};
+
+function applyLoadedEditorState(set: Setter, editor: LoadedEditorStatePayload) {
+	set(videoWallpaperAtom, editor.wallpaper);
+	set(audioMutedAtom, editor.audioMuted);
+	set(audioVolumeAtom, editor.audioVolume);
+	set(shadowIntensityAtom, editor.shadowIntensity);
+	set(backgroundBlurAtom, editor.backgroundBlur);
+	set(zoomMotionBlurAtom, editor.zoomMotionBlur);
+	set(connectZoomsAtom, editor.connectZooms);
+	set(cursorSettingsAtom, editor.cursorSettings);
+	set(borderRadiusAtom, editor.borderRadius);
+	set(paddingAtom, editor.padding);
+	set(cropRegionAtom, editor.cropRegion);
+	set(facecamSettingsAtom, editor.facecamSettings);
+	set(zoomRegionsAtom, editor.zoomRegions);
+	set(trimRegionsAtom, editor.trimRegions);
+	set(speedRegionsAtom, editor.speedRegions);
+	set(annotationRegionsAtom, editor.annotationRegions);
+	set(aspectRatioAtom, editor.aspectRatio);
+	set(exportQualityAtom, editor.exportQuality);
+	set(exportFormatAtom, editor.exportFormat);
+	set(gifFrameRateAtom, editor.gifFrameRate);
+	set(gifLoopAtom, editor.gifLoop);
+	set(gifSizePresetAtom, editor.gifSizePreset);
+}
+
+export const applyLoadedProjectAtom = atom(
+	null,
+	(_get, set, payload: ApplyLoadedProjectPayload) => {
+		set(resetEditorPlaybackForSourceAtom);
+		set(videoSourcePathAtom, payload.sourcePath);
+		set(videoPathAtom, payload.resolvedVideoPath);
+		set(sourceNameAtom, payload.sourceName);
+		set(facecamVideoPathAtom, payload.facecamVideoPath);
+		set(facecamPlaybackPathAtom, payload.facecamPlaybackPath);
+		set(facecamOffsetMsAtom, payload.facecamOffsetMs);
+		set(currentProjectPathAtom, payload.currentProjectPath);
+		applyLoadedEditorState(set, payload.editor);
+		set(clearTimelineSelectionAtom);
+		set(lastSavedSnapshotAtom, payload.lastSavedSnapshot);
+	},
+);
+
+export const applyLoadedSessionAtom = atom(
+	null,
+	(_get, set, payload: ApplyLoadedSessionPayload) => {
+		set(resetEditorPlaybackForSourceAtom);
+		set(videoSourcePathAtom, payload.sourcePath);
+		set(videoPathAtom, payload.resolvedVideoPath);
+		set(sourceNameAtom, payload.sourceName);
+		set(facecamVideoPathAtom, payload.facecamVideoPath);
+		set(facecamPlaybackPathAtom, payload.facecamPlaybackPath);
+		set(facecamOffsetMsAtom, payload.facecamOffsetMs);
+		set(facecamSettingsAtom, payload.facecamSettings);
+		set(cursorSettingsAtom, (current) =>
+			current.showCursor === payload.showCursorOverlay
+				? current
+				: { ...current, showCursor: payload.showCursorOverlay },
+		);
+		set(currentProjectPathAtom, null);
+		set(lastSavedSnapshotAtom, null);
+		set(clearTimelineSelectionAtom);
+	},
+);
+
+export const applyLoadedVideoAtom = atom(null, (_get, set, payload: ApplyLoadedVideoPayload) => {
+	set(resetEditorPlaybackForSourceAtom);
+	set(videoSourcePathAtom, payload.sourcePath);
+	set(videoPathAtom, payload.resolvedVideoPath);
+	set(sourceNameAtom, payload.sourceName);
+	set(facecamVideoPathAtom, null);
+	set(facecamPlaybackPathAtom, null);
+	set(facecamOffsetMsAtom, 0);
+	set(facecamSettingsAtom, payload.facecamSettings);
+	set(currentProjectPathAtom, null);
+	set(lastSavedSnapshotAtom, null);
+	set(clearTimelineSelectionAtom);
+});
 
 // --- Export state ---
 export const isExportingAtom = atom<boolean>(false);

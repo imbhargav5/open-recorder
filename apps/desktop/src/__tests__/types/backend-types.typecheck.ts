@@ -71,10 +71,21 @@ void (source.id satisfies string);
 void (source.name satisfies string);
 
 // Valid optional properties
-void (source.sourceType satisfies "screen" | "window");
+void (source.sourceType satisfies "screen" | "window" | "area");
 void (source.appName satisfies string | undefined);
 void (source.windowTitle satisfies string | undefined);
 void (source.windowId satisfies number | undefined);
+void (source.captureSourceId satisfies string | undefined);
+void (source.areaSelection satisfies
+	| {
+			x: number;
+			y: number;
+			width: number;
+			height: number;
+			displayId: number;
+			displayBounds: { x: number; y: number; width: number; height: number };
+	  }
+	| undefined);
 
 // @ts-expect-error: 'nonExistentProp' does not exist on DesktopSource
 void source.nonExistentProp;

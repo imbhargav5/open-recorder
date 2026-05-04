@@ -246,6 +246,16 @@ export async function installMediaCaptureShim(
 		// biome-ignore lint/suspicious/noExplicitAny: test shim
 		const target = window as any;
 		target.__TEST_MEDIA_LOG__ = [];
+		const originalCaptureStream = HTMLCanvasElement.prototype.captureStream;
+		HTMLCanvasElement.prototype.captureStream = function (frameRate?: number) {
+			target.__TEST_MEDIA_LOG__.push({
+				cmd: "canvas.captureStream",
+				width: this.width,
+				height: this.height,
+				frameRate,
+			});
+			return originalCaptureStream.call(this, frameRate);
+		};
 
 		const makeStream = () => {
 			const canvas = document.createElement("canvas");

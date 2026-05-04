@@ -9,9 +9,9 @@
 import { invoke, listen } from "@/lib/electronBridge";
 import { toAssetUrl } from "@/lib/fileUrl";
 import { resolveMediaPlaybackUrl as resolveMediaPlaybackAssetUrl } from "@/lib/mediaPlaybackUrl";
+import type { DesktopSource } from "../components/launch/sourceSelectorState";
 import type { RecordingSession } from "./recordingSession";
 import type { ShortcutsConfig } from "./shortcuts";
-import type { DesktopSource } from "../components/launch/sourceSelectorState";
 
 export type UnlistenFn = () => void;
 
@@ -224,6 +224,13 @@ export function selectScreenArea(): Promise<{
 	width: number;
 	height: number;
 	displayId: number;
+	displayBounds: {
+		x: number;
+		y: number;
+		width: number;
+		height: number;
+	};
+	captureSourceId?: string;
 } | null> {
 	return invoke("select_screen_area");
 }
@@ -238,7 +245,9 @@ export function setCursorScale(scale: number): Promise<void> {
 	return invoke("set_cursor_scale", { scale });
 }
 
-export function getSystemCursorAssets(): Promise<{ cursors?: Record<string, SystemCursorAsset> } | null> {
+export function getSystemCursorAssets(): Promise<{
+	cursors?: Record<string, SystemCursorAsset>;
+} | null> {
 	return invoke<{ cursors?: Record<string, SystemCursorAsset> } | null>("get_system_cursor_assets");
 }
 
@@ -383,7 +392,10 @@ export function saveExportedVideo(videoData: Uint8Array, fileName: string): Prom
 	});
 }
 
-export function saveScreenshotFile(imageData: Uint8Array, fileName: string): Promise<string | null> {
+export function saveScreenshotFile(
+	imageData: Uint8Array,
+	fileName: string,
+): Promise<string | null> {
 	return invoke("save_screenshot_file", {
 		imageData: Array.from(imageData),
 		fileName,
@@ -439,8 +451,11 @@ export function switchToImageEditor(): Promise<void> {
 	return invoke("switch_to_image_editor");
 }
 
-export function openSourceSelector(tab?: "screens" | "windows"): Promise<void> {
-	return invoke("open_source_selector", { tab });
+export function openSourceSelector(
+	tab?: "screens" | "windows" | "area",
+	context: "recording" | "screenshot" = "recording",
+): Promise<void> {
+	return invoke("open_source_selector", { tab, context });
 }
 
 export function closeSourceSelector(): Promise<void> {
