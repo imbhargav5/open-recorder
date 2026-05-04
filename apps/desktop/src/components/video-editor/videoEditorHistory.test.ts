@@ -1,15 +1,21 @@
+import { createStore } from "jotai/vanilla";
 import { describe, expect, it } from "vitest";
 import {
+	createDefaultZoomEasing,
 	DEFAULT_ANNOTATION_POSITION,
 	DEFAULT_ANNOTATION_SIZE,
 	DEFAULT_ANNOTATION_STYLE,
 	DEFAULT_FIGURE_DATA,
-	createDefaultZoomEasing,
 } from "./types";
 import {
 	cloneEditorHistorySnapshot,
 	createEditorHistorySnapshot,
 	deriveEditorHistoryCounters,
+	editorHistoryAtom,
+	recordEditorHistoryAtom,
+	redoEditorHistoryAtom,
+	resetEditorHistoryAtom,
+	undoEditorHistoryAtom,
 } from "./videoEditorHistory";
 
 describe("videoEditorHistory", () => {
@@ -178,5 +184,83 @@ describe("videoEditorHistory", () => {
 			nextAnnotationId: 8,
 			nextAnnotationZIndex: 10,
 		});
+	});
+
+	it("stores undo and redo stacks in editorHistoryAtom", () => {
+		const store = createStore();
+		const first = {
+			zoomRegions: [],
+			trimRegions: [],
+			speedRegions: [],
+			annotationRegions: [],
+			selectedZoomId: null,
+			selectedTrimId: null,
+			selectedSpeedId: null,
+			selectedAnnotationId: null,
+		};
+		const second = {
+			...first,
+			zoomRegions: [
+				{
+					id: "zoom-1",
+					startMs: 0,
+					endMs: 500,
+					depth: 3 as const,
+					focus: { cx: 0.5, cy: 0.5 },
+					...createDefaultZoomEasing(),
+				},
+			],
+			selectedZoomId: "zoom-1",
+		};
+
+		store.set(recordEditorHistoryAtom, first);
+		store.set(recordEditorHistoryAtom, second);
+		expect(store.get(editorHistoryAtom).past).toHaveLength(1);
+
+		const undoSnapshot = store.set(undoEditorHistoryAtom);
+		expect(undoSnapshot?.zoomRegions).toEqual([]);
+		expect(store.get(editorHistoryAtom).future).toHaveLength(1);
+
+		const redoSnapshot = store.set(redoEditorHistoryAtom);
+		expect(redoSnapshot?.selectedZoomId).toBe("zoom-1");
+	});
+
+	it("resetEditorHistoryAtom prevents undo history crossing loaded sources", () => {
+		const store = createStore();
+
+		store.set(recordEditorHistoryAtom, {
+			zoomRegions: [],
+			trimRegions: [],
+			speedRegions: [],
+			annotationRegions: [],
+			selectedZoomId: null,
+			selectedTrimId: null,
+			selectedSpeedId: null,
+			selectedAnnotationId: null,
+		});
+		store.set(recordEditorHistoryAtom, {
+			zoomRegions: [
+				{
+					id: "zoom-1",
+					startMs: 0,
+					endMs: 500,
+					depth: 3 as const,
+					focus: { cx: 0.5, cy: 0.5 },
+					...createDefaultZoomEasing(),
+				},
+			],
+			trimRegions: [],
+			speedRegions: [],
+			annotationRegions: [],
+			selectedZoomId: "zoom-1",
+			selectedTrimId: null,
+			selectedSpeedId: null,
+			selectedAnnotationId: null,
+		});
+
+		store.set(resetEditorHistoryAtom);
+
+		expect(store.get(editorHistoryAtom)).toEqual({ past: [], current: null, future: [] });
+		expect(store.set(undoEditorHistoryAtom)).toBeNull();
 	});
 });

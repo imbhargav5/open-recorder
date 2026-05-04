@@ -15,6 +15,8 @@ import {
 	screenRecordingAwaitingRelaunchAtom,
 	screenshotModeAtom,
 	selectedSourceAtom,
+	selectedSourceStatusAtom,
+	sourceCheckErrorAtom,
 } from "./launch";
 
 describe("launch atoms – write / read", () => {
@@ -84,6 +86,10 @@ describe("launch atoms – write / read", () => {
 		const store = createStore();
 		store.set(selectedSourceAtom, "Display 2");
 		expect(store.get(selectedSourceAtom)).toBe("Display 2");
+		expect(store.get(selectedSourceStatusAtom)).toMatchObject({
+			name: "Display 2",
+			available: true,
+		});
 	});
 
 	it("selectedSourceAtom accepts empty string", () => {
@@ -96,6 +102,21 @@ describe("launch atoms – write / read", () => {
 		const store = createStore();
 		store.set(hasSelectedSourceAtom, false);
 		expect(store.get(hasSelectedSourceAtom)).toBe(false);
+		expect(store.get(selectedSourceStatusAtom).available).toBe(false);
+	});
+
+	it("selectedSourceStatusAtom drives source compatibility atoms", () => {
+		const store = createStore();
+		const error = new Error("source unavailable");
+		store.set(selectedSourceStatusAtom, {
+			name: "Display 3",
+			available: true,
+			error,
+		});
+
+		expect(store.get(selectedSourceAtom)).toBe("Display 3");
+		expect(store.get(hasSelectedSourceAtom)).toBe(true);
+		expect(store.get(sourceCheckErrorAtom)).toBe(error);
 	});
 
 	it("permissionOnboardingStepAtom can be set to every OnboardingStep value", () => {
