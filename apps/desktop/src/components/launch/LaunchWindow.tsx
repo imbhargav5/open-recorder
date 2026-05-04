@@ -1,7 +1,7 @@
 import { useActor } from "@xstate/react";
 import { useAtom } from "jotai";
 import { AppWindow, BoxSelect, Camera, ChevronLeft, Monitor, Video } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { forwardRef, type ReactNode, useCallback, useEffect, useMemo, useRef } from "react";
 import { BsRecordCircle } from "react-icons/bs";
 import { FaRegStopCircle } from "react-icons/fa";
 import {
@@ -15,15 +15,13 @@ import {
 } from "react-icons/md";
 import { RxDragHandleDots2 } from "react-icons/rx";
 import {
-	hasSelectedSourceAtom,
 	isCapturingAtom,
 	launchViewAtom,
 	recordingElapsedAtom,
 	recordingStartAtom,
 	type ScreenshotMode,
 	screenshotModeAtom,
-	selectedSourceAtom,
-	sourceCheckErrorAtom,
+	selectedSourceStatusAtom,
 } from "@/atoms/launch";
 import { buildEditorWindowQuery } from "@/components/video-editor/editorWindowParams";
 import * as backend from "@/lib/backend";
@@ -49,37 +47,134 @@ function ModeButton({
 	active,
 	onClick,
 	title,
+	label,
 	disabled,
 }: {
-	icon: React.ReactNode;
+	icon: ReactNode;
 	active: boolean;
 	onClick: () => void;
 	title: string;
+	label: string;
 	disabled?: boolean;
 }) {
 	return (
 		<Button
+			variant="ghost"
+			onClick={onClick}
+			title={title}
+			disabled={disabled}
+			className={cn(
+				"hud-no-drag h-9 min-w-[66px] gap-1.5 rounded-full px-2 text-[12px] font-semibold transition-all duration-200",
+				active
+					? "bg-white text-zinc-950 shadow-[0_6px_18px_rgba(0,0,0,0.24)] hover:bg-white"
+					: "text-white/55 hover:bg-white/[0.08] hover:text-white",
+			)}
+		>
+			{icon}
+			<span>{label}</span>
+		</Button>
+	);
+}
+
+const HudIconButton = forwardRef<
+	HTMLButtonElement,
+	{
+		children: ReactNode;
+		title: string;
+		onClick?: () => void;
+		disabled?: boolean;
+		active?: boolean;
+		danger?: boolean;
+	}
+>(function HudIconButton({ children, title, onClick, disabled, active, danger }, ref) {
+	return (
+		<Button
+			ref={ref}
 			variant="ghost"
 			size="icon"
 			onClick={onClick}
 			title={title}
 			disabled={disabled}
 			className={cn(
-				"hud-no-drag h-[30px] w-[30px] rounded-md transition-all",
-				active
-					? "bg-white/15 text-white shadow-sm hover:bg-white/15"
-					: "text-white/40 hover:bg-white/5 hover:text-white/70",
+				"hud-no-drag h-9 w-9 rounded-full border border-white/[0.08] bg-white/[0.055] text-white/55 shadow-inner shadow-white/[0.03] transition-all duration-200 hover:border-white/15 hover:bg-white/[0.1] hover:text-white",
+				active &&
+					"border-blue-300/35 bg-blue-400/15 text-blue-200 shadow-[0_0_18px_rgba(59,130,246,0.2)]",
+				danger && "border-red-300/35 bg-red-500/15 text-red-200",
 			)}
 		>
-			{icon}
+			{children}
 		</Button>
+	);
+});
+
+function SourceChip({
+	source,
+	available,
+	disabled,
+	onClick,
+	title,
+}: {
+	source: string;
+	available: boolean;
+	disabled?: boolean;
+	onClick: () => void;
+	title?: string;
+}) {
+	return (
+		<Button
+			variant="ghost"
+			size="sm"
+			className={cn(
+				"hud-no-drag h-9 min-w-0 max-w-[150px] justify-start gap-2 rounded-full border border-white/[0.1] bg-black/20 px-2.5 text-xs font-medium text-white/75 shadow-inner shadow-white/[0.03] transition-all duration-200 hover:border-white/20 hover:bg-white/[0.08] hover:text-white",
+				!available && "text-white/38 hover:text-white/55",
+			)}
+			onClick={onClick}
+			disabled={disabled}
+			title={title || source}
+		>
+			<span
+				className={cn(
+					"h-2 w-2 shrink-0 rounded-full bg-amber-300 shadow-[0_0_10px_rgba(252,211,77,0.55)]",
+					available && "bg-emerald-300 shadow-[0_0_10px_rgba(110,231,183,0.55)]",
+				)}
+			/>
+			<MdMonitor size={15} className="shrink-0 text-white/65" />
+			<span className="min-w-0 truncate">{source || "Choose source"}</span>
+		</Button>
+	);
+}
+
+function FlowLabel({
+	tone,
+	label,
+	value,
+}: {
+	tone: "blue" | "red" | "amber";
+	label: string;
+	value: string;
+}) {
+	return (
+		<div className="flex min-w-[84px] items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.055] px-2.5 py-1.5">
+			<span
+				className={cn(
+					"h-2 w-2 rounded-full",
+					tone === "blue" && "bg-blue-300 shadow-[0_0_12px_rgba(147,197,253,0.65)]",
+					tone === "red" && "hud-recording-dot bg-red-400 shadow-[0_0_12px_rgba(248,113,113,0.7)]",
+					tone === "amber" && "bg-amber-300 shadow-[0_0_12px_rgba(252,211,77,0.65)]",
+				)}
+			/>
+			<div className="leading-none">
+				<div className="text-[9px] font-semibold uppercase text-white/38">{label}</div>
+				<div className="mt-1 text-[12px] font-semibold text-white/82">{value}</div>
+			</div>
+		</div>
 	);
 }
 
 // ─── Shared classes ─────────────────────────────────────────────────────────
 
-const HUD_BAR_CLASS = "hud-surface hud-drag min-h-12 rounded-full";
-const HUD_DIALOG_CLASS = "hud-surface hud-drag min-h-12 rounded-[18px]";
+const HUD_BAR_CLASS = "hud-surface hud-drag min-h-[58px] rounded-[28px]";
+const HUD_DIALOG_CLASS = "hud-surface hud-drag min-h-[62px] rounded-[28px]";
 
 // ─── LaunchWindow ───────────────────────────────────────────────────────────
 
@@ -281,35 +376,43 @@ export function LaunchWindow() {
 	};
 
 	// Source tracking
-	const [selectedSource, setSelectedSource] = useAtom(selectedSourceAtom);
-	const [hasSelectedSource, setHasSelectedSource] = useAtom(hasSelectedSourceAtom);
-	const [, setSourceCheckError] = useAtom(sourceCheckErrorAtom);
+	const [selectedSourceStatus, setSelectedSourceStatus] = useAtom(selectedSourceStatusAtom);
+	const selectedSource = selectedSourceStatus.name ?? "";
+	const hasSelectedSource = selectedSourceStatus.available;
 	useEffect(() => {
 		const checkSelectedSource = async () => {
 			try {
 				const source = await backend.getSelectedSource();
 				const nextState = resolveSelectedSourceState(source);
-				setSelectedSource(nextState.selectedSource);
-				setHasSelectedSource(nextState.hasSelectedSource);
-				setSourceCheckError(null);
+				setSelectedSourceStatus({
+					name: nextState.selectedSource,
+					available: nextState.hasSelectedSource,
+					error: null,
+				});
 			} catch (err) {
 				const error = err instanceof Error ? err : new Error(String(err));
 				console.warn("[LaunchWindow] source check failed:", error);
-				setSourceCheckError(error);
+				setSelectedSourceStatus((current) => ({
+					...current,
+					error,
+				}));
 			}
 		};
 
 		void checkSelectedSource();
 		const interval = setInterval(checkSelectedSource, 500);
 		return () => clearInterval(interval);
-	}, [setHasSelectedSource, setSelectedSource, setSourceCheckError]);
+	}, [setSelectedSourceStatus]);
 
 	const openSourceSelector = useCallback(
-		async (tab?: "screens" | "windows") => {
+		async (
+			tab?: "screens" | "windows" | "area",
+			context: "recording" | "screenshot" = "recording",
+		) => {
 			const permissionsReady = await preparePermissions();
 			if (!permissionsReady) return;
 
-			backend.openSourceSelector(tab).catch(() => {
+			backend.openSourceSelector(tab, context).catch(() => {
 				// Ignore selector launch failures because the permissions flow already handled the user-facing error.
 			});
 		},
@@ -370,7 +473,7 @@ export function LaunchWindow() {
 		};
 	}, [openProjectFile, openSourceSelector, openVideoFile]);
 
-	const dividerClass = "mx-1 h-5 w-px shrink-0 bg-white/20";
+	const dividerClass = "mx-0.5 h-7 w-px shrink-0 bg-white/[0.1]";
 
 	const toggleCamera = () => {
 		if (!recording) {
@@ -431,7 +534,7 @@ export function LaunchWindow() {
 			backend.closeSourceSelector().catch(() => undefined);
 			await handleAreaCapture();
 		} else {
-			await openSourceSelector(mode === "window" ? "windows" : "screens");
+			await openSourceSelector(mode === "window" ? "windows" : "screens", "screenshot");
 		}
 	};
 
@@ -456,7 +559,7 @@ export function LaunchWindow() {
 				const windowId = source?.windowId;
 
 				if (!windowId) {
-					await openSourceSelector();
+					await openSourceSelector("windows", "screenshot");
 					setIsCapturing(false);
 					return;
 				}
@@ -503,21 +606,12 @@ export function LaunchWindow() {
 
 	// ─── Render helpers ───────────────────────────────────────────────────────
 
-	const handleDragHandlePointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-		event.preventDefault();
-		event.stopPropagation();
-
-		void backend.startHudOverlayDrag().catch((error) => {
-			console.error("Failed to start HUD overlay drag:", error);
-		});
-	}, []);
-
 	const dragHandle = (
 		<div
-			className="hud-no-drag flex cursor-grab touch-none select-none items-center px-1 active:cursor-grabbing"
-			onPointerDown={handleDragHandlePointerDown}
+			className="hud-drag flex h-9 w-7 cursor-grab touch-none select-none items-center justify-center rounded-full text-white/35 transition-colors hover:bg-white/[0.06] hover:text-white/65 active:cursor-grabbing"
+			title="Drag HUD"
 		>
-			<RxDragHandleDots2 size={16} className="text-white/35" />
+			<RxDragHandleDots2 size={16} className="pointer-events-none text-white/35" />
 		</div>
 	);
 
@@ -534,12 +628,12 @@ export function LaunchWindow() {
 	}
 
 	return (
-		<div className="flex h-full w-full items-end justify-center overflow-hidden bg-transparent">
+		<div className="flex h-full w-full items-end justify-center overflow-hidden bg-transparent p-2">
 			<div className="hud-drag mx-auto flex flex-col items-center gap-2">
 				{/* ── Facecam preview (only in recording view, before recording starts) ── */}
 				{showCameraPreview && (
-					<div className="hud-surface hud-no-drag flex items-center gap-3 rounded-[22px] px-3 py-2 shadow-xl">
-						<div className="h-14 w-24 overflow-hidden rounded-2xl border border-white/10 bg-black/30">
+					<div className="hud-surface hud-no-drag flex items-center gap-3 rounded-[24px] px-3 py-2.5 shadow-xl">
+						<div className="h-14 w-24 overflow-hidden rounded-[18px] border border-white/10 bg-black/35 shadow-inner">
 							<video
 								ref={cameraPreviewRef}
 								className="h-full w-full object-cover"
@@ -548,9 +642,7 @@ export function LaunchWindow() {
 							/>
 						</div>
 						<div className="flex flex-col gap-1.5">
-							<div className="text-[10px] font-medium tracking-[0.18em] uppercase text-white/50">
-								Facecam
-							</div>
+							<div className="text-[10px] font-semibold uppercase text-white/50">Facecam</div>
 							<div className="max-w-[230px] text-[11px] text-white/55">{cameraHelperText}</div>
 							<Select
 								value={cameraSelectValue}
@@ -606,18 +698,22 @@ export function LaunchWindow() {
 								setView("screenshot");
 								setScreenshotMode(null);
 							}}
-							className="hud-no-drag h-auto gap-2.5 rounded-xl border-white/[0.08] bg-white/[0.06] px-5 py-2.5 text-[13px] font-medium text-white/80 hover:border-white/[0.15] hover:bg-white/[0.12] hover:text-white"
+							className="hud-no-drag h-11 gap-3 rounded-full border-white/[0.1] bg-white/[0.07] px-5 text-[13px] font-semibold text-white/82 shadow-inner shadow-white/[0.04] transition-all duration-200 hover:border-blue-200/35 hover:bg-blue-400/15 hover:text-white"
 						>
-							<Camera size={16} className="text-white/70" />
+							<span className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-400/15 text-blue-200">
+								<Camera size={16} />
+							</span>
 							Screenshot
 						</Button>
 
 						<Button
 							variant="outline"
 							onClick={() => setView("recording")}
-							className="hud-no-drag h-auto gap-2.5 rounded-xl border-white/[0.08] bg-white/[0.06] px-5 py-2.5 text-[13px] font-medium text-white/80 hover:border-white/[0.15] hover:bg-white/[0.12] hover:text-white"
+							className="hud-no-drag h-11 gap-3 rounded-full border-white/[0.1] bg-white/[0.07] px-5 text-[13px] font-semibold text-white/82 shadow-inner shadow-white/[0.04] transition-all duration-200 hover:border-red-200/35 hover:bg-red-400/15 hover:text-white"
 						>
-							<Video size={16} className="text-white/70" />
+							<span className="flex h-7 w-7 items-center justify-center rounded-full bg-red-400/15 text-red-200">
+								<Video size={16} />
+							</span>
 							Record Video
 						</Button>
 					</div>
@@ -628,44 +724,50 @@ export function LaunchWindow() {
             [drag] [← back] [Screen] [Window] [Area] | [source] | [Take Screenshot]
            ================================================================ */}
 				{view === "screenshot" && !recording && (
-					<div className={cn(HUD_BAR_CLASS, "mx-auto flex w-full items-center gap-1.5 px-3 py-2")}>
+					<div className={cn(HUD_BAR_CLASS, "mx-auto flex w-full items-center gap-1.5 px-2 py-2")}>
 						{dragHandle}
 
 						{/* Back button */}
-						<Button
-							variant="link"
-							size="icon"
+						<HudIconButton
 							onClick={() => {
 								setView("choice");
 								setScreenshotMode(null);
 							}}
 							title="Back"
-							className="hud-no-drag text-white/60 hover:bg-transparent hover:text-white"
 						>
 							<ChevronLeft size={16} />
-						</Button>
+						</HudIconButton>
 
 						<div className={dividerClass} />
 
+						<FlowLabel
+							tone={isCapturing ? "amber" : "blue"}
+							label="Screenshot"
+							value={isCapturing ? "Capturing" : screenshotMode ? "Ready" : "Mode"}
+						/>
+
 						{/* Screenshot mode buttons */}
-						<div className="flex items-center gap-0.5 bg-white/[0.06] rounded-lg p-[3px]">
+						<div className="hud-no-drag flex items-center gap-1 rounded-full border border-white/[0.08] bg-black/20 p-1 shadow-inner shadow-black/20">
 							<ModeButton
 								icon={<Monitor size={15} />}
 								active={screenshotMode === "screen"}
 								onClick={() => handleScreenshotModeSelect("screen")}
 								title="Capture Entire Screen"
+								label="Screen"
 							/>
 							<ModeButton
 								icon={<AppWindow size={15} />}
 								active={screenshotMode === "window"}
 								onClick={() => handleScreenshotModeSelect("window")}
 								title="Capture Window"
+								label="Window"
 							/>
 							<ModeButton
 								icon={<BoxSelect size={15} />}
 								active={screenshotMode === "area"}
 								onClick={() => handleScreenshotModeSelect("area")}
 								title="Capture Area"
+								label="Area"
 							/>
 						</div>
 
@@ -675,26 +777,27 @@ export function LaunchWindow() {
 								<div className={dividerClass} />
 
 								{/* Selected source indicator (clickable to re-open source selector) */}
-								<Button
-									variant="link"
-									size="sm"
-									className="hud-no-drag min-w-fit shrink-0 gap-1 bg-transparent px-0 text-xs text-white/60 hover:bg-transparent"
-									onClick={() => openSourceSelector()}
+								<SourceChip
+									onClick={() =>
+										openSourceSelector(
+											screenshotMode === "window" ? "windows" : "screens",
+											"screenshot",
+										)
+									}
 									title={selectedSource}
-								>
-									<MdMonitor size={14} className="text-white/60" />
-									<span>{selectedSource}</span>
-								</Button>
+									source={selectedSource}
+									available={hasSelectedSource}
+								/>
 
 								<div className={dividerClass} />
 
 								{/* Take Screenshot CTA */}
 								<Button
-									variant="link"
+									variant="ghost"
 									size="sm"
 									onClick={handleScreenshotCapture}
 									disabled={isCapturing}
-									className="hud-no-drag gap-1.5 bg-transparent px-1 text-xs font-medium text-white hover:bg-transparent"
+									className="hud-no-drag h-10 gap-2 rounded-full border border-blue-200/25 bg-blue-400/15 px-3 text-xs font-semibold text-blue-100 shadow-[0_0_24px_rgba(37,99,235,0.22)] transition-all duration-200 hover:border-blue-100/40 hover:bg-blue-400/25 hover:text-white"
 								>
 									{isCapturing ? (
 										<>
@@ -703,8 +806,8 @@ export function LaunchWindow() {
 										</>
 									) : (
 										<>
-											<Camera size={14} className="text-white/85" />
-											<span className="text-white/80">Take Screenshot</span>
+											<Camera size={15} className="text-blue-100" />
+											<span>Capture</span>
 										</>
 									)}
 								</Button>
@@ -718,80 +821,70 @@ export function LaunchWindow() {
             [drag] [← back] [source] | [volume] [mic] [camera] | [record/stop]
            ================================================================ */}
 				{(view === "recording" || recording) && (
-					<div className={cn(HUD_BAR_CLASS, "mx-auto flex w-full items-center gap-1.5 px-3 py-2")}>
+					<div
+						className={cn(
+							HUD_BAR_CLASS,
+							"mx-auto flex w-full items-center gap-1.5 px-2 py-2",
+							recording && "hud-surface-recording",
+						)}
+					>
 						{dragHandle}
 
 						{/* Back button — return to choice (only when not recording) */}
 						{!recording && (
 							<>
-								<Button
-									variant="link"
-									size="icon"
-									onClick={() => setView("choice")}
-									title="Back"
-									className="hud-no-drag text-white/60 hover:bg-transparent hover:text-white"
-								>
+								<HudIconButton onClick={() => setView("choice")} title="Back">
 									<ChevronLeft size={16} />
-								</Button>
+								</HudIconButton>
 								<div className={dividerClass} />
 							</>
 						)}
 
+						<FlowLabel
+							tone={recording ? "red" : "blue"}
+							label={recording ? "Recording" : "Ready"}
+							value={recording ? formatTime(elapsed) : "Video"}
+						/>
+
 						{/* Source selector */}
-						<Button
-							variant="link"
-							size="sm"
-							className="hud-no-drag min-w-fit shrink-0 gap-1 bg-transparent px-0 text-xs text-white/80 hover:bg-transparent"
+						<SourceChip
 							onClick={() => openSourceSelector()}
 							disabled={recording}
 							title={selectedSource}
-						>
-							<MdMonitor size={14} className="text-white/80" />
-							<span>{selectedSource}</span>
-						</Button>
+							source={selectedSource}
+							available={hasSelectedSource}
+						/>
 
 						<div className={dividerClass} />
 
 						{/* Audio / Mic / Camera */}
-						<div className="hud-no-drag flex items-center gap-1">
-							<Button
-								variant="link"
-								size="icon"
+						<div className="hud-no-drag flex items-center gap-1 rounded-full border border-white/[0.08] bg-black/20 p-1 shadow-inner shadow-black/20">
+							<HudIconButton
 								onClick={() => !recording && setSystemAudioEnabled(!systemAudioEnabled)}
 								disabled={recording}
 								title={systemAudioEnabled ? "Disable system audio" : "Enable system audio"}
-								className="hud-no-drag text-white/80 hover:bg-transparent"
+								active={systemAudioEnabled}
 							>
-								{systemAudioEnabled ? (
-									<MdVolumeUp size={16} className="text-[#2563EB]" />
-								) : (
-									<MdVolumeOff size={16} className="text-white/35" />
-								)}
-							</Button>
+								{systemAudioEnabled ? <MdVolumeUp size={16} /> : <MdVolumeOff size={16} />}
+							</HudIconButton>
 
 							<Popover open={isPopoverOpen}>
 								<PopoverAnchor asChild>
-									<Button
+									<HudIconButton
 										ref={micButtonRef}
-										variant="link"
-										size="icon"
 										onClick={() => micSend({ type: "CLICK" })}
 										disabled={recording}
 										title={isMicEnabled ? "Microphone settings" : "Enable microphone"}
-										className="hud-no-drag text-white/80 hover:bg-transparent"
+										active={isMicEnabled}
 									>
-										{isMicEnabled ? (
-											<MdMic size={16} className="text-[#2563EB]" />
-										) : (
-											<MdMicOff size={16} className="text-white/35" />
-										)}
-									</Button>
+										{isMicEnabled ? <MdMic size={16} /> : <MdMicOff size={16} />}
+									</HudIconButton>
 								</PopoverAnchor>
 								<PopoverContent
 									align="center"
 									side="top"
 									sideOffset={10}
-									className="hud-surface hud-no-drag w-[280px] rounded-2xl p-3 shadow-xl"
+									className="hud-surface hud-no-drag w-[292px] rounded-[24px] p-4 shadow-xl"
 									onPointerDownOutside={(e) => {
 										if (micButtonRef.current?.contains(e.target as Node)) {
 											e.preventDefault();
@@ -803,7 +896,7 @@ export function LaunchWindow() {
 									onFocusOutside={(e) => e.preventDefault()}
 								>
 									<div className="mb-2 flex items-center justify-between">
-										<span className="text-[10px] font-medium tracking-[0.18em] uppercase text-white/50">
+										<span className="text-[10px] font-semibold uppercase text-white/50">
 											Microphone
 										</span>
 										<Switch
@@ -892,46 +985,44 @@ export function LaunchWindow() {
 								</PopoverContent>
 							</Popover>
 
-							<Button
-								variant="link"
-								size="icon"
+							<HudIconButton
 								onClick={toggleCamera}
 								disabled={recording}
 								title={cameraEnabled ? "Disable facecam" : "Enable facecam"}
-								className="hud-no-drag text-white/80 hover:bg-transparent"
+								active={cameraEnabled}
 							>
-								{cameraEnabled ? (
-									<MdVideocam size={16} className="text-[#2563EB]" />
-								) : (
-									<MdVideocamOff size={16} className="text-white/35" />
-								)}
-							</Button>
+								{cameraEnabled ? <MdVideocam size={16} /> : <MdVideocamOff size={16} />}
+							</HudIconButton>
 						</div>
 
 						<div className={dividerClass} />
 
 						{/* Record / Stop */}
 						<Button
-							variant="link"
+							variant="ghost"
 							size="sm"
 							onClick={hasSelectedSource ? toggleRecording : () => openSourceSelector()}
 							disabled={!hasSelectedSource && !recording}
-							className="hud-no-drag gap-1 bg-transparent px-0 text-xs text-white hover:bg-transparent"
+							className={cn(
+								"hud-no-drag h-10 min-w-[118px] gap-2 rounded-full border px-4 text-xs font-semibold transition-all duration-200",
+								recording
+									? "border-red-200/35 bg-red-500/20 text-red-100 shadow-[0_0_28px_rgba(248,113,113,0.26)] hover:border-red-100/45 hover:bg-red-500/30 hover:text-white"
+									: "border-white/15 bg-white text-zinc-950 shadow-[0_8px_24px_rgba(0,0,0,0.25)] hover:bg-blue-50 hover:text-zinc-950",
+								!hasSelectedSource && !recording && "bg-white/10 text-white/35 hover:bg-white/10",
+							)}
 						>
 							{recording ? (
 								<>
-									<FaRegStopCircle size={14} className="text-red-400" />
-									<span className="text-red-400 font-medium tabular-nums">
-										{formatTime(elapsed)}
-									</span>
+									<FaRegStopCircle size={15} />
+									<span className="font-semibold tabular-nums">{formatTime(elapsed)}</span>
 								</>
 							) : (
 								<>
 									<BsRecordCircle
-										size={14}
-										className={hasSelectedSource ? "text-white/85" : "text-white/35"}
+										size={15}
+										className={hasSelectedSource ? "text-red-500" : "text-white/35"}
 									/>
-									<span className={hasSelectedSource ? "text-white/80" : "text-white/35"}>
+									<span className={hasSelectedSource ? "text-zinc-950" : "text-white/35"}>
 										Record
 									</span>
 								</>

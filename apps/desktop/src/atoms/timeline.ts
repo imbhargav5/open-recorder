@@ -12,3 +12,13 @@ export const timelineScrollLabelsAtom = atom<{ pan: string; zoom: string }>({
 });
 export const timelinePlaybackCursorDraggingAtom = atom<boolean>(false);
 export const timelineDraggingKeyframeIdAtom = atom<string | null>(null);
+
+export const resetTimelineRuntimeAtom = atom(null, (_get, set) => {
+	set(timelineRangeAtom, { start: 0, end: 0 });
+	set(timelineKeyframesAtom, []);
+	set(timelineSelectedKeyframeIdAtom, null);
+	set(timelineCustomAspectWidthAtom, "16");
+	set(timelineCustomAspectHeightAtom, "9");
+	set(timelinePlaybackCursorDraggingAtom, false);
+	set(timelineDraggingKeyframeIdAtom, null);
+});

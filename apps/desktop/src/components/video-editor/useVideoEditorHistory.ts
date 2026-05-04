@@ -1,11 +1,14 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useSetAtom } from "jotai";
+import { useCallback, useEffect } from "react";
+import type { AnnotationRegion, SpeedRegion, TrimRegion, ZoomRegion } from "./types";
 import type { EditorHistorySnapshot } from "./videoEditorHistory";
 import {
 	cloneEditorHistorySnapshot,
-	createEditorHistorySnapshot,
 	deriveEditorHistoryCounters,
+	recordEditorHistoryAtom,
+	redoEditorHistoryAtom,
+	undoEditorHistoryAtom,
 } from "./videoEditorHistory";
-import type { AnnotationRegion, SpeedRegion, TrimRegion, ZoomRegion } from "./types";
 
 type HistoryState = {
 	zoomRegions: ZoomRegion[];
@@ -62,23 +65,21 @@ export function useVideoEditorHistory({
 	nextAnnotationIdRef,
 	nextAnnotationZIndexRef,
 }: UseVideoEditorHistoryParams) {
-	const historyPastRef = useRef<EditorHistorySnapshot[]>([]);
-	const historyFutureRef = useRef<EditorHistorySnapshot[]>([]);
-	const historyCurrentRef = useRef<EditorHistorySnapshot | null>(null);
-	const applyingHistoryRef = useRef(false);
+	const recordEditorHistory = useSetAtom(recordEditorHistoryAtom);
+	const undoEditorHistory = useSetAtom(undoEditorHistoryAtom);
+	const redoEditorHistory = useSetAtom(redoEditorHistoryAtom);
 
 	const buildHistorySnapshot = useCallback(
-		() =>
-			createEditorHistorySnapshot({
-				zoomRegions,
-				trimRegions,
-				speedRegions,
-				annotationRegions,
-				selectedZoomId,
-				selectedTrimId,
-				selectedSpeedId,
-				selectedAnnotationId,
-			}),
+		() => ({
+			zoomRegions,
+			trimRegions,
+			speedRegions,
+			annotationRegions,
+			selectedZoomId,
+			selectedTrimId,
+			selectedSpeedId,
+			selectedAnnotationId,
+		}),
 		[
 			zoomRegions,
 			trimRegions,
@@ -93,7 +94,6 @@ export function useVideoEditorHistory({
 
 	const applyHistorySnapshot = useCallback(
 		(snapshot: EditorHistorySnapshot) => {
-			applyingHistoryRef.current = true;
 			const cloned = cloneEditorHistorySnapshot(snapshot);
 			const counters = deriveEditorHistoryCounters(cloned);
 
@@ -130,62 +130,24 @@ export function useVideoEditorHistory({
 	);
 
 	const handleUndo = useCallback(() => {
-		if (historyPastRef.current.length === 0) {
-			return;
-		}
-
-		const current = historyCurrentRef.current ?? cloneEditorHistorySnapshot(buildHistorySnapshot());
-		const previous = historyPastRef.current.pop();
+		const previous = undoEditorHistory();
 		if (!previous) {
 			return;
 		}
-
-		historyFutureRef.current.push(cloneEditorHistorySnapshot(current));
-		historyCurrentRef.current = cloneEditorHistorySnapshot(previous);
 		applyHistorySnapshot(previous);
-	}, [applyHistorySnapshot, buildHistorySnapshot]);
+	}, [applyHistorySnapshot, undoEditorHistory]);
 
 	const handleRedo = useCallback(() => {
-		if (historyFutureRef.current.length === 0) {
-			return;
-		}
-
-		const current = historyCurrentRef.current ?? cloneEditorHistorySnapshot(buildHistorySnapshot());
-		const next = historyFutureRef.current.pop();
+		const next = redoEditorHistory();
 		if (!next) {
 			return;
 		}
-
-		historyPastRef.current.push(cloneEditorHistorySnapshot(current));
-		historyCurrentRef.current = cloneEditorHistorySnapshot(next);
 		applyHistorySnapshot(next);
-	}, [applyHistorySnapshot, buildHistorySnapshot]);
+	}, [applyHistorySnapshot, redoEditorHistory]);
 
 	useEffect(() => {
-		const snapshot = cloneEditorHistorySnapshot(buildHistorySnapshot());
-
-		if (!historyCurrentRef.current) {
-			historyCurrentRef.current = snapshot;
-			return;
-		}
-
-		if (applyingHistoryRef.current) {
-			historyCurrentRef.current = snapshot;
-			applyingHistoryRef.current = false;
-			return;
-		}
-
-		if (historyCurrentRef.current.signature === snapshot.signature) {
-			return;
-		}
-
-		historyPastRef.current.push(cloneEditorHistorySnapshot(historyCurrentRef.current));
-		if (historyPastRef.current.length > 100) {
-			historyPastRef.current.shift();
-		}
-		historyCurrentRef.current = snapshot;
-		historyFutureRef.current = [];
-	}, [buildHistorySnapshot]);
+		recordEditorHistory(buildHistorySnapshot());
+	}, [buildHistorySnapshot, recordEditorHistory]);
 
 	return {
 		handleUndo,

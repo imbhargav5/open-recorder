@@ -1,15 +1,16 @@
 import { useAtom } from "jotai";
-import { AppWindow, Loader2, Monitor } from "lucide-react";
+import { AppWindow, BoxSelect, Loader2, Monitor } from "lucide-react";
 import { useEffect } from "react";
 import { MdCheck } from "react-icons/md";
 import {
 	selectedDesktopSourceAtom,
+	sourceSelectorContextAtom,
 	sourceSelectorTabAtom,
 	sourcesAtom,
 	sourcesLoadingAtom,
 	windowsLoadingAtom,
 } from "@/atoms/sourceSelector";
-import { flashSelectedScreen, getSources, selectSource } from "@/lib/backend";
+import { flashSelectedScreen, getSources, selectScreenArea, selectSource } from "@/lib/backend";
 import { cn } from "@/lib/utils";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -121,15 +122,22 @@ export function SourceSelector() {
 	const [sources, setSources] = useAtom(sourcesAtom);
 	const [selectedSource, setSelectedSource] = useAtom(selectedDesktopSourceAtom);
 	const [activeTab, setActiveTab] = useAtom(sourceSelectorTabAtom);
+	const [selectorContext, setSelectorContext] = useAtom(sourceSelectorContextAtom);
 	const [loading, setLoading] = useAtom(sourcesLoadingAtom);
 	const [windowsLoading, setWindowsLoading] = useAtom(windowsLoadingAtom);
 
 	useEffect(() => {
 		const params = new URLSearchParams(window.location.search);
-		if (params.get("tab") === "windows") {
+		const context = params.get("context") === "screenshot" ? "screenshot" : "recording";
+		setSelectorContext(context);
+		if (params.get("tab") === "area" && context === "recording") {
+			setActiveTab("area");
+		} else if (params.get("tab") === "windows") {
 			setActiveTab("windows");
+		} else {
+			setActiveTab("screens");
 		}
-	}, [setActiveTab]);
+	}, [setActiveTab, setSelectorContext]);
 
 	useEffect(() => {
 		let cancelled = false;
@@ -211,6 +219,11 @@ export function SourceSelector() {
 
 	const screenSources = sources.filter((source) => source.sourceType === "screen");
 	const windowSources = sources.filter((source) => source.sourceType === "window");
+	const showAreaTab = selectorContext === "recording";
+	const selectorDescription =
+		selectorContext === "screenshot"
+			? "Pick a screen or a single app window for this screenshot."
+			: "Pick a screen, app window, or drawn area for the next recording.";
 
 	useEffect(() => {
 		if (loading) {
@@ -226,6 +239,12 @@ export function SourceSelector() {
 			setActiveTab("screens");
 		}
 	}, [loading, screenSources.length, windowSources.length, setActiveTab]);
+
+	useEffect(() => {
+		if (!showAreaTab && activeTab === "area") {
+			setActiveTab("screens");
+		}
+	}, [activeTab, setActiveTab, showAreaTab]);
 
 	const handleSourceSelect = (source: DesktopSource) => {
 		setSelectedSource(source);
@@ -243,6 +262,31 @@ export function SourceSelector() {
 		if (selectedSource) {
 			await selectSource(selectedSource);
 		}
+	};
+
+	const handleDrawAreaSelection = async () => {
+		const areaSelection = await selectScreenArea();
+		if (!areaSelection) return;
+
+		const roundedWidth = Math.round(areaSelection.width);
+		const roundedHeight = Math.round(areaSelection.height);
+		const name = `Area ${roundedWidth}x${roundedHeight}`;
+		const areaSource: DesktopSource = {
+			id: `area:${areaSelection.displayId}:${Math.round(areaSelection.x)}:${Math.round(
+				areaSelection.y,
+			)}:${roundedWidth}:${roundedHeight}`,
+			name,
+			thumbnail: null,
+			display_id: String(areaSelection.displayId),
+			appIcon: null,
+			originalName: name,
+			sourceType: "area",
+			captureSourceId: areaSelection.captureSourceId,
+			areaSelection,
+		};
+
+		setSelectedSource(areaSource);
+		await selectSource(areaSource);
 	};
 
 	if (loading) {
@@ -269,9 +313,7 @@ export function SourceSelector() {
 				<div className="flex items-center justify-between gap-4">
 					<div>
 						<CardTitle className="text-lg">Choose what to share</CardTitle>
-						<p className="mt-1 text-xs text-muted-foreground">
-							Pick a screen or a single app window for the next recording.
-						</p>
+						<p className="mt-1 text-xs text-muted-foreground">{selectorDescription}</p>
 					</div>
 					<Badge variant="outline">{screenSources.length + windowSources.length} sources</Badge>
 				</div>
@@ -279,9 +321,9 @@ export function SourceSelector() {
 			<CardContent className="p-4 pt-0">
 				<Tabs
 					value={activeTab}
-					onValueChange={(value) => setActiveTab(value as "screens" | "windows")}
+					onValueChange={(value) => setActiveTab(value as "screens" | "windows" | "area")}
 				>
-					<TabsList className="grid w-full grid-cols-2">
+					<TabsList className={cn("grid w-full", showAreaTab ? "grid-cols-3" : "grid-cols-2")}>
 						<TabsTrigger value="screens" className="gap-1.5">
 							<Monitor data-icon="inline-start" />
 							Screens
@@ -297,6 +339,12 @@ export function SourceSelector() {
 								{windowsLoading ? "..." : ""}
 							</Badge>
 						</TabsTrigger>
+						{showAreaTab ? (
+							<TabsTrigger value="area" className="gap-1.5">
+								<BoxSelect data-icon="inline-start" />
+								Area
+							</TabsTrigger>
+						) : null}
 					</TabsList>
 
 					<TabsContent value="screens" className="mt-3">
@@ -318,6 +366,25 @@ export function SourceSelector() {
 							emptyMessage="No windows available"
 						/>
 					</TabsContent>
+
+					{showAreaTab ? (
+						<TabsContent value="area" className="mt-3">
+							<Empty className="min-h-52 border-dashed bg-muted/30">
+								<EmptyHeader>
+									<EmptyMedia>
+										<BoxSelect />
+									</EmptyMedia>
+									<EmptyTitle>Draw a recording area</EmptyTitle>
+									<EmptyDescription>
+										Select the part of the screen you want to record.
+									</EmptyDescription>
+								</EmptyHeader>
+								<Button className="mt-4" onClick={() => void handleDrawAreaSelection()}>
+									Draw Selection
+								</Button>
+							</Empty>
+						</TabsContent>
+					) : null}
 				</Tabs>
 			</CardContent>
 
@@ -326,9 +393,11 @@ export function SourceSelector() {
 				<Button variant="outline" onClick={() => window.close()}>
 					Cancel
 				</Button>
-				<Button onClick={() => void handleShare()} disabled={!selectedSource}>
-					Share Source
-				</Button>
+				{activeTab !== "area" ? (
+					<Button onClick={() => void handleShare()} disabled={!selectedSource}>
+						Share Source
+					</Button>
+				) : null}
 			</CardFooter>
 		</Card>
 	);
