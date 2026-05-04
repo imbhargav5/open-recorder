@@ -161,16 +161,14 @@ The repository release flow uses two GitHub Actions workflows:
 - `.github/workflows/release-pr.yml` computes the next version and opens or updates a release PR.
 - `.github/workflows/release.yml` runs after that PR is merged to `main`, then builds and publishes the signed release artifacts.
 
-The release workflows use Tauri to produce signed and notarized macOS DMGs, Windows NSIS installers, and Linux AppImages when these GitHub repository secrets are configured:
+The release workflows use Electron Builder to produce signed and notarized macOS DMGs, Windows NSIS installers, and Linux AppImages when these GitHub repository secrets are configured:
 
 - `APPLE_CERTIFICATE`: base64-encoded `Developer ID Application` `.p12` certificate export
 - `APPLE_CERTIFICATE_PASSWORD`: password used when exporting the `.p12`
-- `APPLE_SIGNING_IDENTITY`: signing identity name
+- `APPLE_SIGNING_IDENTITY`: optional signing identity name, without the `Developer ID Application:` prefix
 - `APPLE_ID`: Apple Developer account email
 - `APPLE_APP_SPECIFIC_PASSWORD`: app-specific password for notarization
 - `APPLE_TEAM_ID`: your Apple Developer team ID
-- `TAURI_SIGNING_PRIVATE_KEY`: Tauri updater signing private key
-- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`: password for the signing key (optional)
 
 This repo now includes two helper scripts:
 

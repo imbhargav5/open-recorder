@@ -101,6 +101,15 @@ jobs:
       - name: Build desktop app
         run: pnpm --filter @open-recorder/desktop build
 
+      - name: Normalize macOS signing identity
+        shell: bash
+        run: |
+          if [[ "${CSC_NAME:-}" == "Developer ID Application:"* ]]; then
+            normalized_name="${CSC_NAME#Developer ID Application:}"
+            normalized_name="${normalized_name#"${normalized_name%%[![:space:]]*}"}"
+            echo "CSC_NAME=$normalized_name" >> "$GITHUB_ENV"
+          fi
+
       - name: Package macOS arm64 artifacts
         run: pnpm --filter @open-recorder/desktop exec electron-builder --config electron-builder.yml --publish never --mac dmg zip --arm64
 
@@ -171,6 +180,15 @@ jobs:
 
       - name: Build desktop app
         run: pnpm --filter @open-recorder/desktop build
+
+      - name: Normalize macOS signing identity
+        shell: bash
+        run: |
+          if [[ "${CSC_NAME:-}" == "Developer ID Application:"* ]]; then
+            normalized_name="${CSC_NAME#Developer ID Application:}"
+            normalized_name="${normalized_name#"${normalized_name%%[![:space:]]*}"}"
+            echo "CSC_NAME=$normalized_name" >> "$GITHUB_ENV"
+          fi
 
       - name: Package macOS x64 artifacts
         run: pnpm --filter @open-recorder/desktop exec electron-builder --config electron-builder.yml --publish never --mac dmg zip --x64

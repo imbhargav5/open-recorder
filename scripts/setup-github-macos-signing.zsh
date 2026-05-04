@@ -7,7 +7,7 @@ usage() {
 Usage: zsh scripts/setup-github-macos-signing.zsh [options]
 
 Exports the local Developer ID Application identity to a .p12, base64-encodes it
-for Tauri's code signing, and uploads the required GitHub Actions repository
+for Electron Builder code signing, and uploads the required GitHub Actions repository
 secrets.
 
 Options:
@@ -150,7 +150,7 @@ print -- "Using repository: $repo"
 print -- "Using signing identity: $identity"
 print -- "Derived Apple team ID: $team_id"
 print -- "Exporting PKCS#12 bundle to: $cert_path"
-print -- "macOS exports identities from the login keychain as a bundle; the Tauri build will use the correct Developer ID Application identity in CI."
+print -- "macOS exports identities from the login keychain as a bundle; Electron Builder will use the correct Developer ID Application identity in CI."
 
 security export \
 	-k "$HOME/Library/Keychains/login.keychain-db" \
