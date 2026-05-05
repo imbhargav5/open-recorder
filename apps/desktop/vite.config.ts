@@ -22,6 +22,9 @@ export default defineConfig({
 								build: {
 									sourcemap: process.env.NODE_ENV !== "production",
 									minify: process.env.NODE_ENV === "production",
+									rollupOptions: {
+										external: ["node:sqlite"],
+									},
 								},
 							},
 						},

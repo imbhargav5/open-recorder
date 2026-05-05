@@ -1,7 +1,15 @@
 import { atom } from "jotai";
 
 // --- Active recording state ---
-export const recordingActiveAtom = atom<boolean>(false);
+export type RecordingPhase = "idle" | "starting" | "recording" | "stopping" | "interrupted";
+
+export const recordingPhaseAtom = atom<RecordingPhase>("idle");
+export const recordingActiveAtom = atom(
+	(get) => get(recordingPhaseAtom) === "recording",
+	(_get, set, recording: boolean) => {
+		set(recordingPhaseAtom, recording ? "recording" : "idle");
+	},
+);
 
 // --- Microphone configuration ---
 export const microphoneEnabledAtom = atom<boolean>(false);

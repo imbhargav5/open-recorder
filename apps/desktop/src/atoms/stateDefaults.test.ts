@@ -25,6 +25,7 @@ import {
 	screenRecordingAwaitingRelaunchAtom,
 	screenshotModeAtom,
 	selectedSourceAtom,
+	selectedSourceStatusAtom,
 } from "./launch";
 import { isCheckingPermissionsAtom, type PermissionState, permissionsAtom } from "./permissions";
 import {
@@ -33,6 +34,7 @@ import {
 	microphoneDeviceIdAtom,
 	microphoneEnabledAtom,
 	recordingActiveAtom,
+	recordingPhaseAtom,
 	systemAudioEnabledAtom,
 } from "./recording";
 import {
@@ -141,6 +143,11 @@ describe("atom defaults", () => {
 		["mac platform", isMacOSAtom, false],
 		["launch capture", isCapturingAtom, false],
 		["launch screenshot mode", screenshotModeAtom, null],
+		[
+			"launch selected source status",
+			selectedSourceStatusAtom,
+			{ name: "Main Display", available: true, error: null },
+		],
 		["launch selected source", selectedSourceAtom, "Main Display"],
 		["launch has selected source", hasSelectedSourceAtom, true],
 		["launch recording start", recordingStartAtom, null],
@@ -148,6 +155,7 @@ describe("atom defaults", () => {
 		["permission onboarding step", permissionOnboardingStepAtom, "welcome"],
 		["permission onboarding requesting", permissionOnboardingRequestingAtom, false],
 		["screen recording awaiting relaunch", screenRecordingAwaitingRelaunchAtom, false],
+		["recording phase", recordingPhaseAtom, "idle"],
 		["recording active", recordingActiveAtom, false],
 		["microphone enabled", microphoneEnabledAtom, false],
 		["microphone device", microphoneDeviceIdAtom, undefined],
