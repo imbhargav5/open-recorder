@@ -41,6 +41,7 @@ const VIDEO_FILE_EXTENSION = ".webm";
 const AUDIO_BITRATE_VOICE = 128_000;
 const AUDIO_BITRATE_SYSTEM = 192_000;
 const MIC_GAIN_BOOST = 1.4;
+const MIN_AREA_DIMENSION = 2;
 
 type ChromeDesktopVideoConstraints = {
 	mandatory: {
@@ -107,6 +108,111 @@ function computeBitrate(width: number, height: number) {
 	return Math.round(BITRATE_BASE * highFrameRateBoost);
 }
 
+function getCaptureSourceId(input: RecorderStartInput): string {
+	return input.source.sourceType === "area" && input.source.captureSourceId
+		? input.source.captureSourceId
+		: input.source.id;
+}
+
+function isAreaRecordingSource(
+	source: RecorderStartInput["source"],
+): source is RecorderStartInput["source"] & {
+	areaSelection: NonNullable<RecorderStartInput["source"]["areaSelection"]>;
+} {
+	return source.sourceType === "area" && Boolean(source.areaSelection);
+}
+
+function alignDimension(value: number): number {
+	return Math.max(
+		MIN_AREA_DIMENSION,
+		Math.floor(Math.max(MIN_AREA_DIMENSION, value) / CODEC_ALIGNMENT) * CODEC_ALIGNMENT,
+	);
+}
+
+async function createAreaCroppedStream(
+	sourceStream: MediaStream,
+	areaSelection: NonNullable<RecorderStartInput["source"]["areaSelection"]>,
+): Promise<{
+	stream: MediaStream;
+	videoTrack: MediaStreamTrack;
+	cleanup: () => void;
+}> {
+	const sourceTrack = sourceStream.getVideoTracks()[0];
+	if (!sourceTrack) {
+		throw new Error("Video track is not available.");
+	}
+
+	const video = document.createElement("video");
+	video.muted = true;
+	video.playsInline = true;
+	video.srcObject = sourceStream;
+
+	await new Promise<void>((resolve, reject) => {
+		const finish = () => {
+			video.onloadedmetadata = null;
+			video.onerror = null;
+			resolve();
+		};
+		video.onloadedmetadata = finish;
+		video.onerror = () => reject(new Error("Area capture video preview failed to load."));
+		if (video.readyState >= HTMLMediaElement.HAVE_METADATA) {
+			finish();
+		}
+	});
+	await video.play().catch(() => undefined);
+
+	const sourceWidth = video.videoWidth || sourceTrack.getSettings().width || DEFAULT_WIDTH;
+	const sourceHeight = video.videoHeight || sourceTrack.getSettings().height || DEFAULT_HEIGHT;
+	const bounds = areaSelection.displayBounds;
+	const scaleX = sourceWidth / bounds.width;
+	const scaleY = sourceHeight / bounds.height;
+	const cropX = Math.max(0, Math.round(areaSelection.x * scaleX));
+	const cropY = Math.max(0, Math.round(areaSelection.y * scaleY));
+	const cropWidth = Math.min(sourceWidth - cropX, Math.round(areaSelection.width * scaleX));
+	const cropHeight = Math.min(sourceHeight - cropY, Math.round(areaSelection.height * scaleY));
+
+	const canvas = document.createElement("canvas");
+	canvas.width = alignDimension(cropWidth);
+	canvas.height = alignDimension(cropHeight);
+	const context = canvas.getContext("2d");
+	if (!context) {
+		throw new Error("Area capture canvas is unavailable.");
+	}
+
+	let frameId = 0;
+	const draw = () => {
+		context.drawImage(
+			video,
+			cropX,
+			cropY,
+			cropWidth,
+			cropHeight,
+			0,
+			0,
+			canvas.width,
+			canvas.height,
+		);
+		frameId = requestAnimationFrame(draw);
+	};
+	draw();
+
+	const croppedStream = canvas.captureStream(TARGET_FRAME_RATE);
+	const videoTrack = croppedStream.getVideoTracks()[0];
+	if (!videoTrack) {
+		throw new Error("Area capture stream is unavailable.");
+	}
+
+	return {
+		stream: croppedStream,
+		videoTrack,
+		cleanup: () => {
+			cancelAnimationFrame(frameId);
+			video.pause();
+			video.srcObject = null;
+		},
+	};
+}
+
 export function useChromiumScreenRecorder({
 	facecamRecorder,
 	mountedRef,
@@ -124,6 +230,7 @@ export function useChromiumScreenRecorder({
 	const cursorTelemetryCaptureActive = useRef(false);
 	const pendingFacecamResult = useRef<Promise<FacecamCaptureResult> | null>(null);
 	const recordingFile = useRef(createStagedRecordingFileState());
+	const areaCropCleanup = useRef<(() => void) | null>(null);
 
 	const stopCursorTelemetryCapture = useCallback(async (videoPath?: string | null) => {
 		if (!cursorTelemetryCaptureActive.current) {
@@ -144,6 +251,9 @@ export function useChromiumScreenRecorder({
 			stream.current.getTracks().forEach((track) => track.stop());
 			stream.current = null;
 		}
+
+		areaCropCleanup.current?.();
+		areaCropCleanup.current = null;
 
 		if (screenStream.current) {
 			screenStream.current.getTracks().forEach((track) => track.stop());
@@ -197,6 +307,7 @@ export function useChromiumScreenRecorder({
 	const start = useCallback(
 		async (input: RecorderStartInput) => {
 			const mediaDevices = navigator.mediaDevices as DesktopCaptureMediaDevices;
+			const captureSourceId = getCaptureSourceId(input);
 
 			try {
 				await backend.startCursorTelemetryCapture();
@@ -222,7 +333,7 @@ export function useChromiumScreenRecorder({
 				const videoConstraints: ChromeDesktopVideoConstraints = {
 					mandatory: {
 						chromeMediaSource: CHROME_MEDIA_SOURCE,
-						chromeMediaSourceId: input.source.id,
+						chromeMediaSourceId: captureSourceId,
 						maxWidth: TARGET_WIDTH,
 						maxHeight: TARGET_HEIGHT,
 						maxFrameRate: TARGET_FRAME_RATE,
@@ -239,7 +350,7 @@ export function useChromiumScreenRecorder({
 							audio: {
 								mandatory: {
 									chromeMediaSource: CHROME_MEDIA_SOURCE,
-									chromeMediaSourceId: input.source.id,
+									chromeMediaSourceId: captureSourceId,
 								},
 							},
 							video: videoConstraints,
@@ -264,7 +375,17 @@ export function useChromiumScreenRecorder({
 				screenStream.current = screenMediaStream;
 				stream.current = new MediaStream();
 
-				videoTrack = screenMediaStream.getVideoTracks()[0];
+				if (isAreaRecordingSource(input.source)) {
+					const cropped = await createAreaCroppedStream(
+						screenMediaStream,
+						input.source.areaSelection,
+					);
+					areaCropCleanup.current = cropped.cleanup;
+					videoTrack = cropped.videoTrack;
+				} else {
+					videoTrack = screenMediaStream.getVideoTracks()[0];
+				}
+
 				if (!videoTrack) {
 					throw new Error("Video track is not available.");
 				}
@@ -337,8 +458,17 @@ export function useChromiumScreenRecorder({
 					surfaceSwitching: "exclude",
 				});
 
-				stream.current = mediaStream;
-				videoTrack = mediaStream.getVideoTracks()[0];
+				screenStream.current = mediaStream;
+
+				if (isAreaRecordingSource(input.source)) {
+					const cropped = await createAreaCroppedStream(mediaStream, input.source.areaSelection);
+					areaCropCleanup.current = cropped.cleanup;
+					stream.current = cropped.stream;
+					videoTrack = cropped.videoTrack;
+				} else {
+					stream.current = mediaStream;
+					videoTrack = mediaStream.getVideoTracks()[0];
+				}
 			}
 
 			if (!stream.current || !videoTrack) {

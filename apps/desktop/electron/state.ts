@@ -6,7 +6,7 @@
 export interface SelectedSource {
 	id: string;
 	name: string;
-	sourceType?: string; // "screen" | "window"
+	sourceType?: "screen" | "window" | "area";
 	thumbnail?: string;
 	displayId?: string;
 	display_id?: string;
@@ -15,6 +15,20 @@ export interface SelectedSource {
 	appName?: string;
 	windowTitle?: string;
 	windowId?: number;
+	captureSourceId?: string;
+	areaSelection?: {
+		x: number;
+		y: number;
+		width: number;
+		height: number;
+		displayId: number;
+		displayBounds: {
+			x: number;
+			y: number;
+			width: number;
+			height: number;
+		};
+	};
 }
 
 export interface FacecamSettings {

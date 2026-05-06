@@ -1,3 +1,17 @@
+export interface AreaSelection {
+	x: number;
+	y: number;
+	width: number;
+	height: number;
+	displayId: number;
+	displayBounds: {
+		x: number;
+		y: number;
+		width: number;
+		height: number;
+	};
+}
+
 export interface DesktopSource {
 	id: string;
 	name: string;
@@ -5,20 +19,31 @@ export interface DesktopSource {
 	display_id: string;
 	appIcon: string | null;
 	originalName: string;
-	sourceType: "screen" | "window";
+	sourceType: "screen" | "window" | "area";
 	appName?: string;
 	windowTitle?: string;
 	windowId?: number;
+	captureSourceId?: string;
+	areaSelection?: AreaSelection;
 }
 
 export function parseSourceMetadata(source: ProcessedDesktopSource) {
-	const sourceType: "screen" | "window" =
+	const sourceType: "screen" | "window" | "area" =
 		source.sourceType ??
-		(source.source_type as "screen" | "window" | undefined) ??
+		(source.source_type as "screen" | "window" | "area" | undefined) ??
 		(source.id.startsWith("window:") ? "window" : "screen");
 
 	const appName = source.appName ?? source.app_name;
 	const windowTitle = source.windowTitle ?? source.window_title;
+
+	if (sourceType === "area") {
+		return {
+			sourceType,
+			appName: undefined,
+			windowTitle: undefined,
+			displayName: source.name,
+		};
+	}
 
 	if (sourceType === "window" && (appName || windowTitle)) {
 		return {
@@ -54,7 +79,7 @@ export function mapSources(rawSources: ProcessedDesktopSource[]): DesktopSource[
 	return rawSources.map((source) => {
 		const metadata = parseSourceMetadata(source);
 
-		return {
+		const desktopSource: DesktopSource = {
 			id: source.id,
 			name: metadata.displayName,
 			thumbnail: source.thumbnail ?? null,
@@ -66,6 +91,16 @@ export function mapSources(rawSources: ProcessedDesktopSource[]): DesktopSource[
 			windowTitle: metadata.windowTitle,
 			windowId: source.windowId ?? source.window_id,
 		};
+
+		if (source.captureSourceId) {
+			desktopSource.captureSourceId = source.captureSourceId;
+		}
+
+		if (source.areaSelection) {
+			desktopSource.areaSelection = source.areaSelection;
+		}
+
+		return desktopSource;
 	});
 }
 
