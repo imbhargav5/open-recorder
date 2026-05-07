@@ -1,3 +1,4 @@
+import { atom } from "jotai";
 import { deriveNextId } from "./projectPersistence";
 import type { AnnotationRegion, SpeedRegion, TrimRegion, ZoomRegion } from "./types";
 
@@ -22,6 +23,14 @@ export type EditorHistoryCounters = {
 	nextAnnotationId: number;
 	nextAnnotationZIndex: number;
 };
+
+export type EditorHistoryState = {
+	past: EditorHistorySnapshot[];
+	current: EditorHistorySnapshot | null;
+	future: EditorHistorySnapshot[];
+};
+
+const MAX_HISTORY_SNAPSHOTS = 100;
 
 function getZoomRegionSignature(region: ZoomRegion) {
 	return [
@@ -98,10 +107,10 @@ export function createEditorHistorySnapshot(
 
 export function cloneEditorHistorySnapshot(snapshot: EditorHistorySnapshot): EditorHistorySnapshot {
 	return {
-		zoomRegions: [...snapshot.zoomRegions],
-		trimRegions: [...snapshot.trimRegions],
-		speedRegions: [...snapshot.speedRegions],
-		annotationRegions: [...snapshot.annotationRegions],
+		zoomRegions: snapshot.zoomRegions.map((region) => structuredClone(region)),
+		trimRegions: snapshot.trimRegions.map((region) => structuredClone(region)),
+		speedRegions: snapshot.speedRegions.map((region) => structuredClone(region)),
+		annotationRegions: snapshot.annotationRegions.map((region) => structuredClone(region)),
 		selectedZoomId: snapshot.selectedZoomId,
 		selectedTrimId: snapshot.selectedTrimId,
 		selectedSpeedId: snapshot.selectedSpeedId,
@@ -109,6 +118,106 @@ export function cloneEditorHistorySnapshot(snapshot: EditorHistorySnapshot): Edi
 		signature: snapshot.signature,
 	};
 }
+
+export const editorHistoryAtom = atom<EditorHistoryState>({
+	past: [],
+	current: null,
+	future: [],
+});
+
+export const resetEditorHistoryAtom = atom(null, (_get, set) => {
+	set(editorHistoryAtom, {
+		past: [],
+		current: null,
+		future: [],
+	});
+});
+
+export const recordEditorHistoryAtom = atom(null, (get, set, input: EditorHistorySnapshotInput) => {
+	const snapshot = cloneEditorHistorySnapshot(createEditorHistorySnapshot(input));
+	const history = get(editorHistoryAtom);
+
+	if (!history.current) {
+		set(editorHistoryAtom, {
+			...history,
+			current: snapshot,
+		});
+		return;
+	}
+
+	if (history.current.signature === snapshot.signature) {
+		return;
+	}
+
+	const past = [...history.past, cloneEditorHistorySnapshot(history.current)];
+	if (past.length > MAX_HISTORY_SNAPSHOTS) {
+		past.shift();
+	}
+
+	set(editorHistoryAtom, {
+		past,
+		current: snapshot,
+		future: [],
+	});
+});
+
+export const undoEditorHistoryAtom = atom(null, (get, set): EditorHistorySnapshot | null => {
+	const history = get(editorHistoryAtom);
+	const previous = history.past[history.past.length - 1];
+	if (!previous) {
+		return null;
+	}
+
+	const current =
+		history.current ??
+		createEditorHistorySnapshot({
+			zoomRegions: [],
+			trimRegions: [],
+			speedRegions: [],
+			annotationRegions: [],
+			selectedZoomId: null,
+			selectedTrimId: null,
+			selectedSpeedId: null,
+			selectedAnnotationId: null,
+		});
+
+	set(editorHistoryAtom, {
+		past: history.past.slice(0, -1),
+		current: cloneEditorHistorySnapshot(previous),
+		future: [cloneEditorHistorySnapshot(current), ...history.future],
+	});
+
+	return cloneEditorHistorySnapshot(previous);
+});
+
+export const redoEditorHistoryAtom = atom(null, (get, set): EditorHistorySnapshot | null => {
+	const history = get(editorHistoryAtom);
+	const next = history.future[0];
+	if (!next) {
+		return null;
+	}
+
+	const current =
+		history.current ??
+		createEditorHistorySnapshot({
+			zoomRegions: [],
+			trimRegions: [],
+			speedRegions: [],
+			annotationRegions: [],
+			selectedZoomId: null,
+			selectedTrimId: null,
+			selectedSpeedId: null,
+			selectedAnnotationId: null,
+		});
+
+	set(editorHistoryAtom, {
+		past: [...history.past, cloneEditorHistorySnapshot(current)],
+		current: cloneEditorHistorySnapshot(next),
+		future: history.future.slice(1),
+	});
+
+	return cloneEditorHistorySnapshot(next);
+});
 
 export function deriveEditorHistoryCounters(
 	snapshot: Pick<

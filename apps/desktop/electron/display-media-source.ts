@@ -10,7 +10,10 @@ function isWindowSource(source: Pick<CapturerSource, "id">): boolean {
 	return source.id.startsWith("window:");
 }
 
-function selectedSourceType(source: SelectedSource): "screen" | "window" {
+function selectedSourceType(source: SelectedSource): "screen" | "window" | "area" {
+	if (source.sourceType === "area" || source.id.startsWith("area:")) {
+		return "area";
+	}
 	if (source.sourceType === "window" || source.id.startsWith("window:")) {
 		return "window";
 	}
@@ -30,6 +33,11 @@ export function resolveDisplayMediaSource(
 	sources: CapturerSource[],
 ): CapturerSource | undefined {
 	if (selectedSource) {
+		if (selectedSourceType(selectedSource) === "area" && selectedSource.captureSourceId) {
+			const captureMatch = sources.find((source) => source.id === selectedSource.captureSourceId);
+			if (captureMatch) return captureMatch;
+		}
+
 		if (selectedSourceType(selectedSource) === "screen") {
 			const displayId = selectedDisplayId(selectedSource);
 			if (displayId) {
