@@ -13,8 +13,8 @@ function usage() {
 	console.log(`Usage: node scripts/dispatch-release-build.mjs [options]
 
 Dispatches the release PR GitHub Actions workflow. That workflow computes the
-next semantic version, updates the Electron desktop release metadata, and opens
-or updates the release PR. Merging that PR triggers the actual release build.
+next semantic version, updates the native Swift/Rust release metadata, and opens
+or updates the release PR. Merging that PR triggers the macOS release build.
 
 Options:
   --release-type VALUE     Release type: patch, minor, or major. Uses a selector if omitted.
@@ -126,19 +126,15 @@ function currentBranch() {
 	return capture("git", ["branch", "--show-current"], { allowFailure: true });
 }
 
-function readDesktopVersionForRef(ref) {
-	const packageJson = capture("git", ["show", `${ref}:apps/desktop/package.json`], {
+function readNativeVersionForRef(ref) {
+	const cargoToml = capture("git", ["show", `${ref}:apps/rust-service/Cargo.toml`], {
 		allowFailure: true,
 	});
-	if (!packageJson) {
+	if (!cargoToml) {
 		return "";
 	}
 
-	try {
-		return JSON.parse(packageJson).version;
-	} catch {
-		return "";
-	}
+	return cargoToml.match(/^version\s*=\s*"(\d+\.\d+\.\d+)"/m)?.[1] ?? "";
 }
 
 function clearRenderedMenu(lineCount) {
@@ -263,15 +259,15 @@ async function main() {
 	}
 
 	const releaseType = args.releaseType || (await selectReleaseType());
-	const desktopVersion = readDesktopVersionForRef(ref);
+	const nativeVersion = readNativeVersionForRef(ref);
 
 	console.log(`Dispatching release PR workflow for repository: ${repo}`);
 	console.log(`Git ref: ${ref}`);
 	console.log(`Selected release type: ${releaseType}`);
-	if (desktopVersion) {
-		console.log(`Current desktop package version on ${ref}: ${desktopVersion}`);
+	if (nativeVersion) {
+		console.log(`Current native service version on ${ref}: ${nativeVersion}`);
 	}
-	console.log("The workflow will compute the next version, update Electron release files in GitHub Actions, and open or update the release PR.");
+	console.log("The workflow will compute the next version, update Swift/Rust release files in GitHub Actions, and open or update the release PR.");
 
 	const confirmed = args.yes
 		? true
@@ -305,7 +301,7 @@ async function main() {
 
 	console.log("");
 	console.log("Workflow dispatched.");
-	console.log("GitHub Actions will compute the next version, create or update the release PR, and wait for that PR to be merged before packaging and publishing the Electron release.");
+	console.log("GitHub Actions will compute the next version, create or update the release PR, and wait for that PR to be merged before packaging and publishing the macOS release.");
 	console.log(`Check status with: gh run list --repo ${repo} --workflow release-pr.yml --limit 5`);
 }
 
