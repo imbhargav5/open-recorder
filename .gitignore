@@ -11,6 +11,7 @@ node_modules
 dist
 dist-electron
 dist-ssr
+release/
 *.local
 
 # Editor directories and files
@@ -26,6 +27,7 @@ dist-ssr
 *.sw?
 *.kiro/
 .tmp/
+tmp/
 .history/
 
 # Tauri
@@ -35,6 +37,8 @@ src-tauri/gen/
 apps/desktop/src-tauri/target/
 apps/desktop/src-tauri/binaries/
 apps/desktop/src-tauri/gen/
+apps/macos/.build/
+apps/rust-service/target/
 
 # Turbo
 .turbo/

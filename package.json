@@ -3,30 +3,29 @@
 	"private": true,
 	"packageManager": "pnpm@10.17.1",
 	"scripts": {
-		"tauri": "pnpm --filter @open-recorder/desktop tauri",
-		"dev": "turbo run dev --filter=@open-recorder/desktop",
-		"dev:prod": "pnpm --filter @open-recorder/desktop dev:prod",
-		"build": "turbo run build --filter=@open-recorder/desktop",
-		"build:dev": "pnpm --filter @open-recorder/desktop build:dev",
-		"build:sidecars": "pnpm --filter @open-recorder/desktop build:sidecars",
-		"build:icons": "pnpm --filter @open-recorder/desktop build:icons",
-		"build:mac": "pnpm --filter @open-recorder/desktop build:mac",
-		"build:win": "pnpm --filter @open-recorder/desktop build:win",
-		"build:linux": "pnpm --filter @open-recorder/desktop build:linux",
-		"lint": "turbo run lint",
-		"lint:fix": "pnpm --filter @open-recorder/desktop lint:fix",
-		"format": "pnpm --filter @open-recorder/desktop format",
-		"preview": "pnpm --filter @open-recorder/desktop preview",
+		"dev": "make dev-macos",
+		"build": "make build-macos",
+		"build:mac": "make build-macos",
+		"package:mac": "make package-macos",
+		"test": "make test-macos",
+		"clean": "make clean-macos",
+		"legacy:dev": "turbo run dev --filter=@open-recorder/desktop",
+		"legacy:build": "turbo run build --filter=@open-recorder/desktop",
+		"legacy:lint": "turbo run lint",
+		"legacy:test": "turbo run test",
 		"release:setup-macos-signing": "zsh scripts/setup-github-macos-signing.zsh",
 		"release:dispatch": "node scripts/dispatch-release-build.mjs",
 		"release:patch": "node scripts/dispatch-release-build.mjs --release-type patch",
 		"release:minor": "node scripts/dispatch-release-build.mjs --release-type minor",
 		"release:major": "node scripts/dispatch-release-build.mjs --release-type major",
-		"i18n:check": "turbo run i18n:check",
-		"test": "turbo run test",
-		"test:watch": "pnpm --filter @open-recorder/desktop test:watch"
+		"i18n:check": "turbo run i18n:check"
 	},
 	"devDependencies": {
 		"turbo": "^2.8.20"
+	},
+	"pnpm": {
+		"onlyBuiltDependencies": [
+			"electron"
+		]
 	}
 }

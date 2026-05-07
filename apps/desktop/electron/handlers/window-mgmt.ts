@@ -3,7 +3,7 @@
  * Mirrors src-tauri/src/commands/window_mgmt.rs.
  */
 
-import { BrowserWindow, screen, type IpcMainInvokeEvent } from "electron";
+import { BrowserWindow, type IpcMainInvokeEvent, screen } from "electron";
 import type { AppState } from "../state.js";
 import {
 	getWindowByLabel,
@@ -22,9 +22,7 @@ function nextEditorWindowLabel(): string {
 }
 
 function buildEditorWindowUrl(baseUrl: string, query?: string): string {
-	const normalized = query
-		?.trim()
-		.replace(/^\?+/, "");
+	const normalized = query?.trim().replace(/^\?+/, "");
 
 	if (!normalized) return `${baseUrl}?windowType=editor`;
 	return `${baseUrl}?${normalized}`;
@@ -136,14 +134,18 @@ export function registerWindowMgmtHandlers(
 	});
 
 	handle("open_source_selector", async (args) => {
-		const { tab } = (args as { tab?: string }) ?? {};
+		const { tab, context } = (args as { tab?: string; context?: "recording" | "screenshot" }) ?? {};
 
 		// Close existing to reopen with new tab param
 		const existing = getWindowByLabel("source-selector");
 		if (existing) existing.destroy();
 
-		const tabParam = tab ?? "";
-		const url = `${getRendererUrl()}?windowType=source-selector&tab=${tabParam}`;
+		const params = new URLSearchParams({
+			windowType: "source-selector",
+			tab: tab ?? "",
+			context: context ?? "recording",
+		});
+		const url = `${getRendererUrl()}?${params.toString()}`;
 
 		createWindow({
 			label: "source-selector",
