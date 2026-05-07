@@ -29,21 +29,6 @@ mac:
     NSCameraUsageDescription: Open Recorder uses the camera for facecam recordings.
     NSAudioCaptureUsageDescription: Open Recorder captures system audio when you choose to record it.
 
-win:
-  icon: icons/win/icon.ico
-  target:
-    - target: nsis
-      arch:
-        - x64
-
-linux:
-  icon: icons/png/512x512.png
-  target:
-    - target: AppImage
-      arch:
-        - x64
-  category: Video
-
 publish:
   provider: github
   owner: imbhargav5

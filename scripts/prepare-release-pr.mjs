@@ -1,14 +1,15 @@
 #!/usr/bin/env node
 
-import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
-const desktopAppRoot = resolve(repoRoot, "apps", "desktop");
-const desktopPackageJsonPath = resolve(desktopAppRoot, "package.json");
+const rustServiceRoot = resolve(repoRoot, "apps", "rust-service");
+const rustServiceCargoTomlPath = resolve(rustServiceRoot, "Cargo.toml");
+const rustServiceCargoLockPath = resolve(rustServiceRoot, "Cargo.lock");
 const releasePlanPath = resolve(repoRoot, ".github", "release-plan.json");
 
 process.chdir(repoRoot);
@@ -50,8 +51,8 @@ function parseArgs(argv) {
 			case "--help":
 				console.log(`Usage: node scripts/prepare-release-pr.mjs --release-type patch|minor|major [options]
 
-Prepares the next release bump inside GitHub Actions by updating the Electron
-desktop package version and writing .github/release-plan.json.
+Prepares the next release bump inside GitHub Actions by updating the native
+Rust service version and writing .github/release-plan.json.
 
 Options:
   --release-type VALUE     Release type: patch, minor, or major.
@@ -137,8 +138,12 @@ function bumpVersion(baseVersion, releaseType) {
 }
 
 function currentPackageVersion() {
-	const packageJson = JSON.parse(readFileSync(desktopPackageJsonPath, "utf8"));
-	return packageJson.version;
+	const cargoToml = readFileSync(rustServiceCargoTomlPath, "utf8");
+	const match = cargoToml.match(/^version\s*=\s*"(\d+\.\d+\.\d+)"/m);
+	if (!match) {
+		die(`Could not find a semantic version in ${rustServiceCargoTomlPath}`);
+	}
+	return match[1];
 }
 
 function latestSemverTagVersion() {
@@ -152,28 +157,40 @@ function latestSemverTagVersion() {
 		.find(Boolean) ?? "";
 }
 
-function updateJsonVersion(filePath, nextVersion, spacing) {
-	const json = JSON.parse(readFileSync(filePath, "utf8"));
-	json.version = nextVersion;
-	writeFileSync(filePath, `${JSON.stringify(json, null, spacing)}\n`);
+function updateCargoVersion(filePath, nextVersion) {
+	const current = readFileSync(filePath, "utf8");
+	const updated = current.replace(/^version\s*=\s*"\d+\.\d+\.\d+"/m, `version = "${nextVersion}"`);
+	writeFileSync(filePath, updated);
+}
+
+function updateCargoLockVersion(filePath, nextVersion) {
+	const current = readFileSync(filePath, "utf8");
+	const updated = current.replace(
+		/(\[\[package\]\]\nname = "open-recorder-service"\nversion = ")\d+\.\d+\.\d+(")/m,
+		`$1${nextVersion}$2`,
+	);
+	writeFileSync(filePath, updated);
 }
 
 function syncVersionFiles(nextVersion) {
-	updateJsonVersion(desktopPackageJsonPath, nextVersion, "\t");
+	updateCargoVersion(rustServiceCargoTomlPath, nextVersion);
+	if (existsSync(rustServiceCargoLockPath)) {
+		updateCargoLockVersion(rustServiceCargoLockPath, nextVersion);
+	}
 }
 
 function determineBaseVersion(packageVersion, latestTagVersion) {
 	if (!latestTagVersion) {
 		return {
 			baseVersion: packageVersion,
-			versionSource: "apps/desktop/package.json",
+			versionSource: "apps/rust-service/Cargo.toml",
 		};
 	}
 
 	if (compareVersions(packageVersion, latestTagVersion) >= 0) {
 		return {
 			baseVersion: packageVersion,
-			versionSource: "apps/desktop/package.json",
+			versionSource: "apps/rust-service/Cargo.toml",
 		};
 	}
 
@@ -233,7 +250,7 @@ function buildPrBody({
 		`- Release title: ${releaseName}`,
 		`- Mark as latest: ${makeLatest ? "true" : "false"}`,
 		"",
-		"Merging this PR will trigger `.github/workflows/release.yml`, which builds the desktop artifacts and publishes the GitHub release.",
+		"Merging this PR will trigger `.github/workflows/release.yml`, which builds the macOS Swift/Rust artifacts and publishes the GitHub release.",
 	];
 
 	if (releaseNotes) {

@@ -39,6 +39,30 @@ describe("resolveDisplayMediaSource", () => {
 		expect(resolveDisplayMediaSource(selectedSource, sources)).toBe(sources[1]);
 	});
 
+	it("resolves area selections to their backing screen capture source", () => {
+		const selectedSource: SelectedSource = {
+			id: "area:200:100:120:640:360",
+			name: "Area 640x360",
+			sourceType: "area",
+			display_id: "200",
+			captureSourceId: "screen:2:0",
+			areaSelection: {
+				x: 100,
+				y: 120,
+				width: 640,
+				height: 360,
+				displayId: 200,
+				displayBounds: { x: 0, y: 0, width: 1920, height: 1080 },
+			},
+		};
+		const sources = [
+			screenSource("screen:1:0", "100", "Built-in Display"),
+			screenSource("screen:2:0", "200", "External Display"),
+		];
+
+		expect(resolveDisplayMediaSource(selectedSource, sources)).toBe(sources[1]);
+	});
+
 	it("falls back to the first screen when no selected source matches", () => {
 		const sources = [windowSource("window:123:0"), screenSource("screen:1:0", "100")];
 

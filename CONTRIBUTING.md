@@ -4,7 +4,8 @@ Thank you for considering contributing to this project! By contributing, you hel
 
 Areas where help is especially valuable:
 
-- Smooth cursor pipeline for Linux
+- Native Swift editor controls
+- Rust service persistence and export workflows
 - Webcam overlay bubble
 - Localisation support, especially Chinese
 - UI/UX design improvements
@@ -32,6 +33,10 @@ Areas where help is especially valuable:
 
 5. **Test Your Changes**
    - Test your changes thoroughly to ensure they work as expected and do not break existing functionality.
+   - For the native app, run:
+     ```bash
+     make test-macos
+     ```
 
 6. **Commit Your Changes**
    - Commit your changes with a clear and concise commit message:

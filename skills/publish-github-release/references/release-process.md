@@ -65,7 +65,7 @@ The local dispatcher does the following:
 
 1. Checks out the requested base branch.
 2. Fetches tags from `origin`.
-3. Reads `apps/desktop/package.json` for the current version.
+3. Reads `apps/rust-service/Cargo.toml` for the current version.
 4. Looks for the latest local semver tag matching `v*`.
 5. Uses the newer of those two versions as the base version.
 6. Computes the next version:
@@ -73,10 +73,8 @@ The local dispatcher does the following:
    - minor -> increments minor and resets patch to `0`
    - major -> increments major and resets minor and patch to `0`
 7. Updates all release version files:
-   - `apps/desktop/package.json`
-   - `apps/desktop/src-tauri/Cargo.toml`
-   - `apps/desktop/src-tauri/tauri.conf.json`
-   - `apps/desktop/src-tauri/Cargo.lock` for the `open-recorder` package entry
+   - `apps/rust-service/Cargo.toml`
+   - `apps/rust-service/Cargo.lock`
 8. Writes `.github/release-plan.json` with:
    - `tagName`
    - `releaseName`
@@ -90,16 +88,15 @@ Once the release PR is merged to `main`, `.github/workflows/release.yml` runs au
 
 That workflow:
 
-1. Detects that `apps/desktop/package.json` changed on `main`.
+1. Detects that `apps/rust-service/Cargo.toml` changed on `main`.
 2. Confirms the version actually changed.
 3. Reads `.github/release-plan.json` for release metadata when it exists.
-4. Builds macOS arm64.
-5. Builds macOS x64.
-6. Builds Windows x64.
-7. Builds Linux x64.
-8. Downloads and renames the uploaded artifacts into stable release filenames.
-9. Generates `latest.json` for the auto-updater using the current tag and uploaded signatures.
-10. Creates or updates the GitHub release with `ncipollo/release-action`.
+4. Builds the macOS Swift app.
+5. Builds the Rust service.
+6. Packages the macOS release artifacts.
+7. Downloads and renames the uploaded artifacts into stable release filenames.
+8. Generates update metadata when the release workflow is configured to do so.
+9. Creates or updates the GitHub release with `ncipollo/release-action`.
 
 The workflow still supports manual `workflow_dispatch` as a fallback, but the normal path is:
 

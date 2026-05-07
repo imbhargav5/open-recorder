@@ -1,5 +1,5 @@
-import { useAtom } from "jotai";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useAtom, useSetAtom, useStore } from "jotai";
+import { useCallback, useEffect, useRef } from "react";
 import { isMacOSAtom } from "@/atoms/app";
 import {
 	cameraDeviceIdAtom,
@@ -7,6 +7,7 @@ import {
 	microphoneDeviceIdAtom,
 	microphoneEnabledAtom,
 	recordingActiveAtom,
+	recordingPhaseAtom,
 	systemAudioEnabledAtom,
 } from "@/atoms/recording";
 import * as backend from "@/lib/backend";
@@ -33,8 +34,9 @@ type UseScreenRecorderReturn = {
 };
 
 export function useScreenRecorder(): UseScreenRecorderReturn {
+	const jotaiStore = useStore();
 	const [recording, setRecording] = useAtom(recordingActiveAtom);
-	const [starting, setStarting] = useState(false);
+	const setRecordingPhase = useSetAtom(recordingPhaseAtom);
 	const [isMacOS, setIsMacOS] = useAtom(isMacOSAtom);
 	const [microphoneEnabled, setMicrophoneEnabled] = useAtom(microphoneEnabledAtom);
 	const [microphoneDeviceId, setMicrophoneDeviceId] = useAtom(microphoneDeviceIdAtom);
@@ -43,7 +45,6 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	const [cameraDeviceId, setCameraDeviceId] = useAtom(cameraDeviceIdAtom);
 
 	const mountedRef = useRef(true);
-	const startInFlight = useRef(false);
 	const recordingSessionId = useRef("");
 	const selectedSourceName = useRef<string | undefined>(undefined);
 
@@ -159,14 +160,19 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 	const stopRecording = useCallback(() => {
 		if (macRecorder.isActive()) {
+			setRecordingPhase("stopping");
 			macRecorder.stop();
 			return;
 		}
 
 		if (chromiumRecorder.isActive()) {
+			setRecordingPhase("stopping");
 			chromiumRecorder.stop();
+			return;
 		}
-	}, [chromiumRecorder, macRecorder]);
+
+		setRecordingPhase("idle");
+	}, [chromiumRecorder, macRecorder, setRecordingPhase]);
 
 	useEffect(() => {
 		void (async () => {
@@ -205,11 +211,13 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 		backend
 			.onRecordingInterrupted(() => {
+				setRecordingPhase("interrupted");
 				setRecording(false);
 				macRecorder.cleanup();
 				chromiumRecorder.cleanup();
 				facecamRecorder.cleanup();
 				void backend.setRecordingState(false);
+				setRecordingPhase("idle");
 			})
 			.then((fn) => {
 				unlistenInterrupted = fn;
@@ -224,15 +232,21 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			chromiumRecorder.cleanup();
 			facecamRecorder.cleanup();
 		};
-	}, [chromiumRecorder, facecamRecorder, macRecorder, stopRecording, setRecording]);
+	}, [
+		chromiumRecorder,
+		facecamRecorder,
+		macRecorder,
+		stopRecording,
+		setRecording,
+		setRecordingPhase,
+	]);
 
 	const startRecording = async () => {
-		if (startInFlight.current) {
+		if (jotaiStore.get(recordingPhaseAtom) !== "idle") {
 			return;
 		}
 
-		startInFlight.current = true;
-		setStarting(true);
+		setRecordingPhase("starting");
 		recordingSessionId.current = `${Date.now()}`;
 		facecamRecorder.prepareForNewSession();
 
@@ -243,11 +257,13 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			selectedSourceName.current = getSelectedSourceName(selectedSource);
 			if (!selectedSource) {
 				alert("Please select a source to record");
+				setRecordingPhase("idle");
 				return;
 			}
 
 			const permissionsReady = await preparePermissions();
 			if (!permissionsReady) {
+				setRecordingPhase("idle");
 				return;
 			}
 
@@ -275,18 +291,17 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			setRecording(false);
 			recorderForCleanup.cleanup();
 			facecamRecorder.cleanup();
-		} finally {
-			startInFlight.current = false;
-			setStarting(false);
+			setRecordingPhase("idle");
 		}
 	};
 
 	const toggleRecording = () => {
-		if (starting) {
+		const currentPhase = jotaiStore.get(recordingPhaseAtom);
+		if (currentPhase === "starting" || currentPhase === "stopping") {
 			return;
 		}
 
-		recording ? stopRecording() : void startRecording();
+		jotaiStore.get(recordingActiveAtom) ? stopRecording() : void startRecording();
 	};
 
 	return {
