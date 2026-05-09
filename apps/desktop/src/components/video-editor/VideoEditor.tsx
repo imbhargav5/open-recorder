@@ -2452,54 +2452,52 @@ export default function VideoEditor() {
 									</Card>
 								</Panel>
 
-								<PanelResizeHandle className="mx-4 flex h-3 items-center justify-center rounded-full bg-background/80 transition-colors hover:bg-background">
-									<div className="h-1 w-8 rounded-full bg-border"></div>
+								<PanelResizeHandle className="h-3 bg-[#09090b]/80 hover:bg-[#09090b] transition-colors rounded-full mx-4 flex items-center justify-center">
+									<div className="w-8 h-1 bg-white/20 rounded-full"></div>
 								</PanelResizeHandle>
 
 								{/* Timeline section */}
 								<Panel defaultSize={30} minSize={20}>
-									<Card className="flex h-full min-h-0 flex-col overflow-auto border-border/70 bg-card/80 shadow-xl shadow-black/10">
-										<CardContent className="flex min-h-0 flex-1 flex-col p-0">
-											<Profiler id="TimelineEditor" onRender={onRenderProfiler}>
-												<TimelineEditor
-													videoDuration={duration}
-													timeStore={timeStore}
-													onSeek={handleSeek}
-													cursorTelemetry={effectiveCursorTelemetry}
-													zoomRegions={effectiveZoomRegions}
-													onZoomAdded={handleZoomAdded}
-													onZoomSuggested={handleZoomSuggested}
-													onZoomSpanChange={handleZoomSpanChange}
-													onZoomDelete={handleZoomDelete}
-													selectedZoomId={selectedZoomId}
-													onSelectZoom={handleSelectZoom}
-													trimRegions={trimRegions}
-													onTrimAdded={handleTrimAdded}
-													onTrimSpanChange={handleTrimSpanChange}
-													onTrimDelete={handleTrimDelete}
-													selectedTrimId={selectedTrimId}
-													onSelectTrim={handleSelectTrim}
-													speedRegions={speedRegions}
-													onSpeedAdded={handleSpeedAdded}
-													onSpeedSpanChange={handleSpeedSpanChange}
-													onSpeedDelete={handleSpeedDelete}
-													selectedSpeedId={selectedSpeedId}
-													onSelectSpeed={handleSelectSpeed}
-													annotationRegions={annotationRegions}
-													onAnnotationAdded={handleAnnotationAdded}
-													onAnnotationSpanChange={handleAnnotationSpanChange}
-													onAnnotationDelete={handleAnnotationDelete}
-													selectedAnnotationId={selectedAnnotationId}
-													onSelectAnnotation={handleSelectAnnotation}
-													aspectRatio={aspectRatio}
-													onAspectRatioChange={setAspectRatio}
-													waveformData={waveformData}
-													waveformLoading={waveformLoading}
-													audioMuted={audioMuted}
-												/>
-											</Profiler>
-										</CardContent>
-									</Card>
+									<div className="h-full min-h-0 bg-[#09090b] rounded-2xl border border-white/5 shadow-lg overflow-auto flex flex-col">
+										<Profiler id="TimelineEditor" onRender={onRenderProfiler}>
+											<TimelineEditor
+												videoDuration={duration}
+												timeStore={timeStore}
+												onSeek={handleSeek}
+												cursorTelemetry={effectiveCursorTelemetry}
+												zoomRegions={effectiveZoomRegions}
+												onZoomAdded={handleZoomAdded}
+												onZoomSuggested={handleZoomSuggested}
+												onZoomSpanChange={handleZoomSpanChange}
+												onZoomDelete={handleZoomDelete}
+												selectedZoomId={selectedZoomId}
+												onSelectZoom={handleSelectZoom}
+												trimRegions={trimRegions}
+												onTrimAdded={handleTrimAdded}
+												onTrimSpanChange={handleTrimSpanChange}
+												onTrimDelete={handleTrimDelete}
+												selectedTrimId={selectedTrimId}
+												onSelectTrim={handleSelectTrim}
+												speedRegions={speedRegions}
+												onSpeedAdded={handleSpeedAdded}
+												onSpeedSpanChange={handleSpeedSpanChange}
+												onSpeedDelete={handleSpeedDelete}
+												selectedSpeedId={selectedSpeedId}
+												onSelectSpeed={handleSelectSpeed}
+												annotationRegions={annotationRegions}
+												onAnnotationAdded={handleAnnotationAdded}
+												onAnnotationSpanChange={handleAnnotationSpanChange}
+												onAnnotationDelete={handleAnnotationDelete}
+												selectedAnnotationId={selectedAnnotationId}
+												onSelectAnnotation={handleSelectAnnotation}
+												aspectRatio={aspectRatio}
+												onAspectRatioChange={setAspectRatio}
+												waveformData={waveformData}
+												waveformLoading={waveformLoading}
+												audioMuted={audioMuted}
+											/>
+										</Profiler>
+									</div>
 								</Panel>
 							</PanelGroup>
 						</div>

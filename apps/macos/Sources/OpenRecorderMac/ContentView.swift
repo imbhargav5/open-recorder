@@ -1632,14 +1632,15 @@ private struct PlaybackControlStrip: View {
                 .foregroundStyle(Color.white.opacity(0.76))
                 .frame(width: 42, alignment: .trailing)
 
-            Slider(
+            ElasticSlider(
                 value: Binding(
                     get: { playback.currentTime },
                     set: { playback.seek(to: $0) }
                 ),
-                in: 0...max(playback.duration, 0.01),
+                range: 0...max(playback.duration, 0.01),
                 step: 0.01
             )
+            .accessibilityLabel("Playback position")
             .disabled(playback.player == nil)
 
             Text(formatPlaybackTime(playback.duration))
@@ -2133,7 +2134,8 @@ private struct InspectorSlider: View {
                     .font(.system(size: 10, weight: .medium, design: .monospaced))
                     .foregroundStyle(Color.secondary.opacity(0.78))
             }
-            Slider(value: $value, in: range, step: step)
+            ElasticSlider(value: $value, range: range, step: step)
+                .accessibilityLabel(title)
         }
         .padding(10)
         .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 8))
