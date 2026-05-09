@@ -31,12 +31,6 @@ struct CaptureHUD: View {
         HStack(spacing: 8) {
             sharedLeadingControls
 
-            FlowLabel(
-                tone: model.capture.isRecording ? .red : .blue,
-                label: model.capture.isRecording ? "Recording" : "Ready",
-                value: model.capture.isRecording ? recordingPhaseLabel : "Video"
-            )
-
             sourcePicker()
                 .layoutPriority(2)
 
@@ -44,29 +38,7 @@ struct CaptureHUD: View {
 
             HUDDivider()
 
-            HUDControlGroup {
-                HUDToggle(symbolName: model.includeSystemAudio ? "speaker.wave.2.fill" : "speaker.slash.fill", isActive: model.includeSystemAudio, title: "System Audio") {
-                    model.includeSystemAudio.toggle()
-                }
-                HUDToggle(symbolName: model.includeMicrophone ? "mic.fill" : "mic.slash.fill", isActive: model.includeMicrophone, title: "Microphone") {
-                    model.includeMicrophone.toggle()
-                }
-                deviceMenu(
-                    symbolName: "mic.badge.plus",
-                    title: "Microphone Device",
-                    devices: model.microphoneDevices,
-                    selectedDeviceID: $model.selectedMicrophoneDeviceID
-                )
-                HUDToggle(symbolName: model.includeCamera ? "video.fill" : "video.slash.fill", isActive: model.includeCamera, title: "Facecam") {
-                    model.includeCamera.toggle()
-                }
-                deviceMenu(
-                    symbolName: "video.badge.plus",
-                    title: "Camera Device",
-                    devices: model.cameraDevices,
-                    selectedDeviceID: $model.selectedCameraDeviceID
-                )
-            }
+            recordingCaptureControlGroup
 
             HUDPrimaryButton(
                 title: model.capture.isRecording ? "Stop" : startStopTitle,
@@ -82,16 +54,11 @@ struct CaptureHUD: View {
         HStack(spacing: 6) {
             compactLeadingControls
 
-            CompactFlowLabel(
-                tone: model.capture.isRecording ? .red : .blue,
-                value: model.capture.isRecording ? recordingPhaseLabel : "Video"
-            )
-
-            sourcePicker(width: 154, textWidth: 100)
+            sourcePicker(minWidth: 128, maxWidth: 172)
 
             compactPermissionControls
 
-            compactCaptureControlGroup
+            recordingCaptureControlGroup
 
             HUDPrimaryButton(
                 title: model.capture.isRecording ? "Stop" : startStopTitle,
@@ -107,9 +74,7 @@ struct CaptureHUD: View {
         HStack(spacing: 6) {
             backButton
 
-            StatusDot(tone: model.capture.isRecording ? .red : .blue)
-
-            sourcePicker(width: 118, textWidth: 66)
+            sourcePicker(minWidth: 112, maxWidth: 134)
 
             narrowCaptureOptionsMenu
 
@@ -163,7 +128,7 @@ struct CaptureHUD: View {
                 value: model.selectedSource == nil ? "Source" : "Ready"
             )
 
-            sourcePicker(width: 154, textWidth: 100)
+            sourcePicker(minWidth: 128, maxWidth: 172)
 
             compactPermissionControls
 
@@ -211,19 +176,18 @@ struct CaptureHUD: View {
         .disabled(model.capture.isRecording)
     }
 
-    private func sourcePicker(width: CGFloat = 208, textWidth: CGFloat = 154) -> some View {
+    private func sourcePicker(minWidth: CGFloat = 132, maxWidth: CGFloat = 198) -> some View {
         StudioButton(hitTarget: .capsule, help: "Choose Source") {
             model.requestWindow(.showSourceSelector)
             openWindow(id: "source-selector")
         } label: {
-            SourceChip(source: model.selectedSource, width: width, textWidth: textWidth)
+            SourceChip(source: model.selectedSource, tone: sourceChipTone, minWidth: minWidth, maxWidth: maxWidth)
         }
     }
 
-    private var compactCaptureControlGroup: some View {
+    private var recordingCaptureControlGroup: some View {
         HUDControlGroup {
             captureToggles
-            compactDeviceMenu
         }
     }
 
@@ -232,26 +196,63 @@ struct CaptureHUD: View {
         HUDToggle(symbolName: model.includeSystemAudio ? "speaker.wave.2.fill" : "speaker.slash.fill", isActive: model.includeSystemAudio, title: "System Audio") {
             model.includeSystemAudio.toggle()
         }
-        HUDToggle(symbolName: model.includeMicrophone ? "mic.fill" : "mic.slash.fill", isActive: model.includeMicrophone, title: "Microphone") {
-            model.includeMicrophone.toggle()
+        microphoneToggle
+        cameraToggle
+    }
+
+    @ViewBuilder
+    private var microphoneToggle: some View {
+        let button = HUDToggle(
+            symbolName: model.includeMicrophone ? "mic.fill" : "mic.slash.fill",
+            isActive: model.includeMicrophone,
+            title: "Microphone"
+        ) {
+            if model.includeMicrophone {
+                model.disableMicrophone()
+            } else {
+                openMicrophoneSelector()
+            }
         }
-        HUDToggle(symbolName: model.includeCamera ? "video.fill" : "video.slash.fill", isActive: model.includeCamera, title: "Facecam") {
-            model.includeCamera.toggle()
+
+        if model.includeMicrophone {
+            button.contextMenu {
+                Button("Microphone: \(model.selectedMicrophoneDeviceName)") {}
+                    .disabled(true)
+                Divider()
+                Button("Change Device...") {
+                    openMicrophoneSelector()
+                }
+            }
+        } else {
+            button
         }
     }
 
-    private var compactDeviceMenu: some View {
-        StudioMenu(hitTarget: .rectangle, help: "Devices") {
-            Section("Microphone Device") {
-                deviceSelectionItems(devices: model.microphoneDevices, selectedDeviceID: $model.selectedMicrophoneDeviceID)
+    @ViewBuilder
+    private var cameraToggle: some View {
+        let button = HUDToggle(
+            symbolName: model.includeCamera ? "video.fill" : "video.slash.fill",
+            isActive: model.includeCamera,
+            title: "Camera"
+        ) {
+            if model.includeCamera {
+                model.disableCamera()
+            } else {
+                openCameraSelector()
             }
-            Section("Camera Device") {
-                deviceSelectionItems(devices: model.cameraDevices, selectedDeviceID: $model.selectedCameraDeviceID)
+        }
+
+        if model.includeCamera {
+            button.contextMenu {
+                Button("Camera: \(model.selectedCameraDeviceName)") {}
+                    .disabled(true)
+                Divider()
+                Button("Change Device...") {
+                    openCameraSelector()
+                }
             }
-        } label: {
-            Image(systemName: "slider.horizontal.3")
-                .font(.system(size: 14, weight: .medium))
-                .frame(width: 34, height: 34)
+        } else {
+            button
         }
     }
 
@@ -260,18 +261,8 @@ struct CaptureHUD: View {
             Button(model.includeSystemAudio ? "Turn Off System Audio" : "Turn On System Audio") {
                 model.includeSystemAudio.toggle()
             }
-            Button(model.includeMicrophone ? "Turn Off Microphone" : "Turn On Microphone") {
-                model.includeMicrophone.toggle()
-            }
-            Button(model.includeCamera ? "Turn Off Facecam" : "Turn On Facecam") {
-                model.includeCamera.toggle()
-            }
-            Section("Microphone Device") {
-                deviceSelectionItems(devices: model.microphoneDevices, selectedDeviceID: $model.selectedMicrophoneDeviceID)
-            }
-            Section("Camera Device") {
-                deviceSelectionItems(devices: model.cameraDevices, selectedDeviceID: $model.selectedCameraDeviceID)
-            }
+            microphoneOptionsMenuItems
+            cameraOptionsMenuItems
         } label: {
             Image(systemName: "slider.horizontal.3")
                 .font(.system(size: 14, weight: .medium))
@@ -282,6 +273,38 @@ struct CaptureHUD: View {
                     Circle()
                         .stroke(Color.white.opacity(0.09), lineWidth: 1)
                 }
+        }
+    }
+
+    @ViewBuilder
+    private var microphoneOptionsMenuItems: some View {
+        if model.includeMicrophone {
+            Button("Turn Off Microphone") {
+                model.disableMicrophone()
+            }
+            Button("Change Microphone...") {
+                openMicrophoneSelector()
+            }
+        } else {
+            Button("Choose Microphone...") {
+                openMicrophoneSelector()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var cameraOptionsMenuItems: some View {
+        if model.includeCamera {
+            Button("Turn Off Camera") {
+                model.disableCamera()
+            }
+            Button("Change Camera...") {
+                openCameraSelector()
+            }
+        } else {
+            Button("Choose Camera...") {
+                openCameraSelector()
+            }
         }
     }
 
@@ -313,7 +336,9 @@ struct CaptureHUD: View {
               message != "Ready",
               message != "Rust service ready",
               !message.hasPrefix("Selected "),
-              !message.hasPrefix("Opened ") else {
+              !message.hasPrefix("Opened "),
+              !message.hasPrefix("Microphone "),
+              !message.hasPrefix("Camera ") else {
             return nil
         }
 
@@ -342,21 +367,6 @@ struct CaptureHUD: View {
         }
     }
 
-    private var recordingPhaseLabel: String {
-        switch model.recordingPhase {
-        case .starting:
-            "Starting"
-        case .recording:
-            "Live"
-        case .stopping:
-            "Saving"
-        case .interrupted:
-            "Interrupted"
-        case .idle:
-            "Live"
-        }
-    }
-
     private var startStopTitle: String {
         model.recordingPhase == .starting ? "Starting" : "Record"
     }
@@ -365,34 +375,23 @@ struct CaptureHUD: View {
         model.capture.isRecording ? model.stopRecording() : model.startRecording()
     }
 
-    private func deviceMenu(
-        symbolName: String,
-        title: String,
-        devices: [CaptureDeviceInfo],
-        selectedDeviceID: Binding<String?>
-    ) -> some View {
-        StudioMenu(hitTarget: .rectangle, help: title) {
-            deviceSelectionItems(devices: devices, selectedDeviceID: selectedDeviceID)
-        } label: {
-            Image(systemName: symbolName)
-                .font(.system(size: 14, weight: .medium))
-                .frame(width: 34, height: 34)
+    private var sourceChipTone: FlowTone {
+        if model.capture.isRecording || model.recordingPhase == .recording {
+            return .red
         }
+        if model.recordingPhase == .starting || model.recordingPhase == .stopping {
+            return .amber
+        }
+        return .green
     }
 
-    @ViewBuilder
-    private func deviceSelectionItems(devices: [CaptureDeviceInfo], selectedDeviceID: Binding<String?>) -> some View {
-        Button("System Default") {
-            selectedDeviceID.wrappedValue = nil
-        }
-        ForEach(devices) { device in
-            Button(device.isDefault ? "\(device.name) (Default)" : device.name) {
-                selectedDeviceID.wrappedValue = device.id
-            }
-        }
-        if devices.isEmpty {
-            Text("No devices found")
-        }
+    private func openMicrophoneSelector() {
+        model.requestMicrophoneSelection()
+        openWindow(id: "microphone-selector")
+    }
+
+    private func openCameraSelector() {
+        model.requestCameraSelection()
+        openWindow(id: "camera-selector")
     }
 }
-

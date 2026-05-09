@@ -64,7 +64,7 @@ struct OpenRecorderApp: App {
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
-        .defaultSize(width: 780, height: 155)
+        .defaultSize(width: HUDWindowMetrics.defaultSize.width, height: HUDWindowMetrics.defaultSize.height)
 
         Window("Choose Source", id: "source-selector") {
             ContentView(role: .sourceSelector)
@@ -72,6 +72,22 @@ struct OpenRecorderApp: App {
         }
         .windowResizability(.contentSize)
         .defaultSize(width: SourceSelectorWindowMetrics.width, height: SourceSelectorWindowMetrics.compactHeight)
+
+        Window("Choose Microphone", id: "microphone-selector") {
+            ContentView(role: .microphoneSelector)
+                .environmentObject(model)
+        }
+        .windowResizability(.contentSize)
+        .defaultLaunchBehavior(.suppressed)
+        .defaultSize(width: CaptureDeviceSelectorWindowMetrics.width, height: CaptureDeviceSelectorWindowMetrics.height)
+
+        Window("Choose Camera", id: "camera-selector") {
+            ContentView(role: .cameraSelector)
+                .environmentObject(model)
+        }
+        .windowResizability(.contentSize)
+        .defaultLaunchBehavior(.suppressed)
+        .defaultSize(width: CaptureDeviceSelectorWindowMetrics.width, height: CaptureDeviceSelectorWindowMetrics.height)
 
         Window("Select Area", id: "area-selector") {
             ContentView(role: .areaSelector)

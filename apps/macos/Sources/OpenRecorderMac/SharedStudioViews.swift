@@ -8,7 +8,7 @@ enum HUDWindowMetrics {
     static let height: CGFloat = 155
     static let horizontalScreenMargin: CGFloat = 32
     static let minWidth: CGFloat = 360
-    static let defaultSize = CGSize(width: 780, height: height)
+    static let defaultSize = CGSize(width: 620, height: height)
 
     static func clampedSize(for measuredSize: CGSize, screen: NSScreen?) -> CGSize {
         clampedSize(for: measuredSize, visibleFrame: screen?.visibleFrame)
@@ -338,6 +338,7 @@ struct CaptureModeButton: View {
 
 enum FlowTone {
     case blue
+    case green
     case red
     case amber
 }
@@ -377,6 +378,7 @@ struct FlowLabel: View {
     private var dotColor: Color {
         switch tone {
         case .blue: Color.blue
+        case .green: Color.green
         case .red: Color.red
         case .amber: Color.yellow
         }
@@ -420,6 +422,7 @@ struct StatusDot: View {
     private var dotColor: Color {
         switch tone {
         case .blue: Color.blue
+        case .green: Color.green
         case .red: Color.red
         case .amber: Color.yellow
         }
@@ -428,14 +431,13 @@ struct StatusDot: View {
 
 struct SourceChip: View {
     var source: CaptureSource?
-    var width: CGFloat = 208
-    var textWidth: CGFloat = 154
+    var tone: FlowTone = .green
+    var minWidth: CGFloat = 132
+    var maxWidth: CGFloat = 198
 
     var body: some View {
         HStack(spacing: 8) {
-            Circle()
-                .fill(source == nil ? Color.yellow : Color.green)
-                .frame(width: 8, height: 8)
+            StatusDot(tone: source == nil ? .amber : tone)
             Image(systemName: source?.kind == .window ? "macwindow" : source?.kind == .area ? "rectangle.dashed" : "display")
                 .font(.system(size: 14))
                 .foregroundStyle(Color.white.opacity(0.65))
@@ -443,10 +445,10 @@ struct SourceChip: View {
                 .font(.system(size: 12, weight: .medium))
                 .lineLimit(1)
                 .truncationMode(.tail)
-                .frame(maxWidth: textWidth, alignment: .leading)
+                .frame(maxWidth: max(48, maxWidth - 58), alignment: .leading)
         }
         .padding(.horizontal, 10)
-        .frame(width: width, alignment: .leading)
+        .frame(minWidth: minWidth, maxWidth: maxWidth, alignment: .leading)
         .frame(height: 38)
         .background(Color.black.opacity(0.20), in: Capsule())
         .overlay {

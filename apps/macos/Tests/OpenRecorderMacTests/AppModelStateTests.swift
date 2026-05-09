@@ -214,6 +214,76 @@ final class AppModelStateTests: XCTestCase {
         XCTAssertEqual(model.statusMessage, "Selected area")
     }
 
+    func testSelectingMicrophoneDeviceEnablesMicrophoneAndStoresDevice() {
+        let model = AppModel()
+        model.microphoneDevices = [
+            CaptureDeviceInfo(id: "mic-1", name: "Studio Mic", isDefault: false)
+        ]
+
+        model.selectMicrophoneDevice("mic-1")
+
+        XCTAssertTrue(model.includeMicrophone)
+        XCTAssertEqual(model.selectedMicrophoneDeviceID, "mic-1")
+        XCTAssertEqual(model.selectedMicrophoneDeviceName, "Studio Mic")
+        XCTAssertEqual(model.windowCommand?.action, .closeMicrophoneSelector)
+    }
+
+    func testSelectingCameraDeviceEnablesCameraAndStoresDevice() {
+        let model = AppModel()
+        model.cameraDevices = [
+            CaptureDeviceInfo(id: "cam-1", name: "Desk Camera", isDefault: false)
+        ]
+
+        model.selectCameraDevice("cam-1")
+
+        XCTAssertTrue(model.includeCamera)
+        XCTAssertEqual(model.selectedCameraDeviceID, "cam-1")
+        XCTAssertEqual(model.selectedCameraDeviceName, "Desk Camera")
+        XCTAssertEqual(model.windowCommand?.action, .closeCameraSelector)
+    }
+
+    func testCancelingMicrophoneSelectorOpenedFromOffLeavesMicrophoneOff() {
+        let model = AppModel()
+
+        model.requestMicrophoneSelection(refreshDevices: false)
+        model.cancelMicrophoneSelection()
+
+        XCTAssertFalse(model.includeMicrophone)
+        XCTAssertNil(model.selectedMicrophoneDeviceID)
+        XCTAssertEqual(model.windowCommand?.action, .closeMicrophoneSelector)
+    }
+
+    func testCancelingCameraSelectorOpenedFromOffLeavesCameraOff() {
+        let model = AppModel()
+
+        model.requestCameraSelection(refreshDevices: false)
+        model.cancelCameraSelection()
+
+        XCTAssertFalse(model.includeCamera)
+        XCTAssertNil(model.selectedCameraDeviceID)
+        XCTAssertEqual(model.windowCommand?.action, .closeCameraSelector)
+    }
+
+    func testDisablingActiveCaptureDevicesPreservesSelectedDevices() {
+        let model = AppModel()
+        model.microphoneDevices = [
+            CaptureDeviceInfo(id: "mic-1", name: "Studio Mic", isDefault: false)
+        ]
+        model.cameraDevices = [
+            CaptureDeviceInfo(id: "cam-1", name: "Desk Camera", isDefault: false)
+        ]
+        model.selectMicrophoneDevice("mic-1")
+        model.selectCameraDevice("cam-1")
+
+        model.disableMicrophone()
+        model.disableCamera()
+
+        XCTAssertFalse(model.includeMicrophone)
+        XCTAssertFalse(model.includeCamera)
+        XCTAssertEqual(model.selectedMicrophoneDeviceID, "mic-1")
+        XCTAssertEqual(model.selectedCameraDeviceID, "cam-1")
+    }
+
     func testWindowCommandIsConsumedOnce() {
         let model = AppModel()
         model.requestWindow(.showStudio)

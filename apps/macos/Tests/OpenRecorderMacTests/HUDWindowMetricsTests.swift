@@ -2,6 +2,10 @@ import XCTest
 @testable import OpenRecorderMac
 
 final class HUDWindowMetricsTests: XCTestCase {
+    func testDefaultWidthMatchesCondensedHUDLayout() {
+        XCTAssertEqual(HUDWindowMetrics.defaultSize.width, 620)
+    }
+
     func testMeasuredWidthIsPreservedWhenItFitsVisibleFrame() {
         let size = HUDWindowMetrics.clampedSize(
             for: CGSize(width: 720, height: 64),

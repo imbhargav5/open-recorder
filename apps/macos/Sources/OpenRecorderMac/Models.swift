@@ -395,9 +395,13 @@ enum NativeWindowCommandAction: Equatable {
     case showHUD
     case hideHUD
     case showSourceSelector
+    case showMicrophoneSelector
+    case showCameraSelector
     case showAreaSelector
     case showStudio
     case closeSourceSelector
+    case closeMicrophoneSelector
+    case closeCameraSelector
     case closeAreaSelector
 }
 

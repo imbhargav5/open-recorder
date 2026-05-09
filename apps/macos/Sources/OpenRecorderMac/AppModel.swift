@@ -759,6 +759,68 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func requestMicrophoneSelection(refreshDevices: Bool = true) {
+        if refreshDevices {
+            refreshCaptureDevices()
+        }
+        requestWindow(.showMicrophoneSelector)
+    }
+
+    func requestCameraSelection(refreshDevices: Bool = true) {
+        if refreshDevices {
+            refreshCaptureDevices()
+        }
+        requestWindow(.showCameraSelector)
+    }
+
+    func cancelMicrophoneSelection() {
+        requestWindow(.closeMicrophoneSelector)
+    }
+
+    func cancelCameraSelection() {
+        requestWindow(.closeCameraSelector)
+    }
+
+    func selectMicrophoneDevice(_ deviceID: String?) {
+        includeMicrophone = true
+        selectedMicrophoneDeviceID = deviceID
+        statusMessage = "Microphone set to \(selectedMicrophoneDeviceName)"
+        requestWindow(.closeMicrophoneSelector)
+    }
+
+    func selectCameraDevice(_ deviceID: String?) {
+        includeCamera = true
+        selectedCameraDeviceID = deviceID
+        statusMessage = "Camera set to \(selectedCameraDeviceName)"
+        requestWindow(.closeCameraSelector)
+    }
+
+    func disableMicrophone() {
+        includeMicrophone = false
+        statusMessage = "Microphone off"
+    }
+
+    func disableCamera() {
+        includeCamera = false
+        statusMessage = "Camera off"
+    }
+
+    var selectedMicrophoneDeviceName: String {
+        guard let selectedMicrophoneDeviceID,
+              let device = microphoneDevices.first(where: { $0.id == selectedMicrophoneDeviceID }) else {
+            return "System Default"
+        }
+        return device.name
+    }
+
+    var selectedCameraDeviceName: String {
+        guard let selectedCameraDeviceID,
+              let device = cameraDevices.first(where: { $0.id == selectedCameraDeviceID }) else {
+            return "System Default"
+        }
+        return device.name
+    }
+
     private var currentCaptureOptions: RecordingCaptureOptions {
         RecordingCaptureOptions(
             includeMicrophone: includeMicrophone,

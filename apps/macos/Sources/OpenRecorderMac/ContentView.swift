@@ -6,6 +6,8 @@ import UniformTypeIdentifiers
 enum AppWindowRole {
     case hud
     case sourceSelector
+    case microphoneSelector
+    case cameraSelector
     case areaSelector
     case studio
 }
@@ -25,6 +27,14 @@ struct ContentView: View {
                 SourceSelectorWindowView()
                     .frame(width: SourceSelectorWindowMetrics.width)
                     .background(WindowConfigurator(role: .sourceSelector))
+            case .microphoneSelector:
+                MicrophoneSelectorWindowView()
+                    .frame(width: CaptureDeviceSelectorWindowMetrics.width, height: CaptureDeviceSelectorWindowMetrics.height)
+                    .background(WindowConfigurator(role: .microphoneSelector))
+            case .cameraSelector:
+                CameraSelectorWindowView()
+                    .frame(width: CaptureDeviceSelectorWindowMetrics.width, height: CaptureDeviceSelectorWindowMetrics.height)
+                    .background(WindowConfigurator(role: .cameraSelector))
             case .areaSelector:
                 AreaSelectionWindowView()
                     .background(WindowConfigurator(role: .areaSelector, isPresented: model.isAreaSelectionActive))
@@ -83,4 +93,3 @@ struct SettingsView: View {
         SettingsStudioView()
     }
 }
-
