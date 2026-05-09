@@ -141,8 +141,32 @@ struct VideoExportOptions: Equatable {
     var resolution: VideoExportResolution
     var format: VideoExportFormat
     var frameRate: VideoExportFrameRate
+    var styling: VideoBackgroundStyling
 
-    static let `default` = VideoExportOptions(resolution: .source, format: .mov, frameRate: .source)
+    static let `default` = VideoExportOptions(
+        resolution: .source,
+        format: .mov,
+        frameRate: .source,
+        styling: .none
+    )
+
+    func with(
+        background: BackgroundStyle,
+        padding: Double,
+        borderRadius: Double,
+        shadow: Double,
+        backgroundBlur: Double
+    ) -> VideoExportOptions {
+        var copy = self
+        copy.styling = VideoBackgroundStyling(
+            background: background,
+            paddingRatio: max(0, padding) / 100 * 0.2,
+            borderRadiusRatio: max(0, borderRadius) / 100 * 0.4,
+            shadowIntensity: max(0, min(shadow, 1)),
+            backgroundBlurRatio: max(0, backgroundBlur) / 100 * 0.5
+        )
+        return copy
+    }
 }
 
 enum VideoExportPhase: Equatable {
@@ -246,6 +270,7 @@ enum VideoExportRenderer {
             outputSize: outputSize,
             duration: CMTime(seconds: max(0.001, exportAsset.duration), preferredTimescale: 600),
             frameDuration: frameDuration,
+            styling: options.styling,
             edits: edits,
             editPlan: exportAsset.plan
         )
@@ -357,6 +382,7 @@ enum VideoExportRenderer {
         outputSize: CGSize,
         duration: CMTime,
         frameDuration: CMTime,
+        styling: VideoBackgroundStyling,
         edits: TimelineEditSnapshot = .empty,
         editPlan: TimelineExportEditPlan = TimelineExportEditPlan(segments: [], outputDuration: 0)
     ) -> AVMutableVideoComposition {
@@ -371,14 +397,37 @@ enum VideoExportRenderer {
         )
         let transform = normalizedTransform.concatenating(CGAffineTransform(scaleX: scale, y: scale)).concatenating(translation)
 
-        let instruction = AVMutableVideoCompositionInstruction()
-        instruction.timeRange = CMTimeRange(start: .zero, duration: duration)
+        if styling.isPassthrough {
+            let instruction = AVMutableVideoCompositionInstruction()
+            instruction.timeRange = CMTimeRange(start: .zero, duration: duration)
 
-        let layerInstruction = AVMutableVideoCompositionLayerInstruction(assetTrack: videoTrack)
-        applyZoomTransforms(to: layerInstruction, baseTransform: transform, outputSize: outputSize, edits: edits, editPlan: editPlan)
-        instruction.layerInstructions = [layerInstruction]
+            let layerInstruction = AVMutableVideoCompositionLayerInstruction(assetTrack: videoTrack)
+            applyZoomTransforms(to: layerInstruction, baseTransform: transform, outputSize: outputSize, edits: edits, editPlan: editPlan)
+            instruction.layerInstructions = [layerInstruction]
+
+            let composition = AVMutableVideoComposition()
+            composition.renderSize = outputSize
+            composition.frameDuration = frameDuration
+            composition.instructions = [instruction]
+            if edits.annotationRegions.isEmpty == false {
+                composition.animationTool = makeAnnotationTool(outputSize: outputSize, edits: edits, editPlan: editPlan)
+            }
+            return composition
+        }
+
+        let instruction = VideoBackgroundCompositionInstruction(
+            timeRange: CMTimeRange(start: .zero, duration: duration),
+            trackID: videoTrack.trackID,
+            styling: styling,
+            preferredTransform: normalizedTransform,
+            normalizedSize: normalizedSize,
+            renderSize: outputSize,
+            edits: edits,
+            editPlan: editPlan
+        )
 
         let composition = AVMutableVideoComposition()
+        composition.customVideoCompositorClass = VideoBackgroundCompositor.self
         composition.renderSize = outputSize
         composition.frameDuration = frameDuration
         composition.instructions = [instruction]
