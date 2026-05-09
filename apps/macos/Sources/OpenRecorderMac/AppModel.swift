@@ -41,6 +41,7 @@ final class AppModel: ObservableObject {
     let capture = CaptureController()
     private let facecamRecorder = FacecamRecorder()
     private let cursorTelemetryRecorder = CursorTelemetryRecorder()
+    private let captureDeviceProvider = CaptureDeviceProvider()
 
     var captureFlow: CaptureFlow {
         hudState.captureFlow
@@ -293,11 +294,14 @@ final class AppModel: ObservableObject {
                 currentScreenshotURL = nil
 
                 if FileManager.default.fileExists(atPath: outputURL.path) {
-                    let recordingSession = buildRecordingSession(
+                    let recordingSession = RecordingSessionBuilder.build(
                         screenVideoURL: outputURL,
                         facecamURL: stoppedFacecamURL ?? activeFacecamURL,
                         sourceName: selectedSource?.name,
-                        cursorTelemetryURL: cursorTelemetryURL
+                        showCursor: showCursor,
+                        cursorTelemetryURL: cursorTelemetryURL,
+                        screenStartedAt: activeScreenStartedAt,
+                        facecamStartedAt: activeFacecamStartedAt
                     )
                     let summary: ProjectSummary = try service.call(
                         "registerRecording",
@@ -492,8 +496,8 @@ final class AppModel: ObservableObject {
     }
 
     func refreshCaptureDevices() {
-        microphoneDevices = mediaDevices(for: .audio)
-        cameraDevices = mediaDevices(for: .video)
+        microphoneDevices = captureDeviceProvider.devices(for: .audio)
+        cameraDevices = captureDeviceProvider.devices(for: .video)
 
         if let selectedMicrophoneDeviceID,
            !microphoneDevices.contains(where: { $0.id == selectedMicrophoneDeviceID }) {
@@ -552,53 +556,10 @@ final class AppModel: ObservableObject {
         return true
     }
 
-    private func mediaDevices(for mediaType: AVMediaType) -> [CaptureDeviceInfo] {
-        let deviceTypes: [AVCaptureDevice.DeviceType] = mediaType == .video
-            ? [.builtInWideAngleCamera, .external]
-            : [.microphone]
-        let discovery = AVCaptureDevice.DiscoverySession(
-            deviceTypes: deviceTypes,
-            mediaType: mediaType,
-            position: .unspecified
-        )
-        let defaultID = AVCaptureDevice.default(for: mediaType)?.uniqueID
-        return discovery.devices.map { device in
-            CaptureDeviceInfo(
-                id: device.uniqueID,
-                name: device.localizedName,
-                isDefault: device.uniqueID == defaultID
-            )
-        }
-    }
-
     private func facecamOutputURL(for screenURL: URL) -> URL {
         screenURL
             .deletingPathExtension()
             .appendingPathExtension("facecam.mov")
-    }
-
-    private func buildRecordingSession(
-        screenVideoURL: URL,
-        facecamURL: URL?,
-        sourceName: String?,
-        cursorTelemetryURL: URL?
-    ) -> RecordingSession {
-        let offsetMs: Int?
-        if let activeScreenStartedAt, let activeFacecamStartedAt {
-            offsetMs = Int(activeFacecamStartedAt.timeIntervalSince(activeScreenStartedAt) * 1000)
-        } else {
-            offsetMs = nil
-        }
-
-        return RecordingSession(
-            screenVideoPath: screenVideoURL.path,
-            facecamVideoPath: facecamURL?.path,
-            facecamOffsetMs: offsetMs,
-            facecamSettings: defaultFacecamSettings(enabled: facecamURL != nil),
-            sourceName: sourceName,
-            showCursorOverlay: showCursor,
-            cursorTelemetryPath: cursorTelemetryURL?.path
-        )
     }
 
     private func openPrivacyPane(_ pane: String) {
