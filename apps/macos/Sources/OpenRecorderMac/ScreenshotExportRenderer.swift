@@ -3,9 +3,7 @@ import CoreGraphics
 import Foundation
 
 struct ScreenshotExportConfiguration {
-    var backgroundMode: ScreenshotBackgroundMode
-    var gradientColors: [NSColor]
-    var solidColor: NSColor
+    var background: BackgroundStyle
     var padding: Double
     var backgroundRoundness: Double
     var backgroundShadow: Double
@@ -85,7 +83,7 @@ struct ScreenshotExportRenderer {
     }
 
     private func drawExportBackground(in context: CGContext, rect: CGRect) {
-        let shouldDrawBackground = configuration.backgroundMode != .transparent
+        let shouldDrawBackground = !configuration.background.isTransparent
 
         if configuration.backgroundShadow > 0, shouldDrawBackground {
             context.saveGState()
@@ -114,23 +112,16 @@ struct ScreenshotExportRenderer {
         ))
         context.clip()
 
-        switch configuration.backgroundMode {
-        case .gradient:
-            let colors = configuration.gradientColors.map { $0.cgColor } as CFArray
-            let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
-            if let gradient = CGGradient(colorsSpace: colorSpace, colors: colors, locations: nil) {
-                context.drawLinearGradient(
-                    gradient,
-                    start: CGPoint(x: rect.minX, y: rect.minY),
-                    end: CGPoint(x: rect.maxX, y: rect.maxY),
-                    options: []
-                )
-            }
-        case .color:
-            context.setFillColor(configuration.solidColor.cgColor)
-            context.fill(rect)
+        switch configuration.background {
         case .transparent:
             break
+        case let .solid(color):
+            context.setFillColor(color.cgColor)
+            context.fill(rect)
+        case let .gradient(preset):
+            drawGradient(preset, in: context, rect: rect)
+        case let .wallpaper(preset):
+            drawWallpaper(preset, in: context, rect: rect)
         }
 
         context.restoreGState()
@@ -148,6 +139,60 @@ struct ScreenshotExportRenderer {
             context.strokePath()
             context.restoreGState()
         }
+    }
+
+    private func drawGradient(_ preset: GradientPreset, in context: CGContext, rect: CGRect) {
+        let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+        let stops = preset.sortedStops
+        let cgColors = stops.map { $0.color.cgColor } as CFArray
+        let locations = stops.map { CGFloat($0.position) }
+        guard let gradient = CGGradient(colorsSpace: colorSpace, colors: cgColors, locations: locations) else {
+            return
+        }
+
+        switch preset.kind {
+        case .linear:
+            let endpoints = preset.endpoints(in: rect)
+            context.drawLinearGradient(
+                gradient,
+                start: endpoints.start,
+                end: endpoints.end,
+                options: [.drawsBeforeStartLocation, .drawsAfterEndLocation]
+            )
+        case .radial:
+            let endpoints = preset.endpoints(in: rect)
+            let endRadius = preset.radialRadius(in: rect)
+            context.drawRadialGradient(
+                gradient,
+                startCenter: endpoints.start,
+                startRadius: 0,
+                endCenter: endpoints.end,
+                endRadius: endRadius,
+                options: [.drawsBeforeStartLocation, .drawsAfterEndLocation]
+            )
+        }
+    }
+
+    private func drawWallpaper(_ preset: WallpaperPreset, in context: CGContext, rect: CGRect) {
+        guard let url = preset.fullURL, let cgImage = WallpaperImageCache.cgImage(for: url) else {
+            context.setFillColor(NSColor(srgbRed: 0.10, green: 0.10, blue: 0.12, alpha: 1).cgColor)
+            context.fill(rect)
+            return
+        }
+
+        let imageWidth = CGFloat(cgImage.width)
+        let imageHeight = CGFloat(cgImage.height)
+        guard imageWidth > 0, imageHeight > 0 else { return }
+
+        let scale = max(rect.width / imageWidth, rect.height / imageHeight)
+        let drawSize = CGSize(width: imageWidth * scale, height: imageHeight * scale)
+        let drawRect = CGRect(
+            x: rect.midX - drawSize.width / 2,
+            y: rect.midY - drawSize.height / 2,
+            width: drawSize.width,
+            height: drawSize.height
+        )
+        context.draw(cgImage, in: drawRect)
     }
 
     private func drawExportImageShadow(in context: CGContext, rect: CGRect) {

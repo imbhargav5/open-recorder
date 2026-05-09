@@ -12,7 +12,8 @@ let package = Package(
         .executableTarget(
             name: "OpenRecorderMac",
             resources: [
-                .process("Resources")
+                .process("Resources/OpenRecorderMenuBarIcon.png"),
+                .copy("Resources/Wallpapers")
             ]
         ),
         .testTarget(

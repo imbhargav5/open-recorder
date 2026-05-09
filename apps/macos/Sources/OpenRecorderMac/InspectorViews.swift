@@ -10,6 +10,7 @@ struct SettingsInspector: View {
     @Binding var padding: Double
     @Binding var shadow: Double
     @Binding var backgroundBlur: Double
+    @Binding var background: BackgroundStyle
     @Binding var loopCursor: Bool
     @Binding var cursorSize: Double
     @Binding var cursorSmoothing: Double
@@ -134,7 +135,7 @@ struct SettingsInspector: View {
                     .frame(height: 34)
                     .background(Color.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 8))
             }
-            BackgroundPalette()
+            BackgroundPickerView(selection: $background)
         case .cursor:
             InspectorSwitch(title: "Show Cursor", isOn: $model.showCursor)
             InspectorSwitch(title: "Loop Cursor", isOn: $loopCursor)
@@ -332,35 +333,6 @@ struct InspectorSwitch: View {
         .onTapGesture {
             guard isInteractive else { return }
             isOn.toggle()
-        }
-    }
-}
-
-struct BackgroundPalette: View {
-    private let colors: [Color] = [.red, .yellow, .green, .white, .blue, .orange, .purple, .pink, .cyan, .black]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label("Background", systemImage: "paintpalette")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary)
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 5), spacing: 6) {
-                ForEach(colors.indices, id: \.self) { index in
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(colors[index])
-                        .frame(height: 28)
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 6)
-                                .stroke(Color.white.opacity(0.12))
-                        }
-                }
-            }
-        }
-        .padding(10)
-        .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 8))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.white.opacity(0.05))
         }
     }
 }
