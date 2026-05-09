@@ -9,7 +9,21 @@ final class HUDStateMachineTests: XCTestCase {
             XCTAssertNil(state.source)
             XCTAssertFalse(state.isCaptureOccupied)
             XCTAssertEqual(state.captureFlow, .choice)
+            XCTAssertEqual(state.presentation, .visible)
         }
+    }
+
+    func testPresentationDoesNotChangeCaptureDerivedState() {
+        let source = makeSource()
+        let visible = HUDState(phase: .recording(source), presentation: .visible)
+        let hidden = visible.withPresentation(.hidden)
+
+        XCTAssertEqual(hidden.phase, visible.phase)
+        XCTAssertEqual(hidden.presentation, .hidden)
+        XCTAssertEqual(hidden.mode, visible.mode)
+        XCTAssertEqual(hidden.source, visible.source)
+        XCTAssertEqual(hidden.captureFlow, visible.captureFlow)
+        XCTAssertEqual(hidden.isCaptureOccupied, visible.isCaptureOccupied)
     }
 
     func testSourceSelectionStatesDeriveModeAndCaptureFlow() {
@@ -99,13 +113,46 @@ final class HUDStateMachineTests: XCTestCase {
     func testDuplicateCaptureRequestDuringActiveRecordingStateFocusesHUD() {
         let model = AppModel()
         let source = makeSource()
-        model.hudState = .recording(source)
+        model.hudState = HUDState(phase: .recording(source), presentation: .hidden)
         model.captureMode = .recording
         model.selectedSource = source
 
         model.beginCapture(.screenshot)
 
-        XCTAssertEqual(model.hudState, .recording(source))
+        XCTAssertEqual(model.hudState.phase, .recording(source))
+        XCTAssertEqual(model.hudState.presentation, .visible)
+        XCTAssertEqual(model.windowCommand?.action, .showHUD)
+    }
+
+    func testHUDPresentationTransitionsPreserveCapturePhase() {
+        let model = AppModel()
+        let source = makeSource()
+        model.hudState = HUDState(phase: .recording(source), presentation: .visible)
+
+        model.hideHUD()
+
+        XCTAssertEqual(model.hudState.phase, .recording(source))
+        XCTAssertEqual(model.hudState.presentation, .hidden)
+        XCTAssertEqual(model.windowCommand?.action, .hideHUD)
+
+        model.showHUD()
+
+        XCTAssertEqual(model.hudState.phase, .recording(source))
+        XCTAssertEqual(model.hudState.presentation, .visible)
+        XCTAssertEqual(model.windowCommand?.action, .showHUD)
+    }
+
+    func testToggleHUDPresentationSwitchesBetweenHiddenAndVisible() {
+        let model = AppModel()
+
+        model.toggleHUDPresentation()
+
+        XCTAssertEqual(model.hudState.presentation, .hidden)
+        XCTAssertEqual(model.windowCommand?.action, .hideHUD)
+
+        model.toggleHUDPresentation()
+
+        XCTAssertEqual(model.hudState.presentation, .visible)
         XCTAssertEqual(model.windowCommand?.action, .showHUD)
     }
 
