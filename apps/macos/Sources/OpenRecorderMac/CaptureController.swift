@@ -499,7 +499,7 @@ final class CaptureController: ObservableObject {
             let displayIndex = index + 1
             let screen = screensByID[display.displayID]
             displaySources.append(CaptureSource(
-                id: "display:\(displayIndex)",
+                id: "display:\(display.displayID)",
                 kind: .display,
                 name: screen?.localizedName ?? "Display \(displayIndex)",
                 subtitle: "\(display.width) x \(display.height)",
@@ -543,7 +543,9 @@ final class CaptureController: ObservableObject {
                 displayID: nil,
                 windowID: window.windowID,
                 area: nil,
-                thumbnailData: await thumbnailDataForWindow(window)
+                thumbnailData: await thumbnailDataForWindow(window),
+                ownerBundleID: window.owningApplication?.bundleIdentifier,
+                ownerName: window.owningApplication?.applicationName
             ))
         }
         return windowSources
@@ -556,7 +558,7 @@ final class CaptureController: ObservableObject {
                 .uint32Value
             let frame = screen.frame
             return CaptureSource(
-                id: "display:\(displayIndex)",
+                id: displayID.map { "display:\($0)" } ?? "display:\(displayIndex)",
                 kind: .display,
                 name: screen.localizedName,
                 subtitle: "\(Int(frame.width)) x \(Int(frame.height))",
@@ -583,11 +585,15 @@ final class CaptureController: ObservableObject {
                 return nil
             }
             let windowID = windowNumber.uint32Value
+            let ownerName = window[kCGWindowOwnerName as String] as? String
+            let ownerPID = (window[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value
+            let runningApp = ownerPID.flatMap { NSRunningApplication(processIdentifier: pid_t($0)) }
+            let bundleID = runningApp?.bundleIdentifier
 
             let metadata = WindowSourceMetadata(
                 title: window[kCGWindowName as String] as? String,
-                ownerName: window[kCGWindowOwnerName as String] as? String,
-                bundleIdentifier: nil,
+                ownerName: ownerName,
+                bundleIdentifier: bundleID,
                 frame: legacyWindowFrame(from: window),
                 layer: (window[kCGWindowLayer as String] as? NSNumber)?.intValue,
                 alpha: (window[kCGWindowAlpha as String] as? NSNumber)?.doubleValue
@@ -608,7 +614,9 @@ final class CaptureController: ObservableObject {
                 displayID: nil,
                 windowID: windowID,
                 area: nil,
-                thumbnailData: nil
+                thumbnailData: nil,
+                ownerBundleID: bundleID,
+                ownerName: ownerName
             )
         }
     }

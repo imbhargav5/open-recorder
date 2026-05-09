@@ -96,9 +96,60 @@ final class AppModel: ObservableObject {
     }
 
     func refreshSources(requestScreenRecordingPermission: Bool = false) async {
+        let previousSelection = selectedSource
         await capture.reloadSources(requestScreenRecordingPermission: requestScreenRecordingPermission)
-        if selectedSource == nil || !capture.sources.contains(where: { $0.id == selectedSource?.id }) {
-            selectedSource = capture.sources.first
+
+        let resolved = resolveSelection(previous: previousSelection, in: capture.sources)
+        selectedSource = resolved
+
+        guard let resolved, let previousSelection else {
+            return
+        }
+        if case .ready(let mode, let hudSource) = hudState.phase,
+           hudSource.id == previousSelection.id || matchesIdentity(hudSource, previousSelection) {
+            setHUDPhase(.ready(mode, resolved))
+        }
+    }
+
+    private func resolveSelection(previous: CaptureSource?, in sources: [CaptureSource]) -> CaptureSource? {
+        guard let previous else {
+            return sources.first
+        }
+        if previous.kind == .area {
+            return previous
+        }
+        if let match = sources.first(where: { matchesIdentity($0, previous) }) {
+            return match
+        }
+        return sources.first
+    }
+
+    private func matchesIdentity(_ candidate: CaptureSource, _ reference: CaptureSource) -> Bool {
+        guard candidate.kind == reference.kind else {
+            return false
+        }
+        switch candidate.kind {
+        case .display:
+            if let candidateID = candidate.displayID, let referenceID = reference.displayID {
+                return candidateID == referenceID
+            }
+            return candidate.id == reference.id
+        case .window:
+            if let candidateWindowID = candidate.windowID,
+               let referenceWindowID = reference.windowID,
+               candidateWindowID == referenceWindowID,
+               candidate.ownerBundleID == reference.ownerBundleID {
+                return true
+            }
+            if let bundleID = reference.ownerBundleID,
+               candidate.ownerBundleID == bundleID,
+               candidate.name == reference.name,
+               !candidate.name.isEmpty {
+                return true
+            }
+            return false
+        case .area:
+            return candidate.id == reference.id
         }
     }
 
