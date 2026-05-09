@@ -295,11 +295,15 @@ enum VideoExportRenderer {
 
         let composition = AVMutableComposition()
         let mediaTypes: [AVMediaType] = [.video, .audio]
+        var compositionVideoTrack: AVMutableCompositionTrack?
         for mediaType in mediaTypes {
             let tracks = try await asset.loadTracks(withMediaType: mediaType)
             for sourceTrack in tracks {
                 guard let compositionTrack = composition.addMutableTrack(withMediaType: mediaType, preferredTrackID: kCMPersistentTrackID_Invalid) else {
                     continue
+                }
+                if mediaType == .video, compositionVideoTrack == nil {
+                    compositionVideoTrack = compositionTrack
                 }
                 for segment in plan.segments {
                     let sourceRange = CMTimeRange(
@@ -320,7 +324,7 @@ enum VideoExportRenderer {
 
         return EditedAsset(
             asset: composition,
-            videoTrack: composition.tracks(withMediaType: .video).first,
+            videoTrack: compositionVideoTrack,
             duration: plan.outputDuration,
             plan: plan
         )
