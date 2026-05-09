@@ -1,6 +1,7 @@
 import AVFoundation
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 enum AppWindowRole {
     case hud
@@ -11,6 +12,7 @@ enum AppWindowRole {
 
 struct ContentView: View {
     @EnvironmentObject private var model: AppModel
+    @State private var measuredHUDSize = HUDWindowMetrics.defaultSize
     var role: AppWindowRole = .studio
     var editorSession: EditorSession?
 
@@ -18,9 +20,7 @@ struct ContentView: View {
         Group {
             switch role {
             case .hud:
-                HUDOverlayWindowView()
-                    .frame(width: hudSize.width, height: hudSize.height)
-                    .background(WindowConfigurator(role: .hud, preferredSize: hudSize))
+                hudWindowContent
             case .sourceSelector:
                 SourceSelectorWindowView()
                     .frame(width: SourceSelectorWindowMetrics.width)
@@ -41,22 +41,91 @@ struct ContentView: View {
         }
     }
 
-    private var hudSize: CGSize {
-        if model.captureFlow == .choice {
-            return CGSize(width: 780, height: 155)
+    @ViewBuilder
+    private var hudWindowContent: some View {
+        let preferredSize = preferredHUDSize
+
+        ZStack {
+            HUDOverlayWindowView()
+                .fixedSize(horizontal: true, vertical: false)
+                .readSize { size in
+                    updateMeasuredHUDSize(size)
+                }
+                .hidden()
+                .allowsHitTesting(false)
+
+            HUDOverlayWindowView()
+                .frame(maxWidth: preferredSize.width, maxHeight: preferredSize.height)
+        }
+        .frame(width: preferredSize.width, height: preferredSize.height)
+        .background(WindowConfigurator(role: .hud, preferredSize: preferredSize))
+    }
+
+    private var preferredHUDSize: CGSize {
+        HUDWindowMetrics.clampedSize(for: measuredHUDSize, screen: NSScreen.main)
+    }
+
+    private func updateMeasuredHUDSize(_ size: CGSize) {
+        guard size.width.isFinite,
+              size.height.isFinite,
+              size.width > 0,
+              size.height > 0,
+              size != measuredHUDSize else {
+            return
         }
 
-        if model.statusMessage.localizedCaseInsensitiveContains("permission") {
-            return CGSize(width: model.captureMode == .recording ? 940 : 900, height: 155)
-        }
-
-        return CGSize(width: model.captureMode == .recording ? 780 : 860, height: 155)
+        measuredHUDSize = size
     }
 }
 
 struct SettingsView: View {
     var body: some View {
         SettingsStudioView()
+    }
+}
+
+enum HUDWindowMetrics {
+    static let height: CGFloat = 155
+    static let horizontalScreenMargin: CGFloat = 32
+    static let minWidth: CGFloat = 360
+    static let defaultSize = CGSize(width: 780, height: height)
+
+    static func clampedSize(for measuredSize: CGSize, screen: NSScreen?) -> CGSize {
+        clampedSize(for: measuredSize, visibleFrame: screen?.visibleFrame)
+    }
+
+    static func clampedSize(for measuredSize: CGSize, visibleFrame: CGRect?) -> CGSize {
+        let measuredWidth = measuredSize.width.isFinite && measuredSize.width > 0
+            ? measuredSize.width.rounded(.up)
+            : defaultSize.width
+        let maximumWidth = visibleFrame.map { frame in
+            max(minWidth, frame.width - horizontalScreenMargin * 2)
+        } ?? CGFloat.greatestFiniteMagnitude
+        let width = min(max(measuredWidth, minWidth), maximumWidth)
+
+        return CGSize(width: width.rounded(.up), height: height)
+    }
+}
+
+private struct SizePreferenceKey: PreferenceKey {
+    static let defaultValue = CGSize.zero
+
+    static func reduce(value: inout CGSize, nextValue: () -> CGSize) {
+        let next = nextValue()
+        guard next != .zero else { return }
+        value = next
+    }
+}
+
+private extension View {
+    func readSize(_ onChange: @escaping (CGSize) -> Void) -> some View {
+        background {
+            GeometryReader { proxy in
+                Color.clear
+                    .preference(key: SizePreferenceKey.self, value: proxy.size)
+            }
+        }
+        .onPreferenceChange(SizePreferenceKey.self, perform: onChange)
     }
 }
 
@@ -91,7 +160,9 @@ private struct WindowConfigurator: NSViewRepresentable {
 private final class WindowConfigurationView: NSView {
     var role: NativeWindowRole = .studio {
         didSet {
-            configuredRole = nil
+            if role != oldValue {
+                configuredRole = nil
+            }
         }
     }
     var preferredSize: CGSize? {
@@ -137,7 +208,10 @@ private final class WindowConfigurationView: NSView {
     }
 
     private func configureHUD(_ window: NSWindow) {
-        let size = preferredSize ?? CGSize(width: 780, height: 155)
+        let size = HUDWindowMetrics.clampedSize(
+            for: preferredSize ?? HUDWindowMetrics.defaultSize,
+            screen: window.screen ?? NSScreen.main
+        )
         window.title = "Open Recorder"
         window.setContentSize(size)
         window.minSize = size
@@ -393,6 +467,7 @@ private struct SourceSelectorWindowView: View {
                 sourceTab: $sourceTab,
                 visibleTabs: visibleTabs,
                 onCancel: {
+                    model.cancelCapture()
                     dismissWindow(id: "source-selector")
                 },
                 onShare: {
@@ -549,12 +624,14 @@ private struct AreaSelectionWindowView: View {
     }
 
     private func captureArea(for rect: CGRect) -> CaptureArea {
-        let screenFrame = NSScreen.main?.frame ?? NSRect(origin: .zero, size: CGSize(width: 900, height: 600))
+        let screen = NSApp.keyWindow?.screen ?? NSScreen.main
+        let screenFrame = screen?.frame ?? NSRect(origin: .zero, size: CGSize(width: 900, height: 600))
         return CaptureArea(
             x: Int((screenFrame.minX + rect.minX).rounded()),
             y: Int((screenFrame.maxY - rect.maxY).rounded()),
             width: max(Int(rect.width.rounded()), 1),
-            height: max(Int(rect.height.rounded()), 1)
+            height: max(Int(rect.height.rounded()), 1),
+            displayID: (screen?.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value
         )
     }
 }
@@ -795,11 +872,11 @@ private struct StudioTitleBar: View {
                             .foregroundStyle(Color.white)
                     }
                     .buttonStyle(.plain)
-                } else if model.selectedSection == .editor, let screenshotURL {
+                } else if model.selectedSection == .editor, screenshotURL != nil {
                     Button {
-                        model.copyScreenshotToClipboard(screenshotURL)
+                        model.requestScreenshotExport()
                     } label: {
-                        Label("Copy Screenshot", systemImage: "doc.on.doc")
+                        Label("Export PNG", systemImage: "square.and.arrow.up")
                             .font(.system(size: 12, weight: .semibold))
                             .labelStyle(.titleAndIcon)
                             .padding(.horizontal, 12)
@@ -1075,6 +1152,7 @@ private struct SourceSelectorCard: View {
             .padding(16)
         }
         .background(Color.studioPanel.opacity(0.96), in: RoundedRectangle(cornerRadius: 12))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
         .overlay {
             RoundedRectangle(cornerRadius: 12)
                 .stroke(Color.studioBorder)
@@ -1137,6 +1215,20 @@ private struct SourceGrid: View {
     }
 
     var body: some View {
+        if sourceTab == .windows {
+            ScrollView(.vertical) {
+                grid
+                    .padding(.trailing, 2)
+            }
+            .frame(maxHeight: 356)
+            .scrollClipDisabled(false)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        } else {
+            grid
+        }
+    }
+
+    private var grid: some View {
         LazyVGrid(columns: columns, spacing: 8) {
             ForEach(sources) { source in
                 SourceTile(
@@ -1144,10 +1236,11 @@ private struct SourceGrid: View {
                     isSelected: model.selectedSource?.id == source.id,
                     isCompact: sourceTab == .windows
                 ) {
-                    model.selectedSource = source
+                    model.selectSource(source)
                 }
             }
         }
+        .clipped()
     }
 }
 
@@ -1159,70 +1252,162 @@ private struct SourceTile: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: isCompact ? 6 : 8) {
-                ZStack {
-                    if let thumbnail = source.thumbnailData,
-                       let image = NSImage(data: thumbnail) {
-                        Image(nsImage: image)
-                            .resizable()
-                            .scaledToFill()
-                    } else {
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(Color.white.opacity(0.055))
-                        Image(systemName: source.kind == .window ? "macwindow" : source.kind == .area ? "rectangle.dashed" : "display")
-                            .font(.system(size: isCompact ? 18 : 24, weight: .medium))
-                            .foregroundStyle(.secondary)
-                    }
-
-                    if isSelected {
-                        VStack {
-                            HStack {
-                                Spacer()
-                                Image(systemName: "checkmark")
-                                    .font(.system(size: 10, weight: .bold))
-                                    .frame(width: 18, height: 18)
-                                    .background(Color.brand, in: Circle())
-                                    .foregroundStyle(.white)
-                            }
-                            Spacer()
-                        }
-                        .padding(6)
-                    }
-                }
-                .aspectRatio(source.kind == .window ? 1.6 : 16.0 / 9.0, contentMode: .fit)
-                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
-                }
-
-                HStack(spacing: 8) {
-                    Text(source.name)
-                        .font(.system(size: isCompact ? 12 : 13, weight: .medium))
-                        .lineLimit(1)
-                    Spacer()
-                    if isSelected {
-                        Text("Selected")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 3)
-                            .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 5))
-                    }
-                }
-                Text(source.subtitle)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            .padding(isCompact ? 6 : 8)
-            .background(Color.studioCard.opacity(0.8), in: RoundedRectangle(cornerRadius: 9))
-            .overlay {
-                RoundedRectangle(cornerRadius: 9)
-                    .stroke(isSelected ? Color.brand : Color.studioBorder, lineWidth: isSelected ? 2 : 1)
+            if isCompact {
+                squareContent
+            } else {
+                standardContent
             }
         }
         .buttonStyle(.plain)
+    }
+
+    private var standardContent: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            SourceThumbnailPreview(
+                source: source,
+                isSelected: isSelected,
+                isCompact: isCompact
+            )
+            .aspectRatio(previewAspectRatio, contentMode: .fit)
+            .frame(maxWidth: .infinity)
+
+            labels
+        }
+        .padding(8)
+        .background(Color.studioCard.opacity(0.8), in: RoundedRectangle(cornerRadius: 9))
+        .clipShape(RoundedRectangle(cornerRadius: 9))
+        .overlay {
+            RoundedRectangle(cornerRadius: 9)
+                .stroke(isSelected ? Color.brand : Color.studioBorder, lineWidth: isSelected ? 2 : 1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var squareContent: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            SourceThumbnailPreview(
+                source: source,
+                isSelected: isSelected,
+                isCompact: isCompact
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+
+            labels
+        }
+        .padding(4)
+        .aspectRatio(1, contentMode: .fit)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.studioCard.opacity(0.8), in: RoundedRectangle(cornerRadius: 9))
+        .clipShape(RoundedRectangle(cornerRadius: 9))
+        .overlay {
+            RoundedRectangle(cornerRadius: 9)
+                .stroke(isSelected ? Color.brand : Color.studioBorder, lineWidth: isSelected ? 2 : 1)
+        }
+    }
+
+    private var labels: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 8) {
+                Text(source.name)
+                    .font(.system(size: isCompact ? 12 : 13, weight: .medium))
+                    .lineLimit(1)
+                Spacer()
+                if isSelected {
+                    Text("Selected")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 5))
+                }
+            }
+            Text(source.subtitle)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var previewAspectRatio: CGFloat {
+        source.kind == .window ? 1.6 : 16.0 / 9.0
+    }
+}
+
+private struct SourceThumbnailPreview: View {
+    var source: CaptureSource
+    var isSelected: Bool
+    var isCompact: Bool
+
+    private var aspectRatio: CGFloat {
+        source.kind == .window ? 1.6 : 16.0 / 9.0
+    }
+
+    var body: some View {
+        GeometryReader { proxy in
+            let size = proxy.size
+            let previewSize = fittedPreviewSize(in: size)
+
+            ZStack {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(Color.white.opacity(0.045))
+
+                if let thumbnail = source.thumbnailData,
+                   let image = NSImage(data: thumbnail) {
+                    Image(nsImage: image)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: previewSize.width, height: previewSize.height)
+                        .clipped()
+                } else {
+                    thumbnailPlaceholder
+                        .frame(width: previewSize.width, height: previewSize.height)
+                }
+
+                if isSelected {
+                    VStack {
+                        HStack {
+                            Spacer()
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 10, weight: .bold))
+                                .frame(width: 18, height: 18)
+                                .background(Color.brand, in: Circle())
+                                .foregroundStyle(.white)
+                        }
+                        Spacer()
+                    }
+                    .padding(6)
+                }
+            }
+            .frame(width: previewSize.width, height: previewSize.height)
+            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
+            }
+            .frame(width: size.width, height: size.height, alignment: .center)
+        }
+        .clipped()
+    }
+
+    private var thumbnailPlaceholder: some View {
+        ZStack {
+            Image(systemName: source.kind == .window ? "macwindow" : source.kind == .area ? "rectangle.dashed" : "display")
+                .font(.system(size: isCompact ? 18 : 24, weight: .medium))
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func fittedPreviewSize(in size: CGSize) -> CGSize {
+        let maxWidth = max(size.width, 1)
+        let maxHeight = max(size.height, 1)
+        let heightFromWidth = maxWidth / aspectRatio
+
+        if heightFromWidth <= maxHeight {
+            return CGSize(width: maxWidth, height: heightFromWidth)
+        }
+
+        return CGSize(width: maxHeight * aspectRatio, height: maxHeight)
     }
 }
 
@@ -1281,16 +1466,24 @@ private struct CaptureHUD: View {
     }
 
     private var recordingControls: some View {
+        ViewThatFits(in: .horizontal) {
+            fullRecordingControls
+            compactRecordingControls
+            narrowRecordingControls
+        }
+    }
+
+    private var fullRecordingControls: some View {
         HStack(spacing: 8) {
             sharedLeadingControls
 
             FlowLabel(
                 tone: model.capture.isRecording ? .red : .blue,
                 label: model.capture.isRecording ? "Recording" : "Ready",
-                value: model.capture.isRecording ? "Live" : "Video"
+                value: model.capture.isRecording ? recordingPhaseLabel : "Video"
             )
 
-            sourcePicker
+            sourcePicker()
                 .layoutPriority(2)
 
             permissionControls
@@ -1298,38 +1491,101 @@ private struct CaptureHUD: View {
             HUDDivider()
 
             HUDControlGroup {
+                HUDToggle(symbolName: model.includeSystemAudio ? "speaker.wave.2.fill" : "speaker.slash.fill", isActive: model.includeSystemAudio, title: "System Audio") {
+                    model.includeSystemAudio.toggle()
+                }
                 HUDToggle(symbolName: model.includeMicrophone ? "mic.fill" : "mic.slash.fill", isActive: model.includeMicrophone, title: "Microphone") {
                     model.includeMicrophone.toggle()
                 }
-                HUDToggle(symbolName: "cursorarrow", isActive: model.showCursor, title: "Cursor") {
-                    model.showCursor.toggle()
+                deviceMenu(
+                    symbolName: "mic.badge.plus",
+                    title: "Microphone Device",
+                    devices: model.microphoneDevices,
+                    selectedDeviceID: $model.selectedMicrophoneDeviceID
+                )
+                HUDToggle(symbolName: model.includeCamera ? "video.fill" : "video.slash.fill", isActive: model.includeCamera, title: "Facecam") {
+                    model.includeCamera.toggle()
                 }
-                HUDToggle(symbolName: "hand.tap", isActive: model.showClicks, title: "Clicks") {
-                    model.showClicks.toggle()
-                }
+                deviceMenu(
+                    symbolName: "video.badge.plus",
+                    title: "Camera Device",
+                    devices: model.cameraDevices,
+                    selectedDeviceID: $model.selectedCameraDeviceID
+                )
             }
 
             HUDPrimaryButton(
-                title: model.capture.isRecording ? "Stop" : "Record",
+                title: model.capture.isRecording ? "Stop" : startStopTitle,
                 symbolName: model.capture.isRecording ? "stop.fill" : "record.circle",
                 isDestructive: model.capture.isRecording
             ) {
-                model.capture.isRecording ? model.stopRecording() : model.startRecording()
+                toggleRecording()
+            }
+        }
+    }
+
+    private var compactRecordingControls: some View {
+        HStack(spacing: 6) {
+            compactLeadingControls
+
+            CompactFlowLabel(
+                tone: model.capture.isRecording ? .red : .blue,
+                value: model.capture.isRecording ? recordingPhaseLabel : "Video"
+            )
+
+            sourcePicker(width: 154, textWidth: 100)
+
+            compactPermissionControls
+
+            compactCaptureControlGroup
+
+            HUDPrimaryButton(
+                title: model.capture.isRecording ? "Stop" : startStopTitle,
+                symbolName: model.capture.isRecording ? "stop.fill" : "record.circle",
+                isDestructive: model.capture.isRecording
+            ) {
+                toggleRecording()
+            }
+        }
+    }
+
+    private var narrowRecordingControls: some View {
+        HStack(spacing: 6) {
+            backButton
+
+            StatusDot(tone: model.capture.isRecording ? .red : .blue)
+
+            sourcePicker(width: 118, textWidth: 66)
+
+            narrowCaptureOptionsMenu
+
+            HUDPrimaryIconButton(
+                title: model.capture.isRecording ? "Stop" : startStopTitle,
+                symbolName: model.capture.isRecording ? "stop.fill" : "record.circle",
+                isDestructive: model.capture.isRecording
+            ) {
+                toggleRecording()
             }
         }
     }
 
     private var screenshotControls: some View {
+        ViewThatFits(in: .horizontal) {
+            fullScreenshotControls
+            compactScreenshotControls
+        }
+    }
+
+    private var fullScreenshotControls: some View {
         HStack(spacing: 8) {
             sharedLeadingControls
-
             FlowLabel(
                 tone: model.statusMessage.localizedCaseInsensitiveContains("permission") ? .red : .blue,
                 label: "Screenshot",
                 value: model.selectedSource == nil ? "Source" : "Ready"
             )
 
-            sourcePicker
+            sourcePicker()
                 .layoutPriority(2)
 
             permissionControls
@@ -1344,52 +1600,166 @@ private struct CaptureHUD: View {
         }
     }
 
+    private var compactScreenshotControls: some View {
+        HStack(spacing: 6) {
+            compactLeadingControls
+
+            CompactFlowLabel(
+                tone: model.statusMessage.localizedCaseInsensitiveContains("permission") ? .red : .blue,
+                value: model.selectedSource == nil ? "Source" : "Ready"
+            )
+
+            sourcePicker(width: 154, textWidth: 100)
+
+            compactPermissionControls
+
+            HUDPrimaryIconButton(
+                title: "Capture",
+                symbolName: "camera.fill",
+                isDestructive: false
+            ) {
+                model.takeScreenshot()
+            }
+        }
+    }
+
     private var sharedLeadingControls: some View {
         HStack(spacing: 8) {
             DragHandle()
-
-            Button {
-                if !model.capture.isRecording {
-                    model.captureFlow = .choice
-                }
-            } label: {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 13, weight: .bold))
-                    .frame(width: 38, height: 38)
-                    .foregroundStyle(Color.white.opacity(model.capture.isRecording ? 0.25 : 0.70))
-                    .background(Color.white.opacity(0.06), in: Circle())
-                    .overlay {
-                        Circle()
-                            .stroke(Color.white.opacity(0.09), lineWidth: 1)
-                    }
-            }
-            .buttonStyle(.plain)
-            .disabled(model.capture.isRecording)
-            .help("Back")
-
+            backButton
             HUDDivider()
         }
     }
 
-    private var sourcePicker: some View {
+    private var compactLeadingControls: some View {
+        HStack(spacing: 6) {
+            DragHandle()
+            backButton
+        }
+    }
+
+    private var backButton: some View {
+        Button {
+            if !model.capture.isRecording {
+                model.cancelCapture()
+            }
+        } label: {
+            Image(systemName: "chevron.left")
+                .font(.system(size: 13, weight: .bold))
+                .frame(width: 38, height: 38)
+                .foregroundStyle(Color.white.opacity(model.capture.isRecording ? 0.25 : 0.70))
+                .background(Color.white.opacity(0.06), in: Circle())
+                .overlay {
+                    Circle()
+                        .stroke(Color.white.opacity(0.09), lineWidth: 1)
+                }
+        }
+        .buttonStyle(.plain)
+        .disabled(model.capture.isRecording)
+        .help("Back")
+    }
+
+    private func sourcePicker(width: CGFloat = 208, textWidth: CGFloat = 154) -> some View {
         Button {
             model.requestWindow(.showSourceSelector)
             openWindow(id: "source-selector")
         } label: {
-            SourceChip(source: model.selectedSource)
+            SourceChip(source: model.selectedSource, width: width, textWidth: textWidth)
         }
         .buttonStyle(.plain)
         .help("Choose Source")
+    }
+
+    private var compactCaptureControlGroup: some View {
+        HUDControlGroup {
+            captureToggles
+            compactDeviceMenu
+        }
+    }
+
+    @ViewBuilder
+    private var captureToggles: some View {
+        HUDToggle(symbolName: model.includeSystemAudio ? "speaker.wave.2.fill" : "speaker.slash.fill", isActive: model.includeSystemAudio, title: "System Audio") {
+            model.includeSystemAudio.toggle()
+        }
+        HUDToggle(symbolName: model.includeMicrophone ? "mic.fill" : "mic.slash.fill", isActive: model.includeMicrophone, title: "Microphone") {
+            model.includeMicrophone.toggle()
+        }
+        HUDToggle(symbolName: model.includeCamera ? "video.fill" : "video.slash.fill", isActive: model.includeCamera, title: "Facecam") {
+            model.includeCamera.toggle()
+        }
+    }
+
+    private var compactDeviceMenu: some View {
+        Menu {
+            Section("Microphone Device") {
+                deviceSelectionItems(devices: model.microphoneDevices, selectedDeviceID: $model.selectedMicrophoneDeviceID)
+            }
+            Section("Camera Device") {
+                deviceSelectionItems(devices: model.cameraDevices, selectedDeviceID: $model.selectedCameraDeviceID)
+            }
+        } label: {
+            Image(systemName: "slider.horizontal.3")
+                .font(.system(size: 14, weight: .medium))
+                .frame(width: 34, height: 34)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .help("Devices")
+    }
+
+    private var narrowCaptureOptionsMenu: some View {
+        Menu {
+            Button(model.includeSystemAudio ? "Turn Off System Audio" : "Turn On System Audio") {
+                model.includeSystemAudio.toggle()
+            }
+            Button(model.includeMicrophone ? "Turn Off Microphone" : "Turn On Microphone") {
+                model.includeMicrophone.toggle()
+            }
+            Button(model.includeCamera ? "Turn Off Facecam" : "Turn On Facecam") {
+                model.includeCamera.toggle()
+            }
+            Section("Microphone Device") {
+                deviceSelectionItems(devices: model.microphoneDevices, selectedDeviceID: $model.selectedMicrophoneDeviceID)
+            }
+            Section("Camera Device") {
+                deviceSelectionItems(devices: model.cameraDevices, selectedDeviceID: $model.selectedCameraDeviceID)
+            }
+        } label: {
+            Image(systemName: "slider.horizontal.3")
+                .font(.system(size: 14, weight: .medium))
+                .frame(width: 38, height: 38)
+                .foregroundStyle(Color.white.opacity(0.70))
+                .background(Color.white.opacity(0.06), in: Circle())
+                .overlay {
+                    Circle()
+                        .stroke(Color.white.opacity(0.09), lineWidth: 1)
+                }
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .help("Capture Options")
     }
 
     @ViewBuilder
     private var permissionControls: some View {
         if model.statusMessage.localizedCaseInsensitiveContains("permission") {
             HUDPermissionGroup {
-                model.openPrivacySettings()
+                openRelevantPrivacySettings()
             }
         } else if let captureStatusMessage {
             CaptureStatusChip(message: captureStatusMessage, isError: false)
+        }
+    }
+
+    @ViewBuilder
+    private var compactPermissionControls: some View {
+        if model.statusMessage.localizedCaseInsensitiveContains("permission") {
+            HUDIconActionButton(symbolName: "exclamationmark.triangle.fill", title: "Open Privacy Settings", tint: .red) {
+                openRelevantPrivacySettings()
+            }
+        } else if let captureStatusMessage {
+            CaptureStatusChip(message: captureStatusMessage, isError: false, maxWidth: 96)
         }
     }
 
@@ -1413,6 +1783,75 @@ private struct CaptureHUD: View {
             return "Choose source"
         }
         return message
+    }
+
+    private func openRelevantPrivacySettings() {
+        let message = model.statusMessage.lowercased()
+        if message.contains("microphone") {
+            model.openMicrophoneSettings()
+        } else if message.contains("camera") {
+            model.openCameraSettings()
+        } else if message.contains("accessibility") {
+            model.openAccessibilitySettings()
+        } else {
+            model.openPrivacySettings()
+        }
+    }
+
+    private var recordingPhaseLabel: String {
+        switch model.recordingPhase {
+        case .starting:
+            "Starting"
+        case .recording:
+            "Live"
+        case .stopping:
+            "Saving"
+        case .interrupted:
+            "Interrupted"
+        case .idle:
+            "Live"
+        }
+    }
+
+    private var startStopTitle: String {
+        model.recordingPhase == .starting ? "Starting" : "Record"
+    }
+
+    private func toggleRecording() {
+        model.capture.isRecording ? model.stopRecording() : model.startRecording()
+    }
+
+    private func deviceMenu(
+        symbolName: String,
+        title: String,
+        devices: [CaptureDeviceInfo],
+        selectedDeviceID: Binding<String?>
+    ) -> some View {
+        Menu {
+            deviceSelectionItems(devices: devices, selectedDeviceID: selectedDeviceID)
+        } label: {
+            Image(systemName: symbolName)
+                .font(.system(size: 14, weight: .medium))
+                .frame(width: 34, height: 34)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .help(title)
+    }
+
+    @ViewBuilder
+    private func deviceSelectionItems(devices: [CaptureDeviceInfo], selectedDeviceID: Binding<String?>) -> some View {
+        Button("System Default") {
+            selectedDeviceID.wrappedValue = nil
+        }
+        ForEach(devices) { device in
+            Button(device.isDefault ? "\(device.name) (Default)" : device.name) {
+                selectedDeviceID.wrappedValue = device.id
+            }
+        }
+        if devices.isEmpty {
+            Text("No devices found")
+        }
     }
 }
 
@@ -1498,6 +1937,48 @@ private struct HUDPrimaryButton: View {
                 .foregroundStyle(isDestructive ? Color.white : Color.studioBackground)
         }
         .buttonStyle(.plain)
+    }
+}
+
+private struct HUDPrimaryIconButton: View {
+    var title: String
+    var symbolName: String
+    var isDestructive: Bool
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbolName)
+                .font(.system(size: 14, weight: .semibold))
+                .frame(width: 42, height: 40)
+                .background(isDestructive ? Color.red.opacity(0.86) : Color.white, in: Circle())
+                .foregroundStyle(isDestructive ? Color.white : Color.studioBackground)
+        }
+        .buttonStyle(.plain)
+        .help(title)
+    }
+}
+
+private struct HUDIconActionButton: View {
+    var symbolName: String
+    var title: String
+    var tint: Color
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbolName)
+                .font(.system(size: 14, weight: .semibold))
+                .frame(width: 38, height: 38)
+                .foregroundStyle(tint.opacity(0.95))
+                .background(tint.opacity(0.14), in: Circle())
+                .overlay {
+                    Circle()
+                        .stroke(tint.opacity(0.28), lineWidth: 1)
+                }
+        }
+        .buttonStyle(.plain)
+        .help(title)
     }
 }
 
@@ -1608,8 +2089,53 @@ private struct FlowLabel: View {
     }
 }
 
+private struct CompactFlowLabel: View {
+    var tone: FlowTone
+    var value: String
+
+    var body: some View {
+        HStack(spacing: 7) {
+            StatusDot(tone: tone)
+            Text(value)
+                .font(.system(size: 12, weight: .semibold))
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .foregroundStyle(Color.white.opacity(0.84))
+        }
+        .frame(width: 74, alignment: .leading)
+        .padding(.horizontal, 9)
+        .frame(height: 38)
+        .background(Color.white.opacity(0.06), in: Capsule())
+        .overlay {
+            Capsule()
+                .stroke(Color.white.opacity(0.08))
+        }
+    }
+}
+
+private struct StatusDot: View {
+    var tone: FlowTone
+
+    var body: some View {
+        Circle()
+            .fill(dotColor)
+            .frame(width: 8, height: 8)
+            .shadow(color: dotColor.opacity(0.65), radius: 7)
+    }
+
+    private var dotColor: Color {
+        switch tone {
+        case .blue: Color.blue
+        case .red: Color.red
+        case .amber: Color.yellow
+        }
+    }
+}
+
 private struct SourceChip: View {
     var source: CaptureSource?
+    var width: CGFloat = 208
+    var textWidth: CGFloat = 154
 
     var body: some View {
         HStack(spacing: 8) {
@@ -1623,10 +2149,10 @@ private struct SourceChip: View {
                 .font(.system(size: 12, weight: .medium))
                 .lineLimit(1)
                 .truncationMode(.tail)
-                .frame(maxWidth: 154, alignment: .leading)
+                .frame(maxWidth: textWidth, alignment: .leading)
         }
         .padding(.horizontal, 10)
-        .frame(width: 208, alignment: .leading)
+        .frame(width: width, alignment: .leading)
         .frame(height: 38)
         .background(Color.black.opacity(0.20), in: Capsule())
         .overlay {
@@ -1639,6 +2165,7 @@ private struct SourceChip: View {
 private struct CaptureStatusChip: View {
     var message: String
     var isError: Bool
+    var maxWidth: CGFloat = 130
 
     var body: some View {
         Text(message)
@@ -1646,7 +2173,7 @@ private struct CaptureStatusChip: View {
             .lineLimit(1)
             .truncationMode(.tail)
             .foregroundStyle(isError ? Color.red.opacity(0.95) : Color.white.opacity(0.76))
-            .frame(maxWidth: 130, alignment: .leading)
+            .frame(maxWidth: maxWidth, alignment: .leading)
             .padding(.horizontal, 10)
             .frame(height: 38)
             .background((isError ? Color.red : Color.white).opacity(isError ? 0.12 : 0.06), in: Capsule())
@@ -1688,7 +2215,7 @@ private struct EditorStudioView: View {
         if screenshotURL != nil {
             ScreenshotEditorStudioView(screenshotURL: screenshotURL)
         } else {
-            VideoEditorStudioView(videoURL: videoURL)
+            VideoEditorStudioView(videoURL: videoURL, recordingSession: recordingSession)
         }
     }
 
@@ -1705,10 +2232,15 @@ private struct EditorStudioView: View {
         }
         return model.currentScreenshotURL
     }
+
+    private var recordingSession: RecordingSession? {
+        editorSession?.recordingSession ?? model.lastEditorSession?.recordingSession
+    }
 }
 
 private struct VideoEditorStudioView: View {
     var videoURL: URL?
+    var recordingSession: RecordingSession?
     @State private var borderRadius = 12.0
     @State private var padding = 18.0
     @State private var shadow = 0.35
@@ -1720,7 +2252,7 @@ private struct VideoEditorStudioView: View {
     var body: some View {
         HStack(spacing: 16) {
             VStack(spacing: 12) {
-                VideoPreviewPanel(videoURL: videoURL)
+                VideoPreviewPanel(videoURL: videoURL, recordingSession: recordingSession)
                     .frame(maxHeight: .infinity)
                     .layoutPriority(1)
                 TimelinePanel()
@@ -1735,7 +2267,8 @@ private struct VideoEditorStudioView: View {
                 backgroundBlur: $backgroundBlur,
                 loopCursor: $loopCursor,
                 cursorSize: $cursorSize,
-                cursorSmoothing: $cursorSmoothing
+                cursorSmoothing: $cursorSmoothing,
+                recordingSession: recordingSession
             )
             .frame(width: 320)
         }
@@ -1760,20 +2293,48 @@ private enum ScreenshotBackgroundMode: String, CaseIterable, Identifiable {
     }
 }
 
+private struct ScreenshotGradientPreset {
+    var colors: [NSColor]
+
+    var linearGradient: LinearGradient {
+        LinearGradient(
+            colors: colors.map { Color(nsColor: $0) },
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+}
+
 private struct ScreenshotEditorStudioView: View {
+    @EnvironmentObject private var model: AppModel
     var screenshotURL: URL?
     @State private var backgroundMode: ScreenshotBackgroundMode = .gradient
     @State private var gradientIndex = 0
     @State private var solidColor = Color(red: 0.055, green: 0.055, blue: 0.067)
     @State private var padding = 56.0
-    @State private var borderRadius = 10.0
-    @State private var shadow = 0.45
+    @State private var backgroundRoundness = 28.0
+    @State private var backgroundShadow = 0.0
+    @State private var imageRoundness = 10.0
+    @State private var imageShadow = 0.45
+    @State private var isExportDialogPresented = false
 
-    private let gradients: [LinearGradient] = [
-        LinearGradient(colors: [Color(red: 0.11, green: 0.17, blue: 0.25), Color(red: 0.03, green: 0.04, blue: 0.06)], startPoint: .topLeading, endPoint: .bottomTrailing),
-        LinearGradient(colors: [Color(red: 0.12, green: 0.10, blue: 0.19), Color(red: 0.02, green: 0.03, blue: 0.05)], startPoint: .topLeading, endPoint: .bottomTrailing),
-        LinearGradient(colors: [Color(red: 0.10, green: 0.18, blue: 0.14), Color(red: 0.03, green: 0.04, blue: 0.04)], startPoint: .topLeading, endPoint: .bottomTrailing),
-        LinearGradient(colors: [Color(red: 0.20, green: 0.18, blue: 0.14), Color(red: 0.05, green: 0.04, blue: 0.04)], startPoint: .topLeading, endPoint: .bottomTrailing)
+    private let gradients: [ScreenshotGradientPreset] = [
+        ScreenshotGradientPreset(colors: [
+            NSColor(red: 0.11, green: 0.17, blue: 0.25, alpha: 1),
+            NSColor(red: 0.03, green: 0.04, blue: 0.06, alpha: 1)
+        ]),
+        ScreenshotGradientPreset(colors: [
+            NSColor(red: 0.12, green: 0.10, blue: 0.19, alpha: 1),
+            NSColor(red: 0.02, green: 0.03, blue: 0.05, alpha: 1)
+        ]),
+        ScreenshotGradientPreset(colors: [
+            NSColor(red: 0.10, green: 0.18, blue: 0.14, alpha: 1),
+            NSColor(red: 0.03, green: 0.04, blue: 0.04, alpha: 1)
+        ]),
+        ScreenshotGradientPreset(colors: [
+            NSColor(red: 0.20, green: 0.18, blue: 0.14, alpha: 1),
+            NSColor(red: 0.05, green: 0.04, blue: 0.04, alpha: 1)
+        ])
     ]
 
     var body: some View {
@@ -1781,11 +2342,13 @@ private struct ScreenshotEditorStudioView: View {
             ScreenshotCanvas(
                 image: image,
                 backgroundMode: backgroundMode,
-                gradient: gradients[gradientIndex],
+                gradient: selectedGradient.linearGradient,
                 solidColor: solidColor,
                 padding: padding,
-                borderRadius: borderRadius,
-                shadow: shadow
+                backgroundRoundness: backgroundRoundness,
+                backgroundShadow: backgroundShadow,
+                imageRoundness: imageRoundness,
+                imageShadow: imageShadow
             )
             .layoutPriority(1)
 
@@ -1794,19 +2357,303 @@ private struct ScreenshotEditorStudioView: View {
                 gradientIndex: $gradientIndex,
                 solidColor: $solidColor,
                 padding: $padding,
-                borderRadius: $borderRadius,
-                shadow: $shadow,
-                gradients: gradients
+                backgroundRoundness: $backgroundRoundness,
+                backgroundShadow: $backgroundShadow,
+                imageRoundness: $imageRoundness,
+                imageShadow: $imageShadow,
+                gradients: gradients,
+                onExport: {
+                    isExportDialogPresented = true
+                }
             )
             .frame(width: 320)
         }
         .padding(16)
         .background(Color.studioMutedBackground)
+        .sheet(isPresented: $isExportDialogPresented) {
+            ScreenshotExportDialog(
+                onSave: saveComposedPNG,
+                onCopy: copyComposedPNG
+            )
+            .frame(width: 360)
+        }
+        .onChange(of: model.screenshotExportRequestID) { _, requestID in
+            guard requestID != nil, screenshotURL != nil else { return }
+            isExportDialogPresented = true
+        }
     }
 
     private var image: NSImage? {
         guard let url = screenshotURL else { return nil }
         return NSImage(contentsOf: url)
+    }
+
+    private var selectedGradient: ScreenshotGradientPreset {
+        guard gradients.indices.contains(gradientIndex) else {
+            return gradients[0]
+        }
+        return gradients[gradientIndex]
+    }
+
+    private func saveComposedPNG() {
+        guard let data = renderComposedPNG() else {
+            model.statusMessage = "Failed to render screenshot."
+            return
+        }
+
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.png]
+        panel.canCreateDirectories = true
+        panel.nameFieldStringValue = suggestedExportFileName
+
+        guard panel.runModal() == .OK, let targetURL = panel.url else {
+            return
+        }
+
+        do {
+            try data.write(to: targetURL, options: .atomic)
+            model.statusMessage = "Exported \(targetURL.lastPathComponent)"
+        } catch {
+            model.statusMessage = error.localizedDescription
+        }
+    }
+
+    private func copyComposedPNG() {
+        guard let data = renderComposedPNG() else {
+            model.statusMessage = "Failed to render screenshot."
+            return
+        }
+
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setData(data, forType: .png)
+        if let image = NSImage(data: data), let tiffData = image.tiffRepresentation {
+            pasteboard.setData(tiffData, forType: .tiff)
+        }
+        model.statusMessage = "Screenshot PNG copied"
+    }
+
+    private var suggestedExportFileName: String {
+        let baseName = screenshotURL?.deletingPathExtension().lastPathComponent ?? "screenshot"
+        return "\(baseName)-export.png"
+    }
+
+    private func renderComposedPNG() -> Data? {
+        guard let image,
+              let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+            return nil
+        }
+
+        let imageSize = CGSize(width: cgImage.width, height: cgImage.height)
+        let exportPadding = max(CGFloat(padding), 0)
+        let shadowMargin = max(CGFloat(backgroundShadow), CGFloat(imageShadow)) > 0
+            ? ceil(max(CGFloat(backgroundShadow), CGFloat(imageShadow)) * 56)
+            : 0
+        let backgroundRect = CGRect(
+            x: shadowMargin,
+            y: shadowMargin,
+            width: imageSize.width + exportPadding * 2,
+            height: imageSize.height + exportPadding * 2
+        )
+        let imageRect = CGRect(
+            x: backgroundRect.minX + exportPadding,
+            y: backgroundRect.minY + exportPadding,
+            width: imageSize.width,
+            height: imageSize.height
+        )
+        let width = max(Int(ceil(backgroundRect.width + shadowMargin * 2)), 1)
+        let height = max(Int(ceil(backgroundRect.height + shadowMargin * 2)), 1)
+
+        guard let context = CGContext(
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else {
+            return nil
+        }
+
+        context.interpolationQuality = .high
+        context.translateBy(x: 0, y: CGFloat(height))
+        context.scaleBy(x: 1, y: -1)
+
+        drawExportBackground(in: context, rect: backgroundRect)
+        drawExportImageShadow(in: context, rect: imageRect)
+
+        context.saveGState()
+        context.addPath(CGPath(
+            roundedRect: imageRect,
+            cornerWidth: CGFloat(imageRoundness),
+            cornerHeight: CGFloat(imageRoundness),
+            transform: nil
+        ))
+        context.clip()
+        context.draw(cgImage, in: imageRect)
+        context.restoreGState()
+
+        guard let exportedImage = context.makeImage() else {
+            return nil
+        }
+
+        let bitmap = NSBitmapImageRep(cgImage: exportedImage)
+        return bitmap.representation(using: .png, properties: [:])
+    }
+
+    private func drawExportBackground(in context: CGContext, rect: CGRect) {
+        let shouldDrawBackground = backgroundMode != .transparent
+
+        if backgroundShadow > 0, shouldDrawBackground {
+            context.saveGState()
+            context.setShadow(
+                offset: CGSize(width: 0, height: 14 * CGFloat(backgroundShadow)),
+                blur: 34 * CGFloat(backgroundShadow),
+                color: NSColor.black.withAlphaComponent(0.45 * backgroundShadow).cgColor
+            )
+            context.setFillColor(NSColor.black.withAlphaComponent(0.01).cgColor)
+            context.addPath(CGPath(
+                roundedRect: rect,
+                cornerWidth: CGFloat(backgroundRoundness),
+                cornerHeight: CGFloat(backgroundRoundness),
+                transform: nil
+            ))
+            context.fillPath()
+            context.restoreGState()
+        }
+
+        context.saveGState()
+        context.addPath(CGPath(
+            roundedRect: rect,
+            cornerWidth: CGFloat(backgroundRoundness),
+            cornerHeight: CGFloat(backgroundRoundness),
+            transform: nil
+        ))
+        context.clip()
+
+        switch backgroundMode {
+        case .gradient:
+            let colors = selectedGradient.colors.map { $0.cgColor } as CFArray
+            let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+            if let gradient = CGGradient(colorsSpace: colorSpace, colors: colors, locations: nil) {
+                context.drawLinearGradient(
+                    gradient,
+                    start: CGPoint(x: rect.minX, y: rect.minY),
+                    end: CGPoint(x: rect.maxX, y: rect.maxY),
+                    options: []
+                )
+            }
+        case .color:
+            context.setFillColor(nsColor(from: solidColor).cgColor)
+            context.fill(rect)
+        case .transparent:
+            break
+        }
+
+        context.restoreGState()
+
+        if shouldDrawBackground {
+            context.saveGState()
+            context.setStrokeColor(NSColor.white.withAlphaComponent(0.08).cgColor)
+            context.setLineWidth(1)
+            context.addPath(CGPath(
+                roundedRect: rect.insetBy(dx: 0.5, dy: 0.5),
+                cornerWidth: CGFloat(backgroundRoundness),
+                cornerHeight: CGFloat(backgroundRoundness),
+                transform: nil
+            ))
+            context.strokePath()
+            context.restoreGState()
+        }
+    }
+
+    private func drawExportImageShadow(in context: CGContext, rect: CGRect) {
+        guard imageShadow > 0 else { return }
+
+        context.saveGState()
+        context.setShadow(
+            offset: CGSize(width: 0, height: 18 * CGFloat(imageShadow)),
+            blur: 38 * CGFloat(imageShadow),
+            color: NSColor.black.withAlphaComponent(0.55 * imageShadow).cgColor
+        )
+        context.setFillColor(NSColor.black.withAlphaComponent(0.01).cgColor)
+        context.addPath(CGPath(
+            roundedRect: rect,
+            cornerWidth: CGFloat(imageRoundness),
+            cornerHeight: CGFloat(imageRoundness),
+            transform: nil
+        ))
+        context.fillPath()
+        context.restoreGState()
+    }
+
+    private func nsColor(from color: Color) -> NSColor {
+        NSColor(color).usingColorSpace(.sRGB) ?? NSColor.clear
+    }
+}
+
+private struct ScreenshotExportDialog: View {
+    @Environment(\.dismiss) private var dismiss
+    var onSave: () -> Void
+    var onCopy: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 10) {
+                Image(systemName: "square.and.arrow.up")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(Color.brand)
+                    .frame(width: 34, height: 34)
+                    .background(Color.brand.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Export PNG")
+                        .font(.system(size: 15, weight: .semibold))
+                    Text("Save or copy the composed screenshot.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            VStack(spacing: 8) {
+                Button {
+                    onSave()
+                    dismiss()
+                } label: {
+                    Label("Save", systemImage: "square.and.arrow.down")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .frame(height: 36)
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 12)
+                .background(Color.brand, in: RoundedRectangle(cornerRadius: 8))
+                .foregroundStyle(Color.white)
+
+                Button {
+                    onCopy()
+                    dismiss()
+                } label: {
+                    Label("Copy", systemImage: "doc.on.doc")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .frame(height: 36)
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 12)
+                .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+                .foregroundStyle(Color.primary)
+            }
+
+            Button("Cancel") {
+                dismiss()
+            }
+            .buttonStyle(.plain)
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity)
+        }
+        .padding(18)
+        .background(Color.studioPanel)
     }
 }
 
@@ -1816,8 +2663,10 @@ private struct ScreenshotCanvas: View {
     var gradient: LinearGradient
     var solidColor: Color
     var padding: Double
-    var borderRadius: Double
-    var shadow: Double
+    var backgroundRoundness: Double
+    var backgroundShadow: Double
+    var imageRoundness: Double
+    var imageShadow: Double
 
     var body: some View {
         ZStack {
@@ -1841,17 +2690,27 @@ private struct ScreenshotCanvas: View {
     private func screenshotStage(_ image: NSImage) -> some View {
         ZStack {
             stageBackground
+                .clipShape(RoundedRectangle(cornerRadius: backgroundRoundness, style: .continuous))
+                .shadow(
+                    color: Color.black.opacity(0.45 * backgroundShadow),
+                    radius: 34 * backgroundShadow,
+                    y: 14 * backgroundShadow
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: backgroundRoundness, style: .continuous)
+                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                }
+
             Image(nsImage: image)
                 .resizable()
                 .scaledToFit()
-                .clipShape(RoundedRectangle(cornerRadius: borderRadius))
-                .shadow(color: Color.black.opacity(0.55 * shadow), radius: 38 * shadow, y: 18 * shadow)
+                .clipShape(RoundedRectangle(cornerRadius: imageRoundness, style: .continuous))
+                .shadow(
+                    color: Color.black.opacity(0.55 * imageShadow),
+                    radius: 38 * imageShadow,
+                    y: 18 * imageShadow
+                )
                 .padding(CGFloat(padding))
-        }
-        .clipShape(RoundedRectangle(cornerRadius: borderRadius + min(padding / 2, 24)))
-        .overlay {
-            RoundedRectangle(cornerRadius: borderRadius + min(padding / 2, 24))
-                .stroke(Color.white.opacity(0.08), lineWidth: 1)
         }
     }
 
@@ -1874,9 +2733,12 @@ private struct ScreenshotSettingsPanel: View {
     @Binding var gradientIndex: Int
     @Binding var solidColor: Color
     @Binding var padding: Double
-    @Binding var borderRadius: Double
-    @Binding var shadow: Double
-    var gradients: [LinearGradient]
+    @Binding var backgroundRoundness: Double
+    @Binding var backgroundShadow: Double
+    @Binding var imageRoundness: Double
+    @Binding var imageShadow: Double
+    var gradients: [ScreenshotGradientPreset]
+    var onExport: () -> Void
 
     private let colorSwatches: [Color] = [
         Color(red: 0.055, green: 0.055, blue: 0.067),
@@ -1893,9 +2755,15 @@ private struct ScreenshotSettingsPanel: View {
                 VStack(alignment: .leading, spacing: 14) {
                     header
                     backgroundControls
-                    InspectorSlider(title: "Padding", valueText: "\(Int(padding))px", value: $padding, range: 0...140, step: 1)
-                    InspectorSlider(title: "Roundness", valueText: "\(Int(borderRadius))px", value: $borderRadius, range: 0...48, step: 1)
-                    InspectorSlider(title: "Shadow", valueText: "\(Int(shadow * 100))%", value: $shadow, range: 0...1, step: 0.01)
+                    InspectorGroup(title: "Background Layer", symbolName: "rectangle.fill") {
+                        InspectorSlider(title: "Padding", valueText: "\(Int(padding))px", value: $padding, range: 0...140, step: 1)
+                        InspectorSlider(title: "Roundness", valueText: "\(Int(backgroundRoundness))px", value: $backgroundRoundness, range: 0...64, step: 1)
+                        InspectorSlider(title: "Shadow", valueText: "\(Int(backgroundShadow * 100))%", value: $backgroundShadow, range: 0...1, step: 0.01)
+                    }
+                    InspectorGroup(title: "Image Layer", symbolName: "photo") {
+                        InspectorSlider(title: "Roundness", valueText: "\(Int(imageRoundness))px", value: $imageRoundness, range: 0...48, step: 1)
+                        InspectorSlider(title: "Shadow", valueText: "\(Int(imageShadow * 100))%", value: $imageShadow, range: 0...1, step: 0.01)
+                    }
                 }
                 .padding(14)
             }
@@ -1910,8 +2778,8 @@ private struct ScreenshotSettingsPanel: View {
                         model.reveal(url.path)
                     }
                 }
-                InspectorFooterButton(title: "Copy PNG", symbolName: "doc.on.doc") {
-                    model.copyScreenshotToClipboard()
+                InspectorFooterButton(title: "Export", symbolName: "square.and.arrow.up") {
+                    onExport()
                 }
             }
             .padding(12)
@@ -1936,7 +2804,7 @@ private struct ScreenshotSettingsPanel: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text("Screenshot Settings")
                     .font(.system(size: 14, weight: .semibold))
-                Text("Background, padding, corners, and shadow.")
+                Text("Separate background and image layer styling.")
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -1982,7 +2850,7 @@ private struct ScreenshotSettingsPanel: View {
                             gradientIndex = index
                         } label: {
                             RoundedRectangle(cornerRadius: 8)
-                                .fill(gradients[index])
+                                .fill(gradients[index].linearGradient)
                                 .frame(height: 44)
                                 .overlay {
                                     RoundedRectangle(cornerRadius: 8)
@@ -2038,15 +2906,19 @@ private struct Checkerboard: View {
 
 private struct VideoPreviewPanel: View {
     var videoURL: URL?
+    var recordingSession: RecordingSession?
     @StateObject private var playback = VideoPlaybackController()
 
     var body: some View {
         VStack(spacing: 0) {
             ZStack {
                 if videoURL != nil {
-                    PlaybackPreview(playback: playback)
-                        .aspectRatio(16.0 / 9.0, contentMode: .fit)
-                        .padding(16)
+                    ZStack(alignment: .bottomTrailing) {
+                        PlaybackPreview(playback: playback)
+                            .aspectRatio(16.0 / 9.0, contentMode: .fit)
+                        recordingSessionBadges
+                    }
+                    .padding(16)
                 } else {
                     EmptyEditorState()
                 }
@@ -2086,6 +2958,26 @@ private struct VideoPreviewPanel: View {
             playback.load(url: url)
         } else {
             playback.clear()
+        }
+    }
+
+    @ViewBuilder
+    private var recordingSessionBadges: some View {
+        if let recordingSession {
+            VStack(alignment: .trailing, spacing: 6) {
+                if recordingSession.facecamVideoPath != nil {
+                    Label("Facecam captured", systemImage: "video.fill")
+                }
+                if recordingSession.cursorTelemetryPath != nil {
+                    Label("Cursor telemetry", systemImage: "cursorarrow.motionlines")
+                }
+            }
+            .font(.system(size: 11, weight: .semibold))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(Color.black.opacity(0.58), in: RoundedRectangle(cornerRadius: 9))
+            .foregroundStyle(Color.white)
+            .padding(12)
         }
     }
 }
@@ -2525,6 +3417,7 @@ private struct SettingsInspector: View {
     @Binding var loopCursor: Bool
     @Binding var cursorSize: Double
     @Binding var cursorSmoothing: Double
+    var recordingSession: RecordingSession?
 
     @State private var activeTab: InspectorTab = .appearance
 
@@ -2653,14 +3546,40 @@ private struct SettingsInspector: View {
             InspectorSlider(title: "Size", valueText: String(format: "%.2fx", cursorSize), value: $cursorSize, range: 0.5...10, step: 0.05)
             InspectorSlider(title: "Smoothing", valueText: String(format: "%.2f", cursorSmoothing), value: $cursorSmoothing, range: 0...2, step: 0.01)
         case .camera:
-            InspectorSwitch(title: "Facecam", isOn: .constant(false))
+            InspectorSwitch(title: "Facecam", isOn: .constant(recordingSession?.facecamVideoPath != nil))
             InspectorSlider(title: "Facecam Size", valueText: "24%", value: .constant(24), range: 12...40, step: 1)
             InspectorSlider(title: "Border Width", valueText: "4px", value: .constant(4), range: 0...16, step: 1)
+            if let path = recordingSession?.facecamVideoPath {
+                SessionAssetRow(title: "Facecam File", path: path)
+            }
             PositionGrid()
         case .audio:
             InspectorSwitch(title: "Mute Preview", isOn: .constant(false))
             InspectorSlider(title: "Volume", valueText: "100%", value: .constant(1), range: 0...1, step: 0.01)
+            if let sourceName = recordingSession?.sourceName {
+                SessionAssetRow(title: "Source", path: sourceName)
+            }
         }
+    }
+}
+
+private struct SessionAssetRow: View {
+    var title: String
+    var path: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.secondary)
+            Text(path)
+                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .lineLimit(2)
+                .textSelection(.enabled)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 8))
     }
 }
 
@@ -2736,6 +3655,31 @@ private enum InspectorTab: CaseIterable, Identifiable {
         case .cursor: "cursorarrow"
         case .camera: "camera"
         case .audio: "speaker.wave.2"
+        }
+    }
+}
+
+private struct InspectorGroup<Content: View>: View {
+    var title: String
+    var symbolName: String
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label(title, systemImage: symbolName)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+
+            VStack(alignment: .leading, spacing: 10) {
+                content
+            }
+        }
+        .padding(10)
+        .background(Color.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.white.opacity(0.05))
         }
     }
 }

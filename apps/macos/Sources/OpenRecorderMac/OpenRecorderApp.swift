@@ -38,41 +38,12 @@ final class OpenRecorderAppDelegate: NSObject, NSApplicationDelegate {
 @main
 struct OpenRecorderApp: App {
     @NSApplicationDelegateAdaptor(OpenRecorderAppDelegate.self) private var appDelegate
-    @Environment(\.openWindow) private var openWindow
     @StateObject private var model = AppModel()
 
     var body: some Scene {
         MenuBarExtra {
-            Button("New Recording") {
-                beginCapture(.recording)
-            }
-            .disabled(!model.canStartNewCapture)
-
-            Button("New Screenshot") {
-                beginCapture(.screenshot)
-            }
-            .disabled(!model.canStartNewCapture)
-
-            Divider()
-
-            Button("Show Recorder") {
-                model.requestWindow(.showHUD)
-                openWindow(id: "hud")
-            }
-
-            if let lastEditorSession = model.lastEditorSession {
-                Button("Show Last Editor") {
-                    model.showEditor(for: lastEditorSession)
-                    openWindow(id: "editor", value: lastEditorSession)
-                }
-            }
-
-            Divider()
-
-            Button("Quit Open Recorder") {
-                NSApp.terminate(nil)
-            }
-            .keyboardShortcut("q", modifiers: [.command])
+            MenuBarControls()
+                .environmentObject(model)
         } label: {
             Image(nsImage: OpenRecorderMenuBarIcon.image)
                 .resizable()
@@ -168,9 +139,60 @@ struct OpenRecorderApp: App {
 
     private func beginCapture(_ mode: CaptureMode) {
         model.beginCapture(mode)
+    }
+}
+
+private struct MenuBarControls: View {
+    @Environment(\.openWindow) private var openWindow
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        if model.capture.isRecording {
+            Button("Stop Recording") {
+                model.stopRecording()
+            }
+        } else {
+            Button("New Recording") {
+                beginCapture(.recording)
+            }
+            .disabled(!model.canStartNewCapture)
+        }
+
+        Button("New Screenshot") {
+            beginCapture(.screenshot)
+        }
+        .disabled(!model.canStartNewCapture)
+
+        Divider()
+
+        Button("Show Recorder") {
+            model.requestWindow(.showHUD)
+            openWindow(id: "hud")
+            NSApp.activate(ignoringOtherApps: true)
+        }
+
+        if let lastEditorSession = model.lastEditorSession {
+            Button("Show Last Editor") {
+                model.showEditor(for: lastEditorSession)
+                openWindow(id: "editor", value: lastEditorSession)
+                NSApp.activate(ignoringOtherApps: true)
+            }
+        }
+
+        Divider()
+
+        Button("Quit Open Recorder") {
+            NSApp.terminate(nil)
+        }
+        .keyboardShortcut("q", modifiers: [.command])
+    }
+
+    private func beginCapture(_ mode: CaptureMode) {
         guard model.canStartNewCapture else { return }
+        model.beginCapture(mode)
         openWindow(id: "source-selector")
         openWindow(id: "hud")
+        NSApp.activate(ignoringOtherApps: true)
     }
 }
 

@@ -5,6 +5,33 @@ struct CaptureArea: Codable, Hashable {
     var y: Int
     var width: Int
     var height: Int
+    var displayID: UInt32? = nil
+}
+
+enum RecordingPhase: String, Codable, CaseIterable, Identifiable {
+    case idle
+    case starting
+    case recording
+    case stopping
+    case interrupted
+
+    var id: String { rawValue }
+}
+
+struct CaptureDeviceInfo: Identifiable, Codable, Hashable {
+    var id: String
+    var name: String
+    var isDefault: Bool
+}
+
+struct RecordingCaptureOptions: Codable, Hashable {
+    var includeMicrophone: Bool
+    var microphoneDeviceID: String?
+    var includeSystemAudio: Bool
+    var includeCamera: Bool
+    var cameraDeviceID: String?
+    var showCursor: Bool
+    var showClicks: Bool
 }
 
 enum CaptureSourceKind: String, Codable, CaseIterable, Identifiable {
@@ -84,17 +111,59 @@ struct EditorSession: Codable, Hashable, Identifiable {
     var kind: EditorMediaKind
     var path: String
     var title: String
+    var recordingSession: RecordingSession?
 
-    init(kind: EditorMediaKind, url: URL, title: String? = nil, id: UUID = UUID()) {
+    init(
+        kind: EditorMediaKind,
+        url: URL,
+        title: String? = nil,
+        id: UUID = UUID(),
+        recordingSession: RecordingSession? = nil
+    ) {
         self.id = id
         self.kind = kind
         self.path = url.path
         self.title = title ?? url.lastPathComponent
+        self.recordingSession = recordingSession
     }
 
     var url: URL {
         URL(fileURLWithPath: path)
     }
+}
+
+struct FacecamSettings: Codable, Hashable {
+    var enabled: Bool
+    var shape: String
+    var size: Double
+    var cornerRadius: Double
+    var borderWidth: Double
+    var borderColor: String
+    var margin: Double
+    var anchor: String
+}
+
+struct RecordingSession: Codable, Hashable {
+    var screenVideoPath: String
+    var facecamVideoPath: String?
+    var facecamOffsetMs: Int?
+    var facecamSettings: FacecamSettings?
+    var sourceName: String?
+    var showCursorOverlay: Bool
+    var cursorTelemetryPath: String?
+}
+
+func defaultFacecamSettings(enabled: Bool) -> FacecamSettings {
+    FacecamSettings(
+        enabled: enabled,
+        shape: "circle",
+        size: 22,
+        cornerRadius: 24,
+        borderWidth: 4,
+        borderColor: "#FFFFFF",
+        margin: 4,
+        anchor: "bottom-right"
+    )
 }
 
 enum AppSection: String, CaseIterable, Identifiable {
@@ -145,6 +214,84 @@ enum CaptureFlow: String, CaseIterable, Identifiable {
     case recording
 
     var id: String { rawValue }
+}
+
+enum HUDState: Hashable {
+    case idle
+    case choosingMode
+    case selectingSource(CaptureMode)
+    case ready(CaptureMode, CaptureSource)
+    case areaSelecting(CaptureMode)
+    case startingRecording(CaptureSource)
+    case recording(CaptureSource)
+    case stoppingRecording(CaptureSource)
+    case capturingScreenshot(CaptureSource)
+
+    var mode: CaptureMode? {
+        switch self {
+        case .idle, .choosingMode:
+            nil
+        case .selectingSource(let mode),
+             .areaSelecting(let mode):
+            mode
+        case .ready(let mode, _):
+            mode
+        case .startingRecording,
+             .recording,
+             .stoppingRecording:
+            .recording
+        case .capturingScreenshot:
+            .screenshot
+        }
+    }
+
+    var source: CaptureSource? {
+        switch self {
+        case .ready(_, let source),
+             .startingRecording(let source),
+             .recording(let source),
+             .stoppingRecording(let source),
+             .capturingScreenshot(let source):
+            source
+        case .idle,
+             .choosingMode,
+             .selectingSource,
+             .areaSelecting:
+            nil
+        }
+    }
+
+    var isCaptureOccupied: Bool {
+        switch self {
+        case .idle, .choosingMode:
+            false
+        case .selectingSource,
+             .ready,
+             .areaSelecting,
+             .startingRecording,
+             .recording,
+             .stoppingRecording,
+             .capturingScreenshot:
+            true
+        }
+    }
+
+    var captureFlow: CaptureFlow {
+        switch self {
+        case .idle, .choosingMode:
+            .choice
+        case .selectingSource(let mode),
+             .ready(let mode, _),
+             .areaSelecting(let mode):
+            mode == .screenshot ? .screenshotSetup : .recordingSetup
+        case .startingRecording,
+             .recording,
+             .stoppingRecording:
+            .recording
+        case .capturingScreenshot:
+            .screenshotSetup
+        }
+    }
 }
 
 enum NativeWindowCommandAction: Equatable {

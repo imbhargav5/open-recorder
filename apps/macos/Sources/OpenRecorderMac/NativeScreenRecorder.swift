@@ -1,4 +1,5 @@
 @preconcurrency import AVFoundation
+import AppKit
 import CoreGraphics
 import Foundation
 @preconcurrency import ScreenCaptureKit
@@ -32,9 +33,7 @@ final class NativeScreenRecorder: NSObject {
     func start(
         source: CaptureSource,
         outputURL: URL,
-        includeMicrophone: Bool,
-        showCursor: Bool,
-        showClicks: Bool
+        options: RecordingCaptureOptions
     ) async throws {
         let content = try await shareableContent()
         let filterAndSize = try makeFilter(for: source, from: content)
@@ -42,14 +41,18 @@ final class NativeScreenRecorder: NSObject {
         let configuration = SCStreamConfiguration()
         configuration.width = filterAndSize.width
         configuration.height = filterAndSize.height
-        configuration.minimumFrameInterval = CMTime(value: 1, timescale: 30)
-        configuration.queueDepth = 6
-        configuration.showsCursor = showCursor
-        configuration.capturesAudio = false
-        configuration.captureMicrophone = includeMicrophone
+        configuration.minimumFrameInterval = CMTime(value: 1, timescale: 60)
+        configuration.queueDepth = 8
+        configuration.showsCursor = options.showCursor
+        configuration.capturesAudio = options.includeSystemAudio
+        configuration.captureMicrophone = options.includeMicrophone
+        configuration.microphoneCaptureDeviceID = options.microphoneDeviceID
         configuration.shouldBeOpaque = true
         configuration.captureDynamicRange = .SDR
-        configuration.showMouseClicks = showClicks
+        configuration.showMouseClicks = options.showClicks
+        if let sourceRect = filterAndSize.sourceRect {
+            configuration.sourceRect = sourceRect
+        }
 
         let outputConfiguration = SCRecordingOutputConfiguration()
         outputConfiguration.outputURL = outputURL
@@ -110,7 +113,7 @@ final class NativeScreenRecorder: NSObject {
     private func makeFilter(
         for source: CaptureSource,
         from content: SCShareableContent
-    ) throws -> (filter: SCContentFilter, width: Int, height: Int) {
+    ) throws -> (filter: SCContentFilter, width: Int, height: Int, sourceRect: CGRect?) {
         switch source.kind {
         case .display:
             guard let displayID = source.displayID,
@@ -120,7 +123,8 @@ final class NativeScreenRecorder: NSObject {
             return (
                 SCContentFilter(display: display, excludingWindows: []),
                 max(display.width, 640),
-                max(display.height, 360)
+                max(display.height, 360),
+                nil
             )
 
         case .window:
@@ -133,12 +137,57 @@ final class NativeScreenRecorder: NSObject {
             return (
                 SCContentFilter(desktopIndependentWindow: window),
                 width,
-                height
+                height,
+                nil
             )
 
         case .area:
-            throw NativeScreenRecorderError.unsupportedSource
+            guard let area = source.area else {
+                throw NativeScreenRecorderError.unsupportedSource
+            }
+            let displayID = area.displayID ?? source.displayID
+            let display = displayID.flatMap { id in
+                content.displays.first(where: { $0.displayID == id })
+            } ?? content.displays.first
+            guard let display else {
+                throw NativeScreenRecorderError.missingDisplay
+            }
+
+            let sourceRect = sourceRect(for: area, display: display)
+            return (
+                SCContentFilter(display: display, excludingWindows: []),
+                max(Int(sourceRect.width.rounded()), 2),
+                max(Int(sourceRect.height.rounded()), 2),
+                sourceRect
+            )
         }
+    }
+
+    private func sourceRect(for area: CaptureArea, display: SCDisplay) -> CGRect {
+        guard let screen = NSScreen.screen(displayID: display.displayID) else {
+            return CGRect(
+                x: area.x,
+                y: area.y,
+                width: max(area.width, 1),
+                height: max(area.height, 1)
+            )
+        }
+
+        let frame = screen.frame
+        let scaleX = CGFloat(display.width) / max(frame.width, 1)
+        let scaleY = CGFloat(display.height) / max(frame.height, 1)
+        let localX = CGFloat(area.x) - frame.minX
+        let localBottomY = CGFloat(area.y) - frame.minY
+        let width = CGFloat(area.width) * scaleX
+        let height = CGFloat(area.height) * scaleY
+        let topY = (frame.height - localBottomY - CGFloat(area.height)) * scaleY
+
+        return CGRect(
+            x: max(0, localX * scaleX),
+            y: max(0, topY),
+            width: max(width, 2),
+            height: max(height, 2)
+        )
     }
 
     private func startCapture(_ stream: SCStream) async throws {

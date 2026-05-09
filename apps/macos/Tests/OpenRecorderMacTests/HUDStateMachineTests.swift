@@ -1,0 +1,174 @@
+import XCTest
+@testable import OpenRecorderMac
+
+@MainActor
+final class HUDStateMachineTests: XCTestCase {
+    func testIdleAndChoosingModeDoNotOccupyCaptureSlot() {
+        for state in [HUDState.idle, .choosingMode] {
+            XCTAssertNil(state.mode)
+            XCTAssertNil(state.source)
+            XCTAssertFalse(state.isCaptureOccupied)
+            XCTAssertEqual(state.captureFlow, .choice)
+        }
+    }
+
+    func testSourceSelectionStatesDeriveModeAndCaptureFlow() {
+        let source = makeSource()
+
+        XCTAssertEqual(HUDState.selectingSource(.recording).mode, .recording)
+        XCTAssertEqual(HUDState.selectingSource(.recording).captureFlow, .recordingSetup)
+        XCTAssertTrue(HUDState.selectingSource(.recording).isCaptureOccupied)
+
+        XCTAssertEqual(HUDState.selectingSource(.screenshot).mode, .screenshot)
+        XCTAssertEqual(HUDState.selectingSource(.screenshot).captureFlow, .screenshotSetup)
+        XCTAssertTrue(HUDState.selectingSource(.screenshot).isCaptureOccupied)
+
+        XCTAssertEqual(HUDState.ready(.recording, source).source, source)
+        XCTAssertEqual(HUDState.ready(.recording, source).mode, .recording)
+        XCTAssertEqual(HUDState.ready(.recording, source).captureFlow, .recordingSetup)
+
+        XCTAssertEqual(HUDState.ready(.screenshot, source).source, source)
+        XCTAssertEqual(HUDState.ready(.screenshot, source).mode, .screenshot)
+        XCTAssertEqual(HUDState.ready(.screenshot, source).captureFlow, .screenshotSetup)
+    }
+
+    func testAreaSelectionPreservesCaptureMode() {
+        XCTAssertEqual(HUDState.areaSelecting(.recording).mode, .recording)
+        XCTAssertEqual(HUDState.areaSelecting(.recording).captureFlow, .recordingSetup)
+        XCTAssertTrue(HUDState.areaSelecting(.recording).isCaptureOccupied)
+
+        XCTAssertEqual(HUDState.areaSelecting(.screenshot).mode, .screenshot)
+        XCTAssertEqual(HUDState.areaSelecting(.screenshot).captureFlow, .screenshotSetup)
+        XCTAssertTrue(HUDState.areaSelecting(.screenshot).isCaptureOccupied)
+    }
+
+    func testRecordingStatesExposeRecordingModeSourceAndFlow() {
+        let source = makeSource()
+        let states: [HUDState] = [
+            .startingRecording(source),
+            .recording(source),
+            .stoppingRecording(source)
+        ]
+
+        for state in states {
+            XCTAssertEqual(state.mode, .recording)
+            XCTAssertEqual(state.source, source)
+            XCTAssertEqual(state.captureFlow, .recording)
+            XCTAssertTrue(state.isCaptureOccupied)
+        }
+    }
+
+    func testScreenshotCaptureStateExposesScreenshotModeSourceAndFlow() {
+        let source = makeSource()
+        let state = HUDState.capturingScreenshot(source)
+
+        XCTAssertEqual(state.mode, .screenshot)
+        XCTAssertEqual(state.source, source)
+        XCTAssertEqual(state.captureFlow, .screenshotSetup)
+        XCTAssertTrue(state.isCaptureOccupied)
+    }
+
+    func testBeginCaptureWithExistingSourceMovesDirectlyToReadyState() {
+        let model = AppModel()
+        let source = makeSource()
+        model.selectedSource = source
+
+        model.beginCapture(.recording)
+
+        XCTAssertEqual(model.hudState, .ready(.recording, source))
+        XCTAssertEqual(model.captureFlow, .recordingSetup)
+        XCTAssertFalse(model.canStartNewCapture)
+        XCTAssertEqual(model.windowCommand?.action, .showSourceSelector)
+    }
+
+    func testDuplicateCaptureRequestDuringReadyStatePreservesExistingModeAndFocusesSelector() {
+        let model = AppModel()
+        let source = makeSource()
+        model.hudState = .ready(.recording, source)
+        model.captureMode = .recording
+        model.selectedSource = source
+
+        model.beginCapture(.screenshot)
+
+        XCTAssertEqual(model.hudState, .ready(.recording, source))
+        XCTAssertEqual(model.captureMode, .recording)
+        XCTAssertEqual(model.statusMessage, "Finish or cancel the current capture before starting another.")
+        XCTAssertEqual(model.windowCommand?.action, .showSourceSelector)
+    }
+
+    func testDuplicateCaptureRequestDuringActiveRecordingStateFocusesHUD() {
+        let model = AppModel()
+        let source = makeSource()
+        model.hudState = .recording(source)
+        model.captureMode = .recording
+        model.selectedSource = source
+
+        model.beginCapture(.screenshot)
+
+        XCTAssertEqual(model.hudState, .recording(source))
+        XCTAssertEqual(model.windowCommand?.action, .showHUD)
+    }
+
+    func testAreaSelectionBlocksNewCapturesUntilCanceled() {
+        let model = AppModel()
+
+        model.beginCapture(.screenshot)
+        model.requestInteractiveAreaSelection()
+
+        XCTAssertEqual(model.hudState, .areaSelecting(.screenshot))
+        XCTAssertTrue(model.isAreaSelectionActive)
+        XCTAssertFalse(model.canStartNewCapture)
+
+        model.beginCapture(.recording)
+
+        XCTAssertEqual(model.hudState, .areaSelecting(.screenshot))
+        XCTAssertEqual(model.captureMode, .screenshot)
+        XCTAssertEqual(model.windowCommand?.action, .showSourceSelector)
+
+        model.cancelCapture()
+
+        XCTAssertEqual(model.hudState, .choosingMode)
+        XCTAssertFalse(model.isAreaSelectionActive)
+        XCTAssertTrue(model.canStartNewCapture)
+        XCTAssertEqual(model.windowCommand?.action, .closeAreaSelector)
+    }
+
+    func testEditorHandoffReleasesRecordingAndScreenshotStates() {
+        let source = makeSource()
+        let videoSession = EditorSession(kind: .video, url: URL(fileURLWithPath: "/tmp/example-recording.mp4"))
+        let screenshotSession = EditorSession(kind: .screenshot, url: URL(fileURLWithPath: "/tmp/example-screenshot.png"))
+
+        let recordingModel = AppModel()
+        recordingModel.hudState = .stoppingRecording(source)
+        recordingModel.showEditor(for: videoSession)
+
+        XCTAssertEqual(recordingModel.hudState, .choosingMode)
+        XCTAssertTrue(recordingModel.canStartNewCapture)
+        XCTAssertEqual(recordingModel.windowCommand?.action, .showStudio)
+
+        let screenshotModel = AppModel()
+        screenshotModel.hudState = .capturingScreenshot(source)
+        screenshotModel.showEditor(for: screenshotSession)
+
+        XCTAssertEqual(screenshotModel.hudState, .choosingMode)
+        XCTAssertTrue(screenshotModel.canStartNewCapture)
+        XCTAssertEqual(screenshotModel.windowCommand?.action, .showStudio)
+    }
+
+    private func makeSource(
+        id: String = "display:1",
+        kind: CaptureSourceKind = .display
+    ) -> CaptureSource {
+        CaptureSource(
+            id: id,
+            kind: kind,
+            name: "Display 1",
+            subtitle: "Built-in",
+            displayIndex: 1,
+            displayID: nil,
+            windowID: nil,
+            area: nil,
+            thumbnailData: nil
+        )
+    }
+}
