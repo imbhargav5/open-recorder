@@ -49,6 +49,9 @@ final class AppModel: ObservableObject {
     private var activeFacecamStartedAt: Date?
     private var activeFacecamURL: URL?
     private var displayFlashWindows: [NSWindow] = []
+    private var recordingStartTask: Task<Void, Never>?
+    private var stopAfterRecordingStart = false
+    private let countdownOverlayController = RecordingCountdownOverlayController()
 
     let service = RustServiceClient()
     let capture = CaptureController()
@@ -277,7 +280,7 @@ final class AppModel: ObservableObject {
         switch hudState.phase {
         case .selectingSource, .ready, .areaSelecting:
             requestWindow(.showSourceSelector)
-        case .startingRecording, .recording, .stoppingRecording, .capturingScreenshot:
+        case .countingDownRecording, .startingRecording, .recording, .stoppingRecording, .capturingScreenshot:
             showHUD()
         case .idle, .choosingMode:
             showHUD()
@@ -286,6 +289,29 @@ final class AppModel: ObservableObject {
 
     private func setHUDPhase(_ phase: HUDPhase) {
         hudState = hudState.withPhase(phase)
+    }
+
+    func toggleRecordingShortcut() {
+        switch hudState.phase {
+        case .ready(.recording, _):
+            startRecording()
+        case .countingDownRecording:
+            cancelCountdownRecording()
+        case .startingRecording:
+            stopAfterRecordingStart = true
+            statusMessage = "Recording will stop after it starts."
+        case .recording:
+            stopRecording()
+        case .stoppingRecording:
+            return
+        case .idle,
+             .choosingMode,
+             .selectingSource,
+             .ready,
+             .areaSelecting,
+             .capturingScreenshot:
+            return
+        }
     }
 
     func startRecording() {
@@ -305,74 +331,122 @@ final class AppModel: ObservableObject {
                 as: PreparedFile.self
             )
             let outputURL = URL(fileURLWithPath: prepared.path)
-            statusMessage = "Starting recording..."
-            recordingPhase = .starting
-            setHUDPhase(.startingRecording(selectedSource))
-            Task {
-                do {
-                    refreshCaptureDevices()
-                    let options = currentCaptureOptions
-                    guard await preparePermissions(for: options) else {
-                        recordingPhase = .idle
-                        setHUDPhase(.ready(.recording, selectedSource))
-                        return
-                    }
-
-                    cursorTelemetryRecorder.start(for: selectedSource)
-                    try await capture.startRecording(
-                        source: selectedSource,
-                        outputURL: outputURL,
-                        options: options
-                    )
-                    activeScreenStartedAt = Date()
-                    activeFacecamURL = nil
-                    activeFacecamStartedAt = nil
-
-                    if options.includeCamera {
-                        do {
-                            let facecamURL = facecamOutputURL(for: outputURL)
-                            if FileManager.default.fileExists(atPath: facecamURL.path) {
-                                try FileManager.default.removeItem(at: facecamURL)
-                            }
-                            activeFacecamStartedAt = try await facecamRecorder.start(
-                                outputURL: facecamURL,
-                                cameraDeviceID: options.cameraDeviceID
-                            )
-                            activeFacecamURL = facecamURL
-                        } catch {
-                            includeCamera = false
-                            activeFacecamURL = nil
-                            activeFacecamStartedAt = nil
-                            statusMessage = "Recording without facecam: \(error.localizedDescription)"
-                        }
-                    }
-
-                    currentVideoURL = outputURL
-                    currentScreenshotURL = nil
-                    requestWindow(.closeSourceSelector)
-                    recordingPhase = .recording
-                    setHUDPhase(.recording(selectedSource))
-                    if !statusMessage.hasPrefix("Recording without facecam") {
-                        statusMessage = "Recording \(selectedSource.name)"
-                    }
-                } catch {
-                    facecamRecorder.cancel()
-                    _ = cursorTelemetryRecorder.stop(videoURL: nil)
-                    activeScreenStartedAt = nil
-                    activeFacecamStartedAt = nil
-                    activeFacecamURL = nil
-                    recordingPhase = .interrupted
-                    statusMessage = error.localizedDescription
-                    recordingPhase = .idle
-                    setHUDPhase(.ready(.recording, selectedSource))
-                }
+            statusMessage = "Recording starts in 3..."
+            recordingPhase = .countingDown
+            hudState = HUDState(phase: .countingDownRecording(selectedSource), presentation: .hidden)
+            requestWindow(.hideRecordingSetup)
+            stopAfterRecordingStart = false
+            recordingStartTask?.cancel()
+            recordingStartTask = Task { [weak self] in
+                await self?.runRecordingStartFlow(source: selectedSource, outputURL: outputURL)
             }
         } catch {
             statusMessage = error.localizedDescription
         }
     }
 
+    private func runRecordingStartFlow(source selectedSource: CaptureSource, outputURL: URL) async {
+        do {
+            refreshCaptureDevices()
+            let options = currentCaptureOptions
+            guard await preparePermissions(for: options) else {
+                restoreRecordingSetup(source: selectedSource)
+                return
+            }
+
+            try await countdownOverlayController.run(for: selectedSource)
+            guard !Task.isCancelled else { return }
+
+            statusMessage = "Starting recording..."
+            recordingPhase = .starting
+            setHUDPhase(.startingRecording(selectedSource))
+
+            cursorTelemetryRecorder.start(for: selectedSource)
+            try await capture.startRecording(
+                source: selectedSource,
+                outputURL: outputURL,
+                options: options
+            )
+            activeScreenStartedAt = Date()
+            activeFacecamURL = nil
+            activeFacecamStartedAt = nil
+
+            if options.includeCamera {
+                do {
+                    let facecamURL = facecamOutputURL(for: outputURL)
+                    if FileManager.default.fileExists(atPath: facecamURL.path) {
+                        try FileManager.default.removeItem(at: facecamURL)
+                    }
+                    activeFacecamStartedAt = try await facecamRecorder.start(
+                        outputURL: facecamURL,
+                        cameraDeviceID: options.cameraDeviceID
+                    )
+                    activeFacecamURL = facecamURL
+                } catch {
+                    includeCamera = false
+                    activeFacecamURL = nil
+                    activeFacecamStartedAt = nil
+                    statusMessage = "Recording without facecam: \(error.localizedDescription)"
+                }
+            }
+
+            currentVideoURL = outputURL
+            currentScreenshotURL = nil
+            recordingPhase = .recording
+            setHUDPhase(.recording(selectedSource))
+            recordingStartTask = nil
+            if !statusMessage.hasPrefix("Recording without facecam") {
+                statusMessage = "Recording \(selectedSource.name)"
+            }
+            if stopAfterRecordingStart {
+                stopAfterRecordingStart = false
+                stopRecording()
+            }
+        } catch is CancellationError {
+            countdownOverlayController.dismiss()
+            if recordingPhase == .countingDown {
+                restoreRecordingSetup(source: selectedSource, message: "Recording canceled.")
+            }
+        } catch {
+            facecamRecorder.cancel()
+            _ = cursorTelemetryRecorder.stop(videoURL: nil)
+            activeScreenStartedAt = nil
+            activeFacecamStartedAt = nil
+            activeFacecamURL = nil
+            recordingPhase = .interrupted
+            restoreRecordingSetup(source: selectedSource, message: error.localizedDescription)
+        }
+    }
+
+    private func cancelCountdownRecording() {
+        guard case .countingDownRecording(let source) = hudState.phase else { return }
+        recordingStartTask?.cancel()
+        recordingStartTask = nil
+        stopAfterRecordingStart = false
+        countdownOverlayController.dismiss()
+        restoreRecordingSetup(source: source, message: "Recording canceled.")
+    }
+
+    private func restoreRecordingSetup(source: CaptureSource, message: String? = nil) {
+        recordingPhase = .idle
+        stopAfterRecordingStart = false
+        recordingStartTask = nil
+        countdownOverlayController.dismiss()
+        hudState = HUDState(phase: .ready(.recording, source), presentation: .visible)
+        statusMessage = message ?? statusMessage
+        requestWindow(.showRecordingSetup)
+    }
+
     func stopRecording() {
+        if recordingPhase == .countingDown {
+            cancelCountdownRecording()
+            return
+        }
+        if recordingPhase == .starting {
+            stopAfterRecordingStart = true
+            statusMessage = "Recording will stop after it starts."
+            return
+        }
         guard recordingPhase == .recording || capture.isRecording else {
             return
         }
@@ -795,6 +869,26 @@ final class AppModel: ObservableObject {
         includeCamera = true
         selectedCameraDeviceID = deviceID
         statusMessage = "Camera set to \(selectedCameraDeviceName)"
+        requestWindow(.closeCameraSelector)
+    }
+
+    func selectNoMicrophoneInput() {
+        disableMicrophone()
+        requestWindow(.closeMicrophoneSelector)
+    }
+
+    func selectNoCameraInput() {
+        disableCamera()
+        requestWindow(.closeCameraSelector)
+    }
+
+    func selectNoMicrophoneInput() {
+        disableMicrophone()
+        requestWindow(.closeMicrophoneSelector)
+    }
+
+    func selectNoCameraInput() {
+        disableCamera()
         requestWindow(.closeCameraSelector)
     }
 

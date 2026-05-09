@@ -43,7 +43,8 @@ struct CaptureHUD: View {
             HUDPrimaryButton(
                 title: model.capture.isRecording ? "Stop" : startStopTitle,
                 symbolName: model.capture.isRecording ? "stop.fill" : "record.circle",
-                isDestructive: model.capture.isRecording
+                isDestructive: model.capture.isRecording,
+                shortcutText: "⌘R"
             ) {
                 toggleRecording()
             }
@@ -63,7 +64,8 @@ struct CaptureHUD: View {
             HUDPrimaryButton(
                 title: model.capture.isRecording ? "Stop" : startStopTitle,
                 symbolName: model.capture.isRecording ? "stop.fill" : "record.circle",
-                isDestructive: model.capture.isRecording
+                isDestructive: model.capture.isRecording,
+                shortcutText: "⌘R"
             ) {
                 toggleRecording()
             }
@@ -79,7 +81,7 @@ struct CaptureHUD: View {
             narrowCaptureOptionsMenu
 
             HUDPrimaryIconButton(
-                title: model.capture.isRecording ? "Stop" : startStopTitle,
+                title: recordingShortcutHelpTitle,
                 symbolName: model.capture.isRecording ? "stop.fill" : "record.circle",
                 isDestructive: model.capture.isRecording
             ) {
@@ -371,8 +373,12 @@ struct CaptureHUD: View {
         model.recordingPhase == .starting ? "Starting" : "Record"
     }
 
+    private var recordingShortcutHelpTitle: String {
+        "\(model.capture.isRecording ? "Stop" : startStopTitle) (⌘R)"
+    }
+
     private func toggleRecording() {
-        model.capture.isRecording ? model.stopRecording() : model.startRecording()
+        model.toggleRecordingShortcut()
     }
 
     private var sourceChipTone: FlowTone {

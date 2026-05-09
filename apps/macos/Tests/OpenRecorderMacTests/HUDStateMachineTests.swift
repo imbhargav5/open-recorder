@@ -59,6 +59,7 @@ final class HUDStateMachineTests: XCTestCase {
     func testRecordingStatesExposeRecordingModeSourceAndFlow() {
         let source = makeSource()
         let states: [HUDState] = [
+            .countingDownRecording(source),
             .startingRecording(source),
             .recording(source),
             .stoppingRecording(source)
@@ -70,6 +71,17 @@ final class HUDStateMachineTests: XCTestCase {
             XCTAssertEqual(state.captureFlow, .recording)
             XCTAssertTrue(state.isCaptureOccupied)
         }
+    }
+
+    func testCountdownStateCanBeHiddenWithoutReleasingCaptureSlot() {
+        let source = makeSource()
+        let state = HUDState.countingDownRecording(source).withPresentation(.hidden)
+
+        XCTAssertEqual(state.mode, .recording)
+        XCTAssertEqual(state.source, source)
+        XCTAssertEqual(state.captureFlow, .recording)
+        XCTAssertTrue(state.isCaptureOccupied)
+        XCTAssertEqual(state.presentation, .hidden)
     }
 
     func testScreenshotCaptureStateExposesScreenshotModeSourceAndFlow() {

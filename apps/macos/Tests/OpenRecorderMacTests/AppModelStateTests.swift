@@ -71,6 +71,9 @@ final class AppModelStateTests: XCTestCase {
         model.recordingPhase = .starting
         XCTAssertFalse(model.canStartNewCapture)
 
+        model.recordingPhase = .countingDown
+        XCTAssertFalse(model.canStartNewCapture)
+
         model.recordingPhase = .stopping
         XCTAssertFalse(model.canStartNewCapture)
 
@@ -93,6 +96,7 @@ final class AppModelStateTests: XCTestCase {
         let occupiedStates: [HUDState] = [
             .ready(.recording, source),
             .areaSelecting(.screenshot),
+            .countingDownRecording(source),
             .startingRecording(source),
             .recording(source),
             .stoppingRecording(source),
@@ -284,6 +288,36 @@ final class AppModelStateTests: XCTestCase {
         XCTAssertEqual(model.selectedCameraDeviceID, "cam-1")
     }
 
+    func testSelectingNoMicrophoneInputDisablesMicrophoneAndClosesSelector() {
+        let model = AppModel()
+        model.microphoneDevices = [
+            CaptureDeviceInfo(id: "mic-1", name: "Studio Mic", isDefault: false)
+        ]
+        model.selectMicrophoneDevice("mic-1")
+
+        model.selectNoMicrophoneInput()
+
+        XCTAssertFalse(model.includeMicrophone)
+        XCTAssertEqual(model.selectedMicrophoneDeviceID, "mic-1")
+        XCTAssertEqual(model.statusMessage, "Microphone off")
+        XCTAssertEqual(model.windowCommand?.action, .closeMicrophoneSelector)
+    }
+
+    func testSelectingNoCameraInputDisablesCameraAndClosesSelector() {
+        let model = AppModel()
+        model.cameraDevices = [
+            CaptureDeviceInfo(id: "cam-1", name: "Desk Camera", isDefault: false)
+        ]
+        model.selectCameraDevice("cam-1")
+
+        model.selectNoCameraInput()
+
+        XCTAssertFalse(model.includeCamera)
+        XCTAssertEqual(model.selectedCameraDeviceID, "cam-1")
+        XCTAssertEqual(model.statusMessage, "Camera off")
+        XCTAssertEqual(model.windowCommand?.action, .closeCameraSelector)
+    }
+
     func testWindowCommandIsConsumedOnce() {
         let model = AppModel()
         model.requestWindow(.showStudio)
@@ -305,5 +339,54 @@ final class AppModelStateTests: XCTestCase {
         XCTAssertEqual(model.hudState.presentation, .hidden)
         XCTAssertEqual(firstCommand?.action, .hideHUD)
         XCTAssertNil(secondCommand)
+    }
+
+    func testRecordingShortcutCancelsCountdownAndRestoresReadyHUD() {
+        let model = AppModel()
+        let source = CaptureSource(
+            id: "display:1",
+            kind: .display,
+            name: "Display 1",
+            subtitle: "Built-in",
+            displayIndex: 1,
+            displayID: nil,
+            windowID: nil,
+            area: nil,
+            thumbnailData: nil
+        )
+        model.selectedSource = source
+        model.recordingPhase = .countingDown
+        model.hudState = HUDState(phase: .countingDownRecording(source), presentation: .hidden)
+
+        model.toggleRecordingShortcut()
+
+        XCTAssertEqual(model.recordingPhase, .idle)
+        XCTAssertEqual(model.hudState, .ready(.recording, source))
+        XCTAssertEqual(model.hudState.presentation, .visible)
+        XCTAssertEqual(model.statusMessage, "Recording canceled.")
+        XCTAssertEqual(model.windowCommand?.action, .showRecordingSetup)
+    }
+
+    func testRecordingShortcutDuringStartingQueuesStop() {
+        let model = AppModel()
+        let source = CaptureSource(
+            id: "display:1",
+            kind: .display,
+            name: "Display 1",
+            subtitle: "Built-in",
+            displayIndex: 1,
+            displayID: nil,
+            windowID: nil,
+            area: nil,
+            thumbnailData: nil
+        )
+        model.recordingPhase = .starting
+        model.hudState = .startingRecording(source)
+
+        model.toggleRecordingShortcut()
+
+        XCTAssertEqual(model.recordingPhase, .starting)
+        XCTAssertEqual(model.hudState, .startingRecording(source))
+        XCTAssertEqual(model.statusMessage, "Recording will stop after it starts.")
     }
 }

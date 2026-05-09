@@ -307,6 +307,13 @@ struct WindowCommandBridge: View {
             openWindow(id: "hud")
         case .hideHUD:
             dismissWindow(id: "hud")
+        case .showRecordingSetup:
+            openWindow(id: "hud")
+            openWindow(id: "source-selector")
+            NSApp.activate(ignoringOtherApps: true)
+        case .hideRecordingSetup:
+            dismissWindow(id: "hud")
+            dismissWindow(id: "source-selector")
         case .showSourceSelector:
             openWindow(id: "source-selector")
         case .showMicrophoneSelector:

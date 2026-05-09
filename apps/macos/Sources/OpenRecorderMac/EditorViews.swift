@@ -50,28 +50,19 @@ struct VideoEditorStudioView: View {
     @State private var cursorSize = 1.0
     @State private var cursorSmoothing = 0.40
     @State private var isExportDialogPresented = false
+    @AppStorage("editor.video.sidebarWidth") private var sidebarWidth = 320.0
+    @AppStorage("editor.video.timelineHeight") private var timelineHeight = 320.0
 
     var body: some View {
-        HStack(spacing: 16) {
-            VStack(spacing: 12) {
-                VideoPreviewPanel(
-                    videoURL: videoURL,
-                    recordingSession: recordingSession,
-                    playback: playback,
-                    timelineEdits: timelineEdits,
-                    background: background,
-                    padding: padding,
-                    borderRadius: borderRadius,
-                    shadow: shadow,
-                    backgroundBlur: backgroundBlur
-                )
-                    .frame(maxHeight: .infinity)
-                    .layoutPriority(1)
-                TimelinePanel(videoURL: videoURL, playback: playback, edits: timelineEdits)
-                    .frame(height: 320)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-
+        StudioSplitPane(
+            axis: .horizontal,
+            secondarySize: $sidebarWidth,
+            minPrimarySize: 520,
+            minSecondarySize: 280,
+            maxSecondarySize: 440
+        ) {
+            editorColumn
+        } secondary: {
             SettingsInspector(
                 borderRadius: $borderRadius,
                 padding: $padding,
@@ -83,7 +74,7 @@ struct VideoEditorStudioView: View {
                 cursorSmoothing: $cursorSmoothing,
                 recordingSession: recordingSession
             )
-            .frame(width: 320)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .padding(16)
         .background(Color.studioMutedBackground)
@@ -136,6 +127,33 @@ struct VideoEditorStudioView: View {
                 handleEditorShortcut(event)
             }
             .frame(width: 0, height: 0)
+        }
+    }
+
+    private var editorColumn: some View {
+        StudioSplitPane(
+            axis: .vertical,
+            secondarySize: $timelineHeight,
+            minPrimarySize: 260,
+            minSecondarySize: 280,
+            maxSecondarySize: 420,
+            dividerThickness: 12
+        ) {
+            VideoPreviewPanel(
+                videoURL: videoURL,
+                recordingSession: recordingSession,
+                playback: playback,
+                timelineEdits: timelineEdits,
+                background: background,
+                padding: padding,
+                borderRadius: borderRadius,
+                shadow: shadow,
+                backgroundBlur: backgroundBlur
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } secondary: {
+            TimelinePanel(videoURL: videoURL, playback: playback, edits: timelineEdits)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 

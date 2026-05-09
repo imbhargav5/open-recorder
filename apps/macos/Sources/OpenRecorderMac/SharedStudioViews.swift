@@ -86,6 +86,173 @@ enum StudioHitTarget {
     case circle
 }
 
+enum StudioSplitPaneAxis {
+    case horizontal
+    case vertical
+
+    func length(in size: CGSize) -> CGFloat {
+        switch self {
+        case .horizontal:
+            size.width
+        case .vertical:
+            size.height
+        }
+    }
+
+    func translation(in size: CGSize) -> CGFloat {
+        switch self {
+        case .horizontal:
+            size.width
+        case .vertical:
+            size.height
+        }
+    }
+
+    var cursor: NSCursor {
+        switch self {
+        case .horizontal:
+            .resizeLeftRight
+        case .vertical:
+            .resizeUpDown
+        }
+    }
+}
+
+struct StudioSplitPane<Primary: View, Secondary: View>: View {
+    var axis: StudioSplitPaneAxis
+    @Binding var secondarySize: Double
+    var minPrimarySize: CGFloat
+    var minSecondarySize: CGFloat
+    var maxSecondarySize: CGFloat
+    var dividerThickness: CGFloat = 16
+    private let primary: Primary
+    private let secondary: Secondary
+    @State private var dragStartSecondarySize: CGFloat?
+
+    init(
+        axis: StudioSplitPaneAxis,
+        secondarySize: Binding<Double>,
+        minPrimarySize: CGFloat,
+        minSecondarySize: CGFloat,
+        maxSecondarySize: CGFloat,
+        dividerThickness: CGFloat = 16,
+        @ViewBuilder primary: () -> Primary,
+        @ViewBuilder secondary: () -> Secondary
+    ) {
+        self.axis = axis
+        _secondarySize = secondarySize
+        self.minPrimarySize = minPrimarySize
+        self.minSecondarySize = minSecondarySize
+        self.maxSecondarySize = maxSecondarySize
+        self.dividerThickness = dividerThickness
+        self.primary = primary()
+        self.secondary = secondary()
+    }
+
+    var body: some View {
+        GeometryReader { proxy in
+            let totalSize = axis.length(in: proxy.size)
+            let resolvedSecondarySize = clampedSecondarySize(totalSize: totalSize)
+            let resolvedPrimarySize = max(0, totalSize - dividerThickness - resolvedSecondarySize)
+
+            if axis == .horizontal {
+                HStack(spacing: 0) {
+                    primary
+                        .frame(width: resolvedPrimarySize, height: proxy.size.height)
+                    divider(totalSize: totalSize)
+                    secondary
+                        .frame(width: resolvedSecondarySize, height: proxy.size.height)
+                }
+            } else {
+                VStack(spacing: 0) {
+                    primary
+                        .frame(width: proxy.size.width, height: resolvedPrimarySize)
+                    divider(totalSize: totalSize)
+                    secondary
+                        .frame(width: proxy.size.width, height: resolvedSecondarySize)
+                }
+            }
+        }
+    }
+
+    private func divider(totalSize: CGFloat) -> some View {
+        StudioSplitPaneDivider(axis: axis, thickness: dividerThickness)
+            .gesture(
+                DragGesture(minimumDistance: 0, coordinateSpace: .local)
+                    .onChanged { value in
+                        if dragStartSecondarySize == nil {
+                            dragStartSecondarySize = clampedSecondarySize(totalSize: totalSize)
+                        }
+
+                        let nextSize = (dragStartSecondarySize ?? clampedSecondarySize(totalSize: totalSize)) - axis.translation(in: value.translation)
+                        secondarySize = Double(clampedSecondarySize(nextSize, totalSize: totalSize))
+                    }
+                    .onEnded { _ in
+                        dragStartSecondarySize = nil
+                    }
+            )
+    }
+
+    private func clampedSecondarySize(totalSize: CGFloat) -> CGFloat {
+        let requestedSize = CGFloat(secondarySize)
+        let safeSize = requestedSize.isFinite && requestedSize > 0 ? requestedSize : minSecondarySize
+        return clampedSecondarySize(safeSize, totalSize: totalSize)
+    }
+
+    private func clampedSecondarySize(_ requestedSize: CGFloat, totalSize: CGFloat) -> CGFloat {
+        let availablePaneSize = max(0, totalSize - dividerThickness)
+        guard availablePaneSize > 0 else { return 0 }
+
+        let idealUpperBound = min(maxSecondarySize, max(0, availablePaneSize - minPrimarySize))
+        if idealUpperBound >= minSecondarySize {
+            return min(max(requestedSize, minSecondarySize), idealUpperBound)
+        }
+
+        let visiblePaneSize = min(96, availablePaneSize / 2)
+        let fallbackUpperBound = max(0, availablePaneSize - visiblePaneSize)
+        let fallbackLowerBound = min(visiblePaneSize, fallbackUpperBound)
+        return min(max(requestedSize, fallbackLowerBound), fallbackUpperBound)
+    }
+}
+
+private struct StudioSplitPaneDivider: View {
+    var axis: StudioSplitPaneAxis
+    var thickness: CGFloat
+    @State private var isHovering = false
+
+    var body: some View {
+        ZStack {
+            Color.clear
+            RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                .fill(isHovering ? Color.brand.opacity(0.82) : Color.studioBorder.opacity(0.92))
+                .frame(
+                    width: axis == .horizontal ? 1 : 44,
+                    height: axis == .horizontal ? 44 : 1
+                )
+        }
+        .frame(
+            width: axis == .horizontal ? thickness : nil,
+            height: axis == .vertical ? thickness : nil
+        )
+        .background(Color.white.opacity(isHovering ? 0.025 : 0))
+        .rectangularHitTarget()
+        .help("Drag to resize panes")
+        .onHover { hovering in
+            isHovering = hovering
+            if hovering {
+                axis.cursor.push()
+            } else {
+                NSCursor.pop()
+            }
+        }
+        .onDisappear {
+            if isHovering {
+                NSCursor.pop()
+            }
+        }
+    }
+}
+
 struct StudioButton<Label: View>: View {
     var hitTarget: StudioHitTarget
     var help: String?
@@ -280,19 +447,31 @@ struct HUDPrimaryButton: View {
     var title: String
     var symbolName: String
     var isDestructive: Bool
+    var shortcutText: String? = nil
     var action: () -> Void
 
     var body: some View {
         StudioButton(hitTarget: .capsule, action: action) {
-            Label(title, systemImage: symbolName)
-                .font(.system(size: 12, weight: .semibold))
-                .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
-                .frame(minWidth: 100)
-                .frame(height: 40)
-                .padding(.horizontal, 14)
-                .background(isDestructive ? Color.red.opacity(0.86) : Color.white, in: Capsule())
-                .foregroundStyle(isDestructive ? Color.white : Color.studioBackground)
+            HStack(spacing: 8) {
+                Label(title, systemImage: symbolName)
+                    .labelStyle(.titleAndIcon)
+
+                if let shortcutText {
+                    Text(shortcutText)
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .padding(.horizontal, 6)
+                        .frame(height: 20)
+                        .background((isDestructive ? Color.white : Color.black).opacity(0.14), in: Capsule())
+                }
+            }
+            .font(.system(size: 12, weight: .semibold))
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
+            .frame(minWidth: 116)
+            .frame(height: 40)
+            .padding(.horizontal, 14)
+            .background(isDestructive ? Color.red.opacity(0.86) : Color.white, in: Capsule())
+            .foregroundStyle(isDestructive ? Color.white : Color.studioBackground)
         }
     }
 }

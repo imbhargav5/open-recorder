@@ -5,7 +5,6 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 enum TimelineMetrics {
-    static let labelWidth: CGFloat = 96
     static let rulerHeight: CGFloat = 24
     static let clipHeight: CGFloat = 42
     static let layerHeight: CGFloat = 34
@@ -83,7 +82,6 @@ struct TimelineTrackContent: View {
             TimelineLayerRow(kind: .trim, duration: playback.duration, regions: edits.trimRegions.map { TimelineRegionRenderData(id: $0.id, span: $0.span, label: "Cut") }, selectedID: edits.selectedKind == .trim ? edits.selectedID : nil, edits: edits)
             TimelineLayerRow(kind: .annotation, duration: playback.duration, regions: edits.annotationRegions.map { TimelineRegionRenderData(id: $0.id, span: $0.span, label: $0.text) }, selectedID: edits.selectedKind == .annotation ? edits.selectedID : nil, edits: edits)
             TimelineLayerRow(kind: .speed, duration: playback.duration, regions: edits.speedRegions.map { TimelineRegionRenderData(id: $0.id, span: $0.span, label: "\(String(format: "%.2g", $0.speed))×") }, selectedID: edits.selectedKind == .speed ? edits.selectedID : nil, edits: edits)
-            TimelineLayerRow(kind: nil, duration: playback.duration, regions: [], selectedID: nil, edits: edits)
         }
         .overlay(alignment: .topLeading) { TimelinePlayhead(duration: playback.duration, currentTime: playback.currentTime) }
         .overlay(alignment: .bottomLeading) {
@@ -164,20 +162,17 @@ struct TimelineRuler: View {
     var duration: Double
 
     var body: some View {
-        HStack(spacing: 0) {
-            Color.clear.frame(width: TimelineMetrics.labelWidth)
-            GeometryReader { proxy in
-                ZStack(alignment: .topLeading) {
-                    ForEach(TimelineRulerTickBuilder.ticks(duration: displayDuration)) { tick in
-                        let x = tickPosition(for: tick.time, width: proxy.size.width)
-                        Rectangle().fill(Color.white.opacity(0.10)).frame(width: 1, height: 6).position(x: x, y: 4)
-                        if !tick.label.isEmpty {
-                            Text(tick.label)
-                                .font(.system(size: 9, weight: .medium, design: .monospaced))
-                                .foregroundStyle(Color.secondary.opacity(0.72))
-                                .frame(width: 44)
-                                .position(x: labelPosition(for: x, width: proxy.size.width), y: 11)
-                        }
+        GeometryReader { proxy in
+            ZStack(alignment: .topLeading) {
+                ForEach(TimelineRulerTickBuilder.ticks(duration: displayDuration)) { tick in
+                    let x = tickPosition(for: tick.time, width: proxy.size.width)
+                    Rectangle().fill(Color.white.opacity(0.10)).frame(width: 1, height: 6).position(x: x, y: 4)
+                    if !tick.label.isEmpty {
+                        Text(tick.label)
+                            .font(.system(size: 9, weight: .medium, design: .monospaced))
+                            .foregroundStyle(Color.secondary.opacity(0.72))
+                            .frame(width: 44)
+                            .position(x: labelPosition(for: x, width: proxy.size.width), y: 11)
                     }
                 }
             }
@@ -196,8 +191,7 @@ struct TimelinePlayhead: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let trackWidth = max(proxy.size.width - TimelineMetrics.labelWidth, 0)
-            let x = TimelineMetrics.labelWidth + trackWidth * playheadFraction
+            let x = proxy.size.width * playheadFraction
             Rectangle()
                 .fill(Color(red: 0.40, green: 0.31, blue: 1.0).opacity(0.98))
                 .frame(width: TimelineMetrics.playheadWidth, height: proxy.size.height)
@@ -220,25 +214,22 @@ struct TimelineClipRow: View {
     @State private var waveformSamples = TimelineAudioWaveformLoader.quietSamples()
 
     var body: some View {
-        HStack(spacing: 0) {
-            Color.white.opacity(0.025).frame(width: TimelineMetrics.labelWidth, height: TimelineMetrics.clipHeight)
-            GeometryReader { proxy in
-                ZStack(alignment: .leading) {
-                    Rectangle().fill(Color(red: 0.095, green: 0.095, blue: 0.11))
-                    if videoURL != nil {
-                        clipSegments(width: proxy.size.width)
-                    } else {
-                        Text("No clip")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(Color.secondary.opacity(0.64))
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    }
+        GeometryReader { proxy in
+            ZStack(alignment: .leading) {
+                Rectangle().fill(Color(red: 0.095, green: 0.095, blue: 0.11))
+                if videoURL != nil {
+                    clipSegments(width: proxy.size.width)
+                } else {
+                    Text("No clip")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Color.secondary.opacity(0.64))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-                .rectangularHitTarget()
-                .gesture(DragGesture(minimumDistance: 0).onChanged { value in seek(to: value.location.x, width: proxy.size.width) })
             }
-            .frame(height: TimelineMetrics.clipHeight)
+            .rectangularHitTarget()
+            .gesture(DragGesture(minimumDistance: 0).onChanged { value in seek(to: value.location.x, width: proxy.size.width) })
         }
+        .frame(height: TimelineMetrics.clipHeight)
         .overlay(alignment: .bottom) { Rectangle().fill(Color.studioBorder).frame(height: 1) }
         .task(id: videoURL) { await loadWaveform() }
     }
@@ -379,39 +370,30 @@ struct TimelineRegionRenderData: Identifiable {
 }
 
 struct TimelineLayerRow: View {
-    var kind: TimelineRegionKind?
+    var kind: TimelineRegionKind
     var duration: Double
     var regions: [TimelineRegionRenderData]
     var selectedID: TimelineRegionID?
     @ObservedObject var edits: TimelineEditController
 
     var body: some View {
-        HStack(spacing: 0) {
-            Text(kind?.title ?? "Audio")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(Color.secondary.opacity(0.86))
-                .lineLimit(1)
-                .frame(width: TimelineMetrics.labelWidth, height: TimelineMetrics.layerHeight, alignment: .leading)
-                .padding(.leading, 10)
-                .background(Color.white.opacity(0.025))
-            GeometryReader { proxy in
-                ZStack(alignment: .leading) {
-                    Rectangle().fill(Color(red: 0.095, green: 0.095, blue: 0.11))
-                    if regions.isEmpty {
-                        Text(emptyMessage)
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(Color.secondary.opacity(0.64))
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                    }
-                    ForEach(regions) { region in
-                        TimelineRegionItem(kind: kind!, region: region, duration: duration, width: proxy.size.width, isSelected: region.id == selectedID, edits: edits)
-                    }
+        GeometryReader { proxy in
+            ZStack(alignment: .leading) {
+                Rectangle().fill(Color(red: 0.095, green: 0.095, blue: 0.11))
+                if regions.isEmpty {
+                    Text(emptyMessage)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Color.secondary.opacity(0.64))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                 }
-                .rectangularHitTarget()
-                .onTapGesture { edits.select(nil, id: nil) }
+                ForEach(regions) { region in
+                    TimelineRegionItem(kind: kind, region: region, duration: duration, width: proxy.size.width, isSelected: region.id == selectedID, edits: edits)
+                }
             }
-            .frame(height: TimelineMetrics.layerHeight)
+            .rectangularHitTarget()
+            .onTapGesture { edits.select(nil, id: nil) }
         }
+        .frame(height: TimelineMetrics.layerHeight)
         .overlay(alignment: .bottom) { Rectangle().fill(Color.studioBorder).frame(height: 1) }
     }
 
@@ -425,8 +407,6 @@ struct TimelineLayerRow: View {
             "Use the toolbar to add annotations"
         case .trim:
             "Use the toolbar to add trim"
-        case nil:
-            "Audio waveform shown in clip"
         }
     }
 }

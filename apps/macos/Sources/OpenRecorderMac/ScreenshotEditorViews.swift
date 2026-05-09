@@ -14,9 +14,16 @@ struct ScreenshotEditorStudioView: View {
     @State private var imageRoundness = 10.0
     @State private var imageShadow = 0.45
     @State private var isExportDialogPresented = false
+    @AppStorage("editor.screenshot.sidebarWidth") private var sidebarWidth = 320.0
 
     var body: some View {
-        HStack(spacing: 16) {
+        StudioSplitPane(
+            axis: .horizontal,
+            secondarySize: $sidebarWidth,
+            minPrimarySize: 520,
+            minSecondarySize: 280,
+            maxSecondarySize: 440
+        ) {
             ScreenshotCanvas(
                 image: image,
                 background: background,
@@ -26,8 +33,8 @@ struct ScreenshotEditorStudioView: View {
                 imageRoundness: imageRoundness,
                 imageShadow: imageShadow
             )
-            .layoutPriority(1)
-
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } secondary: {
             ScreenshotSettingsPanel(
                 background: $background,
                 padding: $padding,
@@ -39,7 +46,7 @@ struct ScreenshotEditorStudioView: View {
                     isExportDialogPresented = true
                 }
             )
-            .frame(width: 320)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .padding(16)
         .background(Color.studioMutedBackground)

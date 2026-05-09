@@ -10,6 +10,7 @@ struct CaptureArea: Codable, Hashable {
 
 enum RecordingPhase: String, Codable, CaseIterable, Identifiable {
     case idle
+    case countingDown
     case starting
     case recording
     case stopping
@@ -265,6 +266,7 @@ enum HUDPhase: Hashable {
     case selectingSource(CaptureMode)
     case ready(CaptureMode, CaptureSource)
     case areaSelecting(CaptureMode)
+    case countingDownRecording(CaptureSource)
     case startingRecording(CaptureSource)
     case recording(CaptureSource)
     case stoppingRecording(CaptureSource)
@@ -300,6 +302,10 @@ struct HUDState: Hashable {
         HUDState(phase: .areaSelecting(mode))
     }
 
+    static func countingDownRecording(_ source: CaptureSource) -> HUDState {
+        HUDState(phase: .countingDownRecording(source))
+    }
+
     static func startingRecording(_ source: CaptureSource) -> HUDState {
         HUDState(phase: .startingRecording(source))
     }
@@ -333,7 +339,8 @@ struct HUDState: Hashable {
             mode
         case .ready(let mode, _):
             mode
-        case .startingRecording,
+        case .countingDownRecording,
+             .startingRecording,
              .recording,
              .stoppingRecording:
             .recording
@@ -345,6 +352,7 @@ struct HUDState: Hashable {
     var source: CaptureSource? {
         switch phase {
         case .ready(_, let source),
+             .countingDownRecording(let source),
              .startingRecording(let source),
              .recording(let source),
              .stoppingRecording(let source),
@@ -365,6 +373,7 @@ struct HUDState: Hashable {
         case .selectingSource,
              .ready,
              .areaSelecting,
+             .countingDownRecording,
              .startingRecording,
              .recording,
              .stoppingRecording,
@@ -381,7 +390,8 @@ struct HUDState: Hashable {
              .ready(let mode, _),
              .areaSelecting(let mode):
             mode == .screenshot ? .screenshotSetup : .recordingSetup
-        case .startingRecording,
+        case .countingDownRecording,
+             .startingRecording,
              .recording,
              .stoppingRecording:
             .recording
@@ -394,6 +404,8 @@ struct HUDState: Hashable {
 enum NativeWindowCommandAction: Equatable {
     case showHUD
     case hideHUD
+    case showRecordingSetup
+    case hideRecordingSetup
     case showSourceSelector
     case showMicrophoneSelector
     case showCameraSelector
