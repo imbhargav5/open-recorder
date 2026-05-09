@@ -33,7 +33,7 @@ jobs:
     name: Native macOS tests
     needs: changes
     if: needs.changes.outputs.relevant == 'true'
-    runs-on: macos-latest
+    runs-on: macos-26
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

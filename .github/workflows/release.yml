@@ -70,7 +70,7 @@ jobs:
     name: Build native macOS app
     needs: resolve-release
     if: needs.resolve-release.outputs.should_release == 'true'
-    runs-on: macos-latest
+    runs-on: macos-26
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
