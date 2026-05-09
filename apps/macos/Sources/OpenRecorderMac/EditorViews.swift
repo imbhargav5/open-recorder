@@ -36,6 +36,7 @@ struct EditorStudioView: View {
 }
 
 struct VideoEditorStudioView: View {
+    @EnvironmentObject private var model: AppModel
     var videoURL: URL?
     var recordingSession: RecordingSession?
     @StateObject private var playback = VideoPlaybackController()
@@ -46,6 +47,7 @@ struct VideoEditorStudioView: View {
     @State private var loopCursor = false
     @State private var cursorSize = 1.0
     @State private var cursorSmoothing = 0.40
+    @State private var isExportDialogPresented = false
 
     var body: some View {
         HStack(spacing: 16) {
@@ -72,6 +74,42 @@ struct VideoEditorStudioView: View {
         }
         .padding(16)
         .background(Color.studioMutedBackground)
+        .sheet(
+            isPresented: $isExportDialogPresented,
+            onDismiss: {
+                if !model.videoExportPhase.isBusy {
+                    model.clearVideoExportDialogState()
+                }
+            }
+        ) {
+            VideoExportDialog(
+                phase: model.videoExportPhase,
+                progress: model.videoExportProgress,
+                errorMessage: model.videoExportError,
+                exportedFileName: model.exportedVideoURL?.lastPathComponent,
+                isExporting: model.isVideoExporting,
+                onExport: { options in
+                    model.exportCurrentRecording(model.videoExportRequestURL ?? videoURL, options: options)
+                },
+                onRetrySave: {
+                    model.retryPendingVideoExportSave()
+                },
+                onShowInFinder: {
+                    model.revealExportedVideoInFinder()
+                },
+                onCancelExport: {
+                    model.cancelVideoExport()
+                },
+                onClose: {
+                    isExportDialogPresented = false
+                }
+            )
+            .frame(width: 420)
+            .interactiveDismissDisabled(model.videoExportPhase.isBusy)
+        }
+        .onChange(of: model.videoExportRequestID) { _, requestID in
+            guard requestID != nil, videoURL != nil else { return }
+            isExportDialogPresented = true
+        }
     }
 }
-

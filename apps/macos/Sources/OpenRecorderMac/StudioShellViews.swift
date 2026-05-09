@@ -230,7 +230,7 @@ struct StudioTitleBar: View {
 
                 if model.selectedSection == .editor, let videoURL {
                     StudioButton(hitTarget: .rounded(7)) {
-                        model.exportCurrentRecording(videoURL)
+                        model.requestVideoExport(videoURL)
                     } label: {
                         Label("Export Video", systemImage: "arrow.down.circle")
                             .font(.system(size: 12, weight: .semibold))
@@ -324,4 +324,3 @@ struct StudioTitleBar: View {
         return model.currentScreenshotURL
     }
 }
-
