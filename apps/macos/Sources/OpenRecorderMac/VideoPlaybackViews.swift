@@ -142,7 +142,7 @@ final class VideoPlaybackController: ObservableObject {
     }
 
     func togglePlayback() {
-        guard let player else { return }
+        guard player != nil else { return }
 
         if isPlaying {
             pause()
@@ -412,4 +412,3 @@ struct NativeVideoPlayer: NSViewRepresentable {
         nsView.playerLayer.player = nil
     }
 }
-

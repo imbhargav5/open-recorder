@@ -257,13 +257,13 @@ struct TimelineExportEditPlan: Equatable {
 
     static func build(duration: Double, edits: TimelineEditSnapshot) -> TimelineExportEditPlan {
         guard duration.isFinite, duration > 0 else { return TimelineExportEditPlan(segments: [], outputDuration: 0) }
-        let boundaries = Set(([0, duration]
-            + edits.trimRegions.flatMap { [$0.span.start, $0.span.end] }
-            + edits.speedRegions.flatMap { [$0.span.start, $0.span.end] }
-            + edits.zoomRegions.flatMap { [$0.span.start, $0.span.end] }
-            + edits.annotationRegions.flatMap { [$0.span.start, $0.span.end] })
-            .map { min(max($0, 0), duration) })
-        let sorted = boundaries.sorted()
+        var boundaries: [Double] = [0, duration]
+        boundaries.append(contentsOf: edits.trimRegions.flatMap { [$0.span.start, $0.span.end] })
+        boundaries.append(contentsOf: edits.speedRegions.flatMap { [$0.span.start, $0.span.end] })
+        boundaries.append(contentsOf: edits.zoomRegions.flatMap { [$0.span.start, $0.span.end] })
+        boundaries.append(contentsOf: edits.annotationRegions.flatMap { [$0.span.start, $0.span.end] })
+
+        let sorted = Set(boundaries.map { min(max($0, 0.0), duration) }).sorted()
         var outputCursor = 0.0
         var segments: [Segment] = []
 

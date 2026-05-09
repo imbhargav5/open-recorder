@@ -1,4 +1,5 @@
 import AVFoundation
+import AppKit
 import CoreGraphics
 import Foundation
 import UniformTypeIdentifiers

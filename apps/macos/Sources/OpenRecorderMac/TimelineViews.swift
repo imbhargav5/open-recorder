@@ -54,12 +54,16 @@ struct TimelinePanel: View {
         .shadow(color: Color.black.opacity(0.16), radius: 16, y: 10)
         .focusable()
         .onKeyPress { press in
-            switch press.charactersIgnoringModifiers.lowercased() {
+            if press.key == .delete || press.key == .deleteForward {
+                edits.deleteSelection()
+                return .handled
+            }
+
+            switch press.characters.lowercased() {
             case "z": edits.add(.zoom, at: playback.currentTime, duration: playback.duration); return .handled
             case "t": edits.add(.trim, at: playback.currentTime, duration: playback.duration); return .handled
             case "a": edits.add(.annotation, at: playback.currentTime, duration: playback.duration); return .handled
             case "s": edits.add(.speed, at: playback.currentTime, duration: playback.duration); return .handled
-            case "\u{7f}", "\u{8}": edits.deleteSelection(); return .handled
             default: return .ignored
             }
         }
