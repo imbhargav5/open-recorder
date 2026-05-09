@@ -30,16 +30,31 @@ final class AppModel: ObservableObject {
     @Published var windowCommand: NativeWindowCommand?
     @Published var isAreaSelectionActive = false
     @Published var screenshotExportRequestID: UUID?
+    @Published var videoExportRequestID: UUID?
+    @Published var videoExportRequestURL: URL?
+    @Published var isVideoExporting = false
+    @Published var videoExportPhase: VideoExportPhase = .idle
+    @Published var videoExportProgress = 0.0
+    @Published var videoExportError: String?
+    @Published var exportedVideoURL: URL?
+
+    private var pendingVideoExportTempURL: URL?
+    private var pendingVideoExportSourceURL: URL?
+    private var pendingVideoExportOptions: VideoExportOptions?
+    private var videoExportTask: Task<Void, Never>?
+    private var videoExportCancellationToken: VideoExportCancellationToken?
 
     private var handledWindowCommandID: UUID?
     private var activeScreenStartedAt: Date?
     private var activeFacecamStartedAt: Date?
     private var activeFacecamURL: URL?
+    private var displayFlashWindows: [NSWindow] = []
 
     let service = RustServiceClient()
     let capture = CaptureController()
     private let facecamRecorder = FacecamRecorder()
     private let cursorTelemetryRecorder = CursorTelemetryRecorder()
+    private let captureDeviceProvider = CaptureDeviceProvider()
 
     var captureFlow: CaptureFlow {
         hudState.captureFlow
@@ -292,11 +307,14 @@ final class AppModel: ObservableObject {
                 currentScreenshotURL = nil
 
                 if FileManager.default.fileExists(atPath: outputURL.path) {
-                    let recordingSession = buildRecordingSession(
+                    let recordingSession = RecordingSessionBuilder.build(
                         screenVideoURL: outputURL,
                         facecamURL: stoppedFacecamURL ?? activeFacecamURL,
                         sourceName: selectedSource?.name,
-                        cursorTelemetryURL: cursorTelemetryURL
+                        showCursor: showCursor,
+                        cursorTelemetryURL: cursorTelemetryURL,
+                        screenStartedAt: activeScreenStartedAt,
+                        facecamStartedAt: activeFacecamStartedAt
                     )
                     let summary: ProjectSummary = try service.call(
                         "registerRecording",
@@ -440,33 +458,186 @@ final class AppModel: ObservableObject {
         screenshotExportRequestID = UUID()
     }
 
-    func exportCurrentRecording(_ recordingURL: URL? = nil) {
+    func requestVideoExport(_ recordingURL: URL? = nil) {
+        guard let url = recordingURL ?? currentVideoURL else {
+            statusMessage = "Open a recording first."
+            return
+        }
+        videoExportRequestURL = url
+        videoExportRequestID = UUID()
+    }
+
+    func exportCurrentRecording(_ recordingURL: URL? = nil, options: VideoExportOptions = .default) {
         guard let url = recordingURL ?? currentVideoURL else {
             statusMessage = "Open a recording first."
             return
         }
 
+        cancelVideoExportTask()
+        resetVideoExportResult(removePendingFile: true)
+        videoExportRequestURL = url
+        pendingVideoExportSourceURL = url
+        pendingVideoExportOptions = options
+
+        let targetURL = temporaryVideoExportURL(options: options)
+        let cancellationToken = VideoExportCancellationToken()
+        pendingVideoExportTempURL = targetURL
+        videoExportCancellationToken = cancellationToken
+        isVideoExporting = true
+        videoExportPhase = .exporting
+        videoExportProgress = 0
+        statusMessage = "Exporting \(options.resolution.title) \(options.format.title) at \(options.frameRate.title)..."
+
+        videoExportTask = Task {
+            await exportRecording(
+                from: url,
+                to: targetURL,
+                options: options,
+                cancellationToken: cancellationToken
+            )
+        }
+    }
+
+    func cancelVideoExport() {
+        guard videoExportPhase == .exporting || isVideoExporting else { return }
+        cancelVideoExportTask()
+        if let pendingVideoExportTempURL {
+            try? FileManager.default.removeItem(at: pendingVideoExportTempURL)
+        }
+        pendingVideoExportTempURL = nil
+        isVideoExporting = false
+        videoExportProgress = 0
+        videoExportError = "Export canceled."
+        videoExportPhase = .failed
+        statusMessage = "Export canceled."
+    }
+
+    func retryPendingVideoExportSave() {
+        guard let tempURL = pendingVideoExportTempURL,
+              let sourceURL = pendingVideoExportSourceURL,
+              let options = pendingVideoExportOptions else {
+            videoExportError = "No completed export is waiting to be saved."
+            videoExportPhase = .failed
+            return
+        }
+
+        saveRenderedVideo(tempURL: tempURL, sourceURL: sourceURL, options: options)
+    }
+
+    func revealExportedVideoInFinder() {
+        guard let exportedVideoURL else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([exportedVideoURL])
+    }
+
+    func clearVideoExportDialogState() {
+        if videoExportPhase.isBusy {
+            cancelVideoExport()
+        }
+        cancelVideoExportTask()
+        resetVideoExportResult(removePendingFile: true)
+        videoExportRequestURL = nil
+        videoExportPhase = .idle
+        videoExportProgress = 0
+        isVideoExporting = false
+    }
+
+    private func exportRecording(
+        from sourceURL: URL,
+        to targetURL: URL,
+        options: VideoExportOptions,
+        cancellationToken: VideoExportCancellationToken
+    ) async {
+        do {
+            try await VideoExportRenderer.export(
+                sourceURL: sourceURL,
+                targetURL: targetURL,
+                options: options,
+                cancellationToken: cancellationToken,
+                progressHandler: { [weak self] progress in
+                    self?.videoExportProgress = progress
+                }
+            )
+            guard !Task.isCancelled else { return }
+            videoExportTask = nil
+            videoExportCancellationToken = nil
+            isVideoExporting = false
+            videoExportProgress = 1
+            videoExportPhase = .saving
+            statusMessage = "Choose where to save \(options.resolution.title) \(options.format.title) at \(options.frameRate.title)."
+            saveRenderedVideo(tempURL: targetURL, sourceURL: sourceURL, options: options)
+        } catch {
+            guard !Task.isCancelled else { return }
+            videoExportTask = nil
+            videoExportCancellationToken = nil
+            isVideoExporting = false
+            videoExportError = error.localizedDescription
+            videoExportPhase = .failed
+            statusMessage = error.localizedDescription
+        }
+    }
+
+    private func saveRenderedVideo(tempURL: URL, sourceURL: URL, options: VideoExportOptions) {
+        videoExportPhase = .saving
+        videoExportError = nil
+
         let panel = NSSavePanel()
-        panel.allowedContentTypes = [.mpeg4Movie, .quickTimeMovie]
-        panel.nameFieldStringValue = url.lastPathComponent
+        panel.allowedContentTypes = [options.format.contentType]
+        panel.nameFieldStringValue = suggestedVideoExportFileName(for: sourceURL, options: options)
         panel.canCreateDirectories = true
         guard panel.runModal() == .OK, let targetURL = panel.url else {
+            videoExportError = "Save dialog canceled. Click Save Again to save without re-exporting."
+            videoExportPhase = .savePending
+            statusMessage = "Export ready to save."
             return
         }
 
         do {
-            let exported: PreparedFile = try service.call(
-                "exportRecording",
-                params: [
-                    "sourcePath": url.path,
-                    "targetPath": targetURL.path
-                ],
-                as: PreparedFile.self
-            )
-            statusMessage = "Exported \(URL(fileURLWithPath: exported.path).lastPathComponent)"
+            if FileManager.default.fileExists(atPath: targetURL.path) {
+                try FileManager.default.removeItem(at: targetURL)
+            }
+            try FileManager.default.copyItem(at: tempURL, to: targetURL)
+            try? FileManager.default.removeItem(at: tempURL)
+            pendingVideoExportTempURL = nil
+            pendingVideoExportSourceURL = nil
+            pendingVideoExportOptions = nil
+            exportedVideoURL = targetURL
+            videoExportPhase = .success
+            statusMessage = "Exported \(targetURL.lastPathComponent)"
         } catch {
+            videoExportError = error.localizedDescription
+            videoExportPhase = .failed
             statusMessage = error.localizedDescription
         }
+    }
+
+    private func resetVideoExportResult(removePendingFile: Bool) {
+        if removePendingFile, let pendingVideoExportTempURL {
+            try? FileManager.default.removeItem(at: pendingVideoExportTempURL)
+        }
+        pendingVideoExportTempURL = nil
+        pendingVideoExportSourceURL = nil
+        pendingVideoExportOptions = nil
+        videoExportError = nil
+        exportedVideoURL = nil
+    }
+
+    private func cancelVideoExportTask() {
+        videoExportTask?.cancel()
+        videoExportTask = nil
+        videoExportCancellationToken?.cancel()
+        videoExportCancellationToken = nil
+    }
+
+    private func temporaryVideoExportURL(options: VideoExportOptions) -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("open-recorder-export-\(UUID().uuidString)")
+            .appendingPathExtension(options.format.fileExtension)
+    }
+
+    private func suggestedVideoExportFileName(for sourceURL: URL, options: VideoExportOptions) -> String {
+        let baseName = sourceURL.deletingPathExtension().lastPathComponent
+        let suffix = "\(options.resolution.fileSuffix)-\(options.frameRate.fileSuffix)"
+        return "\(baseName)-\(suffix).\(options.format.fileExtension)"
     }
 
     func openPrivacySettings() {
@@ -491,8 +662,8 @@ final class AppModel: ObservableObject {
     }
 
     func refreshCaptureDevices() {
-        microphoneDevices = mediaDevices(for: .audio)
-        cameraDevices = mediaDevices(for: .video)
+        microphoneDevices = captureDeviceProvider.devices(for: .audio)
+        cameraDevices = captureDeviceProvider.devices(for: .video)
 
         if let selectedMicrophoneDeviceID,
            !microphoneDevices.contains(where: { $0.id == selectedMicrophoneDeviceID }) {
@@ -551,53 +722,10 @@ final class AppModel: ObservableObject {
         return true
     }
 
-    private func mediaDevices(for mediaType: AVMediaType) -> [CaptureDeviceInfo] {
-        let deviceTypes: [AVCaptureDevice.DeviceType] = mediaType == .video
-            ? [.builtInWideAngleCamera, .external]
-            : [.microphone]
-        let discovery = AVCaptureDevice.DiscoverySession(
-            deviceTypes: deviceTypes,
-            mediaType: mediaType,
-            position: .unspecified
-        )
-        let defaultID = AVCaptureDevice.default(for: mediaType)?.uniqueID
-        return discovery.devices.map { device in
-            CaptureDeviceInfo(
-                id: device.uniqueID,
-                name: device.localizedName,
-                isDefault: device.uniqueID == defaultID
-            )
-        }
-    }
-
     private func facecamOutputURL(for screenURL: URL) -> URL {
         screenURL
             .deletingPathExtension()
             .appendingPathExtension("facecam.mov")
-    }
-
-    private func buildRecordingSession(
-        screenVideoURL: URL,
-        facecamURL: URL?,
-        sourceName: String?,
-        cursorTelemetryURL: URL?
-    ) -> RecordingSession {
-        let offsetMs: Int?
-        if let activeScreenStartedAt, let activeFacecamStartedAt {
-            offsetMs = Int(activeFacecamStartedAt.timeIntervalSince(activeScreenStartedAt) * 1000)
-        } else {
-            offsetMs = nil
-        }
-
-        return RecordingSession(
-            screenVideoPath: screenVideoURL.path,
-            facecamVideoPath: facecamURL?.path,
-            facecamOffsetMs: offsetMs,
-            facecamSettings: defaultFacecamSettings(enabled: facecamURL != nil),
-            sourceName: sourceName,
-            showCursorOverlay: showCursor,
-            cursorTelemetryPath: cursorTelemetryURL?.path
-        )
     }
 
     private func openPrivacyPane(_ pane: String) {
@@ -620,6 +748,7 @@ final class AppModel: ObservableObject {
             backing: .buffered,
             defer: false
         )
+        window.isReleasedWhenClosed = false
         window.isOpaque = false
         window.backgroundColor = .clear
         window.hasShadow = false
@@ -627,10 +756,12 @@ final class AppModel: ObservableObject {
         window.level = .screenSaver
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         window.contentView = NSHostingView(rootView: DisplayFlashOverlay())
+        displayFlashWindows.append(window)
         window.orderFrontRegardless()
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self, window] in
             window.close()
+            self?.displayFlashWindows.removeAll { $0 === window }
         }
     }
 }

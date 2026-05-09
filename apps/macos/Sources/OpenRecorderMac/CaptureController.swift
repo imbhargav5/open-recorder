@@ -8,7 +8,8 @@ enum CaptureControllerError: LocalizedError {
     case recordingAlreadyRunning
     case noActiveRecording
     case commandFailed(String)
-    case screenRecordingPermissionDenied
+    case screenRecordingPermissionRequired
+    case screenRecordingPermissionUnavailableAfterRequest
 
     var errorDescription: String? {
         switch self {
@@ -20,8 +21,10 @@ enum CaptureControllerError: LocalizedError {
             "No recording is currently running."
         case .commandFailed(let message):
             message
-        case .screenRecordingPermissionDenied:
-            "Screen Recording permission is required. If Open Recorder is already enabled, toggle it off and on in System Settings after rebuilding, then relaunch the app."
+        case .screenRecordingPermissionRequired:
+            "Screen Recording permission is required. Enable Open Recorder in System Settings, then quit and reopen the app."
+        case .screenRecordingPermissionUnavailableAfterRequest:
+            "Screen Recording permission is still unavailable. If Open Recorder is already enabled in System Settings, quit and reopen the app."
         }
     }
 }
@@ -170,18 +173,33 @@ final class CaptureController: ObservableObject {
     @Published private(set) var isRecording = false
     @Published private(set) var activeRecordingURL: URL?
 
+    private let screenRecordingPermission: ScreenRecordingPermission
     private var recordingProcess: Process?
     private var nativeRecorder: NativeScreenRecorder?
     private var activeStagedRecordingURL: URL?
-    private var requestedScreenRecordingAccessThisSession = false
+
+    init(screenRecordingPermission: ScreenRecordingPermission = ScreenRecordingPermission()) {
+        self.screenRecordingPermission = screenRecordingPermission
+    }
 
     #if DEBUG
     func setRecordingForTesting(_ isRecording: Bool) {
         self.isRecording = isRecording
     }
+
+    func ensureScreenRecordingPermissionForTesting() throws {
+        try ensureScreenRecordingPermission()
+    }
     #endif
 
     func reloadSources() async {
+        guard hasScreenRecordingPermission() else {
+            var nextSources = legacyDisplaySources()
+            nextSources.append(contentsOf: legacyWindowSources())
+            sources = nextSources
+            return
+        }
+
         do {
             let content = try await shareableContent()
             var nextSources = await displaySources(from: content)
@@ -207,6 +225,7 @@ final class CaptureController: ObservableObject {
         )
 
         if source.kind == .display || source.kind == .window || source.kind == .area {
+            try ensureScreenRecordingPermission()
             do {
                 try await startNativeRecording(
                     source: source,
@@ -334,20 +353,18 @@ final class CaptureController: ObservableObject {
     }
 
     private func ensureScreenRecordingPermission() throws {
-        if CGPreflightScreenCaptureAccess() {
+        switch screenRecordingPermission.requestGrant() {
+        case .granted:
             return
+        case .promptAlreadyShown:
+            throw CaptureControllerError.screenRecordingPermissionUnavailableAfterRequest
+        case .promptShownWithoutGrant:
+            throw CaptureControllerError.screenRecordingPermissionRequired
         }
+    }
 
-        guard !requestedScreenRecordingAccessThisSession else {
-            throw CaptureControllerError.screenRecordingPermissionDenied
-        }
-
-        requestedScreenRecordingAccessThisSession = true
-        if CGRequestScreenCaptureAccess() {
-            return
-        }
-
-        throw CaptureControllerError.screenRecordingPermissionDenied
+    private func hasScreenRecordingPermission() -> Bool {
+        screenRecordingPermission.currentState() == .granted
     }
 
     private func startNativeRecording(
