@@ -64,7 +64,7 @@ struct OpenRecorderApp: App {
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
-        .defaultSize(width: 780, height: 155)
+        .defaultSize(width: HUDWindowMetrics.defaultSize.width, height: HUDWindowMetrics.defaultSize.height)
 
         Window("Choose Source", id: "source-selector") {
             ContentView(role: .sourceSelector)
@@ -72,6 +72,22 @@ struct OpenRecorderApp: App {
         }
         .windowResizability(.contentSize)
         .defaultSize(width: SourceSelectorWindowMetrics.width, height: SourceSelectorWindowMetrics.compactHeight)
+
+        Window("Choose Microphone", id: "microphone-selector") {
+            ContentView(role: .microphoneSelector)
+                .environmentObject(model)
+        }
+        .windowResizability(.contentSize)
+        .defaultLaunchBehavior(.suppressed)
+        .defaultSize(width: CaptureDeviceSelectorWindowMetrics.width, height: CaptureDeviceSelectorWindowMetrics.height)
+
+        Window("Choose Camera", id: "camera-selector") {
+            ContentView(role: .cameraSelector)
+                .environmentObject(model)
+        }
+        .windowResizability(.contentSize)
+        .defaultLaunchBehavior(.suppressed)
+        .defaultSize(width: CaptureDeviceSelectorWindowMetrics.width, height: CaptureDeviceSelectorWindowMetrics.height)
 
         Window("Select Area", id: "area-selector") {
             ContentView(role: .areaSelector)
@@ -144,6 +160,7 @@ struct OpenRecorderApp: App {
 
 private struct MenuBarControls: View {
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.dismissWindow) private var dismissWindow
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
@@ -165,10 +182,8 @@ private struct MenuBarControls: View {
 
         Divider()
 
-        Button("Show Recorder") {
-            model.requestWindow(.showHUD)
-            openWindow(id: "hud")
-            NSApp.activate(ignoringOtherApps: true)
+        Button(model.isHUDVisible ? "Hide Recorder" : "Show Recorder") {
+            toggleRecorderHUD()
         }
 
         if let lastEditorSession = model.lastEditorSession {
@@ -190,9 +205,21 @@ private struct MenuBarControls: View {
     private func beginCapture(_ mode: CaptureMode) {
         guard model.canStartNewCapture else { return }
         model.beginCapture(mode)
+        model.showHUD()
         openWindow(id: "source-selector")
         openWindow(id: "hud")
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func toggleRecorderHUD() {
+        if model.isHUDVisible {
+            model.hideHUD()
+            dismissWindow(id: "hud")
+        } else {
+            model.showHUD()
+            openWindow(id: "hud")
+            NSApp.activate(ignoringOtherApps: true)
+        }
     }
 }
 

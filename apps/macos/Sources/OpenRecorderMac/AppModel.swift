@@ -60,6 +60,10 @@ final class AppModel: ObservableObject {
         hudState.captureFlow
     }
 
+    var isHUDVisible: Bool {
+        hudState.presentation.isVisible
+    }
+
     func bootstrap() {
         Task {
             await refreshSources()
@@ -92,9 +96,60 @@ final class AppModel: ObservableObject {
     }
 
     func refreshSources(requestScreenRecordingPermission: Bool = false) async {
+        let previousSelection = selectedSource
         await capture.reloadSources(requestScreenRecordingPermission: requestScreenRecordingPermission)
-        if selectedSource == nil || !capture.sources.contains(where: { $0.id == selectedSource?.id }) {
-            selectedSource = capture.sources.first
+
+        let resolved = resolveSelection(previous: previousSelection, in: capture.sources)
+        selectedSource = resolved
+
+        guard let resolved, let previousSelection else {
+            return
+        }
+        if case .ready(let mode, let hudSource) = hudState.phase,
+           hudSource.id == previousSelection.id || matchesIdentity(hudSource, previousSelection) {
+            setHUDPhase(.ready(mode, resolved))
+        }
+    }
+
+    private func resolveSelection(previous: CaptureSource?, in sources: [CaptureSource]) -> CaptureSource? {
+        guard let previous else {
+            return sources.first
+        }
+        if previous.kind == .area {
+            return previous
+        }
+        if let match = sources.first(where: { matchesIdentity($0, previous) }) {
+            return match
+        }
+        return sources.first
+    }
+
+    private func matchesIdentity(_ candidate: CaptureSource, _ reference: CaptureSource) -> Bool {
+        guard candidate.kind == reference.kind else {
+            return false
+        }
+        switch candidate.kind {
+        case .display:
+            if let candidateID = candidate.displayID, let referenceID = reference.displayID {
+                return candidateID == referenceID
+            }
+            return candidate.id == reference.id
+        case .window:
+            if let candidateWindowID = candidate.windowID,
+               let referenceWindowID = reference.windowID,
+               candidateWindowID == referenceWindowID,
+               candidate.ownerBundleID == reference.ownerBundleID {
+                return true
+            }
+            if let bundleID = reference.ownerBundleID,
+               candidate.ownerBundleID == bundleID,
+               candidate.name == reference.name,
+               !candidate.name.isEmpty {
+                return true
+            }
+            return false
+        case .area:
+            return candidate.id == reference.id
         }
     }
 
@@ -114,9 +169,9 @@ final class AppModel: ObservableObject {
 
         captureMode = mode
         if let selectedSource {
-            hudState = .ready(mode, selectedSource)
+            setHUDPhase(.ready(mode, selectedSource))
         } else {
-            hudState = .selectingSource(mode)
+            setHUDPhase(.selectingSource(mode))
         }
         statusMessage = selectedSource == nil ? "Choose a source." : "Ready"
         requestWindow(.showSourceSelector)
@@ -124,7 +179,7 @@ final class AppModel: ObservableObject {
 
     func selectSource(_ source: CaptureSource) {
         selectedSource = source
-        hudState = .ready(hudState.mode ?? captureMode, source)
+        setHUDPhase(.ready(hudState.mode ?? captureMode, source))
         statusMessage = "Selected \(source.name)"
         if source.kind == .display {
             flashDisplay(for: source)
@@ -144,14 +199,14 @@ final class AppModel: ObservableObject {
             thumbnailData: nil
         )
         selectedSource = source
-        hudState = .ready(hudState.mode ?? captureMode, source)
+        setHUDPhase(.ready(hudState.mode ?? captureMode, source))
         statusMessage = "Selected area"
     }
 
     func requestInteractiveAreaSelection() {
         let mode = hudState.mode ?? captureMode
         selectInteractiveAreaSource()
-        hudState = .areaSelecting(mode)
+        setHUDPhase(.areaSelecting(mode))
         isAreaSelectionActive = true
         statusMessage = "Draw an area to capture."
         requestWindow(.showAreaSelector)
@@ -175,7 +230,7 @@ final class AppModel: ObservableObject {
 
     func cancelCapture() {
         isAreaSelectionActive = false
-        hudState = .choosingMode
+        setHUDPhase(.choosingMode)
         statusMessage = "Ready"
         requestWindow(.closeAreaSelector)
     }
@@ -184,8 +239,26 @@ final class AppModel: ObservableObject {
         windowCommand = NativeWindowCommand(action: action, editorSession: editorSession)
     }
 
+    func showHUD() {
+        hudState = hudState.withPresentation(.visible)
+        requestWindow(.showHUD)
+    }
+
+    func hideHUD() {
+        hudState = hudState.withPresentation(.hidden)
+        requestWindow(.hideHUD)
+    }
+
+    func toggleHUDPresentation() {
+        if hudState.presentation == .visible {
+            hideHUD()
+        } else {
+            showHUD()
+        }
+    }
+
     func showEditor(for session: EditorSession) {
-        hudState = .choosingMode
+        setHUDPhase(.choosingMode)
         isAreaSelectionActive = false
         lastEditorSession = session
         selectedSection = .editor
@@ -201,14 +274,18 @@ final class AppModel: ObservableObject {
     }
 
     private func focusActiveCaptureWindow() {
-        switch hudState {
+        switch hudState.phase {
         case .selectingSource, .ready, .areaSelecting:
             requestWindow(.showSourceSelector)
         case .startingRecording, .recording, .stoppingRecording, .capturingScreenshot:
-            requestWindow(.showHUD)
+            showHUD()
         case .idle, .choosingMode:
-            requestWindow(.showHUD)
+            showHUD()
         }
+    }
+
+    private func setHUDPhase(_ phase: HUDPhase) {
+        hudState = hudState.withPhase(phase)
     }
 
     func startRecording() {
@@ -230,14 +307,14 @@ final class AppModel: ObservableObject {
             let outputURL = URL(fileURLWithPath: prepared.path)
             statusMessage = "Starting recording..."
             recordingPhase = .starting
-            hudState = .startingRecording(selectedSource)
+            setHUDPhase(.startingRecording(selectedSource))
             Task {
                 do {
                     refreshCaptureDevices()
                     let options = currentCaptureOptions
                     guard await preparePermissions(for: options) else {
                         recordingPhase = .idle
-                        hudState = .ready(.recording, selectedSource)
+                        setHUDPhase(.ready(.recording, selectedSource))
                         return
                     }
 
@@ -274,7 +351,7 @@ final class AppModel: ObservableObject {
                     currentScreenshotURL = nil
                     requestWindow(.closeSourceSelector)
                     recordingPhase = .recording
-                    hudState = .recording(selectedSource)
+                    setHUDPhase(.recording(selectedSource))
                     if !statusMessage.hasPrefix("Recording without facecam") {
                         statusMessage = "Recording \(selectedSource.name)"
                     }
@@ -287,7 +364,7 @@ final class AppModel: ObservableObject {
                     recordingPhase = .interrupted
                     statusMessage = error.localizedDescription
                     recordingPhase = .idle
-                    hudState = .ready(.recording, selectedSource)
+                    setHUDPhase(.ready(.recording, selectedSource))
                 }
             }
         } catch {
@@ -302,7 +379,7 @@ final class AppModel: ObservableObject {
         let source = hudState.source ?? selectedSource
         recordingPhase = .stopping
         if let source {
-            hudState = .stoppingRecording(source)
+            setHUDPhase(.stoppingRecording(source))
         }
         Task {
             do {
@@ -347,9 +424,9 @@ final class AppModel: ObservableObject {
                 _ = cursorTelemetryRecorder.stop(videoURL: nil)
                 statusMessage = error.localizedDescription
                 if let source {
-                    hudState = .ready(.recording, source)
+                    setHUDPhase(.ready(.recording, source))
                 } else {
-                    hudState = .choosingMode
+                    setHUDPhase(.choosingMode)
                 }
             }
             activeScreenStartedAt = nil
@@ -371,7 +448,7 @@ final class AppModel: ObservableObject {
         }
 
         do {
-            hudState = .capturingScreenshot(selectedSource)
+            setHUDPhase(.capturingScreenshot(selectedSource))
             let ensuredPaths = try paths ?? service.call("paths", as: AppPaths.self)
             let outputURL = URL(fileURLWithPath: ensuredPaths.screenshotsDir)
                 .appendingPathComponent(timestampedFileName(prefix: "screenshot", extension: "png"))
@@ -386,7 +463,7 @@ final class AppModel: ObservableObject {
             showEditor(for: EditorSession(kind: .screenshot, url: outputURL))
             statusMessage = "Captured \(outputURL.lastPathComponent)"
         } catch {
-            hudState = .ready(.screenshot, selectedSource)
+            setHUDPhase(.ready(.screenshot, selectedSource))
             statusMessage = error.localizedDescription
         }
     }
@@ -683,6 +760,68 @@ final class AppModel: ObservableObject {
            !cameraDevices.contains(where: { $0.id == selectedCameraDeviceID }) {
             self.selectedCameraDeviceID = nil
         }
+    }
+
+    func requestMicrophoneSelection(refreshDevices: Bool = true) {
+        if refreshDevices {
+            refreshCaptureDevices()
+        }
+        requestWindow(.showMicrophoneSelector)
+    }
+
+    func requestCameraSelection(refreshDevices: Bool = true) {
+        if refreshDevices {
+            refreshCaptureDevices()
+        }
+        requestWindow(.showCameraSelector)
+    }
+
+    func cancelMicrophoneSelection() {
+        requestWindow(.closeMicrophoneSelector)
+    }
+
+    func cancelCameraSelection() {
+        requestWindow(.closeCameraSelector)
+    }
+
+    func selectMicrophoneDevice(_ deviceID: String?) {
+        includeMicrophone = true
+        selectedMicrophoneDeviceID = deviceID
+        statusMessage = "Microphone set to \(selectedMicrophoneDeviceName)"
+        requestWindow(.closeMicrophoneSelector)
+    }
+
+    func selectCameraDevice(_ deviceID: String?) {
+        includeCamera = true
+        selectedCameraDeviceID = deviceID
+        statusMessage = "Camera set to \(selectedCameraDeviceName)"
+        requestWindow(.closeCameraSelector)
+    }
+
+    func disableMicrophone() {
+        includeMicrophone = false
+        statusMessage = "Microphone off"
+    }
+
+    func disableCamera() {
+        includeCamera = false
+        statusMessage = "Camera off"
+    }
+
+    var selectedMicrophoneDeviceName: String {
+        guard let selectedMicrophoneDeviceID,
+              let device = microphoneDevices.first(where: { $0.id == selectedMicrophoneDeviceID }) else {
+            return "System Default"
+        }
+        return device.name
+    }
+
+    var selectedCameraDeviceName: String {
+        guard let selectedCameraDeviceID,
+              let device = cameraDevices.first(where: { $0.id == selectedCameraDeviceID }) else {
+            return "System Default"
+        }
+        return device.name
     }
 
     private var currentCaptureOptions: RecordingCaptureOptions {

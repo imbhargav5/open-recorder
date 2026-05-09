@@ -60,6 +60,8 @@ struct CaptureSource: Identifiable, Codable, Hashable {
     var windowID: UInt32?
     var area: CaptureArea?
     var thumbnailData: Data?
+    var ownerBundleID: String? = nil
+    var ownerName: String? = nil
 }
 
 struct AppPaths: Codable, Equatable {
@@ -98,11 +100,39 @@ enum EditorMediaKind: String, Codable, Hashable {
     case video
     case screenshot
 
-    var badge: String {
+    var titleIconSystemName: String {
         switch self {
-        case .video: "MP4"
-        case .screenshot: "PNG"
+        case .video: "video.fill"
+        case .screenshot: "photo.fill"
         }
+    }
+
+    private var filenameExtensions: Set<String> {
+        switch self {
+        case .video: ["mov", "mp4", "m4v"]
+        case .screenshot: ["png", "jpg", "jpeg", "heic", "tiff", "gif", "webp"]
+        }
+    }
+
+    func displayTitle(for url: URL) -> String {
+        let title = url.deletingPathExtension().lastPathComponent
+        return title.isEmpty ? url.lastPathComponent : title
+    }
+
+    func displayTitle(for title: String, fallbackURL: URL? = nil) -> String {
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let candidate = trimmedTitle.isEmpty ? fallbackURL.map(displayTitle(for:)) : trimmedTitle
+        guard let candidate, !candidate.isEmpty else {
+            return "Open Recorder Editor"
+        }
+
+        let candidateURL = URL(fileURLWithPath: candidate)
+        guard filenameExtensions.contains(candidateURL.pathExtension.lowercased()) else {
+            return candidate
+        }
+
+        let titleWithoutExtension = candidateURL.deletingPathExtension().lastPathComponent
+        return titleWithoutExtension.isEmpty ? candidate : titleWithoutExtension
     }
 }
 
@@ -123,12 +153,16 @@ struct EditorSession: Codable, Hashable, Identifiable {
         self.id = id
         self.kind = kind
         self.path = url.path
-        self.title = title ?? url.lastPathComponent
+        self.title = title ?? kind.displayTitle(for: url)
         self.recordingSession = recordingSession
     }
 
     var url: URL {
         URL(fileURLWithPath: path)
+    }
+
+    var displayTitle: String {
+        kind.displayTitle(for: title, fallbackURL: url)
     }
 }
 
@@ -216,7 +250,16 @@ enum CaptureFlow: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
-enum HUDState: Hashable {
+enum HUDPresentationState: Hashable {
+    case visible
+    case hidden
+
+    var isVisible: Bool {
+        self == .visible
+    }
+}
+
+enum HUDPhase: Hashable {
     case idle
     case choosingMode
     case selectingSource(CaptureMode)
@@ -226,9 +269,63 @@ enum HUDState: Hashable {
     case recording(CaptureSource)
     case stoppingRecording(CaptureSource)
     case capturingScreenshot(CaptureSource)
+}
+
+struct HUDState: Hashable {
+    var phase: HUDPhase
+    var presentation: HUDPresentationState
+
+    init(phase: HUDPhase = .choosingMode, presentation: HUDPresentationState = .visible) {
+        self.phase = phase
+        self.presentation = presentation
+    }
+
+    static var idle: HUDState {
+        HUDState(phase: .idle)
+    }
+
+    static var choosingMode: HUDState {
+        HUDState(phase: .choosingMode)
+    }
+
+    static func selectingSource(_ mode: CaptureMode) -> HUDState {
+        HUDState(phase: .selectingSource(mode))
+    }
+
+    static func ready(_ mode: CaptureMode, _ source: CaptureSource) -> HUDState {
+        HUDState(phase: .ready(mode, source))
+    }
+
+    static func areaSelecting(_ mode: CaptureMode) -> HUDState {
+        HUDState(phase: .areaSelecting(mode))
+    }
+
+    static func startingRecording(_ source: CaptureSource) -> HUDState {
+        HUDState(phase: .startingRecording(source))
+    }
+
+    static func recording(_ source: CaptureSource) -> HUDState {
+        HUDState(phase: .recording(source))
+    }
+
+    static func stoppingRecording(_ source: CaptureSource) -> HUDState {
+        HUDState(phase: .stoppingRecording(source))
+    }
+
+    static func capturingScreenshot(_ source: CaptureSource) -> HUDState {
+        HUDState(phase: .capturingScreenshot(source))
+    }
+
+    func withPhase(_ phase: HUDPhase) -> HUDState {
+        HUDState(phase: phase, presentation: presentation)
+    }
+
+    func withPresentation(_ presentation: HUDPresentationState) -> HUDState {
+        HUDState(phase: phase, presentation: presentation)
+    }
 
     var mode: CaptureMode? {
-        switch self {
+        switch phase {
         case .idle, .choosingMode:
             nil
         case .selectingSource(let mode),
@@ -246,7 +343,7 @@ enum HUDState: Hashable {
     }
 
     var source: CaptureSource? {
-        switch self {
+        switch phase {
         case .ready(_, let source),
              .startingRecording(let source),
              .recording(let source),
@@ -262,7 +359,7 @@ enum HUDState: Hashable {
     }
 
     var isCaptureOccupied: Bool {
-        switch self {
+        switch phase {
         case .idle, .choosingMode:
             false
         case .selectingSource,
@@ -277,7 +374,7 @@ enum HUDState: Hashable {
     }
 
     var captureFlow: CaptureFlow {
-        switch self {
+        switch phase {
         case .idle, .choosingMode:
             .choice
         case .selectingSource(let mode),
@@ -296,10 +393,15 @@ enum HUDState: Hashable {
 
 enum NativeWindowCommandAction: Equatable {
     case showHUD
+    case hideHUD
     case showSourceSelector
+    case showMicrophoneSelector
+    case showCameraSelector
     case showAreaSelector
     case showStudio
     case closeSourceSelector
+    case closeMicrophoneSelector
+    case closeCameraSelector
     case closeAreaSelector
 }
 

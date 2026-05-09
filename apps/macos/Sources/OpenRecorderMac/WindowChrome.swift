@@ -7,6 +7,8 @@ import UniformTypeIdentifiers
 enum NativeWindowRole {
     case hud
     case sourceSelector
+    case microphoneSelector
+    case cameraSelector
     case areaSelector
     case studio
 }
@@ -75,6 +77,10 @@ final class WindowConfigurationView: NSView {
             configureHUD(window)
         case .sourceSelector:
             configureSourceSelector(window)
+        case .microphoneSelector:
+            configureMicrophoneSelector(window)
+        case .cameraSelector:
+            configureCameraSelector(window)
         case .areaSelector:
             configureAreaSelector(window)
         case .studio:
@@ -112,6 +118,38 @@ final class WindowConfigurationView: NSView {
         window.setContentSize(NSSize(width: SourceSelectorWindowMetrics.width, height: SourceSelectorWindowMetrics.compactHeight))
         window.minSize = NSSize(width: SourceSelectorWindowMetrics.minWidth, height: SourceSelectorWindowMetrics.minHeight)
         window.maxSize = NSSize(width: 1400, height: SourceSelectorWindowMetrics.maxHeight)
+        window.isOpaque = true
+        window.backgroundColor = NSColor(red: 0.055, green: 0.055, blue: 0.070, alpha: 1)
+        window.hasShadow = true
+        window.level = .floating
+        window.collectionBehavior = [.fullScreenAuxiliary]
+        window.isMovableByWindowBackground = false
+        window.titleVisibility = .visible
+        window.titlebarAppearsTransparent = false
+        window.center()
+    }
+
+    private func configureMicrophoneSelector(_ window: NSWindow) {
+        window.title = "Choose Microphone"
+        window.setContentSize(NSSize(width: CaptureDeviceSelectorWindowMetrics.width, height: CaptureDeviceSelectorWindowMetrics.height))
+        window.minSize = NSSize(width: CaptureDeviceSelectorWindowMetrics.minWidth, height: CaptureDeviceSelectorWindowMetrics.minHeight)
+        window.maxSize = NSSize(width: CaptureDeviceSelectorWindowMetrics.width, height: 520)
+        window.isOpaque = true
+        window.backgroundColor = NSColor(red: 0.055, green: 0.055, blue: 0.070, alpha: 1)
+        window.hasShadow = true
+        window.level = .floating
+        window.collectionBehavior = [.fullScreenAuxiliary]
+        window.isMovableByWindowBackground = false
+        window.titleVisibility = .visible
+        window.titlebarAppearsTransparent = false
+        window.center()
+    }
+
+    private func configureCameraSelector(_ window: NSWindow) {
+        window.title = "Choose Camera"
+        window.setContentSize(NSSize(width: CaptureDeviceSelectorWindowMetrics.width, height: CaptureDeviceSelectorWindowMetrics.height))
+        window.minSize = NSSize(width: CaptureDeviceSelectorWindowMetrics.minWidth, height: CaptureDeviceSelectorWindowMetrics.minHeight)
+        window.maxSize = NSSize(width: CaptureDeviceSelectorWindowMetrics.width, height: 520)
         window.isOpaque = true
         window.backgroundColor = NSColor(red: 0.055, green: 0.055, blue: 0.070, alpha: 1)
         window.hasShadow = true
@@ -267,8 +305,14 @@ struct WindowCommandBridge: View {
         switch command.action {
         case .showHUD:
             openWindow(id: "hud")
+        case .hideHUD:
+            dismissWindow(id: "hud")
         case .showSourceSelector:
             openWindow(id: "source-selector")
+        case .showMicrophoneSelector:
+            openWindow(id: "microphone-selector")
+        case .showCameraSelector:
+            openWindow(id: "camera-selector")
         case .showAreaSelector:
             openWindow(id: "area-selector")
         case .showStudio:
@@ -279,6 +323,10 @@ struct WindowCommandBridge: View {
             }
         case .closeSourceSelector:
             dismissWindow(id: "source-selector")
+        case .closeMicrophoneSelector:
+            dismissWindow(id: "microphone-selector")
+        case .closeCameraSelector:
+            dismissWindow(id: "camera-selector")
         case .closeAreaSelector:
             dismissWindow(id: "area-selector")
         }
@@ -325,4 +373,3 @@ struct HUDOverlayWindowView: View {
         .padding(.vertical, 18)
     }
 }
-

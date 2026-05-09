@@ -256,20 +256,18 @@ struct StudioTitleBar: View {
             }
             .padding(.horizontal, 12)
 
-            HStack(spacing: 8) {
+            HStack(spacing: 7) {
+                if model.selectedSection == .editor, let editorMediaKind {
+                    Image(systemName: editorMediaKind.titleIconSystemName)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                }
                 Text(title)
                     .font(.system(size: 14, weight: .semibold))
                     .lineLimit(1)
                     .truncationMode(.middle)
                     .frame(maxWidth: 520)
-                if model.selectedSection == .editor, let editorBadge {
-                    Text(editorBadge)
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 3)
-                        .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 6))
-                }
             }
         }
         .frame(height: 48)
@@ -290,22 +288,27 @@ struct StudioTitleBar: View {
         case .settings:
             "Settings"
         case .editor:
-            editorSession?.title ??
-                model.currentVideoURL?.lastPathComponent ??
-                    model.currentScreenshotURL?.lastPathComponent ??
-                    "Open Recorder Editor"
+            if let editorSession {
+                editorSession.displayTitle
+            } else if let currentVideoURL = model.currentVideoURL {
+                EditorMediaKind.video.displayTitle(for: currentVideoURL)
+            } else if let currentScreenshotURL = model.currentScreenshotURL {
+                EditorMediaKind.screenshot.displayTitle(for: currentScreenshotURL)
+            } else {
+                "Open Recorder Editor"
+            }
         }
     }
 
-    private var editorBadge: String? {
+    private var editorMediaKind: EditorMediaKind? {
         if let editorSession {
-            return editorSession.kind.badge
+            return editorSession.kind
         }
         if model.currentVideoURL != nil {
-            return EditorMediaKind.video.badge
+            return .video
         }
         if model.currentScreenshotURL != nil {
-            return EditorMediaKind.screenshot.badge
+            return .screenshot
         }
         return nil
     }
