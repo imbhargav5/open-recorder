@@ -189,7 +189,7 @@ struct VideoExportDialog: View {
     private var primaryActions: some View {
         VStack(spacing: 8) {
             Button {
-                onExport(VideoExportOptions(resolution: resolution, format: format, frameRate: frameRate))
+                onExport(VideoExportOptions(resolution: resolution, format: format, frameRate: frameRate, styling: .none))
             } label: {
                 Label(isExporting ? "Exporting…" : "Export", systemImage: "square.and.arrow.down")
                     .frame(maxWidth: .infinity, alignment: .leading)
