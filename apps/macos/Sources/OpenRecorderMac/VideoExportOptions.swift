@@ -1,4 +1,5 @@
 import AVFoundation
+import AppKit
 import CoreGraphics
 import Foundation
 import UniformTypeIdentifiers
@@ -189,6 +190,7 @@ enum VideoExportRendererError: LocalizedError {
     case missingVideoTrack
     case exportSessionUnavailable
     case exportCancelled
+    case emptyTimeline
     case exportFailed
 
     var errorDescription: String? {
@@ -196,6 +198,7 @@ enum VideoExportRendererError: LocalizedError {
         case .missingVideoTrack: "The recording does not contain a video track."
         case .exportSessionUnavailable: "This Mac cannot create the requested export session."
         case .exportCancelled: "Export canceled."
+        case .emptyTimeline: "Timeline edits remove the entire recording."
         case .exportFailed: "Video export failed."
         }
     }
@@ -208,6 +211,7 @@ enum VideoExportRenderer {
         targetURL: URL,
         options: VideoExportOptions,
         cancellationToken: VideoExportCancellationToken? = nil,
+        edits: TimelineEditSnapshot = .empty,
         progressHandler: @escaping @MainActor (Double) -> Void = { _ in }
     ) async throws {
         if FileManager.default.fileExists(atPath: targetURL.path) {
@@ -226,7 +230,9 @@ enum VideoExportRenderer {
         let frameDuration = try await options.frameRate.frameDuration(for: videoTrack)
         let outputSize = outputSize(for: naturalSize.applying(preferredTransform), options: options)
 
-        guard let exportSession = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetHighestQuality) else {
+        let exportAsset = try await makeEditedAsset(from: asset, duration: duration, edits: edits)
+
+        guard let exportSession = AVAssetExportSession(asset: exportAsset.asset, presetName: AVAssetExportPresetHighestQuality) else {
             throw VideoExportRendererError.exportSessionUnavailable
         }
 
@@ -234,12 +240,14 @@ enum VideoExportRenderer {
         exportSession.outputFileType = options.format.avFileType
         exportSession.shouldOptimizeForNetworkUse = true
         exportSession.videoComposition = makeVideoComposition(
-            for: videoTrack,
+            for: exportAsset.videoTrack ?? videoTrack,
             sourceSize: naturalSize,
             preferredTransform: preferredTransform,
             outputSize: outputSize,
-            duration: duration,
-            frameDuration: frameDuration
+            duration: CMTime(seconds: max(0.001, exportAsset.duration), preferredTimescale: 600),
+            frameDuration: frameDuration,
+            edits: edits,
+            editPlan: exportAsset.plan
         )
 
         if Task.isCancelled {
@@ -269,6 +277,60 @@ enum VideoExportRenderer {
         }
     }
 
+    private struct EditedAsset {
+        var asset: AVAsset
+        var videoTrack: AVAssetTrack?
+        var duration: Double
+        var plan: TimelineExportEditPlan
+    }
+
+    private static func makeEditedAsset(from asset: AVAsset, duration: CMTime, edits: TimelineEditSnapshot) async throws -> EditedAsset {
+        let sourceDuration = max(0, duration.seconds)
+        let plan = TimelineExportEditPlan.build(duration: sourceDuration, edits: edits)
+        guard edits.trimRegions.isEmpty == false || edits.speedRegions.isEmpty == false else {
+            return EditedAsset(asset: asset, videoTrack: nil, duration: sourceDuration, plan: plan)
+        }
+        guard plan.segments.isEmpty == false else {
+            throw VideoExportRendererError.emptyTimeline
+        }
+
+        let composition = AVMutableComposition()
+        let mediaTypes: [AVMediaType] = [.video, .audio]
+        var compositionVideoTrack: AVMutableCompositionTrack?
+        for mediaType in mediaTypes {
+            let tracks = try await asset.loadTracks(withMediaType: mediaType)
+            for sourceTrack in tracks {
+                guard let compositionTrack = composition.addMutableTrack(withMediaType: mediaType, preferredTrackID: kCMPersistentTrackID_Invalid) else {
+                    continue
+                }
+                if mediaType == .video, compositionVideoTrack == nil {
+                    compositionVideoTrack = compositionTrack
+                }
+                for segment in plan.segments {
+                    let sourceRange = CMTimeRange(
+                        start: CMTime(seconds: segment.sourceStart, preferredTimescale: 600),
+                        end: CMTime(seconds: segment.sourceEnd, preferredTimescale: 600)
+                    )
+                    let outputStart = CMTime(seconds: segment.outputStart, preferredTimescale: 600)
+                    try compositionTrack.insertTimeRange(sourceRange, of: sourceTrack, at: outputStart)
+                    let outputRange = CMTimeRange(start: outputStart, duration: sourceRange.duration)
+                    compositionTrack.scaleTimeRange(
+                        outputRange,
+                        toDuration: CMTime(seconds: segment.outputEnd - segment.outputStart, preferredTimescale: 600)
+                    )
+                    compositionTrack.preferredTransform = try await sourceTrack.load(.preferredTransform)
+                }
+            }
+        }
+
+        return EditedAsset(
+            asset: composition,
+            videoTrack: compositionVideoTrack,
+            duration: plan.outputDuration,
+            plan: plan
+        )
+    }
+
     private static func outputSize(for transformedSize: CGSize, options: VideoExportOptions) -> CGSize {
         let sourceWidth = max(abs(transformedSize.width), 2)
         let sourceHeight = max(abs(transformedSize.height), 2)
@@ -294,7 +356,9 @@ enum VideoExportRenderer {
         preferredTransform: CGAffineTransform,
         outputSize: CGSize,
         duration: CMTime,
-        frameDuration: CMTime
+        frameDuration: CMTime,
+        edits: TimelineEditSnapshot = .empty,
+        editPlan: TimelineExportEditPlan = TimelineExportEditPlan(segments: [], outputDuration: 0)
     ) -> AVMutableVideoComposition {
         let naturalRect = CGRect(origin: .zero, size: sourceSize).applying(preferredTransform)
         let normalizedTransform = preferredTransform.translatedBy(x: -naturalRect.origin.x, y: -naturalRect.origin.y)
@@ -311,13 +375,75 @@ enum VideoExportRenderer {
         instruction.timeRange = CMTimeRange(start: .zero, duration: duration)
 
         let layerInstruction = AVMutableVideoCompositionLayerInstruction(assetTrack: videoTrack)
-        layerInstruction.setTransform(transform, at: .zero)
+        applyZoomTransforms(to: layerInstruction, baseTransform: transform, outputSize: outputSize, edits: edits, editPlan: editPlan)
         instruction.layerInstructions = [layerInstruction]
 
         let composition = AVMutableVideoComposition()
         composition.renderSize = outputSize
         composition.frameDuration = frameDuration
         composition.instructions = [instruction]
+        if edits.annotationRegions.isEmpty == false {
+            composition.animationTool = makeAnnotationTool(outputSize: outputSize, edits: edits, editPlan: editPlan)
+        }
         return composition
+    }
+
+    private static func applyZoomTransforms(to layerInstruction: AVMutableVideoCompositionLayerInstruction, baseTransform: CGAffineTransform, outputSize: CGSize, edits: TimelineEditSnapshot, editPlan: TimelineExportEditPlan) {
+        layerInstruction.setTransform(baseTransform, at: .zero)
+        for zoom in edits.zoomRegions {
+            let start = editPlan.outputTime(forSourceTime: zoom.span.start) ?? zoom.span.start
+            let end = editPlan.outputTime(forSourceTime: zoom.span.end) ?? zoom.span.end
+            guard end > start else { continue }
+            let zoomTransform = zoomedTransform(base: baseTransform, outputSize: outputSize, zoom: zoom)
+            let timeRange = CMTimeRange(start: CMTime(seconds: start, preferredTimescale: 600), end: CMTime(seconds: end, preferredTimescale: 600))
+            layerInstruction.setTransform(zoomTransform, at: timeRange.start)
+            layerInstruction.setTransform(baseTransform, at: timeRange.end)
+        }
+    }
+
+    private static func zoomedTransform(base: CGAffineTransform, outputSize: CGSize, zoom: TimelineZoomRegion) -> CGAffineTransform {
+        let scale = max(1, zoom.depth)
+        let focus = CGPoint(x: outputSize.width * zoom.focusX, y: outputSize.height * zoom.focusY)
+        let translateToFocus = CGAffineTransform(translationX: focus.x, y: focus.y)
+        let zoomScale = CGAffineTransform(scaleX: scale, y: scale)
+        let translateBack = CGAffineTransform(translationX: -focus.x, y: -focus.y)
+        return base.concatenating(translateBack).concatenating(zoomScale).concatenating(translateToFocus)
+    }
+
+    private static func makeAnnotationTool(outputSize: CGSize, edits: TimelineEditSnapshot, editPlan: TimelineExportEditPlan) -> AVVideoCompositionCoreAnimationTool {
+        let parentLayer = CALayer()
+        parentLayer.frame = CGRect(origin: .zero, size: outputSize)
+        let videoLayer = CALayer()
+        videoLayer.frame = parentLayer.frame
+        parentLayer.addSublayer(videoLayer)
+
+        for annotation in edits.annotationRegions {
+            let textLayer = CATextLayer()
+            textLayer.string = annotation.text
+            textLayer.fontSize = annotation.fontSize
+            textLayer.alignmentMode = .center
+            textLayer.foregroundColor = NSColor.white.cgColor
+            textLayer.backgroundColor = NSColor.black.withAlphaComponent(0.62).cgColor
+            textLayer.cornerRadius = 10
+            textLayer.masksToBounds = true
+            let width = min(outputSize.width * 0.72, max(180, CGFloat(annotation.text.count * 18)))
+            let height = annotation.fontSize + 24
+            textLayer.frame = CGRect(x: outputSize.width * annotation.x - width / 2, y: outputSize.height * (1 - annotation.y) - height / 2, width: width, height: height)
+            textLayer.opacity = 0
+
+            let start = editPlan.outputTime(forSourceTime: annotation.span.start) ?? annotation.span.start
+            let end = editPlan.outputTime(forSourceTime: annotation.span.end) ?? annotation.span.end
+            let animation = CAKeyframeAnimation(keyPath: "opacity")
+            animation.values = [0, 1, 1, 0]
+            animation.keyTimes = [0, 0.08, 0.92, 1]
+            animation.beginTime = AVCoreAnimationBeginTimeAtZero + start
+            animation.duration = max(0.05, end - start)
+            animation.isRemovedOnCompletion = false
+            animation.fillMode = .both
+            textLayer.add(animation, forKey: "visible")
+            parentLayer.addSublayer(textLayer)
+        }
+
+        return AVVideoCompositionCoreAnimationTool(postProcessingAsVideoLayer: videoLayer, in: parentLayer)
     }
 }
