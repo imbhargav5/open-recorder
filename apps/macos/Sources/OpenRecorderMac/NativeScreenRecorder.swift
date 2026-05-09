@@ -7,19 +7,24 @@ import Foundation
 enum NativeScreenRecorderError: LocalizedError {
     case missingDisplay
     case missingWindow
+    case windowIdentityChanged(expected: String?, actual: String?)
     case unsupportedSource
     case recordingOutputUnavailable
 
     var errorDescription: String? {
         switch self {
         case .missingDisplay:
-            "The selected display is no longer available."
+            return "The selected display is no longer available. Refresh sources and pick again."
         case .missingWindow:
-            "The selected window is no longer available."
+            return "The selected window is no longer available. Refresh sources and pick again."
+        case .windowIdentityChanged(let expected, let actual):
+            let expectedLabel = expected ?? "the selected window"
+            let actualLabel = actual.map { " (now belongs to \($0))" } ?? ""
+            return "The selected window has been replaced\(actualLabel). Refresh sources and pick \(expectedLabel) again."
         case .unsupportedSource:
-            "Selected-area video recording is not implemented in the native recorder yet."
+            return "Selected-area video recording is not implemented in the native recorder yet."
         case .recordingOutputUnavailable:
-            "ScreenCaptureKit recording output is not available on this macOS version."
+            return "ScreenCaptureKit recording output is not available on this macOS version."
         }
     }
 }
@@ -128,10 +133,10 @@ final class NativeScreenRecorder: NSObject {
             )
 
         case .window:
-            guard let windowID = source.windowID,
-                  let window = content.windows.first(where: { $0.windowID == windowID }) else {
+            guard let window = resolveWindow(for: source, in: content) else {
                 throw NativeScreenRecorderError.missingWindow
             }
+            try verifyWindowIdentity(source: source, window: window)
             let width = max(Int(window.frame.width), 640)
             let height = max(Int(window.frame.height), 360)
             return (
@@ -161,6 +166,46 @@ final class NativeScreenRecorder: NSObject {
                 sourceRect
             )
         }
+    }
+
+    private func resolveWindow(for source: CaptureSource, in content: SCShareableContent) -> SCWindow? {
+        if let windowID = source.windowID,
+           let window = content.windows.first(where: { $0.windowID == windowID }) {
+            if let expectedBundleID = source.ownerBundleID,
+               let actualBundleID = window.owningApplication?.bundleIdentifier,
+               expectedBundleID != actualBundleID {
+                if let recovered = findWindowByIdentity(source: source, in: content) {
+                    return recovered
+                }
+                return window
+            }
+            return window
+        }
+
+        return findWindowByIdentity(source: source, in: content)
+    }
+
+    private func findWindowByIdentity(source: CaptureSource, in content: SCShareableContent) -> SCWindow? {
+        guard let bundleID = source.ownerBundleID else {
+            return nil
+        }
+        return content.windows.first {
+            $0.owningApplication?.bundleIdentifier == bundleID && $0.title == source.name
+        }
+    }
+
+    private func verifyWindowIdentity(source: CaptureSource, window: SCWindow) throws {
+        guard let expectedBundleID = source.ownerBundleID else {
+            return
+        }
+        let actualBundleID = window.owningApplication?.bundleIdentifier
+        guard expectedBundleID != actualBundleID else {
+            return
+        }
+        throw NativeScreenRecorderError.windowIdentityChanged(
+            expected: source.ownerName ?? source.name,
+            actual: window.owningApplication?.applicationName
+        )
     }
 
     private func sourceRect(for area: CaptureArea, display: SCDisplay) -> CGRect {
