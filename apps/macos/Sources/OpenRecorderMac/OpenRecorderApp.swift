@@ -10,15 +10,26 @@ final class OpenRecorderAppDelegate: NSObject, NSApplicationDelegate {
     private let windowActions = AppWindowActions()
     private let statusItemController = OpenRecorderStatusItemController()
     private let hotKeyController = GlobalRecordingHotKeyController()
+    private var windowCommandCancellable: AnyCancellable?
 
     func attach(model: AppModel) {
         if self.model !== model {
+            self.model = model
             statusItemController.attach(model: model, windowActions: windowActions)
             hotKeyController.attach(model: model)
+            windowCommandCancellable = model.$windowCommand
+                .receive(on: RunLoop.main)
+                .sink { [weak self] command in
+                    Task { @MainActor in
+                        self?.handleWindowCommand(command)
+                    }
+                }
+        } else {
+            self.model = model
         }
-        self.model = model
         pendingProjectURLs.append(contentsOf: launchArgumentProjectURLs())
         flushPendingProjectURLs()
+        handleWindowCommand(model.windowCommand)
     }
 
     func installWindowActions(
@@ -26,9 +37,8 @@ final class OpenRecorderAppDelegate: NSObject, NSApplicationDelegate {
         openEditor: @escaping (EditorSession) -> Void,
         dismissWindow: @escaping (String) -> Void
     ) {
-        windowActions.openWindow = openWindow
-        windowActions.openEditor = openEditor
-        windowActions.dismissWindow = dismissWindow
+        windowActions.install(openWindow: openWindow, openEditor: openEditor, dismissWindow: dismissWindow)
+        handleWindowCommand(model?.windowCommand)
     }
 
     func application(_ sender: NSApplication, openFiles filenames: [String]) {
@@ -42,6 +52,16 @@ final class OpenRecorderAppDelegate: NSObject, NSApplicationDelegate {
         let urls = pendingProjectURLs
         pendingProjectURLs.removeAll()
         urls.forEach { model.openProjectFile(at: $0) }
+    }
+
+    private func handleWindowCommand(_ command: NativeWindowCommand?) {
+        guard windowActions.isInstalled,
+              let model,
+              let command = model.consumeWindowCommand(command) else {
+            return
+        }
+
+        windowActions.perform(command)
     }
 
     private func launchArgumentProjectURLs() -> [URL] {
@@ -197,10 +217,80 @@ private struct AppWindowActionBridge: View {
 }
 
 @MainActor
-private final class AppWindowActions {
-    var openWindow: (String) -> Void = { _ in }
-    var openEditor: (EditorSession) -> Void = { _ in }
-    var dismissWindow: (String) -> Void = { _ in }
+final class AppWindowActions {
+    private(set) var isInstalled = false
+    private var openWindow: (String) -> Void = { _ in }
+    private var openEditor: (EditorSession) -> Void = { _ in }
+    private var dismissWindow: (String) -> Void = { _ in }
+    private var activateApp: () -> Void = {
+        NSApplication.shared.activate(ignoringOtherApps: true)
+    }
+
+    func install(
+        openWindow: @escaping (String) -> Void,
+        openEditor: @escaping (EditorSession) -> Void,
+        dismissWindow: @escaping (String) -> Void,
+        activateApp: @escaping () -> Void = {
+            NSApplication.shared.activate(ignoringOtherApps: true)
+        }
+    ) {
+        self.openWindow = openWindow
+        self.openEditor = openEditor
+        self.dismissWindow = dismissWindow
+        self.activateApp = activateApp
+        isInstalled = true
+    }
+
+    func open(_ id: String) {
+        openWindow(id)
+    }
+
+    func dismiss(_ id: String) {
+        dismissWindow(id)
+    }
+
+    func openEditorSession(_ session: EditorSession) {
+        openEditor(session)
+    }
+
+    func perform(_ command: NativeWindowCommand) {
+        switch command.action {
+        case .showHUD:
+            openWindow("hud")
+        case .hideHUD:
+            dismissWindow("hud")
+        case .showRecordingSetup:
+            openWindow("hud")
+            openWindow("source-selector")
+            activateApp()
+        case .hideRecordingSetup:
+            dismissWindow("hud")
+            dismissWindow("source-selector")
+        case .showSourceSelector:
+            openWindow("source-selector")
+        case .showMicrophoneSelector:
+            openWindow("microphone-selector")
+        case .showCameraSelector:
+            openWindow("camera-selector")
+        case .showAreaSelector:
+            openWindow("area-selector")
+        case .showStudio:
+            if let editorSession = command.editorSession {
+                openEditor(editorSession)
+            } else {
+                openWindow("studio")
+            }
+            activateApp()
+        case .closeSourceSelector:
+            dismissWindow("source-selector")
+        case .closeMicrophoneSelector:
+            dismissWindow("microphone-selector")
+        case .closeCameraSelector:
+            dismissWindow("camera-selector")
+        case .closeAreaSelector:
+            dismissWindow("area-selector")
+        }
+    }
 }
 
 @MainActor
@@ -335,10 +425,10 @@ private final class OpenRecorderStatusItemController: NSObject {
         guard let model, let windowActions else { return }
         if model.isHUDVisible {
             model.hideHUD()
-            windowActions.dismissWindow("hud")
+            windowActions.dismiss("hud")
         } else {
             model.showHUD()
-            windowActions.openWindow("hud")
+            windowActions.open("hud")
             NSApp.activate(ignoringOtherApps: true)
         }
     }
@@ -346,7 +436,7 @@ private final class OpenRecorderStatusItemController: NSObject {
     @objc private func showLastEditor() {
         guard let model, let session = model.lastEditorSession, let windowActions else { return }
         model.showEditor(for: session)
-        windowActions.openEditor(session)
+        windowActions.openEditorSession(session)
         NSApp.activate(ignoringOtherApps: true)
     }
 
@@ -359,8 +449,8 @@ private final class OpenRecorderStatusItemController: NSObject {
         guard model.canStartNewCapture else { return }
         model.beginCapture(mode)
         model.showHUD()
-        windowActions.openWindow("source-selector")
-        windowActions.openWindow("hud")
+        windowActions.open("source-selector")
+        windowActions.open("hud")
         NSApp.activate(ignoringOtherApps: true)
     }
 }

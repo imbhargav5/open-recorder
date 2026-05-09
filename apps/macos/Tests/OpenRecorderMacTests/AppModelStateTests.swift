@@ -389,4 +389,46 @@ final class AppModelStateTests: XCTestCase {
         XCTAssertEqual(model.hudState, .startingRecording(source))
         XCTAssertEqual(model.statusMessage, "Recording will stop after it starts.")
     }
+
+    func testAppWindowActionsOpenEditorCommandUsesEditorWindow() {
+        let actions = AppWindowActions()
+        let session = EditorSession(
+            kind: .video,
+            url: URL(fileURLWithPath: "/tmp/example-recording.mp4"),
+            title: "Example Recording"
+        )
+        var openedWindows: [String] = []
+        var openedEditorSession: EditorSession?
+        var dismissedWindows: [String] = []
+
+        actions.install(
+            openWindow: { openedWindows.append($0) },
+            openEditor: { openedEditorSession = $0 },
+            dismissWindow: { dismissedWindows.append($0) },
+            activateApp: {}
+        )
+        actions.perform(NativeWindowCommand(action: .showStudio, editorSession: session))
+
+        XCTAssertTrue(actions.isInstalled)
+        XCTAssertEqual(openedEditorSession, session)
+        XCTAssertTrue(openedWindows.isEmpty)
+        XCTAssertTrue(dismissedWindows.isEmpty)
+    }
+
+    func testAppWindowActionsHideRecordingSetupClosesCaptureWindows() {
+        let actions = AppWindowActions()
+        var openedWindows: [String] = []
+        var dismissedWindows: [String] = []
+
+        actions.install(
+            openWindow: { openedWindows.append($0) },
+            openEditor: { _ in },
+            dismissWindow: { dismissedWindows.append($0) },
+            activateApp: {}
+        )
+        actions.perform(NativeWindowCommand(action: .hideRecordingSetup))
+
+        XCTAssertTrue(openedWindows.isEmpty)
+        XCTAssertEqual(dismissedWindows, ["hud", "source-selector"])
+    }
 }
