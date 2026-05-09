@@ -4,40 +4,10 @@ import CoreGraphics
 import SwiftUI
 import UniformTypeIdentifiers
 
-enum ScreenshotBackgroundMode: String, CaseIterable, Identifiable {
-    case gradient
-    case color
-    case transparent
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .gradient: "Gradient"
-        case .color: "Color"
-        case .transparent: "None"
-        }
-    }
-}
-
-struct ScreenshotGradientPreset {
-    var colors: [NSColor]
-
-    var linearGradient: LinearGradient {
-        LinearGradient(
-            colors: colors.map { Color(nsColor: $0) },
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-    }
-}
-
 struct ScreenshotEditorStudioView: View {
     @EnvironmentObject private var model: AppModel
     var screenshotURL: URL?
-    @State private var backgroundMode: ScreenshotBackgroundMode = .gradient
-    @State private var gradientIndex = 0
-    @State private var solidColor = Color(red: 0.055, green: 0.055, blue: 0.067)
+    @State private var background: BackgroundStyle = BackgroundPresets.default
     @State private var padding = 56.0
     @State private var backgroundRoundness = 28.0
     @State private var backgroundShadow = 0.0
@@ -45,32 +15,11 @@ struct ScreenshotEditorStudioView: View {
     @State private var imageShadow = 0.45
     @State private var isExportDialogPresented = false
 
-    private let gradients: [ScreenshotGradientPreset] = [
-        ScreenshotGradientPreset(colors: [
-            NSColor(red: 0.11, green: 0.17, blue: 0.25, alpha: 1),
-            NSColor(red: 0.03, green: 0.04, blue: 0.06, alpha: 1)
-        ]),
-        ScreenshotGradientPreset(colors: [
-            NSColor(red: 0.12, green: 0.10, blue: 0.19, alpha: 1),
-            NSColor(red: 0.02, green: 0.03, blue: 0.05, alpha: 1)
-        ]),
-        ScreenshotGradientPreset(colors: [
-            NSColor(red: 0.10, green: 0.18, blue: 0.14, alpha: 1),
-            NSColor(red: 0.03, green: 0.04, blue: 0.04, alpha: 1)
-        ]),
-        ScreenshotGradientPreset(colors: [
-            NSColor(red: 0.20, green: 0.18, blue: 0.14, alpha: 1),
-            NSColor(red: 0.05, green: 0.04, blue: 0.04, alpha: 1)
-        ])
-    ]
-
     var body: some View {
         HStack(spacing: 16) {
             ScreenshotCanvas(
                 image: image,
-                backgroundMode: backgroundMode,
-                gradient: selectedGradient.linearGradient,
-                solidColor: solidColor,
+                background: background,
                 padding: padding,
                 backgroundRoundness: backgroundRoundness,
                 backgroundShadow: backgroundShadow,
@@ -80,15 +29,12 @@ struct ScreenshotEditorStudioView: View {
             .layoutPriority(1)
 
             ScreenshotSettingsPanel(
-                backgroundMode: $backgroundMode,
-                gradientIndex: $gradientIndex,
-                solidColor: $solidColor,
+                background: $background,
                 padding: $padding,
                 backgroundRoundness: $backgroundRoundness,
                 backgroundShadow: $backgroundShadow,
                 imageRoundness: $imageRoundness,
                 imageShadow: $imageShadow,
-                gradients: gradients,
                 onExport: {
                     isExportDialogPresented = true
                 }
@@ -113,13 +59,6 @@ struct ScreenshotEditorStudioView: View {
     private var image: NSImage? {
         guard let url = screenshotURL else { return nil }
         return NSImage(contentsOf: url)
-    }
-
-    private var selectedGradient: ScreenshotGradientPreset {
-        guard gradients.indices.contains(gradientIndex) else {
-            return gradients[0]
-        }
-        return gradients[gradientIndex]
     }
 
     private func saveComposedPNG() {
@@ -167,9 +106,7 @@ struct ScreenshotEditorStudioView: View {
     private func renderComposedPNG() -> Data? {
         guard let image else { return nil }
         let renderer = ScreenshotExportRenderer(configuration: ScreenshotExportConfiguration(
-            backgroundMode: backgroundMode,
-            gradientColors: selectedGradient.colors,
-            solidColor: NSColor(solidColor).usingColorSpace(.sRGB) ?? NSColor.clear,
+            background: background,
             padding: padding,
             backgroundRoundness: backgroundRoundness,
             backgroundShadow: backgroundShadow,
@@ -245,9 +182,7 @@ struct ScreenshotExportDialog: View {
 
 struct ScreenshotCanvas: View {
     var image: NSImage?
-    var backgroundMode: ScreenshotBackgroundMode
-    var gradient: LinearGradient
-    var solidColor: Color
+    var background: BackgroundStyle
     var padding: Double
     var backgroundRoundness: Double
     var backgroundShadow: Double
@@ -275,7 +210,7 @@ struct ScreenshotCanvas: View {
 
     private func screenshotStage(_ image: NSImage) -> some View {
         ZStack {
-            stageBackground
+            BackgroundFillView(style: background)
                 .clipShape(RoundedRectangle(cornerRadius: backgroundRoundness, style: .continuous))
                 .shadow(
                     color: Color.black.opacity(0.45 * backgroundShadow),
@@ -299,48 +234,24 @@ struct ScreenshotCanvas: View {
                 .padding(CGFloat(padding))
         }
     }
-
-    @ViewBuilder
-    private var stageBackground: some View {
-        switch backgroundMode {
-        case .gradient:
-            gradient
-        case .color:
-            solidColor
-        case .transparent:
-            Checkerboard()
-        }
-    }
 }
 
 struct ScreenshotSettingsPanel: View {
     @EnvironmentObject private var model: AppModel
-    @Binding var backgroundMode: ScreenshotBackgroundMode
-    @Binding var gradientIndex: Int
-    @Binding var solidColor: Color
+    @Binding var background: BackgroundStyle
     @Binding var padding: Double
     @Binding var backgroundRoundness: Double
     @Binding var backgroundShadow: Double
     @Binding var imageRoundness: Double
     @Binding var imageShadow: Double
-    var gradients: [ScreenshotGradientPreset]
     var onExport: () -> Void
-
-    private let colorSwatches: [Color] = [
-        Color(red: 0.055, green: 0.055, blue: 0.067),
-        Color(red: 0.95, green: 0.96, blue: 0.98),
-        Color(red: 0.10, green: 0.16, blue: 0.24),
-        Color(red: 0.13, green: 0.19, blue: 0.14),
-        Color(red: 0.24, green: 0.13, blue: 0.18),
-        Color(red: 0.23, green: 0.20, blue: 0.13)
-    ]
 
     var body: some View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     header
-                    backgroundControls
+                    BackgroundPickerView(selection: $background)
                     InspectorGroup(title: "Background Layer", symbolName: "rectangle.fill") {
                         InspectorSlider(title: "Padding", valueText: "\(Int(padding))px", value: $padding, range: 0...140, step: 1)
                         InspectorSlider(title: "Roundness", valueText: "\(Int(backgroundRoundness))px", value: $backgroundRoundness, range: 0...64, step: 1)
@@ -406,67 +317,6 @@ struct ScreenshotSettingsPanel: View {
         }
     }
 
-    private var backgroundControls: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Background")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .textCase(.uppercase)
-
-            HStack(spacing: 6) {
-                ForEach(ScreenshotBackgroundMode.allCases) { mode in
-                    StudioButton(hitTarget: .rounded(7)) {
-                        backgroundMode = mode
-                    } label: {
-                        Text(mode.title)
-                            .font(.system(size: 11, weight: .semibold))
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 30)
-                            .background(backgroundMode == mode ? Color.brand : Color.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 7))
-                            .foregroundStyle(backgroundMode == mode ? Color.white : Color.secondary)
-                    }
-                }
-            }
-
-            if backgroundMode == .gradient {
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 2), spacing: 8) {
-                    ForEach(gradients.indices, id: \.self) { index in
-                        StudioButton(hitTarget: .rounded(8)) {
-                            gradientIndex = index
-                        } label: {
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(gradients[index].linearGradient)
-                                .frame(height: 44)
-                                .overlay {
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .stroke(gradientIndex == index ? Color.brand : Color.white.opacity(0.10), lineWidth: gradientIndex == index ? 2 : 1)
-                                }
-                        }
-                    }
-                }
-            }
-
-            if backgroundMode == .color {
-                HStack(spacing: 8) {
-                    ForEach(colorSwatches.indices, id: \.self) { index in
-                        StudioButton(hitTarget: .circle) {
-                            solidColor = colorSwatches[index]
-                        } label: {
-                            Circle()
-                                .fill(colorSwatches[index])
-                                .frame(width: 28, height: 28)
-                                .overlay {
-                                    Circle()
-                                        .stroke(Color.white.opacity(0.22), lineWidth: 1)
-                                }
-                        }
-                    }
-                }
-            }
-        }
-        .padding(10)
-        .background(Color.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 8))
-    }
 }
 
 struct Checkerboard: View {
