@@ -60,6 +60,8 @@ struct CaptureSource: Identifiable, Codable, Hashable {
     var windowID: UInt32?
     var area: CaptureArea?
     var thumbnailData: Data?
+    var ownerBundleID: String? = nil
+    var ownerName: String? = nil
 }
 
 struct AppPaths: Codable, Equatable {
