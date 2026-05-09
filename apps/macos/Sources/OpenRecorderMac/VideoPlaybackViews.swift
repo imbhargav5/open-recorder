@@ -30,19 +30,6 @@ struct VideoPreviewPanel: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-            Rectangle()
-                .fill(Color.studioBorder)
-                .frame(height: 1)
-
-            HStack {
-                Spacer(minLength: 0)
-                PlaybackControlStrip(playback: playback)
-                    .frame(maxWidth: 700)
-                Spacer(minLength: 0)
-            }
-                .frame(height: 54)
-                .padding(.horizontal, 12)
         }
         .background(Color.studioPanel.opacity(0.86), in: RoundedRectangle(cornerRadius: 10))
         .overlay {
@@ -268,55 +255,6 @@ struct EmptyEditorState: View {
                 .font(.system(size: 13))
                 .foregroundStyle(.secondary)
         }
-    }
-}
-
-struct PlaybackControlStrip: View {
-    @ObservedObject var playback: VideoPlaybackController
-
-    var body: some View {
-        HStack(spacing: 12) {
-            StudioButton(hitTarget: .circle) {
-                playback.togglePlayback()
-            } label: {
-                Image(systemName: playback.isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 13, weight: .semibold))
-                    .frame(width: 32, height: 32)
-                    .background(playback.isPlaying ? Color.white.opacity(0.10) : Color.white, in: Circle())
-                    .foregroundStyle(playback.isPlaying ? Color.white : Color.black)
-            }
-            .disabled(playback.player == nil)
-            .opacity(playback.player == nil ? 0.45 : 1)
-
-            Text(formatPlaybackTime(playback.currentTime))
-                .font(.system(size: 11, weight: .medium, design: .monospaced))
-                .foregroundStyle(Color.white.opacity(0.76))
-                .frame(width: 42, alignment: .trailing)
-
-            ElasticSlider(
-                value: Binding(
-                    get: { playback.currentTime },
-                    set: { playback.seek(to: $0) }
-                ),
-                range: 0...max(playback.duration, 0.01),
-                step: 0.01
-            )
-            .accessibilityLabel("Playback position")
-            .disabled(playback.player == nil)
-
-            Text(formatPlaybackTime(playback.duration))
-                .font(.system(size: 11, weight: .medium, design: .monospaced))
-                .foregroundStyle(Color.white.opacity(0.42))
-                .frame(width: 42, alignment: .leading)
-        }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 5)
-        .background(Color.black.opacity(0.58), in: Capsule())
-        .overlay {
-            Capsule()
-                .stroke(Color.white.opacity(0.10), lineWidth: 1)
-        }
-        .shadow(color: Color.black.opacity(0.24), radius: 14, y: 8)
     }
 }
 
