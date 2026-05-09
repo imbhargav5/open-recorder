@@ -6,12 +6,10 @@ queue_rules:
     merge_method: merge
     merge_conditions:
       - check-success=GitGuardian Security Checks
+      - check-success=changes
       - or:
-          - check-success=Run vitest suite
-          - check-skipped=Run vitest suite
-      - or:
-          - check-success=Playwright E2E
-          - check-skipped=Playwright E2E
+          - check-success=Native macOS tests
+          - check-skipped=Native macOS tests
 
 merge_queue:
   max_parallel_checks: 10
