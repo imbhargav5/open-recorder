@@ -8,13 +8,14 @@ struct VideoPreviewPanel: View {
     var videoURL: URL?
     var recordingSession: RecordingSession?
     @ObservedObject var playback: VideoPlaybackController
+    @ObservedObject var timelineEdits: TimelineEditController
 
     var body: some View {
         VStack(spacing: 0) {
             ZStack {
                 if videoURL != nil {
                     ZStack(alignment: .bottomTrailing) {
-                        PlaybackPreview(playback: playback)
+                        PlaybackPreview(playback: playback, edits: timelineEdits.snapshot)
                             .aspectRatio(16.0 / 9.0, contentMode: .fit)
                         recordingSessionBadges
                     }
@@ -88,6 +89,7 @@ final class VideoPlaybackController: ObservableObject {
     @Published var currentTime = 0.0
     @Published var duration = 0.0
     @Published var isPlaying = false
+    private var timelineEdits = TimelineEditSnapshot.empty
 
     private var currentURL: URL?
     private var timeObserver: Any?
@@ -148,7 +150,7 @@ final class VideoPlaybackController: ObservableObject {
             if duration > 0, currentTime >= duration {
                 seek(to: 0)
             }
-            player.play()
+            applyPlaybackRate()
             isPlaying = true
         }
     }
@@ -156,6 +158,12 @@ final class VideoPlaybackController: ObservableObject {
     func pause() {
         player?.pause()
         isPlaying = false
+    }
+
+    func setTimelineEdits(_ edits: TimelineEditSnapshot) {
+        timelineEdits = edits
+        enforceTimelineEdits(at: currentTime)
+        if isPlaying { applyPlaybackRate() }
     }
 
     func seek(to seconds: Double) {
@@ -178,6 +186,7 @@ final class VideoPlaybackController: ObservableObject {
             Task { @MainActor in
                 guard let self, seconds.isFinite else { return }
                 self.currentTime = seconds
+                self.enforceTimelineEdits(at: seconds)
 
                 let itemDuration = self.player?.currentItem?.duration.seconds ?? 0
                 if itemDuration.isFinite, itemDuration > 0, self.duration == 0 {
@@ -185,6 +194,22 @@ final class VideoPlaybackController: ObservableObject {
                 }
             }
         }
+    }
+
+    private func enforceTimelineEdits(at seconds: Double) {
+        if let trimEnd = timelineEdits.nextTrimEnd(containing: seconds), trimEnd > seconds {
+            seek(to: min(trimEnd, duration))
+            return
+        }
+        if isPlaying {
+            applyPlaybackRate()
+        }
+    }
+
+    private func applyPlaybackRate() {
+        guard let player else { return }
+        let rate = Float(timelineEdits.activeSpeed(at: currentTime)?.speed ?? 1)
+        player.rate = max(0.05, rate)
     }
 
     private func teardownPlayer() {
@@ -286,16 +311,30 @@ func formatPlaybackTime(_ seconds: Double) -> String {
 
 struct PlaybackPreview: View {
     @ObservedObject var playback: VideoPlaybackController
+    var edits: TimelineEditSnapshot
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
             NativeVideoPlayer(playback: playback)
+                .scaleEffect(activeZoomScale, anchor: activeZoomAnchor)
+                .animation(.easeInOut(duration: 0.18), value: activeZoomScale)
                 .background(Color.black)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
                 .overlay {
                     RoundedRectangle(cornerRadius: 8)
                         .stroke(Color.studioBorder)
                 }
+
+            ForEach(edits.annotations(at: playback.currentTime)) { annotation in
+                Text(annotation.text)
+                    .font(.system(size: annotation.fontSize, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(Color.black.opacity(0.62), in: RoundedRectangle(cornerRadius: 10))
+                    .position(x: annotation.x * 640, y: annotation.y * 360)
+                    .shadow(color: .black.opacity(0.45), radius: 8, y: 4)
+            }
 
             StudioButton(hitTarget: .capsule) {
                 playback.togglePlayback()
@@ -315,6 +354,19 @@ struct PlaybackPreview: View {
             .opacity(playback.player == nil ? 0.45 : 1)
             .padding(14)
         }
+        .onChange(of: edits) { _, newValue in
+            playback.setTimelineEdits(newValue)
+        }
+        .onAppear { playback.setTimelineEdits(edits) }
+    }
+
+    private var activeZoomScale: CGFloat {
+        CGFloat(edits.activeZoom(at: playback.currentTime)?.depth ?? 1)
+    }
+
+    private var activeZoomAnchor: UnitPoint {
+        guard let zoom = edits.activeZoom(at: playback.currentTime) else { return .center }
+        return UnitPoint(x: zoom.focusX, y: zoom.focusY)
     }
 }
 

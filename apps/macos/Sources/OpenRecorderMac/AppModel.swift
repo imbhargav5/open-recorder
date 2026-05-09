@@ -499,7 +499,7 @@ final class AppModel: ObservableObject {
         videoExportRequestID = UUID()
     }
 
-    func exportCurrentRecording(_ recordingURL: URL? = nil, options: VideoExportOptions = .default) {
+    func exportCurrentRecording(_ recordingURL: URL? = nil, options: VideoExportOptions = .default, edits: TimelineEditSnapshot = .empty) {
         guard let url = recordingURL ?? currentVideoURL else {
             statusMessage = "Open a recording first."
             return
@@ -525,7 +525,8 @@ final class AppModel: ObservableObject {
                 from: url,
                 to: targetURL,
                 options: options,
-                cancellationToken: cancellationToken
+                cancellationToken: cancellationToken,
+                edits: edits
             )
         }
     }
@@ -577,7 +578,8 @@ final class AppModel: ObservableObject {
         from sourceURL: URL,
         to targetURL: URL,
         options: VideoExportOptions,
-        cancellationToken: VideoExportCancellationToken
+        cancellationToken: VideoExportCancellationToken,
+        edits: TimelineEditSnapshot
     ) async {
         do {
             try await VideoExportRenderer.export(
@@ -585,6 +587,7 @@ final class AppModel: ObservableObject {
                 targetURL: targetURL,
                 options: options,
                 cancellationToken: cancellationToken,
+                edits: edits,
                 progressHandler: { [weak self] progress in
                     self?.videoExportProgress = progress
                 }
