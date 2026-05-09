@@ -37,7 +37,7 @@ permissions:
 jobs:
   prepare-release-pr:
     name: Prepare release PR
-    runs-on: macos-latest
+    runs-on: macos-26
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

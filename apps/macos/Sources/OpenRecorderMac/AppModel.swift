@@ -30,6 +30,19 @@ final class AppModel: ObservableObject {
     @Published var windowCommand: NativeWindowCommand?
     @Published var isAreaSelectionActive = false
     @Published var screenshotExportRequestID: UUID?
+    @Published var videoExportRequestID: UUID?
+    @Published var videoExportRequestURL: URL?
+    @Published var isVideoExporting = false
+    @Published var videoExportPhase: VideoExportPhase = .idle
+    @Published var videoExportProgress = 0.0
+    @Published var videoExportError: String?
+    @Published var exportedVideoURL: URL?
+
+    private var pendingVideoExportTempURL: URL?
+    private var pendingVideoExportSourceURL: URL?
+    private var pendingVideoExportOptions: VideoExportOptions?
+    private var videoExportTask: Task<Void, Never>?
+    private var videoExportCancellationToken: VideoExportCancellationToken?
 
     private var handledWindowCommandID: UUID?
     private var activeScreenStartedAt: Date?
@@ -445,33 +458,186 @@ final class AppModel: ObservableObject {
         screenshotExportRequestID = UUID()
     }
 
-    func exportCurrentRecording(_ recordingURL: URL? = nil) {
+    func requestVideoExport(_ recordingURL: URL? = nil) {
+        guard let url = recordingURL ?? currentVideoURL else {
+            statusMessage = "Open a recording first."
+            return
+        }
+        videoExportRequestURL = url
+        videoExportRequestID = UUID()
+    }
+
+    func exportCurrentRecording(_ recordingURL: URL? = nil, options: VideoExportOptions = .default) {
         guard let url = recordingURL ?? currentVideoURL else {
             statusMessage = "Open a recording first."
             return
         }
 
+        cancelVideoExportTask()
+        resetVideoExportResult(removePendingFile: true)
+        videoExportRequestURL = url
+        pendingVideoExportSourceURL = url
+        pendingVideoExportOptions = options
+
+        let targetURL = temporaryVideoExportURL(options: options)
+        let cancellationToken = VideoExportCancellationToken()
+        pendingVideoExportTempURL = targetURL
+        videoExportCancellationToken = cancellationToken
+        isVideoExporting = true
+        videoExportPhase = .exporting
+        videoExportProgress = 0
+        statusMessage = "Exporting \(options.resolution.title) \(options.format.title) at \(options.frameRate.title)..."
+
+        videoExportTask = Task {
+            await exportRecording(
+                from: url,
+                to: targetURL,
+                options: options,
+                cancellationToken: cancellationToken
+            )
+        }
+    }
+
+    func cancelVideoExport() {
+        guard videoExportPhase == .exporting || isVideoExporting else { return }
+        cancelVideoExportTask()
+        if let pendingVideoExportTempURL {
+            try? FileManager.default.removeItem(at: pendingVideoExportTempURL)
+        }
+        pendingVideoExportTempURL = nil
+        isVideoExporting = false
+        videoExportProgress = 0
+        videoExportError = "Export canceled."
+        videoExportPhase = .failed
+        statusMessage = "Export canceled."
+    }
+
+    func retryPendingVideoExportSave() {
+        guard let tempURL = pendingVideoExportTempURL,
+              let sourceURL = pendingVideoExportSourceURL,
+              let options = pendingVideoExportOptions else {
+            videoExportError = "No completed export is waiting to be saved."
+            videoExportPhase = .failed
+            return
+        }
+
+        saveRenderedVideo(tempURL: tempURL, sourceURL: sourceURL, options: options)
+    }
+
+    func revealExportedVideoInFinder() {
+        guard let exportedVideoURL else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([exportedVideoURL])
+    }
+
+    func clearVideoExportDialogState() {
+        if videoExportPhase.isBusy {
+            cancelVideoExport()
+        }
+        cancelVideoExportTask()
+        resetVideoExportResult(removePendingFile: true)
+        videoExportRequestURL = nil
+        videoExportPhase = .idle
+        videoExportProgress = 0
+        isVideoExporting = false
+    }
+
+    private func exportRecording(
+        from sourceURL: URL,
+        to targetURL: URL,
+        options: VideoExportOptions,
+        cancellationToken: VideoExportCancellationToken
+    ) async {
+        do {
+            try await VideoExportRenderer.export(
+                sourceURL: sourceURL,
+                targetURL: targetURL,
+                options: options,
+                cancellationToken: cancellationToken,
+                progressHandler: { [weak self] progress in
+                    self?.videoExportProgress = progress
+                }
+            )
+            guard !Task.isCancelled else { return }
+            videoExportTask = nil
+            videoExportCancellationToken = nil
+            isVideoExporting = false
+            videoExportProgress = 1
+            videoExportPhase = .saving
+            statusMessage = "Choose where to save \(options.resolution.title) \(options.format.title) at \(options.frameRate.title)."
+            saveRenderedVideo(tempURL: targetURL, sourceURL: sourceURL, options: options)
+        } catch {
+            guard !Task.isCancelled else { return }
+            videoExportTask = nil
+            videoExportCancellationToken = nil
+            isVideoExporting = false
+            videoExportError = error.localizedDescription
+            videoExportPhase = .failed
+            statusMessage = error.localizedDescription
+        }
+    }
+
+    private func saveRenderedVideo(tempURL: URL, sourceURL: URL, options: VideoExportOptions) {
+        videoExportPhase = .saving
+        videoExportError = nil
+
         let panel = NSSavePanel()
-        panel.allowedContentTypes = [.mpeg4Movie, .quickTimeMovie]
-        panel.nameFieldStringValue = url.lastPathComponent
+        panel.allowedContentTypes = [options.format.contentType]
+        panel.nameFieldStringValue = suggestedVideoExportFileName(for: sourceURL, options: options)
         panel.canCreateDirectories = true
         guard panel.runModal() == .OK, let targetURL = panel.url else {
+            videoExportError = "Save dialog canceled. Click Save Again to save without re-exporting."
+            videoExportPhase = .savePending
+            statusMessage = "Export ready to save."
             return
         }
 
         do {
-            let exported: PreparedFile = try service.call(
-                "exportRecording",
-                params: [
-                    "sourcePath": url.path,
-                    "targetPath": targetURL.path
-                ],
-                as: PreparedFile.self
-            )
-            statusMessage = "Exported \(URL(fileURLWithPath: exported.path).lastPathComponent)"
+            if FileManager.default.fileExists(atPath: targetURL.path) {
+                try FileManager.default.removeItem(at: targetURL)
+            }
+            try FileManager.default.copyItem(at: tempURL, to: targetURL)
+            try? FileManager.default.removeItem(at: tempURL)
+            pendingVideoExportTempURL = nil
+            pendingVideoExportSourceURL = nil
+            pendingVideoExportOptions = nil
+            exportedVideoURL = targetURL
+            videoExportPhase = .success
+            statusMessage = "Exported \(targetURL.lastPathComponent)"
         } catch {
+            videoExportError = error.localizedDescription
+            videoExportPhase = .failed
             statusMessage = error.localizedDescription
         }
+    }
+
+    private func resetVideoExportResult(removePendingFile: Bool) {
+        if removePendingFile, let pendingVideoExportTempURL {
+            try? FileManager.default.removeItem(at: pendingVideoExportTempURL)
+        }
+        pendingVideoExportTempURL = nil
+        pendingVideoExportSourceURL = nil
+        pendingVideoExportOptions = nil
+        videoExportError = nil
+        exportedVideoURL = nil
+    }
+
+    private func cancelVideoExportTask() {
+        videoExportTask?.cancel()
+        videoExportTask = nil
+        videoExportCancellationToken?.cancel()
+        videoExportCancellationToken = nil
+    }
+
+    private func temporaryVideoExportURL(options: VideoExportOptions) -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("open-recorder-export-\(UUID().uuidString)")
+            .appendingPathExtension(options.format.fileExtension)
+    }
+
+    private func suggestedVideoExportFileName(for sourceURL: URL, options: VideoExportOptions) -> String {
+        let baseName = sourceURL.deletingPathExtension().lastPathComponent
+        let suffix = "\(options.resolution.fileSuffix)-\(options.frameRate.fileSuffix)"
+        return "\(baseName)-\(suffix).\(options.format.fileExtension)"
     }
 
     func openPrivacySettings() {
