@@ -24,7 +24,7 @@ pnpm release:minor
 pnpm release:major
 ```
 
-Those root workspace wrappers call the same script with:
+Those root package wrappers call the same script with:
 
 - `release:patch` -> `node scripts/dispatch-release-build.mjs --release-type patch`
 - `release:minor` -> `node scripts/dispatch-release-build.mjs --release-type minor`
@@ -94,9 +94,8 @@ That workflow:
 4. Builds the macOS Swift app.
 5. Builds the Rust service.
 6. Packages the macOS release artifacts.
-7. Downloads and renames the uploaded artifacts into stable release filenames.
-8. Generates update metadata when the release workflow is configured to do so.
-9. Creates or updates the GitHub release with `ncipollo/release-action`.
+7. Uploads the packaged app as `open-recorder-macos.zip`.
+8. Creates or updates the GitHub release with `ncipollo/release-action`.
 
 The workflow still supports manual `workflow_dispatch` as a fallback, but the normal path is:
 

@@ -30,7 +30,7 @@ swift_binary="$repo_root/apps/macos/.build/debug/OpenRecorderMac"
 service_binary="$repo_root/apps/rust-service/target/debug/open-recorder-service"
 info_plist="$repo_root/apps/macos/Resources/Info.plist"
 entitlements_plist="$repo_root/apps/macos/Resources/OpenRecorder.entitlements"
-icon_source="$repo_root/apps/desktop/icons/icons/mac/icon.icns"
+icon_source="$repo_root/apps/macos/Resources/AppIcon.icns"
 
 find_codesign_identity() {
 	local pattern="$1"
@@ -66,8 +66,8 @@ resolve_codesign_identity() {
 		return
 	fi
 
-	# Match the previous Electron/Tauri dev workflow when an Apple development
-	# certificate is not available: a stable local certificate keeps macOS TCC
+	# When an Apple development certificate is not available, a stable local
+	# certificate keeps macOS TCC
 	# grants from being pinned to each rebuilt executable hash.
 	local stable_local_identity
 	stable_local_identity="$(find_codesign_identity "arni-dev")"

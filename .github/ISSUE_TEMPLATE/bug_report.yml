@@ -57,9 +57,7 @@ body:
       label: OS
       description: Operating system
       options:
-        - Windows
         - macOS
-        - Linux
         - Other
     validations:
       required: false
@@ -69,7 +67,7 @@ body:
     attributes:
       label: OS Version
       description: Please specify your OS version
-      placeholder: e.g., Windows 11, macOS Sonoma, Ubuntu 22.04
+      placeholder: e.g., macOS Sonoma 14.5
     validations:
       required: false
 
@@ -90,4 +88,3 @@ body:
       placeholder: Links, references, or any additional information
     validations:
       required: false
-

@@ -1,5 +1,5 @@
 {
-	"name": "open-recorder-workspace",
+	"name": "open-recorder",
 	"private": true,
 	"packageManager": "pnpm@10.17.1",
 	"scripts": {
@@ -9,23 +9,10 @@
 		"package:mac": "make package-macos",
 		"test": "make test-macos",
 		"clean": "make clean-macos",
-		"legacy:dev": "turbo run dev --filter=@open-recorder/desktop",
-		"legacy:build": "turbo run build --filter=@open-recorder/desktop",
-		"legacy:lint": "turbo run lint",
-		"legacy:test": "turbo run test",
 		"release:setup-macos-signing": "zsh scripts/setup-github-macos-signing.zsh",
 		"release:dispatch": "node scripts/dispatch-release-build.mjs",
 		"release:patch": "node scripts/dispatch-release-build.mjs --release-type patch",
 		"release:minor": "node scripts/dispatch-release-build.mjs --release-type minor",
-		"release:major": "node scripts/dispatch-release-build.mjs --release-type major",
-		"i18n:check": "turbo run i18n:check"
-	},
-	"devDependencies": {
-		"turbo": "^2.8.20"
-	},
-	"pnpm": {
-		"onlyBuiltDependencies": [
-			"electron"
-		]
+		"release:major": "node scripts/dispatch-release-build.mjs --release-type major"
 	}
 }

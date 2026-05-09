@@ -1,7 +1,7 @@
 # Open Recorder
 
 <p align="center">
-  <img src="./apps/desktop/branding/source-assets/open-recorder-brand-image.png" width="220" alt="Open Recorder logo">
+  <img src="./apps/macos/Resources/Branding/open-recorder-brand-image.png" width="220" alt="Open Recorder logo">
 </p>
 
 <p align="center">
@@ -12,7 +12,7 @@
 
 Open Recorder is now a macOS-only screen recorder, screenshot tool, and lightweight editor built as a native Swift app backed by a Rust service.
 
-The old Windows and Linux targets have been retired. The product now focuses on a smaller native stack: Swift owns the macOS experience, capture UI, recording controls, screenshot flow, playback, and Finder/privacy integrations. Rust owns durable local service work such as app paths, project metadata, recording registration, screenshot indexing, and export bookkeeping.
+The product uses a small native stack: Swift owns the macOS experience, capture UI, recording controls, screenshot flow, playback, and Finder/privacy integrations. Rust owns durable local service work such as app paths, project metadata, recording registration, screenshot indexing, and export bookkeeping.
 
 ## Features
 
@@ -30,7 +30,6 @@ The old Windows and Linux targets have been retired. The product now focuses on 
 
 - `apps/macos` - native SwiftUI macOS app
 - `apps/rust-service` - Rust JSON-lines service and one-shot command backend
-- `apps/desktop` - legacy Electron/React implementation kept for reference during migration
 
 ## Build From Source
 
@@ -96,18 +95,6 @@ Primary methods:
 ## macOS Permissions
 
 Screen recording requires macOS Screen Recording permission for the app process. In development, the Swift app can open the relevant privacy pane from Settings. After granting access, restart the app so macOS refreshes the permission state.
-
-## Legacy Electron App
-
-The former Electron/React app remains under `apps/desktop` while the native codebase settles. It is no longer the default app, and the root scripts no longer expose Windows or Linux build targets.
-
-Legacy commands are still available for comparison:
-
-```bash
-pnpm legacy:dev
-pnpm legacy:build
-pnpm legacy:test
-```
 
 ## License
 

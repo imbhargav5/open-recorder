@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
-const desktopPackageJsonPath = resolve(repoRoot, "apps", "desktop", "package.json");
+const rustServiceCargoTomlPath = resolve(repoRoot, "apps", "rust-service", "Cargo.toml");
 const releasePlanPath = resolve(repoRoot, ".github", "release-plan.json");
 
 process.chdir(repoRoot);
@@ -116,8 +116,12 @@ function appendGithubOutput(filePath, name, value) {
 }
 
 function currentPackageVersion() {
-	const packageJson = JSON.parse(readFileSync(desktopPackageJsonPath, "utf8"));
-	return packageJson.version;
+	const cargoToml = readFileSync(rustServiceCargoTomlPath, "utf8");
+	const match = cargoToml.match(/^version\s*=\s*"(\d+\.\d+\.\d+)"/m);
+	if (!match) {
+		die(`Could not find a semantic version in ${rustServiceCargoTomlPath}`);
+	}
+	return match[1];
 }
 
 function previousPackageVersion(beforeSha) {
@@ -125,14 +129,15 @@ function previousPackageVersion(beforeSha) {
 		return "";
 	}
 
-	const packageJson = capture("git", ["show", `${beforeSha}:apps/desktop/package.json`], {
+	const cargoToml = capture("git", ["show", `${beforeSha}:apps/rust-service/Cargo.toml`], {
 		allowFailure: true,
 	});
-	if (!packageJson) {
+	if (!cargoToml) {
 		return "";
 	}
 
-	return JSON.parse(packageJson).version;
+	const match = cargoToml.match(/^version\s*=\s*"(\d+\.\d+\.\d+)"/m);
+	return match?.[1] ?? "";
 }
 
 function readReleasePlan() {
@@ -169,7 +174,7 @@ if (args.eventName === "workflow_dispatch") {
 	shouldRelease = hasVersionChanged(previousVersion, currentVersion);
 
 	if (shouldRelease && !releasePlan) {
-		die("Push-triggered releases require .github/release-plan.json to match the desktop package version bump.");
+		die("Push-triggered releases require .github/release-plan.json to match the Rust service version bump.");
 	}
 
 	if (releasePlan?.tagName) {
@@ -194,5 +199,5 @@ appendGithubOutput(args.output, "make_latest", makeLatest);
 console.log(
 	shouldRelease
 		? `Resolved release metadata for ${tagName}`
-		: `No release needed for apps/desktop/package.json version ${currentVersion}`,
+		: `No release needed for apps/rust-service/Cargo.toml version ${currentVersion}`,
 );
