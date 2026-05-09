@@ -324,4 +324,3 @@ struct StudioTitleBar: View {
         return model.currentScreenshotURL
     }
 }
-

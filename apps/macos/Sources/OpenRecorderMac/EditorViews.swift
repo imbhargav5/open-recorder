@@ -113,4 +113,3 @@ struct VideoEditorStudioView: View {
         }
     }
 }
-
