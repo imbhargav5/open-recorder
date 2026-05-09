@@ -3,13 +3,18 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
-app_name="Open Recorder"
-bundle_dir="$repo_root/release/${app_name}.app"
+app_variant="production"
 install=false
 launch=false
 
 for arg in "$@"; do
 	case "$arg" in
+		--dev)
+			app_variant="development"
+			;;
+		--production)
+			app_variant="production"
+			;;
 		--install)
 			install=true
 			;;
@@ -23,6 +28,15 @@ for arg in "$@"; do
 	esac
 done
 
+if [[ "$app_variant" == "development" ]]; then
+	app_name="${OPEN_RECORDER_DEV_APP_NAME:-Open Recorder Dev}"
+	bundle_identifier="${OPEN_RECORDER_DEV_BUNDLE_IDENTIFIER:-dev.openrecorder.app.dev}"
+else
+	app_name="${OPEN_RECORDER_APP_NAME:-Open Recorder}"
+	bundle_identifier="${OPEN_RECORDER_BUNDLE_IDENTIFIER:-dev.openrecorder.app}"
+fi
+
+bundle_dir="$repo_root/release/${app_name}.app"
 contents_dir="$bundle_dir/Contents"
 macos_dir="$contents_dir/MacOS"
 resources_dir="$contents_dir/Resources"
@@ -86,6 +100,17 @@ resolve_codesign_identity() {
 	print -- "-\tAd-hoc"
 }
 
+set_plist_string() {
+	local key="$1"
+	local value="$2"
+
+	if /usr/libexec/PlistBuddy -c "Print :$key" "$contents_dir/Info.plist" >/dev/null 2>&1; then
+		/usr/libexec/PlistBuddy -c "Set :$key $value" "$contents_dir/Info.plist"
+	else
+		/usr/libexec/PlistBuddy -c "Add :$key string $value" "$contents_dir/Info.plist"
+	fi
+}
+
 cd "$repo_root/apps/rust-service"
 CARGO_INCREMENTAL=0 cargo build
 
@@ -98,6 +123,9 @@ mkdir -p "$macos_dir" "$resources_dir"
 cp "$swift_binary" "$macos_dir/OpenRecorderMac"
 cp "$service_binary" "$macos_dir/open-recorder-service"
 cp "$info_plist" "$contents_dir/Info.plist"
+set_plist_string "CFBundleName" "$app_name"
+set_plist_string "CFBundleDisplayName" "$app_name"
+set_plist_string "CFBundleIdentifier" "$bundle_identifier"
 
 if [[ -f "$icon_source" ]]; then
 	cp "$icon_source" "$resources_dir/AppIcon.icns"
