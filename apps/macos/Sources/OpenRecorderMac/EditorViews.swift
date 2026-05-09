@@ -40,6 +40,7 @@ struct VideoEditorStudioView: View {
     var videoURL: URL?
     var recordingSession: RecordingSession?
     @StateObject private var playback = VideoPlaybackController()
+    @StateObject private var timelineEdits = TimelineEditController()
     @State private var borderRadius = 12.0
     @State private var padding = 18.0
     @State private var shadow = 0.35
@@ -52,10 +53,10 @@ struct VideoEditorStudioView: View {
     var body: some View {
         HStack(spacing: 16) {
             VStack(spacing: 12) {
-                VideoPreviewPanel(videoURL: videoURL, recordingSession: recordingSession, playback: playback)
+                VideoPreviewPanel(videoURL: videoURL, recordingSession: recordingSession, playback: playback, timelineEdits: timelineEdits)
                     .frame(maxHeight: .infinity)
                     .layoutPriority(1)
-                TimelinePanel(videoURL: videoURL, playback: playback)
+                TimelinePanel(videoURL: videoURL, playback: playback, edits: timelineEdits)
                     .frame(height: 320)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -89,7 +90,7 @@ struct VideoEditorStudioView: View {
                 exportedFileName: model.exportedVideoURL?.lastPathComponent,
                 isExporting: model.isVideoExporting,
                 onExport: { options in
-                    model.exportCurrentRecording(model.videoExportRequestURL ?? videoURL, options: options)
+                    model.exportCurrentRecording(model.videoExportRequestURL ?? videoURL, options: options, edits: timelineEdits.snapshot)
                 },
                 onRetrySave: {
                     model.retryPendingVideoExportSave()
