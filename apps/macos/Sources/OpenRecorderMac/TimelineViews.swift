@@ -18,35 +18,20 @@ struct TimelinePanel: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                TimelineTool(title: "Zoom", symbolName: "plus.magnifyingglass") { edits.add(.zoom, at: playback.currentTime, duration: playback.duration) }
-                TimelineTool(title: "Trim", symbolName: "scissors") { edits.add(.trim, at: playback.currentTime, duration: playback.duration) }
-                TimelineTool(title: "Annotate", symbolName: "text.bubble") { edits.add(.annotation, at: playback.currentTime, duration: playback.duration) }
-                TimelineTool(title: "Speed", symbolName: "speedometer") { edits.add(.speed, at: playback.currentTime, duration: playback.duration) }
-                Spacer()
-                if edits.snapshot.hasEdits {
-                    Button("Clear") { edits.reset() }
-                        .buttonStyle(.plain)
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                }
-                Text("16:9")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 8)
-                    .frame(height: 28)
-                    .overlay { RoundedRectangle(cornerRadius: 7).stroke(Color.studioBorder) }
-            }
-            .padding(12)
-
-            TimelineSelectionInspector(edits: edits)
-                .padding(.horizontal, 12)
-                .padding(.bottom, edits.selectedKind == nil ? 0 : 8)
+            timelineToolbar
 
             Rectangle().fill(Color.studioBorder).frame(height: 1)
 
-            TimelineTrackContent(videoURL: videoURL, playback: playback, edits: edits)
-                .padding(12)
+            ZStack(alignment: .top) {
+                Color.clear
+                    .rectangularHitTarget()
+                    .onTapGesture {
+                        edits.clearSelection()
+                    }
+
+                TimelineTrackContent(videoURL: videoURL, playback: playback, edits: edits)
+                    .padding(12)
+            }
         }
         .background(Color.studioPanel.opacity(0.86), in: RoundedRectangle(cornerRadius: 10))
         .overlay { RoundedRectangle(cornerRadius: 10).stroke(Color.studioBorder) }
@@ -61,11 +46,35 @@ struct TimelinePanel: View {
             switch press.characters.lowercased() {
             case "z": edits.add(.zoom, at: playback.currentTime, duration: playback.duration); return .handled
             case "t": edits.addClipSplit(at: playback.currentTime, duration: playback.duration); return .handled
-            case "a": edits.add(.annotation, at: playback.currentTime, duration: playback.duration); return .handled
             case "s": edits.add(.speed, at: playback.currentTime, duration: playback.duration); return .handled
             default: return .ignored
             }
         }
+    }
+
+    private var timelineToolbar: some View {
+        ZStack {
+            HStack(spacing: 8) {
+                Text("16:9")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 8)
+                    .frame(height: 28)
+                    .overlay { RoundedRectangle(cornerRadius: 7).stroke(Color.studioBorder) }
+
+                Spacer()
+
+                if edits.snapshot.hasEdits {
+                    Button("Clear") { edits.reset() }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            TimelinePlaybackControl(playback: playback)
+        }
+        .padding(12)
     }
 }
 
@@ -77,84 +86,51 @@ struct TimelineTrackContent: View {
     var body: some View {
         VStack(spacing: 0) {
             TimelineRuler(duration: playback.duration)
-            TimelineClipRow(videoURL: videoURL, duration: playback.duration, splitTimes: edits.clipSplitTimes, seek: playback.seek(to:))
+                .rectangularHitTarget()
+                .onTapGesture {
+                    edits.clearSelection()
+                }
+            TimelineClipRow(videoURL: videoURL, duration: playback.duration, splitTimes: edits.clipSplitTimes, selectedClipIndex: edits.selectedClipIndex, seek: playback.seek(to:), edits: edits)
             TimelineLayerRow(kind: .zoom, duration: playback.duration, regions: edits.zoomRegions.map { TimelineRegionRenderData(id: $0.id, span: $0.span, label: "\(String(format: "%.1f", $0.depth))×") }, selectedID: edits.selectedKind == .zoom ? edits.selectedID : nil, edits: edits)
             TimelineLayerRow(kind: .trim, duration: playback.duration, regions: edits.trimRegions.map { TimelineRegionRenderData(id: $0.id, span: $0.span, label: "Cut") }, selectedID: edits.selectedKind == .trim ? edits.selectedID : nil, edits: edits)
-            TimelineLayerRow(kind: .annotation, duration: playback.duration, regions: edits.annotationRegions.map { TimelineRegionRenderData(id: $0.id, span: $0.span, label: $0.text) }, selectedID: edits.selectedKind == .annotation ? edits.selectedID : nil, edits: edits)
             TimelineLayerRow(kind: .speed, duration: playback.duration, regions: edits.speedRegions.map { TimelineRegionRenderData(id: $0.id, span: $0.span, label: "\(String(format: "%.2g", $0.speed))×") }, selectedID: edits.selectedKind == .speed ? edits.selectedID : nil, edits: edits)
         }
         .overlay(alignment: .topLeading) { TimelinePlayhead(duration: playback.duration, currentTime: playback.currentTime) }
-        .overlay(alignment: .bottomLeading) {
-            Text(edits.statusMessage)
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(.secondary)
-                .padding(.top, 4)
-                .offset(y: 20)
-        }
     }
 }
 
 
-struct TimelineSelectionInspector: View {
-    @ObservedObject var edits: TimelineEditController
+private struct TimelinePlaybackControl: View {
+    @ObservedObject var playback: VideoPlaybackController
+    @State private var isHovering = false
 
     var body: some View {
-        if let kind = edits.selectedKind, let id = edits.selectedID {
-            HStack(spacing: 8) {
-                Text("Selected \(kind.title)")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(kind.accent)
-                switch kind {
-                case .zoom:
-                    Text("Double-click the region or use this button to change depth.")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                    Button("Depth") { edits.deepenZoom(id: id) }
-                case .trim:
-                    Text("Trim regions are removed during preview and export.")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                case .annotation:
-                    TextField("Annotation text", text: annotationTextBinding(id: id))
-                        .textFieldStyle(.roundedBorder)
-                        .frame(maxWidth: 260)
-                case .speed:
-                    Text("Double-click the region or use this button to cycle speed.")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                    Button("Speed") { edits.cycleSpeed(id: id) }
+        let title = playback.isPlaying ? "Pause" : "Play"
+
+        StudioButton(hitTarget: .circle, help: title) {
+            playback.togglePlayback()
+        } label: {
+            Image(systemName: playback.isPlaying ? "pause.fill" : "play.fill")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 34, height: 34)
+                .offset(x: playback.isPlaying ? 0 : 1)
+                .background {
+                    Circle()
+                        .fill(playback.isPlaying ? Color.brand.opacity(isHovering ? 0.95 : 0.86) : Color.white.opacity(isHovering ? 0.14 : 0.09))
                 }
-                Spacer()
-                Button("Delete") { edits.deleteSelection() }
-            }
-            .buttonStyle(.borderless)
-            .font(.system(size: 11, weight: .semibold))
+                .overlay {
+                    Circle()
+                        .stroke(playback.isPlaying ? Color.brand.opacity(0.48) : Color.white.opacity(isHovering ? 0.24 : 0.12), lineWidth: 1)
+                }
+                .shadow(color: Color.black.opacity(0.22), radius: 8, y: 3)
         }
-    }
-
-    private func annotationTextBinding(id: TimelineRegionID) -> Binding<String> {
-        Binding(
-            get: { edits.annotationRegions.first(where: { $0.id == id })?.text ?? "" },
-            set: { edits.updateAnnotationText(id: id, text: $0) }
-        )
-    }
-}
-
-struct TimelineTool: View {
-    var title: String
-    var symbolName: String
-    var action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 6) { Image(systemName: symbolName); Text(title) }
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(Color.secondary)
-                .frame(height: 30)
-                .padding(.horizontal, 10)
-                .background(Color.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 7))
+        .disabled(playback.player == nil)
+        .opacity(playback.player == nil ? 0.42 : 1)
+        .accessibilityLabel(title)
+        .onHover { hovering in
+            isHovering = hovering
         }
-        .buttonStyle(.plain)
     }
 }
 
@@ -210,13 +186,16 @@ struct TimelineClipRow: View {
     var videoURL: URL?
     var duration: Double
     var splitTimes: [Double]
+    var selectedClipIndex: Int?
     var seek: (Double) -> Void
+    @ObservedObject var edits: TimelineEditController
     @State private var waveformSamples = TimelineAudioWaveformLoader.quietSamples()
 
     var body: some View {
         GeometryReader { proxy in
             ZStack(alignment: .leading) {
-                Rectangle().fill(Color(red: 0.095, green: 0.095, blue: 0.11))
+                Rectangle()
+                    .fill(Color(red: 0.095, green: 0.095, blue: 0.11))
                 if videoURL != nil {
                     clipSegments(width: proxy.size.width)
                 } else {
@@ -224,10 +203,19 @@ struct TimelineClipRow: View {
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(Color.secondary.opacity(0.64))
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .allowsHitTesting(false)
                 }
             }
             .rectangularHitTarget()
-            .gesture(DragGesture(minimumDistance: 0).onChanged { value in seek(to: value.location.x, width: proxy.size.width) })
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        seek(to: value.location.x, width: proxy.size.width)
+                    }
+                    .onEnded { value in
+                        selectClip(at: value.location.x, width: proxy.size.width)
+                    }
+            )
         }
         .frame(height: TimelineMetrics.clipHeight)
         .overlay(alignment: .bottom) { Rectangle().fill(Color.studioBorder).frame(height: 1) }
@@ -241,17 +229,17 @@ struct TimelineClipRow: View {
                 let startX = x(for: segment.start, width: width)
                 let endX = x(for: segment.end, width: width)
                 let segmentWidth = max(20, endX - startX - (segments.count > 1 ? 3 : 0))
-                clipBody(segment: segment, width: segmentWidth)
+                clipBody(segment: segment, width: segmentWidth, isSelected: selectedClipIndex == segment.index)
                     .frame(width: segmentWidth, height: TimelineMetrics.clipHeight)
                     .position(x: startX + (endX - startX) / 2, y: TimelineMetrics.clipHeight / 2)
             }
         }
     }
 
-    private func clipBody(segment: TimelineClipSegment, width: CGFloat) -> some View {
+    private func clipBody(segment: TimelineClipSegment, width: CGFloat, isSelected: Bool) -> some View {
         RoundedRectangle(cornerRadius: 8, style: .continuous)
-            .fill(Color.timelineClip)
-            .overlay { RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(Color.timelineClipBorder, lineWidth: 1) }
+            .fill(Color.timelineClip.opacity(isSelected ? 0.95 : 1))
+            .overlay { RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(isSelected ? Color.timelineHandle.opacity(0.95) : Color.timelineClipBorder, lineWidth: isSelected ? 2 : 1) }
             .overlay(alignment: .bottom) { TimelineWaveformPreview(samples: waveformSamples).frame(height: 23).padding(.horizontal, 14).padding(.bottom, 4).allowsHitTesting(false) }
             .overlay(alignment: .center) {
                 if width > 82 {
@@ -277,6 +265,22 @@ struct TimelineClipRow: View {
         seek(duration * Double(min(max(x / width, 0), 1)))
     }
 
+    private func selectClip(at x: CGFloat, width: CGFloat) {
+        guard videoURL != nil, duration.isFinite, duration > 0, width > 0 else {
+            edits.clearSelection()
+            return
+        }
+
+        let time = duration * Double(min(max(x / width, 0), 1))
+        let segments = TimelineClipSegment.segments(duration: duration, splitTimes: splitTimes)
+        guard let segment = segments.first(where: { time >= $0.start && (time < $0.end || $0.index == segments.last?.index) }) else {
+            edits.clearSelection()
+            return
+        }
+
+        edits.selectClip(index: segment.index)
+    }
+
     private func x(for time: Double, width: CGFloat) -> CGFloat {
         guard duration.isFinite, duration > 0 else { return 0 }
         return width * CGFloat(min(max(time / duration, 0), 1))
@@ -288,37 +292,6 @@ struct TimelineClipRow: View {
         let samples = await TimelineAudioWaveformLoader.loadSamples(from: videoURL)
         guard !Task.isCancelled else { return }
         waveformSamples = samples
-    }
-}
-
-struct TimelineClipSegment: Identifiable, Equatable {
-    var index: Int
-    var start: Double
-    var end: Double
-
-    var id: Int { index }
-
-    static func segments(duration: Double, splitTimes: [Double]) -> [TimelineClipSegment] {
-        guard duration.isFinite, duration > 0 else {
-            return [TimelineClipSegment(index: 0, start: 0, end: 0)]
-        }
-
-        let boundaries = ([0, duration] + splitTimes)
-            .map { min(max($0, 0), duration) }
-            .filter { $0.isFinite }
-            .sorted()
-
-        let uniqueBoundaries = boundaries.reduce(into: [Double]()) { result, boundary in
-            if result.last.map({ abs($0 - boundary) > 0.001 }) ?? true {
-                result.append(boundary)
-            }
-        }
-
-        return uniqueBoundaries.dropLast().enumerated().compactMap { index, start in
-            let end = uniqueBoundaries[index + 1]
-            guard end - start > 0.001 else { return nil }
-            return TimelineClipSegment(index: index, start: start, end: end)
-        }
     }
 }
 
@@ -379,19 +352,24 @@ struct TimelineLayerRow: View {
     var body: some View {
         GeometryReader { proxy in
             ZStack(alignment: .leading) {
-                Rectangle().fill(Color(red: 0.095, green: 0.095, blue: 0.11))
+                Rectangle()
+                    .fill(Color(red: 0.095, green: 0.095, blue: 0.11))
+                    .rectangularHitTarget()
+                    .onTapGesture {
+                        edits.clearSelection()
+                    }
                 if regions.isEmpty {
                     Text(emptyMessage)
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(Color.secondary.opacity(0.64))
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                        .allowsHitTesting(false)
                 }
                 ForEach(regions) { region in
                     TimelineRegionItem(kind: kind, region: region, duration: duration, width: proxy.size.width, isSelected: region.id == selectedID, edits: edits)
                 }
             }
             .rectangularHitTarget()
-            .onTapGesture { edits.select(nil, id: nil) }
         }
         .frame(height: TimelineMetrics.layerHeight)
         .overlay(alignment: .bottom) { Rectangle().fill(Color.studioBorder).frame(height: 1) }
@@ -404,7 +382,7 @@ struct TimelineLayerRow: View {
         case .speed:
             "Press S to add speed"
         case .annotation:
-            "Use the toolbar to add annotations"
+            "Annotations are currently unavailable"
         case .trim:
             "Use the toolbar to add trim"
         }
@@ -441,7 +419,10 @@ struct TimelineRegionItem: View {
     private func moveGesture() -> some Gesture {
         DragGesture()
             .onChanged { value in
-                if dragStartSpan == nil { dragStartSpan = region.span }
+                if dragStartSpan == nil {
+                    dragStartSpan = region.span
+                    edits.select(kind, id: region.id)
+                }
                 let base = dragStartSpan ?? region.span
                 let delta = time(forDeltaX: value.translation.width)
                 let length = base.duration
@@ -454,7 +435,10 @@ struct TimelineRegionItem: View {
     private func resizeGesture(edge: ResizeEdge) -> some Gesture {
         DragGesture()
             .onChanged { value in
-                if dragStartSpan == nil { dragStartSpan = region.span }
+                if dragStartSpan == nil {
+                    dragStartSpan = region.span
+                    edits.select(kind, id: region.id)
+                }
                 let base = dragStartSpan ?? region.span
                 let delta = time(forDeltaX: value.translation.width)
                 switch edge {
@@ -471,8 +455,7 @@ struct TimelineRegionItem: View {
         switch kind {
         case .zoom: edits.deepenZoom(id: region.id)
         case .speed: edits.cycleSpeed(id: region.id)
-        case .annotation: edits.updateAnnotationText(id: region.id, text: region.label == "Annotation" ? "Double-clicked note" : "Annotation")
-        case .trim: break
+        case .trim, .annotation: break
         }
     }
 

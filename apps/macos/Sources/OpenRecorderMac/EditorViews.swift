@@ -7,12 +7,13 @@ import UniformTypeIdentifiers
 struct EditorStudioView: View {
     @EnvironmentObject private var model: AppModel
     var editorSession: EditorSession?
+    @ObservedObject var timelineEdits: TimelineEditController
 
     var body: some View {
         if screenshotURL != nil {
             ScreenshotEditorStudioView(screenshotURL: screenshotURL)
         } else {
-            VideoEditorStudioView(videoURL: videoURL, recordingSession: recordingSession)
+            VideoEditorStudioView(videoURL: videoURL, recordingSession: recordingSession, timelineEdits: timelineEdits)
         }
     }
 
@@ -40,7 +41,7 @@ struct VideoEditorStudioView: View {
     var videoURL: URL?
     var recordingSession: RecordingSession?
     @StateObject private var playback = VideoPlaybackController()
-    @StateObject private var timelineEdits = TimelineEditController()
+    @ObservedObject var timelineEdits: TimelineEditController
     @State private var borderRadius = 12.0
     @State private var padding = 18.0
     @State private var shadow = 0.35
@@ -63,17 +64,7 @@ struct VideoEditorStudioView: View {
         ) {
             editorColumn
         } secondary: {
-            SettingsInspector(
-                borderRadius: $borderRadius,
-                padding: $padding,
-                shadow: $shadow,
-                backgroundBlur: $backgroundBlur,
-                background: $background,
-                loopCursor: $loopCursor,
-                cursorSize: $cursorSize,
-                cursorSmoothing: $cursorSmoothing,
-                recordingSession: recordingSession
-            )
+            sidebarContent
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .padding(16)
@@ -148,12 +139,34 @@ struct VideoEditorStudioView: View {
                 padding: padding,
                 borderRadius: borderRadius,
                 shadow: shadow,
-                backgroundBlur: backgroundBlur
+                backgroundBlur: backgroundBlur,
+                onRequestClearSelection: {
+                    timelineEdits.clearSelection()
+                }
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } secondary: {
             TimelinePanel(videoURL: videoURL, playback: playback, edits: timelineEdits)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    @ViewBuilder
+    private var sidebarContent: some View {
+        if timelineEdits.hasSelection {
+            TimelineSelectionSidebar(edits: timelineEdits, playback: playback)
+        } else {
+            SettingsInspector(
+                borderRadius: $borderRadius,
+                padding: $padding,
+                shadow: $shadow,
+                backgroundBlur: $backgroundBlur,
+                background: $background,
+                loopCursor: $loopCursor,
+                cursorSize: $cursorSize,
+                cursorSmoothing: $cursorSmoothing,
+                recordingSession: recordingSession
+            )
         }
     }
 

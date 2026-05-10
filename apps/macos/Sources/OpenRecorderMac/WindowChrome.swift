@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 
 enum NativeWindowRole {
     case hud
+    case onboarding
     case sourceSelector
     case microphoneSelector
     case cameraSelector
@@ -75,6 +76,8 @@ final class WindowConfigurationView: NSView {
         switch role {
         case .hud:
             configureHUD(window)
+        case .onboarding:
+            configureOnboarding(window)
         case .sourceSelector:
             configureSourceSelector(window)
         case .microphoneSelector:
@@ -111,6 +114,28 @@ final class WindowConfigurationView: NSView {
             window.standardWindowButton(button)?.isHidden = true
         }
         positionBottomCenter(window, contentSize: size)
+    }
+
+    private func configureOnboarding(_ window: NSWindow) {
+        let size = NSSize(width: OnboardingWindowMetrics.width, height: OnboardingWindowMetrics.height)
+        window.title = "Open Recorder Setup"
+        window.setContentSize(size)
+        window.minSize = size
+        window.maxSize = size
+        window.isOpaque = true
+        window.backgroundColor = NSColor(red: 0.035, green: 0.035, blue: 0.043, alpha: 1)
+        window.hasShadow = true
+        window.level = .normal
+        window.collectionBehavior = [.managed, .fullScreenAuxiliary]
+        window.isMovableByWindowBackground = true
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        window.styleMask.insert([.titled, .closable, .fullSizeContentView])
+        window.styleMask.remove(.resizable)
+        window.standardWindowButton(.miniaturizeButton)?.isHidden = true
+        window.standardWindowButton(.zoomButton)?.isHidden = true
+        window.center()
+        window.makeKeyAndOrderFront(nil)
     }
 
     private func configureSourceSelector(_ window: NSWindow) {
@@ -307,6 +332,15 @@ struct WindowCommandBridge: View {
             openWindow(id: "hud")
         case .hideHUD:
             dismissWindow(id: "hud")
+        case .showOnboarding:
+            dismissWindow(id: "hud")
+            dismissWindow(id: "source-selector")
+            openWindow(id: "onboarding")
+            NSApp.activate(ignoringOtherApps: true)
+        case .finishOnboarding:
+            dismissWindow(id: "onboarding")
+            openWindow(id: "hud")
+            NSApp.activate(ignoringOtherApps: true)
         case .showRecordingSetup:
             openWindow(id: "hud")
             openWindow(id: "source-selector")

@@ -95,6 +95,17 @@ struct OpenRecorderApp: App {
         .windowResizability(.contentSize)
         .defaultSize(width: HUDWindowMetrics.defaultSize.width, height: HUDWindowMetrics.defaultSize.height)
 
+        Window("Open Recorder Setup", id: "onboarding") {
+            ContentView(role: .onboarding)
+                .environmentObject(model)
+                .background(AppWindowActionBridge(appDelegate: appDelegate))
+                .frame(width: OnboardingWindowMetrics.width, height: OnboardingWindowMetrics.height)
+        }
+        .windowResizability(.contentSize)
+        .defaultLaunchBehavior(.suppressed)
+        .restorationBehavior(.disabled)
+        .defaultSize(width: OnboardingWindowMetrics.width, height: OnboardingWindowMetrics.height)
+
         Window("Choose Source", id: "source-selector") {
             ContentView(role: .sourceSelector)
                 .environmentObject(model)
@@ -259,6 +270,15 @@ final class AppWindowActions {
             openWindow("hud")
         case .hideHUD:
             dismissWindow("hud")
+        case .showOnboarding:
+            dismissWindow("hud")
+            dismissWindow("source-selector")
+            openWindow("onboarding")
+            activateApp()
+        case .finishOnboarding:
+            dismissWindow("onboarding")
+            openWindow("hud")
+            activateApp()
         case .showRecordingSetup:
             openWindow("hud")
             openWindow("source-selector")

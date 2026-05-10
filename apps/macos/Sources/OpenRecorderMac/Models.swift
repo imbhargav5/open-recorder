@@ -404,6 +404,8 @@ struct HUDState: Hashable {
 enum NativeWindowCommandAction: Equatable {
     case showHUD
     case hideHUD
+    case showOnboarding
+    case finishOnboarding
     case showRecordingSetup
     case hideRecordingSetup
     case showSourceSelector

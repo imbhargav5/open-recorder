@@ -23,10 +23,15 @@ struct StudioShell: View {
     @EnvironmentObject private var model: AppModel
     var editorSession: EditorSession?
     @State private var isShortcutsHelpPresented = false
+    @StateObject private var timelineEdits = TimelineEditController()
 
     var body: some View {
         VStack(spacing: 0) {
-            StudioTitleBar(editorSession: editorSession, isShortcutsHelpPresented: $isShortcutsHelpPresented)
+            StudioTitleBar(
+                editorSession: editorSession,
+                isShortcutsHelpPresented: $isShortcutsHelpPresented,
+                timelineEdits: timelineEdits
+            )
             detailView
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -63,11 +68,11 @@ struct StudioShell: View {
     private var detailView: some View {
         switch model.selectedSection {
         case .capture:
-            EditorStudioView(editorSession: editorSession)
+            EditorStudioView(editorSession: editorSession, timelineEdits: timelineEdits)
         case .projects:
             ProjectsStudioView()
         case .editor:
-            EditorStudioView(editorSession: editorSession)
+            EditorStudioView(editorSession: editorSession, timelineEdits: timelineEdits)
         case .settings:
             SettingsStudioView()
         }
@@ -161,6 +166,7 @@ struct StudioTitleBar: View {
     @EnvironmentObject private var model: AppModel
     var editorSession: EditorSession?
     @Binding var isShortcutsHelpPresented: Bool
+    @ObservedObject var timelineEdits: TimelineEditController
 
     var body: some View {
         HStack(spacing: 12) {
@@ -179,6 +185,11 @@ struct StudioTitleBar: View {
                 .fill(Color.studioBorder)
                 .frame(height: 1)
         }
+        .simultaneousGesture(
+            TapGesture().onEnded {
+                timelineEdits.clearSelection()
+            }
+        )
     }
 
     @ViewBuilder

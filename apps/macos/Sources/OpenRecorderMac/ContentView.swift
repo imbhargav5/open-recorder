@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 
 enum AppWindowRole {
     case hud
+    case onboarding
     case sourceSelector
     case microphoneSelector
     case cameraSelector
@@ -23,6 +24,10 @@ struct ContentView: View {
             switch role {
             case .hud:
                 hudWindowContent
+            case .onboarding:
+                OnboardingView()
+                    .frame(width: OnboardingWindowMetrics.width, height: OnboardingWindowMetrics.height)
+                    .background(WindowConfigurator(role: .onboarding))
             case .sourceSelector:
                 SourceSelectorWindowView()
                     .frame(width: SourceSelectorWindowMetrics.width)

@@ -329,6 +329,65 @@ final class AppModelStateTests: XCTestCase {
         XCTAssertNil(secondCommand)
     }
 
+    func testIncompleteOnboardingRequestsOnboardingWindow() {
+        let completion = OnboardingCompletionBox(false)
+        let model = AppModel(
+            screenRecordingPermission: makeScreenRecordingPermission(isGranted: true),
+            accessibilityPermission: makeAccessibilityPermission(isTrusted: false),
+            onboardingStore: completion.store
+        )
+
+        model.presentOnboardingIfNeeded()
+
+        XCTAssertEqual(model.windowCommand?.action, .showOnboarding)
+        XCTAssertEqual(model.hudState.presentation, .hidden)
+    }
+
+    func testCompletedOnboardingDoesNotRequestOnboardingWindow() {
+        let completion = OnboardingCompletionBox(true)
+        let model = AppModel(
+            screenRecordingPermission: makeScreenRecordingPermission(isGranted: true),
+            accessibilityPermission: makeAccessibilityPermission(isTrusted: false),
+            onboardingStore: completion.store
+        )
+
+        model.presentOnboardingIfNeeded()
+
+        XCTAssertNil(model.windowCommand)
+    }
+
+    func testOnboardingCannotCompleteWithoutScreenRecordingPermission() {
+        let completion = OnboardingCompletionBox(false)
+        let model = AppModel(
+            screenRecordingPermission: makeScreenRecordingPermission(isGranted: false),
+            accessibilityPermission: makeAccessibilityPermission(isTrusted: true),
+            onboardingStore: completion.store
+        )
+
+        let didComplete = model.completeOnboarding()
+
+        XCTAssertFalse(didComplete)
+        XCTAssertFalse(completion.value)
+        XCTAssertNil(model.windowCommand)
+        XCTAssertEqual(model.onboardingStatusMessage, "Screen Recording permission is required before continuing.")
+    }
+
+    func testOnboardingCompletesWhenScreenRecordingPermissionIsGranted() {
+        let completion = OnboardingCompletionBox(false)
+        let model = AppModel(
+            screenRecordingPermission: makeScreenRecordingPermission(isGranted: true),
+            accessibilityPermission: makeAccessibilityPermission(isTrusted: false),
+            onboardingStore: completion.store
+        )
+
+        let didComplete = model.completeOnboarding()
+
+        XCTAssertTrue(didComplete)
+        XCTAssertTrue(completion.value)
+        XCTAssertEqual(model.windowCommand?.action, .finishOnboarding)
+        XCTAssertEqual(model.hudState.presentation, .visible)
+    }
+
     func testHideHUDWindowCommandIsConsumedOnce() {
         let model = AppModel()
         model.hideHUD()
@@ -431,4 +490,74 @@ final class AppModelStateTests: XCTestCase {
         XCTAssertTrue(openedWindows.isEmpty)
         XCTAssertEqual(dismissedWindows, ["hud", "source-selector"])
     }
+
+    func testAppWindowActionsShowOnboardingClosesCaptureWindowsAndOpensOnboarding() {
+        let actions = AppWindowActions()
+        var openedWindows: [String] = []
+        var dismissedWindows: [String] = []
+
+        actions.install(
+            openWindow: { openedWindows.append($0) },
+            openEditor: { _ in },
+            dismissWindow: { dismissedWindows.append($0) },
+            activateApp: {}
+        )
+        actions.perform(NativeWindowCommand(action: .showOnboarding))
+
+        XCTAssertEqual(openedWindows, ["onboarding"])
+        XCTAssertEqual(dismissedWindows, ["hud", "source-selector"])
+    }
+
+    func testAppWindowActionsFinishOnboardingClosesOnboardingAndOpensHUD() {
+        let actions = AppWindowActions()
+        var openedWindows: [String] = []
+        var dismissedWindows: [String] = []
+
+        actions.install(
+            openWindow: { openedWindows.append($0) },
+            openEditor: { _ in },
+            dismissWindow: { dismissedWindows.append($0) },
+            activateApp: {}
+        )
+        actions.perform(NativeWindowCommand(action: .finishOnboarding))
+
+        XCTAssertEqual(openedWindows, ["hud"])
+        XCTAssertEqual(dismissedWindows, ["onboarding"])
+    }
+}
+
+@MainActor
+private final class OnboardingCompletionBox {
+    var value: Bool
+
+    init(_ value: Bool) {
+        self.value = value
+    }
+
+    var store: OnboardingStateStore {
+        OnboardingStateStore(
+            isCompleted: { self.value },
+            setCompleted: { self.value = $0 }
+        )
+    }
+}
+
+@MainActor
+private func makeScreenRecordingPermission(isGranted: Bool) -> ScreenRecordingPermission {
+    ScreenRecordingPermission(client: ScreenRecordingPermissionClient(
+        preflight: { isGranted },
+        request: { isGranted },
+        hasRequestedPrompt: { false },
+        setRequestedPrompt: { _ in }
+    ))
+}
+
+@MainActor
+private func makeAccessibilityPermission(isTrusted: Bool) -> AccessibilityPermission {
+    AccessibilityPermission(client: AccessibilityPermissionClient(
+        isTrusted: { isTrusted },
+        request: { isTrusted },
+        hasRequestedPrompt: { false },
+        setRequestedPrompt: { _ in }
+    ))
 }

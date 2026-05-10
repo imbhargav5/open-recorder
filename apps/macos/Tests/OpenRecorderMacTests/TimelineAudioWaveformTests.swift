@@ -115,6 +115,32 @@ final class TimelineEditingPlanTests: XCTestCase {
     }
 
     @MainActor
+    func testSelectingClipClearsRegionSelection() {
+        let edits = TimelineEditController()
+        edits.add(.zoom, at: 2, duration: 10)
+
+        edits.selectClip(index: 1)
+
+        XCTAssertNil(edits.selectedKind)
+        XCTAssertNil(edits.selectedID)
+        XCTAssertEqual(edits.selectedClipIndex, 1)
+        XCTAssertTrue(edits.hasSelection)
+    }
+
+    @MainActor
+    func testRemovingClipSplitClearsClipSelection() {
+        let edits = TimelineEditController()
+        edits.clipSplitTimes = [2, 4]
+        edits.selectClip(index: 1)
+
+        edits.removeClipSplit(at: 2)
+
+        XCTAssertEqual(edits.clipSplitTimes, [4])
+        XCTAssertNil(edits.selectedClipIndex)
+        XCTAssertFalse(edits.hasSelection)
+    }
+
+    @MainActor
     func testAddedRegionStartsAtPlayheadWhenNearClipEnd() {
         let edits = TimelineEditController()
 

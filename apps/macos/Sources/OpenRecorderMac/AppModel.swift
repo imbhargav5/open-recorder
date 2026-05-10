@@ -37,6 +37,9 @@ final class AppModel: ObservableObject {
     @Published var videoExportProgress = 0.0
     @Published var videoExportError: String?
     @Published var exportedVideoURL: URL?
+    @Published var screenRecordingPermissionState: ScreenRecordingPermissionState
+    @Published var accessibilityPermissionState: AccessibilityPermissionState
+    @Published var onboardingStatusMessage = ""
 
     private var pendingVideoExportTempURL: URL?
     private var pendingVideoExportSourceURL: URL?
@@ -54,10 +57,26 @@ final class AppModel: ObservableObject {
     private let countdownOverlayController = RecordingCountdownOverlayController()
 
     let service = RustServiceClient()
-    let capture = CaptureController()
+    let capture: CaptureController
+    private let screenRecordingPermission: ScreenRecordingPermission
+    private let accessibilityPermission: AccessibilityPermission
+    private let onboardingStore: OnboardingStateStore
     private let facecamRecorder = FacecamRecorder()
     private let cursorTelemetryRecorder = CursorTelemetryRecorder()
     private let captureDeviceProvider = CaptureDeviceProvider()
+
+    init(
+        screenRecordingPermission: ScreenRecordingPermission = ScreenRecordingPermission(),
+        accessibilityPermission: AccessibilityPermission = AccessibilityPermission(),
+        onboardingStore: OnboardingStateStore = .live
+    ) {
+        self.screenRecordingPermission = screenRecordingPermission
+        self.accessibilityPermission = accessibilityPermission
+        self.onboardingStore = onboardingStore
+        self.capture = CaptureController(screenRecordingPermission: screenRecordingPermission)
+        self.screenRecordingPermissionState = screenRecordingPermission.currentState()
+        self.accessibilityPermissionState = accessibilityPermission.currentState()
+    }
 
     var captureFlow: CaptureFlow {
         hudState.captureFlow
@@ -68,11 +87,91 @@ final class AppModel: ObservableObject {
     }
 
     func bootstrap() {
+        presentOnboardingIfNeeded()
         Task {
             await refreshSources()
             refreshCaptureDevices()
         }
         refreshBackendState()
+    }
+
+    var canContinueOnboarding: Bool {
+        screenRecordingPermissionState == .granted
+    }
+
+    func refreshOnboardingPermissionStates() {
+        screenRecordingPermissionState = screenRecordingPermission.currentState()
+        accessibilityPermissionState = accessibilityPermission.currentState()
+        if canContinueOnboarding && onboardingStatusMessage.localizedCaseInsensitiveContains("required") {
+            onboardingStatusMessage = ""
+        }
+    }
+
+    func presentOnboardingIfNeeded() {
+        guard !onboardingStore.isCompleted() else {
+            return
+        }
+        showOnboarding()
+    }
+
+    func showOnboarding() {
+        refreshOnboardingPermissionStates()
+        hudState = hudState.withPresentation(.hidden)
+        requestWindow(.showOnboarding)
+    }
+
+    func requestOnboardingScreenRecordingPermission() {
+        switch screenRecordingPermission.currentState() {
+        case .granted:
+            onboardingStatusMessage = "Screen Recording is enabled."
+        case .requestAvailable:
+            let outcome = screenRecordingPermission.requestGrant()
+            switch outcome {
+            case .granted:
+                onboardingStatusMessage = "Screen Recording is enabled."
+            case .promptShownWithoutGrant, .promptAlreadyShown:
+                onboardingStatusMessage = "Enable Screen Recording in System Settings, then quit and reopen Open Recorder if macOS asks."
+            }
+        case .requestAlreadyShown:
+            onboardingStatusMessage = "Enable Screen Recording in System Settings, then quit and reopen Open Recorder if macOS asks."
+            openPrivacySettings()
+        }
+        refreshOnboardingPermissionStates()
+    }
+
+    func requestOnboardingAccessibilityPermission() {
+        switch accessibilityPermission.currentState() {
+        case .granted:
+            onboardingStatusMessage = "Accessibility access is enabled."
+        case .requestAvailable:
+            let outcome = accessibilityPermission.requestGrant()
+            switch outcome {
+            case .granted:
+                onboardingStatusMessage = "Accessibility access is enabled."
+            case .promptShownWithoutGrant, .promptAlreadyShown:
+                onboardingStatusMessage = "Enable Accessibility access in System Settings to capture shortcuts and cursor details."
+            }
+        case .requestAlreadyShown:
+            onboardingStatusMessage = "Enable Accessibility access in System Settings to capture shortcuts and cursor details."
+            openAccessibilitySettings()
+        }
+        refreshOnboardingPermissionStates()
+    }
+
+    @discardableResult
+    func completeOnboarding() -> Bool {
+        refreshOnboardingPermissionStates()
+        guard canContinueOnboarding else {
+            onboardingStatusMessage = "Screen Recording permission is required before continuing."
+            return false
+        }
+
+        onboardingStore.setCompleted(true)
+        onboardingStatusMessage = ""
+        statusMessage = "Ready"
+        hudState = hudState.withPresentation(.visible)
+        requestWindow(.finishOnboarding)
+        return true
     }
 
     func refreshBackendState() {

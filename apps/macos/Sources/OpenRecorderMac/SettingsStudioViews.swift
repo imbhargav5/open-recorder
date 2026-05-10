@@ -32,14 +32,38 @@ struct SettingsStudioView: View {
                 }
 
                 SettingsSection(title: "Permissions") {
-                    StudioButton(hitTarget: .rounded(8)) {
-                        model.openPrivacySettings()
-                    } label: {
-                        Label("Open Screen Recording Privacy", systemImage: "lock.shield")
-                            .frame(height: 34)
-                            .padding(.horizontal, 12)
-                            .background(Color.brand, in: RoundedRectangle(cornerRadius: 8))
-                            .foregroundStyle(.white)
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 10) {
+                            StudioButton(hitTarget: .rounded(8)) {
+                                model.openPrivacySettings()
+                            } label: {
+                                Label("Screen Recording", systemImage: "lock.shield")
+                                    .frame(height: 34)
+                                    .padding(.horizontal, 12)
+                                    .background(Color.brand, in: RoundedRectangle(cornerRadius: 8))
+                                    .foregroundStyle(.white)
+                            }
+
+                            StudioButton(hitTarget: .rounded(8)) {
+                                model.openAccessibilitySettings()
+                            } label: {
+                                Label("Accessibility", systemImage: "accessibility")
+                                    .frame(height: 34)
+                                    .padding(.horizontal, 12)
+                                    .background(Color.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 8))
+                                    .foregroundStyle(Color.white.opacity(0.86))
+                            }
+                        }
+
+                        StudioButton(hitTarget: .rounded(8)) {
+                            model.showOnboarding()
+                        } label: {
+                            Label("Review Permissions", systemImage: "checklist")
+                                .frame(height: 34)
+                                .padding(.horizontal, 12)
+                                .background(Color.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 8))
+                                .foregroundStyle(Color.white.opacity(0.86))
+                        }
                     }
                 }
             }
@@ -114,4 +138,3 @@ struct FolderRow: View {
         .font(.system(size: 13))
     }
 }
-

@@ -62,21 +62,14 @@ struct VideoExportDialog: View {
                 ExportMessageRow(symbolName: "xmark.circle.fill", message: errorMessage, tint: .red)
             }
 
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Resolution")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                ForEach(VideoExportResolution.allCases) { option in
-                    ExportOptionRow(
-                        title: option.title,
-                        detail: option.detail,
-                        isSelected: resolution == option,
-                        isDisabled: !canEditOptions
-                    ) {
-                        resolution = option
-                    }
-                }
-            }
+            ExportSelectField(
+                title: "Resolution",
+                selection: $resolution,
+                options: VideoExportResolution.allCases,
+                optionTitle: \.title,
+                optionDetail: \.detail,
+                isDisabled: !canEditOptions
+            )
 
             VStack(alignment: .leading, spacing: 10) {
                 Text("Format")
@@ -94,23 +87,14 @@ struct VideoExportDialog: View {
                 }
             }
 
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Frame Rate")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
-                    ForEach(VideoExportFrameRate.allCases) { option in
-                        ExportOptionRow(
-                            title: option.title,
-                            detail: option.detail,
-                            isSelected: frameRate == option,
-                            isDisabled: !canEditOptions
-                        ) {
-                            frameRate = option
-                        }
-                    }
-                }
-            }
+            ExportSelectField(
+                title: "Frame Rate",
+                selection: $frameRate,
+                options: VideoExportFrameRate.allCases,
+                optionTitle: \.title,
+                optionDetail: \.detail,
+                isDisabled: !canEditOptions
+            )
 
             primaryActions
         }
@@ -278,6 +262,40 @@ private struct ExportOptionRow: View {
         }
         .buttonStyle(.plain)
         .disabled(isDisabled)
+    }
+}
+
+private struct ExportSelectField<Option: Hashable & Identifiable>: View {
+    var title: String
+    @Binding var selection: Option
+    var options: [Option]
+    var optionTitle: KeyPath<Option, String>
+    var optionDetail: KeyPath<Option, String>
+    var isDisabled = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+
+            Picker(title, selection: $selection) {
+                ForEach(options) { option in
+                    Text(option[keyPath: optionTitle])
+                        .tag(option)
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.menu)
+            .controlSize(.large)
+            .disabled(isDisabled)
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text(selection[keyPath: optionDetail])
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 }
 

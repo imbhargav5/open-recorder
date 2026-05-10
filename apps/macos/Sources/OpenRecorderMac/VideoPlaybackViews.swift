@@ -14,14 +14,15 @@ struct VideoPreviewPanel: View {
     var borderRadius: Double = 0
     var shadow: Double = 0
     var backgroundBlur: Double = 0
+    var onRequestClearSelection: () -> Void = {}
 
     var body: some View {
         VStack(spacing: 0) {
             ZStack {
                 if videoURL != nil {
-                    ZStack(alignment: .bottomTrailing) {
+                    AspectRatioFitContainer(aspectRatio: PreviewStageLayout.videoAspectRatio) {
                         styledStage
-                            .aspectRatio(16.0 / 9.0, contentMode: .fit)
+                    } overlay: {
                         recordingSessionBadges
                     }
                     .padding(16)
@@ -44,6 +45,12 @@ struct VideoPreviewPanel: View {
         .onChange(of: videoURL) { _, newURL in
             syncPlaybackURL(newURL)
         }
+        .rectangularHitTarget()
+        .simultaneousGesture(
+            TapGesture().onEnded {
+                onRequestClearSelection()
+            }
+        )
     }
 
     private func syncPlaybackURL(_ url: URL?) {
@@ -57,9 +64,11 @@ struct VideoPreviewPanel: View {
     private var styledStage: some View {
         ZStack {
             BackgroundFillView(style: background)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .blur(radius: CGFloat(backgroundBlur))
                 .clipped()
             PlaybackPreview(playback: playback, edits: timelineEdits.snapshot)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .clipShape(RoundedRectangle(cornerRadius: CGFloat(borderRadius), style: .continuous))
                 .shadow(
                     color: Color.black.opacity(0.55 * shadow),
@@ -68,26 +77,69 @@ struct VideoPreviewPanel: View {
                 )
                 .padding(CGFloat(padding))
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .clipped()
     }
 
     @ViewBuilder
     private var recordingSessionBadges: some View {
-        if let recordingSession {
-            VStack(alignment: .trailing, spacing: 6) {
-                if recordingSession.facecamVideoPath != nil {
-                    Label("Facecam captured", systemImage: "video.fill")
-                }
-                if recordingSession.cursorTelemetryPath != nil {
-                    Label("Cursor telemetry", systemImage: "cursorarrow.motionlines")
-                }
-            }
-            .font(.system(size: 11, weight: .semibold))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .background(Color.black.opacity(0.58), in: RoundedRectangle(cornerRadius: 9))
-            .foregroundStyle(Color.white)
-            .padding(12)
+        if let recordingSession, recordingSession.facecamVideoPath != nil {
+            Label("Facecam captured", systemImage: "video.fill")
+                .font(.system(size: 11, weight: .semibold))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .background(Color.black.opacity(0.58), in: RoundedRectangle(cornerRadius: 9))
+                .foregroundStyle(Color.white)
+                .padding(12)
         }
+    }
+}
+
+enum PreviewStageLayout {
+    static let videoAspectRatio: CGFloat = 16.0 / 9.0
+
+    static func fittedSize(forAspectRatio aspectRatio: CGFloat, in availableSize: CGSize) -> CGSize {
+        guard aspectRatio.isFinite,
+              aspectRatio > 0,
+              availableSize.width.isFinite,
+              availableSize.height.isFinite,
+              availableSize.width > 0,
+              availableSize.height > 0 else {
+            return .zero
+        }
+
+        let availableAspectRatio = availableSize.width / availableSize.height
+        if availableAspectRatio > aspectRatio {
+            let height = availableSize.height
+            return CGSize(width: height * aspectRatio, height: height)
+        }
+
+        let width = availableSize.width
+        return CGSize(width: width, height: width / aspectRatio)
+    }
+}
+
+private struct AspectRatioFitContainer<Content: View, Overlay: View>: View {
+    var aspectRatio: CGFloat
+    var alignment: Alignment = .bottomTrailing
+    @ViewBuilder var content: () -> Content
+    @ViewBuilder var overlay: () -> Overlay
+
+    var body: some View {
+        GeometryReader { proxy in
+            let fittedSize = PreviewStageLayout.fittedSize(forAspectRatio: aspectRatio, in: proxy.size)
+
+            ZStack(alignment: alignment) {
+                content()
+                    .frame(width: fittedSize.width, height: fittedSize.height)
+                    .clipped()
+
+                overlay()
+                    .frame(width: fittedSize.width, height: fittedSize.height, alignment: alignment)
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
+        }
+        .clipped()
     }
 }
 
@@ -294,24 +346,6 @@ struct PlaybackPreview: View {
                     .position(x: annotation.x * 640, y: annotation.y * 360)
                     .shadow(color: .black.opacity(0.45), radius: 8, y: 4)
             }
-
-            StudioButton(hitTarget: .capsule) {
-                playback.togglePlayback()
-            } label: {
-                Label(playback.isPlaying ? "Pause" : "Play", systemImage: playback.isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 13, weight: .semibold))
-                    .frame(height: 34)
-                    .padding(.horizontal, 12)
-                    .background(Color.black.opacity(0.64), in: Capsule())
-                    .overlay {
-                        Capsule()
-                            .stroke(Color.white.opacity(0.10), lineWidth: 1)
-                    }
-                    .foregroundStyle(.white)
-            }
-            .disabled(playback.player == nil)
-            .opacity(playback.player == nil ? 0.45 : 1)
-            .padding(14)
         }
         .onChange(of: edits) { _, newValue in
             playback.setTimelineEdits(newValue)

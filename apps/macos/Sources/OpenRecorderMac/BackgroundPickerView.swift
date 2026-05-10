@@ -7,6 +7,10 @@ struct BackgroundPickerView: View {
 
     @State private var activeKind: BackgroundStylePresetKind
 
+    private let tileCornerRadius: CGFloat = 7
+    private let tileHeight: CGFloat = 36
+    private let tileSpacing: CGFloat = 6
+
     init(selection: Binding<BackgroundStyle>, includeTransparent: Bool = true) {
         self._selection = selection
         self.includeTransparent = includeTransparent
@@ -96,15 +100,16 @@ struct BackgroundPickerView: View {
     }
 
     private var gradientGrid: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 4), spacing: 6) {
+        LazyVGrid(columns: fourColumnGridItems, spacing: tileSpacing) {
             ForEach(BackgroundPresets.gradients) { preset in
                 StudioButton(hitTarget: .rounded(7)) {
                     selection = .gradient(preset)
                 } label: {
                     GradientSwatch(preset: preset)
-                        .frame(height: 36)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: tileHeight)
                         .overlay {
-                            RoundedRectangle(cornerRadius: 7)
+                            RoundedRectangle(cornerRadius: tileCornerRadius)
                                 .stroke(selectedGradientID == preset.id ? Color.brand : Color.white.opacity(0.10), lineWidth: selectedGradientID == preset.id ? 2 : 1)
                         }
                 }
@@ -133,21 +138,27 @@ struct BackgroundPickerView: View {
     }
 
     private var wallpaperGrid: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 4), spacing: 6) {
+        LazyVGrid(columns: fourColumnGridItems, spacing: tileSpacing) {
             ForEach(BackgroundPresets.wallpapers) { preset in
                 StudioButton(hitTarget: .rounded(7)) {
                     selection = .wallpaper(preset)
                 } label: {
                     WallpaperThumbnail(preset: preset)
-                        .frame(height: 36)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: tileHeight)
+                        .clipShape(RoundedRectangle(cornerRadius: tileCornerRadius))
                         .overlay {
-                            RoundedRectangle(cornerRadius: 7)
+                            RoundedRectangle(cornerRadius: tileCornerRadius)
                                 .stroke(selectedWallpaperID == preset.id ? Color.brand : Color.white.opacity(0.10), lineWidth: selectedWallpaperID == preset.id ? 2 : 1)
                         }
                 }
                 .help(preset.label)
             }
         }
+    }
+
+    private var fourColumnGridItems: [GridItem] {
+        Array(repeating: GridItem(.flexible(minimum: 0), spacing: tileSpacing), count: 4)
     }
 
     private var transparentNote: some View {

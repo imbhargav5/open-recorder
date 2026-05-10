@@ -81,6 +81,38 @@ struct TimelineSpeedRegion: Identifiable, Codable, Equatable, Hashable {
     var speed: Double = 1.5
 }
 
+struct TimelineClipSegment: Identifiable, Equatable {
+    var index: Int
+    var start: Double
+    var end: Double
+
+    var id: Int { index }
+    var span: TimelineSpan { TimelineSpan(start: start, end: end) }
+
+    static func segments(duration: Double, splitTimes: [Double]) -> [TimelineClipSegment] {
+        guard duration.isFinite, duration > 0 else {
+            return [TimelineClipSegment(index: 0, start: 0, end: 0)]
+        }
+
+        let boundaries = ([0, duration] + splitTimes)
+            .map { min(max($0, 0), duration) }
+            .filter { $0.isFinite }
+            .sorted()
+
+        let uniqueBoundaries = boundaries.reduce(into: [Double]()) { result, boundary in
+            if result.last.map({ abs($0 - boundary) > 0.001 }) ?? true {
+                result.append(boundary)
+            }
+        }
+
+        return uniqueBoundaries.dropLast().enumerated().compactMap { index, start in
+            let end = uniqueBoundaries[index + 1]
+            guard end - start > 0.001 else { return nil }
+            return TimelineClipSegment(index: index, start: start, end: end)
+        }
+    }
+}
+
 struct TimelineEditSnapshot: Equatable {
     var zoomRegions: [TimelineZoomRegion] = []
     var trimRegions: [TimelineTrimRegion] = []
@@ -120,6 +152,7 @@ final class TimelineEditController: ObservableObject {
     @Published var clipSplitTimes: [Double] = []
     @Published var selectedKind: TimelineRegionKind?
     @Published var selectedID: TimelineRegionID?
+    @Published var selectedClipIndex: Int?
     @Published var statusMessage = "Use toolbar buttons or shortcuts. Space plays, Z zooms, S changes speed, T splits."
 
     var snapshot: TimelineEditSnapshot {
@@ -132,14 +165,17 @@ final class TimelineEditController: ObservableObject {
         )
     }
 
+    var hasSelection: Bool {
+        selectedClipIndex != nil || (selectedKind != nil && selectedID != nil)
+    }
+
     func reset() {
         zoomRegions.removeAll()
         trimRegions.removeAll()
         annotationRegions.removeAll()
         speedRegions.removeAll()
         clipSplitTimes.removeAll()
-        selectedKind = nil
-        selectedID = nil
+        clearSelection()
         statusMessage = "Timeline edits reset."
     }
 
@@ -171,9 +207,9 @@ final class TimelineEditController: ObservableObject {
             trimRegions.append(region)
             select(.trim, id: region.id)
         case .annotation:
-            let region = TimelineAnnotationRegion(span: span)
-            annotationRegions.append(region)
-            select(.annotation, id: region.id)
+            statusMessage = "Annotations are currently unavailable."
+            select(nil, id: nil)
+            return
         case .speed:
             guard canPlaceNonOverlapping(span, existing: speedRegions.map(\.span)) else {
                 statusMessage = "Cannot place speed on top of another speed region."
@@ -206,13 +242,31 @@ final class TimelineEditController: ObservableObject {
 
         clipSplitTimes.append(splitTime)
         clipSplitTimes.sort()
-        select(nil, id: nil)
+        clearSelection()
         statusMessage = "Split clip at \(formatPlaybackTime(splitTime))."
     }
 
     func select(_ kind: TimelineRegionKind?, id: TimelineRegionID?) {
+        selectedClipIndex = nil
+        guard let kind, let id else {
+            selectedKind = nil
+            selectedID = nil
+            return
+        }
         selectedKind = kind
         selectedID = id
+    }
+
+    func selectClip(index: Int) {
+        selectedKind = nil
+        selectedID = nil
+        selectedClipIndex = max(0, index)
+    }
+
+    func clearSelection() {
+        selectedKind = nil
+        selectedID = nil
+        selectedClipIndex = nil
     }
 
     func deleteSelection() {
@@ -223,7 +277,7 @@ final class TimelineEditController: ObservableObject {
         case .annotation: annotationRegions.removeAll { $0.id == selectedID }
         case .speed: speedRegions.removeAll { $0.id == selectedID }
         }
-        select(nil, id: nil)
+        clearSelection()
         statusMessage = "Deleted \(selectedKind.title.lowercased())."
     }
 
@@ -249,6 +303,12 @@ final class TimelineEditController: ObservableObject {
         }
     }
 
+    func updateSpeed(id: TimelineRegionID, speed: Double) {
+        mutate(&speedRegions, id: id) { region in
+            region.speed = min(max(speed, 0.25), 2.0)
+        }
+    }
+
     func deepenZoom(id: TimelineRegionID) {
         let values = [1.25, 1.5, 1.8, 2.2, 3.5, 5.0]
         mutate(&zoomRegions, id: id) { region in
@@ -257,8 +317,28 @@ final class TimelineEditController: ObservableObject {
         }
     }
 
+    func updateZoomDepth(id: TimelineRegionID, depth: Double) {
+        mutate(&zoomRegions, id: id) { region in
+            region.depth = min(max(depth, 1.0), 5.0)
+        }
+    }
+
     func updateAnnotationText(id: TimelineRegionID, text: String) {
         mutate(&annotationRegions, id: id) { $0.text = text }
+    }
+
+    func selectedClip(duration: Double) -> TimelineClipSegment? {
+        guard let selectedClipIndex else { return nil }
+        let segments = TimelineClipSegment.segments(duration: duration, splitTimes: clipSplitTimes)
+        guard segments.indices.contains(selectedClipIndex) else { return nil }
+        return segments[selectedClipIndex]
+    }
+
+    func removeClipSplit(at splitTime: Double) {
+        guard let index = clipSplitTimes.firstIndex(where: { abs($0 - splitTime) < 0.001 }) else { return }
+        clipSplitTimes.remove(at: index)
+        clearSelection()
+        statusMessage = "Removed split at \(formatPlaybackTime(splitTime))."
     }
 
     private func canPlaceNonOverlapping(_ span: TimelineSpan, existing: [TimelineSpan]) -> Bool {

@@ -159,17 +159,21 @@ struct StudioSplitPane<Primary: View, Secondary: View>: View {
                 HStack(spacing: 0) {
                     primary
                         .frame(width: resolvedPrimarySize, height: proxy.size.height)
+                        .clipped()
                     divider(totalSize: totalSize)
                     secondary
                         .frame(width: resolvedSecondarySize, height: proxy.size.height)
+                        .clipped()
                 }
             } else {
                 VStack(spacing: 0) {
                     primary
                         .frame(width: proxy.size.width, height: resolvedPrimarySize)
+                        .clipped()
                     divider(totalSize: totalSize)
                     secondary
                         .frame(width: proxy.size.width, height: resolvedSecondarySize)
+                        .clipped()
                 }
             }
         }
