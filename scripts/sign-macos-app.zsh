@@ -46,6 +46,16 @@ resolve_codesign_identity() {
 		return
 	fi
 
+	local signing_purpose="${OPEN_RECORDER_SIGNING_PURPOSE:-production}"
+	if [[ "$signing_purpose" == "production" ]]; then
+		local production_developer_id_identity
+		production_developer_id_identity="$(find_codesign_identity "Developer ID Application:")"
+		if [[ -n "$production_developer_id_identity" ]]; then
+			print -- "$production_developer_id_identity"
+			return
+		fi
+	fi
+
 	local dev_identity="${OPEN_RECORDER_DEV_CODESIGN_IDENTITY:-}"
 	if [[ -n "$dev_identity" ]] && security find-identity -v -p codesigning 2>/dev/null | grep -Fq "\"$dev_identity\""; then
 		print -- "$dev_identity\t$dev_identity"
