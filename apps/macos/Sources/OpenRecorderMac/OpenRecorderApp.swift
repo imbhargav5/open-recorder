@@ -547,12 +547,6 @@ private enum OpenRecorderMenuBarIcon {
     }
 
     private static var resourceURL: URL? {
-        if let url = Bundle.main.resourceURL?
-            .appendingPathComponent("OpenRecorderMac_OpenRecorderMac.bundle")
-            .appendingPathComponent("OpenRecorderMenuBarIcon.png"),
-           FileManager.default.fileExists(atPath: url.path) {
-            return url
-        }
-        return Bundle.module.url(forResource: "OpenRecorderMenuBarIcon", withExtension: "png")
+        OpenRecorderResources.url(forResource: "OpenRecorderMenuBarIcon", withExtension: "png")
     }
 }

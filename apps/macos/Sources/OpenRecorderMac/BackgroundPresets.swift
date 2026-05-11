@@ -80,11 +80,11 @@ struct WallpaperPreset: Identifiable, Equatable, Hashable, Codable {
     var thumbAssetName: String
 
     var fullURL: URL? {
-        Bundle.module.url(forResource: fullAssetName, withExtension: "jpg", subdirectory: "Wallpapers")
+        OpenRecorderResources.url(forResource: fullAssetName, withExtension: "jpg", subdirectory: "Wallpapers")
     }
 
     var thumbURL: URL? {
-        Bundle.module.url(forResource: thumbAssetName, withExtension: "jpg", subdirectory: "Wallpapers/thumbs")
+        OpenRecorderResources.url(forResource: thumbAssetName, withExtension: "jpg", subdirectory: "Wallpapers/thumbs")
     }
 }
 
