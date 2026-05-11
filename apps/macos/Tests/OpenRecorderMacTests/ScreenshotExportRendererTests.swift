@@ -77,6 +77,13 @@ final class ScreenshotExportRendererTests: XCTestCase {
         let data = try XCTUnwrap(renderer.renderPNG(from: image))
         XCTAssertTrue(data.starts(with: Data([0x89, 0x50, 0x4E, 0x47])))
     }
+
+    func testBundledWallpaperResourcesResolveImagesAndThumbnails() throws {
+        for wallpaper in BackgroundPresets.wallpapers {
+            XCTAssertNotNil(wallpaper.fullURL, "Missing full wallpaper resource for \(wallpaper.id).")
+            XCTAssertNotNil(wallpaper.thumbURL, "Missing thumbnail wallpaper resource for \(wallpaper.id).")
+        }
+    }
 }
 
 final class ScreenshotEditorHistoryTests: XCTestCase {

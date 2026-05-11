@@ -41,7 +41,8 @@ contents_dir="$bundle_dir/Contents"
 macos_dir="$contents_dir/MacOS"
 resources_dir="$contents_dir/Resources"
 swift_binary="$repo_root/apps/macos/.build/debug/OpenRecorderMac"
-swift_resource_bundle="$repo_root/apps/macos/.build/debug/OpenRecorderMac_OpenRecorderMac.bundle"
+swift_resource_bundle_name="OpenRecorderMac_OpenRecorderMac.bundle"
+swift_resource_bundle="$repo_root/apps/macos/.build/debug/$swift_resource_bundle_name"
 service_binary="$repo_root/apps/rust-service/target/debug/open-recorder-service"
 info_plist="$repo_root/apps/macos/Resources/Info.plist"
 icon_source="$repo_root/apps/macos/Resources/AppIcon.icns"
@@ -63,15 +64,22 @@ CARGO_INCREMENTAL=0 cargo build
 cd "$repo_root/apps/macos"
 swift build
 
+if [[ ! -d "$swift_resource_bundle" ]]; then
+	swift_resource_bundle="$(find "$repo_root/apps/macos/.build" -type d -name "$swift_resource_bundle_name" -print -quit)"
+fi
+
+if [[ ! -d "$swift_resource_bundle" ]]; then
+	print -u2 -- "Swift resource bundle not found: $swift_resource_bundle_name"
+	exit 1
+fi
+
 rm -rf "$bundle_dir"
 mkdir -p "$macos_dir" "$resources_dir"
 
 cp "$swift_binary" "$macos_dir/OpenRecorderMac"
 cp "$service_binary" "$macos_dir/open-recorder-service"
 cp "$info_plist" "$contents_dir/Info.plist"
-if [[ -d "$swift_resource_bundle" ]]; then
-	cp -R "$swift_resource_bundle" "$resources_dir/"
-fi
+cp -R "$swift_resource_bundle" "$resources_dir/"
 set_plist_string "CFBundleName" "$app_name"
 set_plist_string "CFBundleDisplayName" "$app_name"
 set_plist_string "CFBundleIdentifier" "$bundle_identifier"
