@@ -63,14 +63,14 @@ struct OnboardingView: View {
                 Label("Continue", systemImage: "checkmark.circle.fill")
                     .font(.system(size: 13, weight: .semibold))
                     .frame(width: 180, height: 40)
-                    .foregroundStyle(model.canContinueOnboarding ? Color.white : Color.white.opacity(0.22))
+                    .foregroundStyle(model.canContinueOnboarding ? Color.white : Color.white.opacity(0.34))
                     .background(
-                        model.canContinueOnboarding ? Color.brand : Color.white.opacity(0.045),
+                        model.canContinueOnboarding ? Color.brand : Color.studioControl,
                         in: RoundedRectangle(cornerRadius: 8)
                     )
                     .overlay {
                         RoundedRectangle(cornerRadius: 8)
-                            .stroke(model.canContinueOnboarding ? Color.brand.opacity(0.45) : Color.white.opacity(0.06))
+                            .stroke(model.canContinueOnboarding ? Color.brand.opacity(0.45) : Color.studioBorder)
                     }
             }
             .disabled(!model.canContinueOnboarding)
@@ -214,27 +214,27 @@ private struct OnboardingPermissionRow: View {
     private var foregroundColor: Color {
         switch buttonState {
         case .action, .settings:
-            Color.brand.opacity(0.98)
+            Color.brand
         case .enabled:
-            Color(red: 0.35, green: 1.0, blue: 0.58)
+            Color.white.opacity(0.94)
         }
     }
 
     private var backgroundColor: Color {
         switch buttonState {
         case .action, .settings:
-            Color.white.opacity(0.075)
+            Color.studioControl
         case .enabled:
-            Color(red: 0.07, green: 0.20, blue: 0.13)
+            Color.brand.opacity(0.18)
         }
     }
 
     private var borderColor: Color {
         switch buttonState {
         case .action, .settings:
-            Color.white.opacity(0.12)
+            Color.studioBorder
         case .enabled:
-            Color(red: 0.18, green: 0.50, blue: 0.30)
+            Color.brand.opacity(0.42)
         }
     }
 }
