@@ -2,7 +2,7 @@ import Image from "next/image";
 
 const proofPoints = [
   ["Native macOS", "Swift capture UI with system privacy flows"],
-  ["Local-first", "Recordings stay under your Movies folder"],
+  ["Local-first", "Captures stay under your Pictures folder"],
   ["Open source", "Apache 2.0 with a small Swift + Rust stack"],
   ["Editor included", "Trim, preview, organize, and export"],
 ];
@@ -12,13 +12,13 @@ const featureHighlights = [
     title: "Capture exactly what matters",
     eyebrow: "Display, window, or region",
     poster: "/feature-capture.svg",
-    copy: "Choose a full display, a single app window, or draw a precise area before recording or taking a screenshot.",
+    copy: "Choose a full display, a single app window, or draw a precise area before saving a polished screenshot.",
   },
   {
     title: "Polish without a cloud detour",
     eyebrow: "Native editing flow",
     poster: "/feature-editor.svg",
-    copy: "Preview recordings, keep project metadata organized, and move from rough capture to clean handoff on the same Mac.",
+    copy: "Preview captures, keep project metadata organized, and move from rough screenshot to clean handoff on the same Mac.",
   },
   {
     title: "Export work you can trust",
@@ -36,8 +36,8 @@ const workflow = [
   },
   {
     step: "02",
-    title: "Record or screenshot",
-    copy: "Save clips to Movies and screenshots to Pictures with project metadata created automatically.",
+    title: "Capture and save",
+    copy: "Save screenshots to Pictures with project metadata created automatically.",
   },
   {
     step: "03",
@@ -54,7 +54,7 @@ const workflow = [
 const architectureNotes = [
   {
     label: "Swift app",
-    value: "Capture UI, AVKit playback, Finder integration, privacy prompts",
+    value: "Screenshot capture UI, Finder integration, privacy prompts",
   },
   {
     label: "Rust service",
@@ -62,7 +62,7 @@ const architectureNotes = [
   },
   {
     label: "Local paths",
-    value: "~/Movies/Open Recorder and ~/Pictures/Open Recorder",
+    value: "~/Pictures/Open Recorder",
   },
 ];
 
@@ -94,9 +94,8 @@ export default function Home() {
           <p className="eyebrow">Native macOS capture studio</p>
           <h1>Open Recorder</h1>
           <p className="hero-lede">
-            Record your screen, capture screenshots, trim the useful parts, and
-            export clean handoffs without sending your work through a cloud
-            pipeline.
+            Capture screenshots, polish the useful context, and export clean
+            handoffs without sending your work through a cloud pipeline.
           </p>
           <div className="hero-actions">
             <a className="primary-action" href="https://github.com/imbhargav5/open-recorder">
@@ -108,32 +107,61 @@ export default function Home() {
           </div>
         </div>
 
-        <div className="hero-media" aria-label="Open Recorder product demo">
-          <div className="demo-window">
+        <div className="hero-media" aria-label="Open Recorder product preview">
+          <div className="product-window">
             <div className="window-bar" aria-hidden="true">
               <span />
               <span />
               <span />
             </div>
-            <Image
-              src="/open-recorder-demo.gif"
-              alt="Open Recorder app demo showing a macOS capture workflow"
-              width={1280}
-              height={720}
-              priority
-              unoptimized
-            />
-          </div>
-
-          <div className="recording-pill" aria-hidden="true">
-            <span />
-            <div>
-              <strong>Area capture</strong>
-              <small>00:12 recording</small>
+            <div className="static-preview">
+              <div className="preview-rail" aria-hidden="true">
+                <span />
+                <span />
+                <span />
+                <span />
+              </div>
+              <div className="preview-board">
+                <div className="preview-card-large">
+                  <Image
+                    src="/open-recorder-brand-image.png"
+                    alt=""
+                    width={86}
+                    height={86}
+                    priority
+                    unoptimized
+                  />
+                  <div>
+                    <span>Screenshot library</span>
+                    <strong>Local captures, ready to polish</strong>
+                  </div>
+                </div>
+                <div className="capture-selection" aria-hidden="true">
+                  <span />
+                  <span />
+                  <span />
+                  <span />
+                </div>
+              </div>
+              <div className="preview-side">
+                <strong>Export queue</strong>
+                <span>3 local assets</span>
+                <div className="preview-meter">
+                  <span />
+                </div>
+              </div>
             </div>
           </div>
 
-          <div className="timeline-panel" aria-hidden="true">
+          <div className="capture-pill" aria-hidden="true">
+            <span />
+            <div>
+              <strong>Screenshot mode</strong>
+              <small>Source selected</small>
+            </div>
+          </div>
+
+          <div className="export-panel" aria-hidden="true">
             <div />
             <div />
             <div />
@@ -157,7 +185,7 @@ export default function Home() {
         <div className="section-inner">
           <div className="section-heading">
             <p className="eyebrow">Capture, edit, export</p>
-            <h2>A small native toolchain for polished demos and documentation.</h2>
+            <h2>A small native toolchain for polished docs and bug reports.</h2>
           </div>
 
           <div className="feature-grid">
@@ -233,7 +261,7 @@ export default function Home() {
           />
           <div>
             <p className="eyebrow">Open source on GitHub</p>
-            <h2>Make your next product demo feel finished.</h2>
+            <h2>Make your next product handoff feel finished.</h2>
           </div>
           <a className="primary-action" href="https://github.com/imbhargav5/open-recorder">
             View repository
