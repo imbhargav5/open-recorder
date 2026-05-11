@@ -30,6 +30,7 @@ The product uses a small native stack: Swift owns the macOS experience, capture 
 
 - `apps/macos` - native SwiftUI macOS app
 - `apps/rust-service` - Rust JSON-lines service and one-shot command backend
+- `apps/landing` - Next.js landing page for the project
 
 ## Build From Source
 
@@ -72,6 +73,12 @@ make test-macos
 ```
 
 The root `pnpm dev`, `pnpm build`, and `pnpm test` aliases now call those same macOS Swift/Rust targets.
+
+Run the landing page locally:
+
+```bash
+pnpm dev:landing
+```
 
 ## Rust Service Protocol
 

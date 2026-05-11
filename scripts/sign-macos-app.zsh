@@ -79,6 +79,19 @@ resolve_codesign_identity() {
 	print -- "-\tAd-hoc"
 }
 
+clean_signing_metadata() {
+	find "$bundle_dir" \( -name '._*' -o -name '.__CodeSignature' \) -delete
+}
+
+sign_code() {
+	local target="$1"
+	shift
+
+	codesign "$@" "$target" >/dev/null
+	clean_signing_metadata
+	codesign --verify --strict "$target" >/dev/null
+}
+
 if command -v codesign >/dev/null 2>&1; then
 	identity_line="$(resolve_codesign_identity)"
 	sign_identity="${identity_line%%$'\t'*}"
@@ -95,11 +108,9 @@ if command -v codesign >/dev/null 2>&1; then
 		app_codesign_args+=(--entitlements "$entitlements_plist")
 	fi
 
-	codesign "${app_codesign_args[@]}" "$swift_binary" >/dev/null
-	codesign "${codesign_args[@]}" "$service_binary" >/dev/null
-	find "$bundle_dir" \( -name '._*' -o -name '.__CodeSignature' \) -delete
-	codesign "${app_codesign_args[@]}" "$bundle_dir" >/dev/null
-	find "$bundle_dir" \( -name '._*' -o -name '.__CodeSignature' \) -delete
+	sign_code "$service_binary" "${codesign_args[@]}"
+	sign_code "$swift_binary" "${app_codesign_args[@]}"
+	sign_code "$bundle_dir" "${app_codesign_args[@]}"
 	print -- "Signed $bundle_dir with $sign_identity_name"
 else
 	print -- "codesign not found; leaving $bundle_dir unsigned"

@@ -5,8 +5,11 @@
 	"packageManager": "pnpm@10.17.1",
 	"scripts": {
 		"dev": "make dev-macos",
+		"dev:landing": "pnpm --dir apps/landing dev",
 		"build": "make build-macos",
+		"build:landing": "pnpm --dir apps/landing build",
 		"build:mac": "make build-macos",
+		"lint:landing": "pnpm --dir apps/landing lint",
 		"package:mac": "make package-macos",
 		"test": "make test-macos",
 		"clean": "make clean-macos",
