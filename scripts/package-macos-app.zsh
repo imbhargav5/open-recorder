@@ -83,7 +83,7 @@ fi
 
 chmod +x "$macos_dir/OpenRecorderMac" "$macos_dir/open-recorder-service"
 find "$bundle_dir" \( -name '._*' -o -name '.__CodeSignature' \) -delete
-zsh "$repo_root/scripts/sign-macos-app.zsh" "$bundle_dir"
+OPEN_RECORDER_SIGNING_PURPOSE="$app_variant" zsh "$repo_root/scripts/sign-macos-app.zsh" "$bundle_dir"
 
 print -- "Packaged $bundle_dir"
 

@@ -81,6 +81,13 @@ jobs:
             runner: macos-26-intel
             binary_arch: x86_64
     runs-on: ${{ matrix.runner }}
+    env:
+      CSC_LINK: ${{ secrets.APPLE_CERTIFICATE || secrets.CSC_LINK }}
+      CSC_KEY_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD || secrets.CSC_KEY_PASSWORD }}
+      CSC_NAME: ${{ secrets.APPLE_SIGNING_IDENTITY || secrets.CSC_NAME }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -88,8 +95,14 @@ jobs:
       - name: Run tests
         run: make test-macos
 
+      - name: Import macOS signing certificate
+        run: zsh scripts/import-macos-signing-certificate.zsh
+
       - name: Package app bundle
         run: make package-macos
+
+      - name: Verify Developer ID signature
+        run: zsh scripts/verify-macos-signature.zsh "release/Open Recorder.app"
 
       - name: Verify native architecture
         shell: bash
@@ -128,6 +141,13 @@ jobs:
       - build-macos
     if: needs.resolve-release.outputs.should_release == 'true'
     runs-on: macos-26
+    env:
+      CSC_LINK: ${{ secrets.APPLE_CERTIFICATE || secrets.CSC_LINK }}
+      CSC_KEY_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD || secrets.CSC_KEY_PASSWORD }}
+      CSC_NAME: ${{ secrets.APPLE_SIGNING_IDENTITY || secrets.CSC_NAME }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -143,6 +163,9 @@ jobs:
         with:
           name: macos-x64-release-assets
           path: universal-input/x64
+
+      - name: Import macOS signing certificate
+        run: zsh scripts/import-macos-signing-certificate.zsh
 
       - name: Merge app executables
         shell: bash
@@ -175,6 +198,7 @@ jobs:
 
           find "$app" \( -name '._*' -o -name '.__CodeSignature' \) -delete
           zsh scripts/sign-macos-app.zsh "$app"
+          zsh scripts/verify-macos-signature.zsh "$app"
 
           zsh scripts/create-macos-release-artifacts.zsh \
             --app "$app" \
