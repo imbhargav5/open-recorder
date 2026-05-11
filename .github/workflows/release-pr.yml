@@ -67,8 +67,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mapfile -t changed_files < <(git diff --name-only -- apps/rust-service/Cargo.toml apps/rust-service/Cargo.lock .github/release-plan.json)
-          if [ "${#changed_files[@]}" -lt 2 ]; then
+          changed_files=$(git diff --name-only -- apps/rust-service/Cargo.toml apps/rust-service/Cargo.lock .github/release-plan.json)
+          changed_file_count=$(printf '%s\n' "$changed_files" | sed '/^$/d' | wc -l | tr -d ' ')
+          if [ "$changed_file_count" -lt 2 ]; then
             echo "Expected release preparation to update native version files and release plan." >&2
             git diff --name-only >&2
             exit 1
