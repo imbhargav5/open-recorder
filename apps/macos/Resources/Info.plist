@@ -45,6 +45,8 @@
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Open Recorder uses the microphone when you choose to include narration in a screen recording.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Open Recorder uses the camera when you choose to include a facecam in a screen recording.</string>
 	<key>NSSupportsAutomaticGraphicsSwitching</key>
 	<true/>
 	<key>UTExportedTypeDeclarations</key>
