@@ -14,6 +14,16 @@ enum NativeWindowRole {
     case studio
 }
 
+enum HUDWindowChrome {
+    static let collectionBehavior: NSWindow.CollectionBehavior = [
+        .canJoinAllSpaces,
+        .fullScreenAuxiliary,
+        .stationary
+    ]
+    static let level: NSWindow.Level = .screenSaver
+    static let activeSpaceSyncDelay: TimeInterval = 0.18
+}
+
 struct WindowConfigurator: NSViewRepresentable {
     var role: NativeWindowRole
     var preferredSize: CGSize?
@@ -53,6 +63,17 @@ final class WindowConfigurationView: NSView {
     var isPresented = true
 
     private var configuredRole: NativeWindowRole?
+    private weak var configuredWindow: NSWindow?
+    private weak var hudSpaceSyncWindow: NSWindow?
+    private var activeSpaceObserver: NSObjectProtocol?
+    private var pendingActiveSpaceSync: DispatchWorkItem?
+
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        if newWindow == nil {
+            stopSyncingHUDToActiveSpace()
+        }
+        super.viewWillMove(toWindow: newWindow)
+    }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
@@ -60,18 +81,29 @@ final class WindowConfigurationView: NSView {
     }
 
     func configureWindow() {
-        guard let window else { return }
+        guard let window else {
+            configuredWindow = nil
+            stopSyncingHUDToActiveSpace()
+            return
+        }
         if role == .areaSelector {
             guard isPresented else {
                 window.close()
                 return
             }
             configuredRole = role
+            configuredWindow = window
+            stopSyncingHUDToActiveSpace()
             configureAreaSelector(window)
             return
         }
-        guard configuredRole != role else { return }
+        guard configuredRole != role || configuredWindow !== window else { return }
         configuredRole = role
+        configuredWindow = window
+
+        if role != .hud {
+            stopSyncingHUDToActiveSpace()
+        }
 
         switch role {
         case .hud:
@@ -103,8 +135,8 @@ final class WindowConfigurationView: NSView {
         window.isOpaque = false
         window.backgroundColor = .clear
         window.hasShadow = false
-        window.level = .floating
-        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        window.level = HUDWindowChrome.level
+        window.collectionBehavior = HUDWindowChrome.collectionBehavior
         window.isMovableByWindowBackground = true
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
@@ -114,6 +146,8 @@ final class WindowConfigurationView: NSView {
             window.standardWindowButton(button)?.isHidden = true
         }
         positionBottomCenter(window, contentSize: size)
+        startSyncingHUDToActiveSpace(for: window)
+        window.orderFrontRegardless()
     }
 
     private func configureOnboarding(_ window: NSWindow) {
@@ -233,6 +267,66 @@ final class WindowConfigurationView: NSView {
             y: visibleFrame.minY + 26
         )
         window.setFrame(NSRect(origin: origin, size: contentSize), display: true)
+    }
+
+    private func startSyncingHUDToActiveSpace(for window: NSWindow) {
+        guard activeSpaceObserver == nil || hudSpaceSyncWindow !== window else {
+            return
+        }
+
+        stopSyncingHUDToActiveSpace()
+        hudSpaceSyncWindow = window
+        activeSpaceObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.activeSpaceDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self, weak window] _ in
+            Task { @MainActor in
+                guard let self, let window else { return }
+                self.syncHUDToActiveSpace(window)
+                self.scheduleHUDActiveSpaceSync(for: window)
+            }
+        }
+    }
+
+    private func stopSyncingHUDToActiveSpace() {
+        pendingActiveSpaceSync?.cancel()
+        pendingActiveSpaceSync = nil
+        if let activeSpaceObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(activeSpaceObserver)
+        }
+        activeSpaceObserver = nil
+        hudSpaceSyncWindow = nil
+    }
+
+    private func scheduleHUDActiveSpaceSync(for window: NSWindow) {
+        pendingActiveSpaceSync?.cancel()
+        let workItem = DispatchWorkItem { [weak self, weak window] in
+            Task { @MainActor in
+                guard let self, let window else { return }
+                self.syncHUDToActiveSpace(window)
+            }
+        }
+        pendingActiveSpaceSync = workItem
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + HUDWindowChrome.activeSpaceSyncDelay,
+            execute: workItem
+        )
+    }
+
+    private func syncHUDToActiveSpace(_ window: NSWindow) {
+        guard role == .hud, window.isVisible else { return }
+        let size = HUDWindowMetrics.clampedSize(
+            for: preferredSize ?? window.contentRect(forFrameRect: window.frame).size,
+            screen: window.screen ?? NSScreen.main
+        )
+        window.collectionBehavior = HUDWindowChrome.collectionBehavior
+        window.level = HUDWindowChrome.level
+        window.setContentSize(size)
+        window.minSize = size
+        window.maxSize = size
+        positionBottomCenter(window, contentSize: size)
+        window.orderFrontRegardless()
     }
 }
 

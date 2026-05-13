@@ -1,7 +1,17 @@
+import AppKit
 import XCTest
 @testable import OpenRecorderMac
 
 final class HUDWindowMetricsTests: XCTestCase {
+    func testHUDWindowBehaviorFollowsActiveMacOSSpace() {
+        let behavior = HUDWindowChrome.collectionBehavior
+
+        XCTAssertTrue(behavior.contains(.canJoinAllSpaces))
+        XCTAssertTrue(behavior.contains(.fullScreenAuxiliary))
+        XCTAssertTrue(behavior.contains(.stationary))
+        XCTAssertEqual(HUDWindowChrome.level, .screenSaver)
+    }
+
     func testDefaultWidthMatchesCondensedHUDLayout() {
         XCTAssertEqual(HUDWindowMetrics.defaultSize.width, 620)
     }
