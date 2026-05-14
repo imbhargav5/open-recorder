@@ -34,6 +34,38 @@ final class ScreenshotExportRendererTests: XCTestCase {
         XCTAssertTrue(data.starts(with: pngSignature))
     }
 
+    func testRendererPreservesScreenshotPixelOrientation() throws {
+        let renderer = ScreenshotExportRenderer(configuration: ScreenshotExportConfiguration(
+            background: .transparent,
+            padding: 0,
+            backgroundRoundness: 0,
+            backgroundShadow: 0,
+            imageRoundness: 0,
+            imageShadow: 0
+        ))
+
+        let data = try XCTUnwrap(renderer.renderPNG(from: makeOrientationProbeImage()))
+
+        XCTAssertEqual(try pixelSymbols(from: data), ["RG", "YW"])
+    }
+
+    func testCopiedTIFFRepresentationPreservesRenderedOrientation() throws {
+        let renderer = ScreenshotExportRenderer(configuration: ScreenshotExportConfiguration(
+            background: .transparent,
+            padding: 0,
+            backgroundRoundness: 0,
+            backgroundShadow: 0,
+            imageRoundness: 0,
+            imageShadow: 0
+        ))
+
+        let pngData = try XCTUnwrap(renderer.renderPNG(from: makeOrientationProbeImage()))
+        let image = try XCTUnwrap(NSImage(data: pngData))
+        let tiffData = try XCTUnwrap(image.tiffRepresentation)
+
+        XCTAssertEqual(try pixelSymbols(from: tiffData), ["RG", "YW"])
+    }
+
     func testRendererSupportsGradientBackground() throws {
         let image = NSImage(size: NSSize(width: 4, height: 4))
         image.lockFocus()
@@ -83,6 +115,54 @@ final class ScreenshotExportRendererTests: XCTestCase {
             XCTAssertNotNil(wallpaper.fullURL, "Missing full wallpaper resource for \(wallpaper.id).")
             XCTAssertNotNil(wallpaper.thumbURL, "Missing thumbnail wallpaper resource for \(wallpaper.id).")
         }
+    }
+
+    private func makeOrientationProbeImage() throws -> NSImage {
+        let width = 2
+        let height = 2
+        let pixels: [UInt8] = [
+            255, 0, 0, 255, 0, 255, 0, 255,
+            255, 255, 0, 255, 255, 255, 255, 255
+        ]
+        let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+        let provider = try XCTUnwrap(CGDataProvider(data: Data(pixels) as CFData))
+        let cgImage = try XCTUnwrap(CGImage(
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bitsPerPixel: 32,
+            bytesPerRow: width * 4,
+            space: colorSpace,
+            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
+            provider: provider,
+            decode: nil,
+            shouldInterpolate: false,
+            intent: .defaultIntent
+        ))
+        return NSImage(cgImage: cgImage, size: NSSize(width: width, height: height))
+    }
+
+    private func pixelSymbols(from data: Data) throws -> [String] {
+        let bitmap = try XCTUnwrap(NSBitmapImageRep(data: data))
+        return try (0..<bitmap.pixelsHigh).map { y in
+            try (0..<bitmap.pixelsWide).map { x in
+                let color = try XCTUnwrap(bitmap.colorAt(x: x, y: y)?.usingColorSpace(.sRGB))
+                return symbol(for: color)
+            }
+            .joined()
+        }
+    }
+
+    private func symbol(for color: NSColor) -> String {
+        let red = Int((color.redComponent * 255).rounded())
+        let green = Int((color.greenComponent * 255).rounded())
+        let blue = Int((color.blueComponent * 255).rounded())
+
+        if red > 200, green < 100, blue < 100 { return "R" }
+        if red < 100, green > 200, blue < 100 { return "G" }
+        if red > 200, green > 200, blue < 100 { return "Y" }
+        if red > 200, green > 200, blue > 200 { return "W" }
+        return "?"
     }
 }
 

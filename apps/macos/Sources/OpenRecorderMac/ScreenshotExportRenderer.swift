@@ -71,7 +71,7 @@ struct ScreenshotExportRenderer {
             transform: nil
         ))
         context.clip()
-        context.draw(cgImage, in: imageRect)
+        drawImage(cgImage, in: imageRect, context: context)
         context.restoreGState()
 
         guard let exportedImage = context.makeImage() else {
@@ -192,7 +192,7 @@ struct ScreenshotExportRenderer {
             width: drawSize.width,
             height: drawSize.height
         )
-        context.draw(cgImage, in: drawRect)
+        drawImage(cgImage, in: drawRect, context: context)
     }
 
     private func drawExportImageShadow(in context: CGContext, rect: CGRect) {
@@ -212,6 +212,14 @@ struct ScreenshotExportRenderer {
             transform: nil
         ))
         context.fillPath()
+        context.restoreGState()
+    }
+
+    private func drawImage(_ cgImage: CGImage, in rect: CGRect, context: CGContext) {
+        context.saveGState()
+        context.translateBy(x: rect.minX, y: rect.maxY)
+        context.scaleBy(x: 1, y: -1)
+        context.draw(cgImage, in: CGRect(origin: .zero, size: rect.size))
         context.restoreGState()
     }
 }
