@@ -107,7 +107,14 @@ final class ProjectEditorStateCodableTests: XCTestCase {
                 normalizedRect: CGRect(x: 0.1, y: 0.2, width: 0.7, height: 0.6),
                 sizing: .custom(width: 1280, height: 720)
             ),
-            cursorOverlay: CursorOverlaySettings(isVisible: true, loops: true, size: 1.5, smoothing: 0.8),
+            cursorOverlay: CursorOverlaySettings(
+                isVisible: true,
+                loops: true,
+                size: 1.5,
+                smoothing: 0.8,
+                style: .dotPointer,
+                variant: .soft
+            ),
             facecamSettings: defaultFacecamSettings(enabled: true)
         )
         let state = ProjectEditorState(timelineEdits: timeline, video: video)
@@ -116,6 +123,8 @@ final class ProjectEditorStateCodableTests: XCTestCase {
         let decoded = try JSONDecoder().decode(ProjectEditorState.self, from: data)
 
         XCTAssertEqual(decoded, state)
+        XCTAssertEqual(decoded.video?.cursorOverlay.style, .dotPointer)
+        XCTAssertEqual(decoded.video?.cursorOverlay.variant, .soft)
     }
 }
 

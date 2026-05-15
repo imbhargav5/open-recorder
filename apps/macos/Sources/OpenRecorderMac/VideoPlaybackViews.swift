@@ -928,7 +928,13 @@ private struct CursorOverlayView: View {
     var body: some View {
         GeometryReader { proxy in
             if let point = currentPoint(in: proxy.size) {
-                CursorGlyph(scale: settings.clamped.size)
+                let resolvedSettings = settings.clamped
+                CursorGlyphView(
+                    style: resolvedSettings.style,
+                    variant: resolvedSettings.variant,
+                    scale: resolvedSettings.size,
+                    alignsHotspot: true
+                )
                     .offset(x: point.x, y: point.y)
                     .allowsHitTesting(false)
             }
@@ -972,18 +978,6 @@ private struct CursorOverlayView: View {
             return
         }
         track = CursorTelemetryTrack(payload: payload)
-    }
-}
-
-private struct CursorGlyph: View {
-    var scale: Double
-
-    var body: some View {
-        Image(systemName: "cursorarrow")
-            .font(.system(size: max(12, 24 * scale), weight: .semibold))
-            .foregroundStyle(.white)
-            .shadow(color: .black.opacity(0.92), radius: 1.6, x: 0, y: 1)
-            .shadow(color: .black.opacity(0.45), radius: 6, x: 0, y: 3)
     }
 }
 

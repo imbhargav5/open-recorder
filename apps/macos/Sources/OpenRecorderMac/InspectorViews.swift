@@ -18,6 +18,8 @@ struct SettingsInspector: View {
     @Binding var loopCursor: Bool
     @Binding var cursorSize: Double
     @Binding var cursorSmoothing: Double
+    @Binding var cursorStyle: CursorStyle
+    @Binding var cursorVariant: CursorVariant
     @Binding var facecamEnabled: Bool
     @Binding var facecamSize: Double
     @Binding var facecamBorderWidth: Double
@@ -144,8 +146,10 @@ struct SettingsInspector: View {
             BackgroundPickerView(selection: $background)
         case .cursor:
             InspectorSwitch(title: "Show Cursor", isOn: $showCursor)
+            CursorStylePicker(selection: $cursorStyle, variant: $cursorVariant)
+            CursorVariantPicker(style: cursorStyle, selection: $cursorVariant)
             InspectorSwitch(title: "Loop Cursor", isOn: $loopCursor)
-            InspectorSlider(title: "Size", valueText: String(format: "%.2fx", cursorSize), value: $cursorSize, range: 0.5...10, step: 0.05)
+            InspectorSlider(title: "Size", valueText: String(format: "%.2fx", cursorSize), value: $cursorSize, range: 1...8, step: 0.05)
             InspectorSlider(title: "Smoothing", valueText: String(format: "%.2f", cursorSmoothing), value: $cursorSmoothing, range: 0...2, step: 0.01)
         case .camera:
             InspectorSwitch(title: "Facecam", isOn: $facecamEnabled, isInteractive: hasRecordedCamera)
@@ -460,6 +464,105 @@ struct InsetBalancePicker: View {
             left: max(0, min(location.x / size.width, 1)),
             top: max(0, min(location.y / size.height, 1))
         )
+    }
+}
+
+struct CursorStylePicker: View {
+    @Binding var selection: CursorStyle
+    @Binding var variant: CursorVariant
+
+    private let columns = Array(repeating: GridItem(.flexible(minimum: 0), spacing: 6), count: 2)
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Style")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(.secondary)
+
+            LazyVGrid(columns: columns, spacing: 6) {
+                ForEach(CursorStyle.allCases) { style in
+                    StudioButton(hitTarget: .rounded(7), help: style.title) {
+                        selection = style
+                        variant = style.resolvedVariant(variant)
+                    } label: {
+                        VStack(spacing: 5) {
+                            CursorGlyphView(style: style, variant: style.resolvedVariant(variant), scale: 0.56)
+                                .frame(width: 38, height: 34)
+                            Text(style.title)
+                                .font(.system(size: 10, weight: .semibold))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 58)
+                        .foregroundStyle(selection == style ? Color.white : Color.primary.opacity(0.86))
+                        .background(selection == style ? Color.brand.opacity(0.82) : Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 7))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 7)
+                                .stroke(selection == style ? Color.brand.opacity(0.95) : Color.white.opacity(0.07))
+                        }
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 3)
+    }
+}
+
+struct CursorVariantPicker: View {
+    var style: CursorStyle
+    @Binding var selection: CursorVariant
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Variant")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: 6) {
+                ForEach(style.supportedVariants) { variant in
+                    StudioButton(hitTarget: .rounded(7), help: variant.title) {
+                        selection = variant
+                    } label: {
+                        VStack(spacing: 4) {
+                            CursorGlyphView(style: style, variant: variant, scale: 0.42)
+                                .frame(width: 28, height: 24)
+                            Text(variant.title)
+                                .font(.system(size: 9, weight: .semibold))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 44)
+                        .foregroundStyle(selection == variant ? Color.white : Color.primary.opacity(0.82))
+                        .background(selection == variant ? Color.brand.opacity(0.82) : Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 7))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 7)
+                                .stroke(selection == variant ? Color.brand.opacity(0.95) : Color.white.opacity(0.08), lineWidth: selection == variant ? 2 : 1)
+                        }
+                        .overlay(alignment: .topTrailing) {
+                            if selection == variant {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 8, weight: .bold))
+                                    .foregroundStyle(Color.white)
+                                    .padding(4)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 3)
+        .onAppear(perform: normalizeSelection)
+        .onChange(of: style) { _, _ in
+            normalizeSelection()
+        }
+    }
+
+    private func normalizeSelection() {
+        selection = style.resolvedVariant(selection)
     }
 }
 

@@ -398,32 +398,165 @@ struct RecordingSession: Codable, Hashable {
     }
 }
 
+enum CursorStyle: String, CaseIterable, Codable, Hashable, Identifiable {
+    case arrow
+    case macOSBlackArrow
+    case outlineArrow
+    case handPointer
+    case iBeam
+    case dotPointer
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .arrow: "Arrow"
+        case .macOSBlackArrow: "macOS Black"
+        case .outlineArrow: "Outline"
+        case .handPointer: "Hand"
+        case .iBeam: "I-Beam"
+        case .dotPointer: "Dot"
+        }
+    }
+
+    var defaultVariant: CursorVariant {
+        .standard
+    }
+
+    var supportedVariants: [CursorVariant] {
+        CursorVariant.allCases
+    }
+
+    func resolvedVariant(_ variant: CursorVariant) -> CursorVariant {
+        supportedVariants.contains(variant) ? variant : defaultVariant
+    }
+}
+
+enum CursorVariant: String, CaseIterable, Codable, Hashable, Identifiable {
+    case standard
+    case slim
+    case soft
+    case bold
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .standard: "Standard"
+        case .slim: "Slim"
+        case .soft: "Soft"
+        case .bold: "Bold"
+        }
+    }
+
+    static func resolve(_ rawValue: String?) -> CursorVariant? {
+        guard let rawValue else { return nil }
+        if let variant = CursorVariant(rawValue: rawValue) {
+            return variant
+        }
+
+        switch rawValue {
+        case "light":
+            return .standard
+        case "dark":
+            return .slim
+        case "accent":
+            return .soft
+        case "highContrast":
+            return .bold
+        default:
+            return nil
+        }
+    }
+}
+
 struct CursorOverlaySettings: Codable, Hashable {
     var isVisible: Bool
     var loops: Bool
     var size: Double
     var smoothing: Double
+    var style: CursorStyle
+    var variant: CursorVariant
 
     static let `default` = CursorOverlaySettings(
         isVisible: true,
         loops: false,
         size: 1,
-        smoothing: 0.4
+        smoothing: 0.4,
+        style: .arrow,
+        variant: .standard
     )
 
     static let hidden = CursorOverlaySettings(
         isVisible: false,
         loops: false,
         size: 1,
-        smoothing: 0.4
+        smoothing: 0.4,
+        style: .arrow,
+        variant: .standard
     )
+
+    init(
+        isVisible: Bool,
+        loops: Bool,
+        size: Double,
+        smoothing: Double,
+        style: CursorStyle = .arrow,
+        variant: CursorVariant = .standard
+    ) {
+        self.isVisible = isVisible
+        self.loops = loops
+        self.size = max(1, min(size, 8))
+        self.smoothing = max(0, min(smoothing, 2))
+        self.style = style
+        self.variant = style.resolvedVariant(variant)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case isVisible
+        case loops
+        case size
+        case smoothing
+        case style
+        case variant
+    }
+
+    init(from decoder: Decoder) throws {
+        let defaults = Self.default
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let decodedStyle = try container.decodeIfPresent(String.self, forKey: .style)
+            .flatMap(CursorStyle.init(rawValue:)) ?? defaults.style
+        let decodedVariant = CursorVariant.resolve(try container.decodeIfPresent(String.self, forKey: .variant))
+            ?? decodedStyle.defaultVariant
+
+        self.init(
+            isVisible: try container.decodeIfPresent(Bool.self, forKey: .isVisible) ?? defaults.isVisible,
+            loops: try container.decodeIfPresent(Bool.self, forKey: .loops) ?? defaults.loops,
+            size: try container.decodeIfPresent(Double.self, forKey: .size) ?? defaults.size,
+            smoothing: try container.decodeIfPresent(Double.self, forKey: .smoothing) ?? defaults.smoothing,
+            style: decodedStyle,
+            variant: decodedVariant
+        )
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(isVisible, forKey: .isVisible)
+        try container.encode(loops, forKey: .loops)
+        try container.encode(size, forKey: .size)
+        try container.encode(smoothing, forKey: .smoothing)
+        try container.encode(style.rawValue, forKey: .style)
+        try container.encode(variant.rawValue, forKey: .variant)
+    }
 
     var clamped: CursorOverlaySettings {
         CursorOverlaySettings(
             isVisible: isVisible,
             loops: loops,
-            size: max(0.5, min(size, 10)),
-            smoothing: max(0, min(smoothing, 2))
+            size: size,
+            smoothing: smoothing,
+            style: style,
+            variant: variant
         )
     }
 }
