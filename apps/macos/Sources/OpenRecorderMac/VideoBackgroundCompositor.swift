@@ -190,12 +190,18 @@ private struct CursorGlyphImage {
     var tipOffset: CGPoint
 }
 
+private struct CursorGlyphCacheKey: Hashable {
+    var style: CursorStyle
+    var variant: CursorVariant
+    var sizeKey: Int
+}
+
 final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
     private let renderingQueue = DispatchQueue(label: "com.openrecorder.video.compositor", qos: .userInitiated)
     private let ciContext: CIContext
     private var renderContext: AVVideoCompositionRenderContext?
     private let renderContextLock = NSLock()
-    private var cursorGlyphCache: [Int: CursorGlyphImage] = [:]
+    private var cursorGlyphCache: [CursorGlyphCacheKey: CursorGlyphImage] = [:]
 
     override init() {
         if let device = MTLCreateSystemDefaultDevice() {
@@ -429,7 +435,11 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
         )
         let baseSize = max(14, min(52, min(contentRect.width, contentRect.height) * 0.032))
         let cursorSize = baseSize * settings.size
-        guard let glyph = cursorGlyphImage(size: cursorSize) else {
+        guard let glyph = cursorGlyphImage(
+            size: cursorSize,
+            style: settings.style,
+            variant: settings.variant
+        ) else {
             return nil
         }
 
@@ -489,52 +499,28 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
         return point
     }
 
-    private func cursorGlyphImage(size: CGFloat) -> CursorGlyphImage? {
-        let cacheKey = Int((size * 10).rounded())
+    private func cursorGlyphImage(size: CGFloat, style: CursorStyle, variant: CursorVariant) -> CursorGlyphImage? {
+        let resolvedVariant = style.resolvedVariant(variant)
+        let cacheKey = CursorGlyphCacheKey(
+            style: style,
+            variant: resolvedVariant,
+            sizeKey: Int((size * 10).rounded())
+        )
         if let cached = cursorGlyphCache[cacheKey] {
             return cached
         }
 
-        let margin = max(3, size * 0.22)
-        let width = max(1, Int(ceil(size + margin * 2)))
-        let height = max(1, Int(ceil(size * 1.34 + margin * 2)))
-        let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
-        guard let context = CGContext(
-            data: nil,
-            width: width,
-            height: height,
-            bitsPerComponent: 8,
-            bytesPerRow: 0,
-            space: colorSpace,
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        guard let rendered = CursorPresetRenderer.renderedGlyph(
+            style: style,
+            variant: resolvedVariant,
+            size: size
         ) else {
             return nil
         }
 
-        context.clear(CGRect(x: 0, y: 0, width: width, height: height))
-        context.translateBy(x: 0, y: CGFloat(height))
-        context.scaleBy(x: 1, y: -1)
-        context.translateBy(x: margin, y: margin)
-        context.setShadow(
-            offset: CGSize(width: 0, height: size * 0.08),
-            blur: max(2, size * 0.18),
-            color: CGColor(red: 0, green: 0, blue: 0, alpha: 0.36)
-        )
-        context.addPath(ExportCursorGlyph.path(size: size))
-        context.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
-        context.setStrokeColor(CGColor(red: 0, green: 0, blue: 0, alpha: 0.82))
-        context.setLineWidth(max(1.5, size * 0.08))
-        context.setLineJoin(.round)
-        context.setLineCap(.round)
-        context.drawPath(using: .fillStroke)
-
-        guard let image = context.makeImage() else {
-            return nil
-        }
-
         let glyph = CursorGlyphImage(
-            image: CIImage(cgImage: image),
-            tipOffset: CGPoint(x: margin, y: CGFloat(height) - margin)
+            image: CIImage(cgImage: rendered.image),
+            tipOffset: rendered.bottomLeftHotspot
         )
         cursorGlyphCache[cacheKey] = glyph
         return glyph

@@ -83,6 +83,8 @@ struct VideoEditorStudioView: View {
     @State private var loopCursor = false
     @State private var cursorSize = 1.0
     @State private var cursorSmoothing = 0.40
+    @State private var cursorStyle = CursorStyle.arrow
+    @State private var cursorVariant = CursorVariant.standard
     @State private var facecamEnabled = false
     @State private var facecamShape = "circle"
     @State private var facecamSize = 22.0
@@ -223,6 +225,8 @@ struct VideoEditorStudioView: View {
                 loopCursor: $loopCursor,
                 cursorSize: $cursorSize,
                 cursorSmoothing: $cursorSmoothing,
+                cursorStyle: $cursorStyle,
+                cursorVariant: $cursorVariant,
                 facecamEnabled: $facecamEnabled,
                 facecamSize: $facecamSize,
                 facecamBorderWidth: $facecamBorderWidth,
@@ -376,6 +380,8 @@ struct VideoEditorStudioView: View {
         loopCursor = cursor.loops
         cursorSize = cursor.size
         cursorSmoothing = cursor.smoothing
+        cursorStyle = cursor.style
+        cursorVariant = cursor.variant
 
         let facecam = (state?.facecamSettings
             ?? recordingSession?.facecamSettings
@@ -458,7 +464,9 @@ struct VideoEditorStudioView: View {
             isVisible: showCursorOverlay,
             loops: loopCursor,
             size: cursorSize,
-            smoothing: cursorSmoothing
+            smoothing: cursorSmoothing,
+            style: cursorStyle,
+            variant: cursorStyle.resolvedVariant(cursorVariant)
         )
         .clamped
     }

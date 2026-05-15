@@ -737,17 +737,20 @@ enum VideoExportRenderer {
         let resolvedSettings = settings.clamped
         let baseSize = max(14, min(52, min(contentRect.width, contentRect.height) * 0.032))
         let cursorSize = baseSize * resolvedSettings.size
-        let cursorLayer = CAShapeLayer()
-        cursorLayer.bounds = CGRect(x: 0, y: 0, width: cursorSize, height: cursorSize * 1.25)
-        cursorLayer.anchorPoint = CGPoint(x: 0, y: 1)
-        cursorLayer.path = ExportCursorGlyph.path(size: cursorSize)
-        cursorLayer.fillColor = NSColor.white.cgColor
-        cursorLayer.strokeColor = NSColor.black.withAlphaComponent(0.82).cgColor
-        cursorLayer.lineWidth = max(1.5, cursorSize * 0.08)
-        cursorLayer.shadowColor = NSColor.black.cgColor
-        cursorLayer.shadowOpacity = 0.36
-        cursorLayer.shadowRadius = max(2, cursorSize * 0.18)
-        cursorLayer.shadowOffset = CGSize(width: 0, height: -cursorSize * 0.08)
+        let cursorLayer = CALayer()
+        guard let glyph = CursorPresetRenderer.renderedGlyph(
+            style: resolvedSettings.style,
+            variant: resolvedSettings.variant,
+            size: cursorSize
+        ) else {
+            return cursorLayer
+        }
+        cursorLayer.bounds = CGRect(origin: .zero, size: glyph.canvasSize)
+        cursorLayer.anchorPoint = glyph.coreAnimationAnchorPoint
+        cursorLayer.contents = glyph.image
+        cursorLayer.contentsGravity = .resize
+        cursorLayer.magnificationFilter = .linear
+        cursorLayer.minificationFilter = .linear
 
         let duration = max(0.001, editPlan.outputDuration)
         let sampleCount = max(2, min(9_000, Int(ceil(duration * 30)) + 1))
@@ -898,20 +901,4 @@ enum VideoExportRenderer {
         )
     }
 
-}
-
-enum ExportCursorGlyph {
-    static func path(size: CGFloat) -> CGPath {
-        let path = CGMutablePath()
-        path.move(to: CGPoint(x: 0, y: size * 1.18))
-        path.addLine(to: CGPoint(x: 0, y: 0))
-        path.addLine(to: CGPoint(x: size * 0.78, y: size * 0.76))
-        path.addLine(to: CGPoint(x: size * 0.43, y: size * 0.82))
-        path.addLine(to: CGPoint(x: size * 0.64, y: size * 1.23))
-        path.addLine(to: CGPoint(x: size * 0.45, y: size * 1.30))
-        path.addLine(to: CGPoint(x: size * 0.24, y: size * 0.88))
-        path.addLine(to: CGPoint(x: 0, y: size * 1.18))
-        path.closeSubpath()
-        return path
-    }
 }
