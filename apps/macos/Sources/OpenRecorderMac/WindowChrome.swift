@@ -474,37 +474,17 @@ struct WindowCommandBridge: View {
 
 struct HUDOverlayWindowView: View {
     @EnvironmentObject private var model: AppModel
-    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         ZStack {
             Color.clear
 
-            if model.captureFlow == .choice {
-                HUDSurface {
-                    HStack(spacing: 12) {
-                        DragHandle()
-
-                        CaptureModeButton(
-                            title: "Screenshot",
-                            symbolName: "camera",
-                            isActive: false
-                        ) {
-                            model.beginCapture(.screenshot)
-                            openWindow(id: "source-selector")
-                        }
-
-                        CaptureModeButton(
-                            title: "Record Video",
-                            symbolName: "video",
-                            isActive: false
-                        ) {
-                            model.beginCapture(.recording)
-                            openWindow(id: "source-selector")
-                        }
-                    }
-                }
-            } else {
+            switch model.hudState.phase {
+            case .idle, .choosingMode:
+                CaptureChoiceHUD()
+            case .choosingSourceType(let mode), .screenSelecting(let mode):
+                SourceTypeChoiceHUD(mode: mode)
+            default:
                 CaptureHUD(sourceTab: .constant(model.captureMode == .screenshot ? .screens : .screens))
             }
         }

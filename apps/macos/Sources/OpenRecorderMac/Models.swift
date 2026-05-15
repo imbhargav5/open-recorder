@@ -51,6 +51,38 @@ enum CaptureSourceKind: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+enum CaptureSourceType: String, CaseIterable, Identifiable {
+    case screen
+    case window
+    case area
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .screen: "Screen"
+        case .window: "Window"
+        case .area: "Area"
+        }
+    }
+
+    var symbolName: String {
+        switch self {
+        case .screen: "display"
+        case .window: "macwindow"
+        case .area: "rectangle.dashed"
+        }
+    }
+
+    var sourceKind: CaptureSourceKind {
+        switch self {
+        case .screen: .display
+        case .window: .window
+        case .area: .area
+        }
+    }
+}
+
 struct CaptureSource: Identifiable, Codable, Hashable {
     var id: String
     var kind: CaptureSourceKind
@@ -471,6 +503,8 @@ enum HUDPresentationState: Hashable {
 enum HUDPhase: Hashable {
     case idle
     case choosingMode
+    case choosingSourceType(CaptureMode)
+    case screenSelecting(CaptureMode)
     case selectingSource(CaptureMode)
     case ready(CaptureMode, CaptureSource)
     case areaSelecting(CaptureMode)
@@ -496,6 +530,14 @@ struct HUDState: Hashable {
 
     static var choosingMode: HUDState {
         HUDState(phase: .choosingMode)
+    }
+
+    static func choosingSourceType(_ mode: CaptureMode) -> HUDState {
+        HUDState(phase: .choosingSourceType(mode))
+    }
+
+    static func screenSelecting(_ mode: CaptureMode) -> HUDState {
+        HUDState(phase: .screenSelecting(mode))
     }
 
     static func selectingSource(_ mode: CaptureMode) -> HUDState {
@@ -543,6 +585,8 @@ struct HUDState: Hashable {
         case .idle, .choosingMode:
             nil
         case .selectingSource(let mode),
+             .choosingSourceType(let mode),
+             .screenSelecting(let mode),
              .areaSelecting(let mode):
             mode
         case .ready(let mode, _):
@@ -568,6 +612,8 @@ struct HUDState: Hashable {
             source
         case .idle,
              .choosingMode,
+             .choosingSourceType,
+             .screenSelecting,
              .selectingSource,
              .areaSelecting:
             nil
@@ -578,7 +624,9 @@ struct HUDState: Hashable {
         switch phase {
         case .idle, .choosingMode:
             false
-        case .selectingSource,
+        case .choosingSourceType,
+             .screenSelecting,
+             .selectingSource,
              .ready,
              .areaSelecting,
              .countingDownRecording,
@@ -594,7 +642,9 @@ struct HUDState: Hashable {
         switch phase {
         case .idle, .choosingMode:
             .choice
-        case .selectingSource(let mode),
+        case .choosingSourceType(let mode),
+             .screenSelecting(let mode),
+             .selectingSource(let mode),
              .ready(let mode, _),
              .areaSelecting(let mode):
             mode == .screenshot ? .screenshotSetup : .recordingSetup

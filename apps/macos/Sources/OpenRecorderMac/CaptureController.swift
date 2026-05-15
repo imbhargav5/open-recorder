@@ -214,6 +214,10 @@ final class CaptureController: ObservableObject {
         self.isRecording = isRecording
     }
 
+    func setSourcesForTesting(_ sources: [CaptureSource]) {
+        self.sources = sources
+    }
+
     func ensureScreenRecordingPermissionForTesting() throws {
         try ensureScreenRecordingPermission()
     }

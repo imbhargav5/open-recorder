@@ -26,8 +26,16 @@ final class HUDStateMachineTests: XCTestCase {
         XCTAssertEqual(hidden.isCaptureOccupied, visible.isCaptureOccupied)
     }
 
-    func testSourceSelectionStatesDeriveModeAndCaptureFlow() {
+    func testSourceSetupStatesDeriveModeAndCaptureFlow() {
         let source = makeSource()
+
+        XCTAssertEqual(HUDState.choosingSourceType(.recording).mode, .recording)
+        XCTAssertEqual(HUDState.choosingSourceType(.recording).captureFlow, .recordingSetup)
+        XCTAssertTrue(HUDState.choosingSourceType(.recording).isCaptureOccupied)
+
+        XCTAssertEqual(HUDState.screenSelecting(.screenshot).mode, .screenshot)
+        XCTAssertEqual(HUDState.screenSelecting(.screenshot).captureFlow, .screenshotSetup)
+        XCTAssertTrue(HUDState.screenSelecting(.screenshot).isCaptureOccupied)
 
         XCTAssertEqual(HUDState.selectingSource(.recording).mode, .recording)
         XCTAssertEqual(HUDState.selectingSource(.recording).captureFlow, .recordingSetup)
@@ -94,17 +102,17 @@ final class HUDStateMachineTests: XCTestCase {
         XCTAssertTrue(state.isCaptureOccupied)
     }
 
-    func testBeginCaptureWithExistingSourceMovesDirectlyToReadyState() {
+    func testBeginCaptureWithExistingSourceStillShowsSourceTypeChoice() {
         let model = AppModel()
         let source = makeSource()
         model.selectedSource = source
 
         model.beginCapture(.recording)
 
-        XCTAssertEqual(model.hudState, .ready(.recording, source))
+        XCTAssertEqual(model.hudState, .choosingSourceType(.recording))
         XCTAssertEqual(model.captureFlow, .recordingSetup)
         XCTAssertFalse(model.canStartNewCapture)
-        XCTAssertEqual(model.windowCommand?.action, .showSourceSelector)
+        XCTAssertEqual(model.windowCommand?.action, .showHUD)
     }
 
     func testDuplicateCaptureRequestDuringReadyStatePreservesExistingModeAndFocusesSelector() {

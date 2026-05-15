@@ -16,13 +16,20 @@ struct CaptureStudioView: View {
         ZStack {
             Color.studioBackground
 
-            if model.captureFlow == .choice {
+            switch model.hudState.phase {
+            case .idle, .choosingMode:
                 VStack {
                     Spacer()
-                    CaptureChoiceHUD(sourceTab: $sourceTab)
+                    CaptureChoiceHUD()
                         .padding(.bottom, 56)
                 }
-            } else {
+            case .choosingSourceType(let mode), .screenSelecting(let mode):
+                VStack {
+                    Spacer()
+                    SourceTypeChoiceHUD(mode: mode)
+                        .padding(.bottom, 56)
+                }
+            default:
                 VStack(spacing: 18) {
                     Spacer(minLength: 10)
                     SourceSelectorCard(
@@ -41,6 +48,10 @@ struct CaptureStudioView: View {
                 .onAppear {
                     model.reloadSourcesForPreview()
                 }
+                .onChange(of: model.preferredSourceSelectorKind) { _, kind in
+                    guard let kind else { return }
+                    sourceTab = SourceSelectorTab(sourceKind: kind)
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -49,7 +60,6 @@ struct CaptureStudioView: View {
 
 struct CaptureChoiceHUD: View {
     @EnvironmentObject private var model: AppModel
-    @Binding var sourceTab: SourceSelectorTab
 
     var body: some View {
         HUDSurface {
@@ -62,7 +72,6 @@ struct CaptureChoiceHUD: View {
                     isActive: false
                 ) {
                     model.beginCapture(.screenshot)
-                    sourceTab = .screens
                 }
 
                 CaptureModeButton(
@@ -73,6 +82,72 @@ struct CaptureChoiceHUD: View {
                     model.beginCapture(.recording)
                 }
             }
+        }
+    }
+}
+
+struct SourceTypeChoiceHUD: View {
+    @EnvironmentObject private var model: AppModel
+    var mode: CaptureMode
+
+    var body: some View {
+        HUDSurface {
+            HStack(spacing: 8) {
+                DragHandle()
+                backButton
+                HUDDivider()
+
+                FlowLabel(
+                    tone: .blue,
+                    label: mode == .screenshot ? "Screenshot" : "Recording",
+                    value: "Source"
+                )
+
+                ForEach(CaptureSourceType.allCases) { sourceType in
+                    SourceTypeButton(sourceType: sourceType) {
+                        model.chooseSourceType(sourceType)
+                    }
+                }
+            }
+        }
+    }
+
+    private var backButton: some View {
+        StudioButton(hitTarget: .circle, help: "Back") {
+            model.cancelCapture()
+        } label: {
+            Image(systemName: "chevron.left")
+                .font(.system(size: 13, weight: .bold))
+                .frame(width: 38, height: 38)
+                .foregroundStyle(Color.white.opacity(0.70))
+                .background(Color.white.opacity(0.06), in: Circle())
+                .overlay {
+                    Circle()
+                        .stroke(Color.white.opacity(0.09), lineWidth: 1)
+                }
+        }
+    }
+}
+
+struct SourceTypeButton: View {
+    var sourceType: CaptureSourceType
+    var action: () -> Void
+
+    var body: some View {
+        StudioButton(hitTarget: .capsule, help: sourceType.title, action: action) {
+            Label(sourceType.title, systemImage: sourceType.symbolName)
+                .font(.system(size: 12, weight: .semibold))
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+                .frame(minWidth: 94)
+                .frame(height: 38)
+                .padding(.horizontal, 12)
+                .foregroundStyle(Color.white.opacity(0.76))
+                .background(Color.white.opacity(0.07), in: Capsule())
+                .overlay {
+                    Capsule()
+                        .stroke(Color.white.opacity(0.10), lineWidth: 1)
+                }
         }
     }
 }

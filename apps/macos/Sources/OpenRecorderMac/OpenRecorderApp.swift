@@ -472,7 +472,6 @@ private final class OpenRecorderStatusItemController: NSObject {
         guard model.canStartNewCapture else { return }
         model.beginCapture(mode)
         model.showHUD()
-        windowActions.open("source-selector")
         windowActions.open("hud")
         NSApp.activate(ignoringOtherApps: true)
     }

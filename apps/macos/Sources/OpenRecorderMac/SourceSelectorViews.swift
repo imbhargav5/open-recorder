@@ -52,8 +52,18 @@ struct SourceSelectorWindowView: View {
             preferredHeight = nextHeight
         }
         .onAppear {
+            applyPreferredSourceTab()
             model.reloadSourcesForPreview()
         }
+        .onChange(of: model.preferredSourceSelectorKind) { _, _ in
+            applyPreferredSourceTab()
+        }
+    }
+
+    private func applyPreferredSourceTab() {
+        sourceTab = SourceSelectorTab(
+            sourceKind: model.preferredSourceSelectorKind ?? model.selectedSource?.kind ?? .display
+        )
     }
 }
 
@@ -65,6 +75,17 @@ enum SourceSelectorTab: String, CaseIterable, Identifiable {
     case area
 
     var id: String { rawValue }
+
+    init(sourceKind: CaptureSourceKind) {
+        switch sourceKind {
+        case .display:
+            self = .screens
+        case .window:
+            self = .windows
+        case .area:
+            self = .area
+        }
+    }
 
     var title: String {
         switch self {

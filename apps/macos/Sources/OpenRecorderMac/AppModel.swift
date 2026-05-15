@@ -10,6 +10,7 @@ final class AppModel: ObservableObject {
     @Published var captureMode: CaptureMode = .recording
     @Published var hudState: HUDState = .choosingMode
     @Published var selectedSource: CaptureSource?
+    @Published var preferredSourceSelectorKind: CaptureSourceKind?
     @Published var paths: AppPaths?
     @Published var projects: [ProjectSummary] = []
     @Published var currentVideoURL: URL?
@@ -66,6 +67,7 @@ final class AppModel: ObservableObject {
     private let screenRecordingPermission: ScreenRecordingPermission
     private let accessibilityPermission: AccessibilityPermission
     private let onboardingStore: OnboardingStateStore
+    private let screenSelectionPresenter: ScreenSelectionPresenting
     private let screenshotCapture: @MainActor (CaptureSource, URL) throws -> Void
     private let rememberScreenshot: @Sendable (URL) throws -> Void
     private let facecamRecorder = FacecamRecorder()
@@ -77,6 +79,7 @@ final class AppModel: ObservableObject {
         screenRecordingPermission: ScreenRecordingPermission = ScreenRecordingPermission(),
         accessibilityPermission: AccessibilityPermission = AccessibilityPermission(),
         onboardingStore: OnboardingStateStore = .live,
+        screenSelectionPresenter: ScreenSelectionPresenting = ScreenSelectionOverlayController(),
         screenshotCapture: (@MainActor (CaptureSource, URL) throws -> Void)? = nil,
         rememberScreenshot: (@Sendable (URL) throws -> Void)? = nil
     ) {
@@ -87,6 +90,7 @@ final class AppModel: ObservableObject {
         self.screenRecordingPermission = screenRecordingPermission
         self.accessibilityPermission = accessibilityPermission
         self.onboardingStore = onboardingStore
+        self.screenSelectionPresenter = screenSelectionPresenter
         self.capture = capture
         self.screenshotCapture = screenshotCapture ?? { source, outputURL in
             try capture.takeScreenshot(source: source, outputURL: outputURL)
@@ -307,16 +311,15 @@ final class AppModel: ObservableObject {
         }
 
         captureMode = mode
-        if let selectedSource {
-            setHUDPhase(.ready(mode, selectedSource))
-        } else {
-            setHUDPhase(.selectingSource(mode))
-        }
-        statusMessage = selectedSource == nil ? "Choose a source." : "Ready"
-        requestWindow(.showSourceSelector)
+        preferredSourceSelectorKind = nil
+        screenSelectionPresenter.dismiss()
+        setHUDPhase(.choosingSourceType(mode))
+        statusMessage = "Choose a source type."
+        requestWindow(.showHUD)
     }
 
     func selectSource(_ source: CaptureSource) {
+        preferredSourceSelectorKind = source.kind
         selectedSource = source
         setHUDPhase(.ready(hudState.mode ?? captureMode, source))
         statusMessage = "Selected \(source.name)"
@@ -337,9 +340,102 @@ final class AppModel: ObservableObject {
             area: area,
             thumbnailData: nil
         )
+        preferredSourceSelectorKind = .area
         selectedSource = source
         setHUDPhase(.ready(hudState.mode ?? captureMode, source))
         statusMessage = "Selected area"
+    }
+
+    func chooseSourceType(_ sourceType: CaptureSourceType) {
+        let mode = hudState.mode ?? captureMode
+        captureMode = mode
+
+        switch sourceType {
+        case .screen:
+            requestScreenSelection()
+        case .window:
+            requestSourceSelector(kind: .window, mode: mode, statusMessage: "Choose a window.")
+        case .area:
+            requestSourceSelector(kind: .area, mode: mode, statusMessage: "Choose an area.")
+        }
+    }
+
+    func requestSourceSelector(kind: CaptureSourceKind? = nil) {
+        preferredSourceSelectorKind = kind ?? selectedSource?.kind ?? preferredSourceSelectorKind ?? .display
+        requestWindow(.showSourceSelector)
+    }
+
+    private func requestSourceSelector(
+        kind: CaptureSourceKind,
+        mode: CaptureMode,
+        statusMessage: String
+    ) {
+        preferredSourceSelectorKind = kind
+        setHUDPhase(.selectingSource(mode))
+        self.statusMessage = statusMessage
+        requestWindow(.showSourceSelector)
+    }
+
+    func requestScreenSelection() {
+        let mode = hudState.mode ?? captureMode
+        captureMode = mode
+        preferredSourceSelectorKind = .display
+        setHUDPhase(.screenSelecting(mode))
+        statusMessage = "Choose a screen."
+
+        let currentDisplaySources = capture.sources.filter { $0.kind == .display }
+        guard currentDisplaySources.isEmpty else {
+            presentScreenSelection(displaySources: currentDisplaySources, mode: mode)
+            return
+        }
+
+        Task { [weak self] in
+            guard let self else { return }
+            await self.refreshSources(requestScreenRecordingPermission: true)
+            let displaySources = self.capture.sources.filter { $0.kind == .display }
+            self.presentScreenSelection(displaySources: displaySources, mode: mode)
+        }
+    }
+
+    func completeScreenSelection(_ source: CaptureSource) {
+        guard source.kind == .display else {
+            statusMessage = "Choose a screen."
+            return
+        }
+
+        screenSelectionPresenter.dismiss()
+        selectSource(source)
+        requestWindow(.showHUD)
+    }
+
+    func cancelScreenSelection(message: String? = nil) {
+        screenSelectionPresenter.dismiss()
+        let mode = hudState.mode ?? captureMode
+        setHUDPhase(.choosingSourceType(mode))
+        statusMessage = message ?? "Choose a source type."
+        requestWindow(.showHUD)
+    }
+
+    private func presentScreenSelection(displaySources: [CaptureSource], mode: CaptureMode) {
+        guard case .screenSelecting(let activeMode) = hudState.phase,
+              activeMode == mode else {
+            return
+        }
+
+        guard !displaySources.isEmpty else {
+            cancelScreenSelection(message: "No screens available.")
+            return
+        }
+
+        screenSelectionPresenter.present(
+            displaySources: displaySources,
+            onSelect: { [weak self] source in
+                self?.completeScreenSelection(source)
+            },
+            onCancel: { [weak self] in
+                self?.cancelScreenSelection()
+            }
+        )
     }
 
     func requestInteractiveAreaSelection() {
@@ -369,6 +465,8 @@ final class AppModel: ObservableObject {
 
     func cancelCapture() {
         isAreaSelectionActive = false
+        screenSelectionPresenter.dismiss()
+        preferredSourceSelectorKind = nil
         setHUDPhase(.choosingMode)
         statusMessage = "Ready"
     }
@@ -396,8 +494,10 @@ final class AppModel: ObservableObject {
     }
 
     func showEditor(for session: EditorSession) {
+        screenSelectionPresenter.dismiss()
         setHUDPhase(.choosingMode)
         isAreaSelectionActive = false
+        preferredSourceSelectorKind = nil
         lastEditorSession = session
         selectedSection = .editor
         requestWindow(.showStudio, editorSession: session)
@@ -415,6 +515,10 @@ final class AppModel: ObservableObject {
         switch hudState.phase {
         case .selectingSource, .ready, .areaSelecting:
             requestWindow(.showSourceSelector)
+        case .choosingSourceType:
+            showHUD()
+        case .screenSelecting:
+            requestWindow(.showHUD)
         case .countingDownRecording, .startingRecording, .recording, .stoppingRecording, .capturingScreenshot:
             showHUD()
         case .idle, .choosingMode:
@@ -437,7 +541,7 @@ final class AppModel: ObservableObject {
         }
 
         switch previousPhase {
-        case .selectingSource, .ready, .areaSelecting:
+        case .choosingSourceType, .screenSelecting, .selectingSource, .ready, .areaSelecting:
             return true
         case .idle,
              .choosingMode,
@@ -465,6 +569,8 @@ final class AppModel: ObservableObject {
             return
         case .idle,
              .choosingMode,
+             .choosingSourceType,
+             .screenSelecting,
              .selectingSource,
              .ready,
              .areaSelecting,
