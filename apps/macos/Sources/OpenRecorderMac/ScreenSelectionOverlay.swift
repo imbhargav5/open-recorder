@@ -2,6 +2,17 @@ import AppKit
 import Carbon.HIToolbox
 import SwiftUI
 
+enum ScreenSelectionOverlayChrome {
+    static let level = NSWindow.Level(rawValue: Int(CGShieldingWindowLevel()))
+    static let styleMask: NSWindow.StyleMask = [.borderless, .nonactivatingPanel]
+    static let collectionBehavior: NSWindow.CollectionBehavior = [
+        .canJoinAllSpaces,
+        .fullScreenAuxiliary,
+        .stationary,
+        .ignoresCycle
+    ]
+}
+
 @MainActor
 protocol ScreenSelectionPresenting: AnyObject {
     func present(
@@ -16,6 +27,7 @@ protocol ScreenSelectionPresenting: AnyObject {
 final class ScreenSelectionOverlayController: ScreenSelectionPresenting {
     private var windows: [NSWindow] = []
     private var keyMonitor: Any?
+    private var globalKeyMonitor: Any?
     private var onCancel: (() -> Void)?
 
     func present(
@@ -37,18 +49,23 @@ final class ScreenSelectionOverlayController: ScreenSelectionPresenting {
             guard let source = displaySource(for: screen, index: screenIndex, in: displaySources) else {
                 continue
             }
-            let window = ScreenSelectionOverlayWindow(
+            let window = ScreenSelectionOverlayPanel(
                 contentRect: screen.frame,
-                styleMask: [.borderless],
+                styleMask: ScreenSelectionOverlayChrome.styleMask,
                 backing: .buffered,
                 defer: false
             )
+            window.onCancel = onCancel
             window.isReleasedWhenClosed = false
             window.isOpaque = false
             window.backgroundColor = .clear
             window.hasShadow = false
-            window.level = .screenSaver
-            window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+            window.hidesOnDeactivate = false
+            window.isFloatingPanel = true
+            window.worksWhenModal = true
+            window.becomesKeyOnlyIfNeeded = false
+            window.level = ScreenSelectionOverlayChrome.level
+            window.collectionBehavior = ScreenSelectionOverlayChrome.collectionBehavior
             window.isMovableByWindowBackground = false
             window.contentView = NSHostingView(rootView: ScreenSelectionOverlayView(
                 sourceName: source.name,
@@ -65,7 +82,6 @@ final class ScreenSelectionOverlayController: ScreenSelectionPresenting {
             return
         }
 
-        NSApp.activate(ignoringOtherApps: true)
         windows.last?.makeKeyAndOrderFront(nil)
     }
 
@@ -73,7 +89,11 @@ final class ScreenSelectionOverlayController: ScreenSelectionPresenting {
         if let keyMonitor {
             NSEvent.removeMonitor(keyMonitor)
         }
+        if let globalKeyMonitor {
+            NSEvent.removeMonitor(globalKeyMonitor)
+        }
         keyMonitor = nil
+        globalKeyMonitor = nil
         onCancel = nil
         windows.forEach { $0.close() }
         windows.removeAll()
@@ -82,11 +102,17 @@ final class ScreenSelectionOverlayController: ScreenSelectionPresenting {
     private func installKeyMonitor() {
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self else { return event }
-            if event.keyCode == UInt16(kVK_Escape) || event.charactersIgnoringModifiers == "\u{1B}" {
+            if event.isEscapeKey {
                 self.onCancel?()
                 return nil
             }
             return event
+        }
+        globalKeyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard event.isEscapeKey else { return }
+            Task { @MainActor [weak self] in
+                self?.onCancel?()
+            }
         }
     }
 
@@ -111,9 +137,29 @@ final class ScreenSelectionOverlayController: ScreenSelectionPresenting {
     }
 }
 
-private final class ScreenSelectionOverlayWindow: NSWindow {
+private final class ScreenSelectionOverlayPanel: NSPanel {
+    var onCancel: (() -> Void)?
+
     override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { true }
+    override var canBecomeMain: Bool { false }
+
+    override func cancelOperation(_ sender: Any?) {
+        onCancel?()
+    }
+
+    override func keyDown(with event: NSEvent) {
+        if event.isEscapeKey {
+            onCancel?()
+            return
+        }
+        super.keyDown(with: event)
+    }
+}
+
+private extension NSEvent {
+    var isEscapeKey: Bool {
+        keyCode == UInt16(kVK_Escape) || charactersIgnoringModifiers == "\u{1B}"
+    }
 }
 
 private struct ScreenSelectionOverlayView: View {
@@ -168,6 +214,8 @@ private struct ScreenSelectionOverlayView: View {
                     .stroke(Color.white.opacity(0.26), lineWidth: 1)
             }
         }
+        .focusable()
+        .onExitCommand(perform: onCancel)
     }
 
     private var overlayColor: Color {

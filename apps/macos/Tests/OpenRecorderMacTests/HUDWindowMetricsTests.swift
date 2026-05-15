@@ -12,6 +12,17 @@ final class HUDWindowMetricsTests: XCTestCase {
         XCTAssertEqual(HUDWindowChrome.level, .screenSaver)
     }
 
+    func testScreenSelectionOverlayChromeCanCoverFullscreenSpaces() {
+        let behavior = ScreenSelectionOverlayChrome.collectionBehavior
+
+        XCTAssertTrue(ScreenSelectionOverlayChrome.styleMask.contains(.nonactivatingPanel))
+        XCTAssertTrue(behavior.contains(.canJoinAllSpaces))
+        XCTAssertTrue(behavior.contains(.fullScreenAuxiliary))
+        XCTAssertTrue(behavior.contains(.stationary))
+        XCTAssertTrue(behavior.contains(.ignoresCycle))
+        XCTAssertGreaterThan(ScreenSelectionOverlayChrome.level.rawValue, NSWindow.Level.screenSaver.rawValue)
+    }
+
     func testDefaultWidthMatchesCondensedHUDLayout() {
         XCTAssertEqual(HUDWindowMetrics.defaultSize.width, 620)
     }
