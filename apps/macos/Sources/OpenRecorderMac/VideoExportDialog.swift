@@ -22,7 +22,7 @@ struct VideoExportDialog: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 20) {
             header
 
             switch phase {
@@ -36,7 +36,7 @@ struct VideoExportDialog: View {
                 optionsContent
             }
         }
-        .padding(18)
+        .padding(20)
         .background(Color.studioPanel)
         .onAppear {
             guard !didApplyInitialOptions else { return }
@@ -48,174 +48,229 @@ struct VideoExportDialog: View {
     }
 
     private var header: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 12) {
             Image(systemName: headerSymbolName)
-                .font(.system(size: 16, weight: .semibold))
+                .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(Color.brand)
-                .frame(width: 34, height: 34)
+                .frame(width: 38, height: 38)
                 .background(Color.brand.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(headerTitle)
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.system(size: 16, weight: .semibold))
                 Text(headerSubtitle)
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
             }
+
+            Spacer(minLength: 0)
         }
     }
 
     private var optionsContent: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 16) {
             if let errorMessage, phase == .failed {
                 ExportMessageRow(symbolName: "xmark.circle.fill", message: errorMessage, tint: .red)
             }
 
-            ExportSelectField(
-                title: "Resolution",
-                selection: $resolution,
-                options: resolutionOptions,
-                optionTitle: \.title,
-                optionDetail: \.detail,
-                isDisabled: !canEditOptions
-            )
-
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Format")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                ForEach(VideoExportFormat.allCases) { option in
-                    ExportOptionRow(
-                        title: option.title,
-                        detail: "QuickTime movie export.",
-                        isSelected: format == option,
-                        isDisabled: !canEditOptions
-                    ) {
-                        format = option
-                    }
-                }
-            }
-
-            ExportSelectField(
-                title: "Frame Rate",
-                selection: $frameRate,
-                options: VideoExportFrameRate.exportOptions,
-                optionTitle: \.title,
-                optionDetail: \.detail,
-                isDisabled: !canEditOptions
-            )
-
-            primaryActions
+            settingsPanel
+            idleActions
         }
     }
 
     private var progressContent: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            ProgressView()
-                .controlSize(.small)
-            Text(phase == .saving ? "Waiting for save location…" : "Rendering video…")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(progressTitle)
+                            .font(.system(size: 13, weight: .semibold))
+                        Text(selectedExportSummary)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
+                    Text(VideoExportProgressPresentation.percentText(for: displayedProgress))
+                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+
+                ProgressView(value: displayedProgress, total: 1)
+                    .progressViewStyle(.linear)
+                    .tint(Color.brand)
+            }
+            .padding(12)
+            .background(Color.studioCard, in: RoundedRectangle(cornerRadius: 10))
+            .overlay {
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(Color.studioBorder)
+            }
 
             if phase == .exporting {
-                Button {
-                    onCancelExport()
-                } label: {
-                    Label("Cancel Export", systemImage: "xmark.circle")
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .frame(height: 38)
+                HStack {
+                    Spacer(minLength: 0)
+                    ExportDialogButton(
+                        title: "Cancel Export",
+                        systemImage: "xmark.circle",
+                        kind: .destructive,
+                        minWidth: 132,
+                        action: onCancelExport
+                    )
                 }
-                .buttonStyle(.plain)
-                .padding(.horizontal, 12)
-                .background(Color.red.opacity(0.14), in: RoundedRectangle(cornerRadius: 8))
-                .foregroundStyle(Color.red)
             }
         }
     }
 
     private var retrySaveContent: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 16) {
             ExportMessageRow(
                 symbolName: "exclamationmark.triangle.fill",
                 message: errorMessage ?? "Save dialog canceled. Click Save Again to save without re-exporting.",
                 tint: .orange
             )
-            Button {
-                onRetrySave()
-            } label: {
-                Label("Save Again", systemImage: "square.and.arrow.down")
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .frame(height: 38)
-            }
-            .buttonStyle(.plain)
-            .padding(.horizontal, 12)
-            .background(Color.brand, in: RoundedRectangle(cornerRadius: 8))
-            .foregroundStyle(Color.white)
 
-            secondaryCloseButton(title: "Discard Export")
+            HStack(spacing: 10) {
+                ExportDialogButton(
+                    title: "Discard Export",
+                    kind: .secondary,
+                    minWidth: 124,
+                    action: onClose
+                )
+                Spacer(minLength: 0)
+                ExportDialogButton(
+                    title: "Save Again",
+                    systemImage: "square.and.arrow.down",
+                    kind: .primary,
+                    minWidth: 128,
+                    action: onRetrySave
+                )
+            }
         }
     }
 
     private var successContent: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 16) {
             ExportMessageRow(
                 symbolName: "checkmark.circle.fill",
                 message: exportedFileName.map { "Saved \($0)" } ?? "Video saved successfully.",
                 tint: .green
             )
-            Button {
-                onShowInFinder()
-            } label: {
-                Label("Show in Finder", systemImage: "folder")
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .frame(height: 38)
-            }
-            .buttonStyle(.plain)
-            .padding(.horizontal, 12)
-            .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
-            .foregroundStyle(Color.primary)
 
-            secondaryCloseButton(title: "Done")
+            HStack(spacing: 10) {
+                ExportDialogButton(
+                    title: "Done",
+                    kind: .secondary,
+                    minWidth: 96,
+                    action: onClose
+                )
+                Spacer(minLength: 0)
+                ExportDialogButton(
+                    title: "Show in Finder",
+                    systemImage: "folder",
+                    kind: .primary,
+                    minWidth: 144,
+                    action: onShowInFinder
+                )
+            }
         }
     }
 
-    private var primaryActions: some View {
-        VStack(spacing: 8) {
-            Button {
-                onExport(VideoExportOptions(
-                    resolution: resolution,
-                    format: format,
-                    frameRate: frameRate,
-                    styling: .none,
-                    cropSelection: initialOptions.cropSelection,
-                    customOutputSize: resolution == .custom ? initialOptions.customOutputSize : nil,
-                    cursorOverlay: initialOptions.cursorOverlay,
-                    cursorTelemetryURL: initialOptions.cursorTelemetryURL
-                ))
-            } label: {
-                Label(isExporting ? "Exporting…" : "Export", systemImage: "square.and.arrow.down")
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .frame(height: 38)
-            }
-            .buttonStyle(.plain)
-            .disabled(isExporting)
-            .padding(.horizontal, 12)
-            .background(Color.brand.opacity(isExporting ? 0.55 : 1), in: RoundedRectangle(cornerRadius: 8))
-            .foregroundStyle(Color.white)
-
-            secondaryCloseButton(title: "Cancel")
-                .disabled(isExporting)
+    private var settingsPanel: some View {
+        VStack(spacing: 0) {
+            ExportPickerSettingRow(
+                title: "Resolution",
+                detail: resolution.detail,
+                selection: $resolution,
+                options: resolutionOptions,
+                optionTitle: \.title,
+                isDisabled: !canEditOptions
+            )
+            ExportDivider()
+            ExportPickerSettingRow(
+                title: "Frame Rate",
+                detail: frameRate.detail,
+                selection: $frameRate,
+                options: VideoExportFrameRate.exportOptions,
+                optionTitle: \.title,
+                isDisabled: !canEditOptions
+            )
+            ExportDivider()
+            ExportStaticSettingRow(
+                title: "Format",
+                detail: "QuickTime movie (.mov)",
+                value: format.title
+            )
+        }
+        .background(Color.studioCard, in: RoundedRectangle(cornerRadius: 10))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.studioBorder)
         }
     }
 
-    private func secondaryCloseButton(title: String) -> some View {
-        Button(title) {
-            onClose()
+    private var idleActions: some View {
+        HStack(spacing: 10) {
+            ExportDialogButton(
+                title: "Cancel",
+                kind: .secondary,
+                minWidth: 96,
+                isDisabled: isExporting,
+                action: onClose
+            )
+
+            Spacer(minLength: 0)
+
+            ExportDialogButton(
+                title: isExporting ? "Exporting…" : "Export Video",
+                systemImage: "square.and.arrow.down",
+                kind: .primary,
+                minWidth: 136,
+                isDisabled: isExporting
+            ) {
+                onExport(currentOptions)
+            }
         }
-        .buttonStyle(.plain)
-        .font(.system(size: 12, weight: .semibold))
-        .foregroundStyle(.secondary)
-        .frame(maxWidth: .infinity)
+    }
+
+    private var currentOptions: VideoExportOptions {
+        VideoExportOptions(
+            resolution: resolution,
+            format: format,
+            frameRate: frameRate,
+            styling: .none,
+            cropSelection: initialOptions.cropSelection,
+            customOutputSize: resolution == .custom ? initialOptions.customOutputSize : nil,
+            cursorOverlay: initialOptions.cursorOverlay,
+            cursorTelemetryURL: initialOptions.cursorTelemetryURL
+        )
+    }
+
+    private var selectedExportSummary: String {
+        "\(resolution.title) \(format.title) · \(frameRate.title)"
+    }
+
+    private var displayedProgress: Double {
+        switch phase {
+        case .saving:
+            1
+        case .exporting:
+            min(VideoExportProgressPresentation.clamped(progress), 0.99)
+        case .idle, .savePending, .success, .failed:
+            VideoExportProgressPresentation.clamped(progress)
+        }
+    }
+
+    private var progressTitle: String {
+        switch phase {
+        case .saving:
+            "Ready to Save"
+        case .exporting where displayedProgress <= 0.01:
+            "Preparing Video"
+        case .exporting:
+            "Rendering Video"
+        case .idle, .savePending, .success, .failed:
+            "Export Video"
+        }
     }
 
     private var headerSymbolName: String {
@@ -243,63 +298,47 @@ struct VideoExportDialog: View {
 
     private var headerSubtitle: String {
         switch phase {
-        case .exporting: "Rendering your MOV export."
+        case .exporting: "\(VideoExportProgressPresentation.percentText(for: displayedProgress)) · \(selectedExportSummary)"
         case .saving: "Choose where to save the completed MOV."
         case .savePending: "Save without rendering again."
         case .success: "Your MOV export is ready."
         case .failed: "Adjust settings and try again."
-        case .idle: "Choose a MOV export size before saving."
+        case .idle: selectedExportSummary
         }
     }
 }
 
-private struct ExportOptionRow: View {
+enum VideoExportProgressPresentation {
+    static func clamped(_ progress: Double) -> Double {
+        guard progress.isFinite else { return 0 }
+        return min(max(progress, 0), 1)
+    }
+
+    static func percentText(for progress: Double) -> String {
+        "\(Int((clamped(progress) * 100).rounded()))%"
+    }
+}
+
+private struct ExportPickerSettingRow<Option: Hashable & Identifiable>: View {
     var title: String
     var detail: String
-    var isSelected: Bool
-    var isDisabled = false
-    var action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 10) {
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(isSelected ? Color.brand : Color.secondary)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(.system(size: 12, weight: .semibold))
-                    Text(detail)
-                        .font(.system(size: 10))
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-            }
-            .padding(10)
-            .background(Color.white.opacity(isSelected ? 0.075 : 0.035), in: RoundedRectangle(cornerRadius: 8))
-            .overlay {
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(isSelected ? Color.brand.opacity(0.35) : Color.studioBorder)
-            }
-        }
-        .buttonStyle(.plain)
-        .disabled(isDisabled)
-    }
-}
-
-private struct ExportSelectField<Option: Hashable & Identifiable>: View {
-    var title: String
     @Binding var selection: Option
     var options: [Option]
     var optionTitle: KeyPath<Option, String>
-    var optionDetail: KeyPath<Option, String>
     var isDisabled = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary)
+        HStack(alignment: .center, spacing: 14) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.system(size: 12, weight: .semibold))
+                Text(detail)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 12)
 
             Picker(title, selection: $selection) {
                 ForEach(options) { option in
@@ -309,15 +348,137 @@ private struct ExportSelectField<Option: Hashable & Identifiable>: View {
             }
             .labelsHidden()
             .pickerStyle(.menu)
-            .controlSize(.large)
+            .controlSize(.regular)
             .disabled(isDisabled)
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            Text(selection[keyPath: optionDetail])
-                .font(.system(size: 10))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            .frame(width: 118, alignment: .trailing)
         }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 11)
+    }
+}
+
+private struct ExportStaticSettingRow: View {
+    var title: String
+    var detail: String
+    var value: String
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 14) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.system(size: 12, weight: .semibold))
+                Text(detail)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer(minLength: 12)
+
+            Text(value)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.primary)
+                .frame(minWidth: 58)
+                .frame(height: 28)
+                .padding(.horizontal, 10)
+                .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 7))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 7)
+                        .stroke(Color.white.opacity(0.08))
+                }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 11)
+    }
+}
+
+private struct ExportDivider: View {
+    var body: some View {
+        Rectangle()
+            .fill(Color.studioBorder)
+            .frame(height: 1)
+            .padding(.leading, 12)
+    }
+}
+
+private enum ExportDialogButtonKind {
+    case primary
+    case secondary
+    case destructive
+
+    var background: Color {
+        switch self {
+        case .primary: Color.brand
+        case .secondary: Color.white.opacity(0.055)
+        case .destructive: Color.red.opacity(0.12)
+        }
+    }
+
+    var foreground: Color {
+        switch self {
+        case .primary: Color.white
+        case .secondary: Color.primary
+        case .destructive: Color.red
+        }
+    }
+
+    var border: Color {
+        switch self {
+        case .primary: Color.brand.opacity(0.45)
+        case .secondary: Color.studioBorder
+        case .destructive: Color.red.opacity(0.24)
+        }
+    }
+}
+
+private struct ExportDialogButton: View {
+    var title: String
+    var systemImage: String?
+    var kind: ExportDialogButtonKind
+    var minWidth: CGFloat = 96
+    var isDisabled = false
+    var action: () -> Void
+
+    init(
+        title: String,
+        systemImage: String? = nil,
+        kind: ExportDialogButtonKind,
+        minWidth: CGFloat = 96,
+        isDisabled: Bool = false,
+        action: @escaping () -> Void
+    ) {
+        self.title = title
+        self.systemImage = systemImage
+        self.kind = kind
+        self.minWidth = minWidth
+        self.isDisabled = isDisabled
+        self.action = action
+    }
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                if let systemImage {
+                    Image(systemName: systemImage)
+                        .font(.system(size: 13, weight: .semibold))
+                }
+                Text(title)
+                    .lineLimit(1)
+            }
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(kind.foreground)
+            .frame(minWidth: minWidth)
+            .frame(height: 38)
+            .padding(.horizontal, 12)
+            .background(kind.background, in: RoundedRectangle(cornerRadius: 8))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(kind.border)
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+        .disabled(isDisabled)
+        .opacity(isDisabled ? 0.55 : 1)
     }
 }
 

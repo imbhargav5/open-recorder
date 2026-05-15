@@ -377,7 +377,28 @@ enum VideoExportRenderer {
             cancellationToken.attach(exportSession)
         }
 
-        progressHandler(0.1)
+        progressHandler(0.02)
+        let progressTask = Task { @MainActor in
+            while !Task.isCancelled {
+                if cancellationToken?.isCancelled == true {
+                    return
+                }
+                let progress = Double(exportSession.progress)
+                if progress.isFinite {
+                    progressHandler(min(max(progress, 0.02), 0.99))
+                }
+
+                do {
+                    try await Task.sleep(nanoseconds: 120_000_000)
+                } catch {
+                    return
+                }
+            }
+        }
+        defer {
+            progressTask.cancel()
+        }
+
         await exportSession.export()
         if let cancellationToken {
             cancellationToken.detach()
