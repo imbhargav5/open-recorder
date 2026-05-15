@@ -194,7 +194,7 @@ private struct ScreenSelectionOverlayView: View {
                     .foregroundStyle(Color.white.opacity(0.92))
 
                 Button(action: onChoose) {
-                    Label("Choose Screen", systemImage: "checkmark.circle.fill")
+                    Label("Choose Screen", systemImage: "cursorarrow")
                         .font(.system(size: 14, weight: .semibold))
                         .lineLimit(1)
                         .padding(.horizontal, 18)
