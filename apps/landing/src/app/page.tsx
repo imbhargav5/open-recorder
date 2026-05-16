@@ -11,19 +11,16 @@ const featureHighlights = [
   {
     title: "Capture exactly what matters",
     eyebrow: "Display, window, or region",
-    poster: "/feature-capture.svg",
     copy: "Choose a full display, a single app window, or draw a precise area before recording or taking a screenshot.",
   },
   {
     title: "Polish without a cloud detour",
     eyebrow: "Native editing flow",
-    poster: "/feature-editor.svg",
     copy: "Preview recordings, keep project metadata organized, and move from rough capture to clean handoff on the same Mac.",
   },
   {
     title: "Export work you can trust",
     eyebrow: "Rust-backed bookkeeping",
-    poster: "/feature-export.svg",
     copy: "A durable local service handles paths, project registration, screenshot indexing, and export state behind the scenes.",
   },
 ];
@@ -69,14 +66,14 @@ const architectureNotes = [
 export default function Home() {
   return (
     <main>
-      <section className="hero-section" id="top">
-        <nav className="top-nav" aria-label="Primary navigation">
+      <nav className="top-nav" aria-label="Primary navigation">
+        <div className="nav-inner">
           <a className="brand-mark" href="#top" aria-label="Open Recorder home">
             <Image
               src="/open-recorder-brand-image.png"
               alt=""
-              width={44}
-              height={44}
+              width={28}
+              height={28}
               priority
               unoptimized
             />
@@ -88,9 +85,11 @@ export default function Home() {
             <a href="#architecture">Architecture</a>
             <a href="https://github.com/imbhargav5/open-recorder">GitHub</a>
           </div>
-        </nav>
+        </div>
+      </nav>
 
-        <div className="hero-copy">
+      <section className="hero-section" id="top">
+        <div className="section-inner hero-inner">
           <p className="eyebrow">Native macOS capture studio</p>
           <h1>Open Recorder</h1>
           <p className="hero-lede">
@@ -106,15 +105,8 @@ export default function Home() {
               See the workflow
             </a>
           </div>
-        </div>
 
-        <div className="hero-media" aria-label="Open Recorder product demo">
-          <div className="demo-window">
-            <div className="window-bar" aria-hidden="true">
-              <span />
-              <span />
-              <span />
-            </div>
+          <div className="hero-media" aria-label="Open Recorder product demo">
             <Image
               src="/open-recorder-demo.gif"
               alt="Open Recorder app demo showing a macOS capture workflow"
@@ -124,26 +116,11 @@ export default function Home() {
               unoptimized
             />
           </div>
-
-          <div className="recording-pill" aria-hidden="true">
-            <span />
-            <div>
-              <strong>Area capture</strong>
-              <small>00:12 recording</small>
-            </div>
-          </div>
-
-          <div className="timeline-panel" aria-hidden="true">
-            <div />
-            <div />
-            <div />
-            <span />
-          </div>
         </div>
       </section>
 
       <section className="proof-band" aria-label="Project highlights">
-        <div className="proof-grid">
+        <div className="section-inner proof-grid">
           {proofPoints.map(([value, label]) => (
             <div className="proof-item" key={value}>
               <strong>{value}</strong>
@@ -163,20 +140,9 @@ export default function Home() {
           <div className="feature-grid">
             {featureHighlights.map((feature) => (
               <article className="feature-card" key={feature.title}>
-                <div className="feature-visual">
-                  <Image
-                    src={feature.poster}
-                    alt=""
-                    width={760}
-                    height={480}
-                    unoptimized
-                  />
-                </div>
-                <div className="feature-copy">
-                  <p>{feature.eyebrow}</p>
-                  <h3>{feature.title}</h3>
-                  <span>{feature.copy}</span>
-                </div>
+                <p>{feature.eyebrow}</p>
+                <h3>{feature.title}</h3>
+                <span>{feature.copy}</span>
               </article>
             ))}
           </div>
@@ -224,13 +190,6 @@ export default function Home() {
 
       <section className="closing-section">
         <div className="section-inner closing-inner">
-          <Image
-            src="/open-recorder-brand-image.png"
-            alt=""
-            width={76}
-            height={76}
-            unoptimized
-          />
           <div>
             <p className="eyebrow">Open source on GitHub</p>
             <h2>Make your next product demo feel finished.</h2>
@@ -240,6 +199,13 @@ export default function Home() {
           </a>
         </div>
       </section>
+
+      <footer className="site-footer">
+        <div className="section-inner footer-inner">
+          <span>Open Recorder</span>
+          <span>Apache 2.0 · Built with Swift and Rust</span>
+        </div>
+      </footer>
     </main>
   );
 }
