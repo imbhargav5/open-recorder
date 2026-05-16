@@ -1,0 +1,17 @@
+<?xml version="1.0" standalone="yes"?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" xmlns:dc="http://purl.org/dc/elements/1.1/" version="2.0">
+    <channel>
+        <title>Open Recorder Changelog</title>
+        <link>https://raw.githubusercontent.com/imbhargav5/open-recorder/main/docs/appcast.xml</link>
+        <description>Most recent changes with links to updates.</description>
+        <language>en</language>
+        <item>
+            <title>Version 0.2.12</title>
+            <pubDate>Sat, 16 May 2026 04:58:22 GMT</pubDate>
+            <sparkle:version>0.2.12</sparkle:version>
+            <sparkle:shortVersionString>0.2.12</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/imbhargav5/open-recorder/releases/download/v0.2.12/open-recorder-macos.zip" sparkle:edSignature="qWejqwPCyKv9TZ+Iok6t4Njo4/zq1D2tY5dMZS5d6yFO/uOotOC3U32qj0dIOfRH9TQmeJjghwPwZIu8zGN9Cg==" length="38961526" type="application/octet-stream"/>
+        </item>
+    </channel>
+</rss>
