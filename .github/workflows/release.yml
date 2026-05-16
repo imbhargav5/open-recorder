@@ -214,6 +214,34 @@ jobs:
           zsh scripts/notarize-macos-dmg.zsh release-upload/open-recorder-macos-universal.dmg
           cp release-upload/open-recorder-macos-universal.zip release-upload/open-recorder-macos.zip
 
+      - name: Sign universal update with Sparkle
+        shell: bash
+        env:
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p release-upload
+          : > release-upload/appcast-signature.txt
+          if [ -z "${SPARKLE_ED_PRIVATE_KEY:-}" ]; then
+            echo "::warning::SPARKLE_ED_PRIVATE_KEY not set; skipping appcast signing"
+            exit 0
+          fi
+
+          ( cd apps/macos && swift package resolve )
+          sparkle_sign="$PWD/apps/macos/.build/artifacts/sparkle/Sparkle/bin/sign_update"
+          if [ ! -x "$sparkle_sign" ]; then
+            echo "::error::sign_update binary not found at $sparkle_sign"
+            exit 1
+          fi
+
+          key_file="$(mktemp)"
+          trap 'rm -f "$key_file"' EXIT
+          printf '%s\n' "$SPARKLE_ED_PRIVATE_KEY" > "$key_file"
+
+          signature_line=$("$sparkle_sign" -f "$key_file" release-upload/open-recorder-macos.zip)
+          printf '%s\n' "$signature_line" > release-upload/appcast-signature.txt
+          echo "Generated signature: $signature_line"
+
       - name: Upload universal macOS artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -222,6 +250,7 @@ jobs:
             release-upload/open-recorder-macos-universal.zip
             release-upload/open-recorder-macos-universal.dmg
             release-upload/open-recorder-macos.zip
+            release-upload/appcast-signature.txt
           if-no-files-found: error
 
   publish-release:
@@ -233,6 +262,12 @@ jobs:
     if: needs.resolve-release.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
@@ -273,3 +308,47 @@ jobs:
           replacesArtifacts: true
           artifactErrorsFailBuild: true
           artifacts: release-upload/*
+
+      - name: Update Sparkle appcast
+        env:
+          TAG_NAME: ${{ needs.resolve-release.outputs.tag_name }}
+          RELEASE_NOTES: ${{ needs.resolve-release.outputs.release_notes }}
+        run: |
+          set -euo pipefail
+          signature_file="release-assets/macos-universal-release-assets/appcast-signature.txt"
+          if [ ! -s "$signature_file" ]; then
+            echo "::warning::No Sparkle signature available; skipping appcast update. Add SPARKLE_ED_PRIVATE_KEY secret to enable."
+            exit 0
+          fi
+
+          signature_line="$(cat "$signature_file")"
+          signature="$(printf '%s' "$signature_line" | sed -n 's/.*sparkle:edSignature="\([^"]*\)".*/\1/p')"
+          length="$(printf '%s' "$signature_line" | sed -n 's/.*length="\([^"]*\)".*/\1/p')"
+
+          if [ -z "$signature" ] || [ -z "$length" ]; then
+            echo "::error::Could not parse Sparkle signature line: $signature_line"
+            exit 1
+          fi
+
+          version="${TAG_NAME#v}"
+          url="https://github.com/imbhargav5/open-recorder/releases/download/${TAG_NAME}/open-recorder-macos.zip"
+          min_system_version="$(/usr/bin/python3 -c 'import plistlib; print(plistlib.load(open("apps/macos/Resources/Info.plist","rb")).get("LSMinimumSystemVersion","15.0"))')"
+
+          node scripts/update-appcast.mjs \
+            --version "$version" \
+            --url "$url" \
+            --signature "$signature" \
+            --length "$length" \
+            --min-system-version "$min_system_version" \
+            --release-notes "$RELEASE_NOTES"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/appcast.xml
+          if git diff --cached --quiet; then
+            echo "No appcast changes to commit"
+            exit 0
+          fi
+          git commit -m "Update appcast for ${TAG_NAME}"
+          git pull --rebase origin main
+          git push origin main

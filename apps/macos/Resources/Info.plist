@@ -36,9 +36,9 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.0.21</string>
+	<string>0.2.10</string>
 	<key>CFBundleVersion</key>
-	<string>0.0.21</string>
+	<string>0.2.10</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>15.0</string>
 	<key>NSHighResolutionCapable</key>
@@ -48,6 +48,16 @@
 	<key>NSCameraUsageDescription</key>
 	<string>Open Recorder uses the camera when you choose to include a facecam in a screen recording.</string>
 	<key>NSSupportsAutomaticGraphicsSwitching</key>
+	<true/>
+	<key>SUFeedURL</key>
+	<string>https://raw.githubusercontent.com/imbhargav5/open-recorder/main/docs/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>KAaM1QcHFlWNJ3wB3nablp4fpY7tHf14RupOsrzB7A0=</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUScheduledCheckInterval</key>
+	<integer>86400</integer>
+	<key>SUAllowsAutomaticUpdates</key>
 	<true/>
 	<key>UTExportedTypeDeclarations</key>
 	<array>

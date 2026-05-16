@@ -80,6 +80,22 @@ cp "$swift_binary" "$macos_dir/OpenRecorderMac"
 cp "$service_binary" "$macos_dir/open-recorder-service"
 cp "$info_plist" "$contents_dir/Info.plist"
 cp -R "$swift_resource_bundle" "$resources_dir/"
+
+sparkle_xcframework="$(find "$repo_root/apps/macos/.build/artifacts/sparkle" -type d -name "Sparkle.xcframework" -print 2>/dev/null | head -n 1 || true)"
+if [[ -z "$sparkle_xcframework" || ! -d "$sparkle_xcframework" ]]; then
+	print -u2 -- "Sparkle.xcframework not found under apps/macos/.build/artifacts/sparkle. Run 'cd apps/macos && swift package resolve' first."
+	exit 1
+fi
+
+sparkle_framework_source="$sparkle_xcframework/macos-arm64_x86_64/Sparkle.framework"
+if [[ ! -d "$sparkle_framework_source" ]]; then
+	print -u2 -- "Sparkle macOS framework slice not found at: $sparkle_framework_source"
+	exit 1
+fi
+
+mkdir -p "$contents_dir/Frameworks"
+rm -rf "$contents_dir/Frameworks/Sparkle.framework"
+ditto "$sparkle_framework_source" "$contents_dir/Frameworks/Sparkle.framework"
 set_plist_string "CFBundleName" "$app_name"
 set_plist_string "CFBundleDisplayName" "$app_name"
 set_plist_string "CFBundleIdentifier" "$bundle_identifier"

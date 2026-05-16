@@ -10,6 +10,7 @@ final class OpenRecorderAppDelegate: NSObject, NSApplicationDelegate {
     private let windowActions = AppWindowActions()
     private let statusItemController = OpenRecorderStatusItemController()
     private let hotKeyController = GlobalRecordingHotKeyController()
+    private let updateChecker = UpdateChecker.shared
     private var windowCommandCancellable: AnyCancellable?
 
     func attach(model: AppModel) {
@@ -422,6 +423,16 @@ private final class OpenRecorderStatusItemController: NSObject {
 
         menu.addItem(.separator())
 
+        let checkForUpdatesItem = NSMenuItem(
+            title: "Check for Updates…",
+            action: #selector(checkForUpdates),
+            keyEquivalent: ""
+        )
+        checkForUpdatesItem.target = self
+        menu.addItem(checkForUpdatesItem)
+
+        menu.addItem(.separator())
+
         let quitItem = NSMenuItem(title: "Quit Open Recorder", action: #selector(quit), keyEquivalent: "q")
         quitItem.keyEquivalentModifierMask = [.command]
         quitItem.target = self
@@ -461,6 +472,10 @@ private final class OpenRecorderStatusItemController: NSObject {
         model.showEditor(for: session)
         windowActions.openEditorSession(session)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    @objc private func checkForUpdates() {
+        UpdateChecker.shared.checkForUpdates()
     }
 
     @objc private func quit() {

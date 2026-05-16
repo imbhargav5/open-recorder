@@ -1,6 +1,6 @@
 {
   "name": "landing",
-  "version": "0.0.21",
+  "version": "0.2.10",
   "private": true,
   "scripts": {
     "dev": "next dev",

@@ -102,6 +102,35 @@ sign_code() {
 	codesign --verify --strict "$target" >/dev/null
 }
 
+sign_sparkle_framework() {
+	local framework_root="$bundle_dir/Contents/Frameworks/Sparkle.framework"
+	[[ -d "$framework_root" ]] || return 0
+
+	local versioned="$framework_root/Versions/B"
+	if [[ ! -d "$versioned" ]]; then
+		versioned="$(find "$framework_root/Versions" -maxdepth 1 -mindepth 1 -type d ! -name 'Current' -print -quit 2>/dev/null)"
+	fi
+	[[ -n "$versioned" && -d "$versioned" ]] || return 0
+
+	local nested_targets=(
+		"$versioned/XPCServices/Installer.xpc/Contents/MacOS/Installer"
+		"$versioned/XPCServices/Installer.xpc"
+		"$versioned/XPCServices/Downloader.xpc/Contents/MacOS/Downloader"
+		"$versioned/XPCServices/Downloader.xpc"
+		"$versioned/Updater.app/Contents/MacOS/Updater"
+		"$versioned/Updater.app"
+		"$versioned/Autoupdate"
+		"$framework_root"
+	)
+
+	local target
+	for target in "${nested_targets[@]}"; do
+		if [[ -e "$target" ]]; then
+			sign_code "$target" "${codesign_args[@]}"
+		fi
+	done
+}
+
 if command -v codesign >/dev/null 2>&1; then
 	identity_line="$(resolve_codesign_identity)"
 	sign_identity="${identity_line%%$'\t'*}"
@@ -118,6 +147,7 @@ if command -v codesign >/dev/null 2>&1; then
 		app_codesign_args+=(--entitlements "$entitlements_plist")
 	fi
 
+	sign_sparkle_framework
 	sign_code "$service_binary" "${codesign_args[@]}"
 	sign_code "$swift_binary" "${app_codesign_args[@]}"
 	sign_code "$bundle_dir" "${app_codesign_args[@]}"
