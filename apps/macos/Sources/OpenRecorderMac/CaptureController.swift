@@ -62,6 +62,11 @@ enum ScreencaptureRegionMapper {
         )
     }
 
+    static func regionArgument(forDisplayBounds bounds: CGRect) -> String? {
+        guard !bounds.isEmpty else { return nil }
+        return "-R\(Int(bounds.origin.x.rounded())),\(Int(bounds.origin.y.rounded())),\(Int(bounds.width.rounded())),\(Int(bounds.height.rounded()))"
+    }
+
     @MainActor
     private static func primaryDisplayFrame() -> CGRect {
         NSScreen.screens.first { screen in
@@ -483,6 +488,10 @@ final class CaptureController: ObservableObject {
     private func argumentsForSource(_ source: CaptureSource, interactiveAreaMode: String) -> [String] {
         switch source.kind {
         case .display:
+            if let displayID = source.displayID,
+               let regionArg = ScreencaptureRegionMapper.regionArgument(forDisplayBounds: CGDisplayBounds(displayID)) {
+                return [regionArg]
+            }
             return source.displayIndex.map { ["-D\($0)"] } ?? []
         case .window:
             return source.windowID.map { ["-l\($0)"] } ?? []
