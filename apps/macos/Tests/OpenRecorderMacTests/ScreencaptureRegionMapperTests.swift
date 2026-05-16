@@ -22,4 +22,25 @@ final class ScreencaptureRegionMapperTests: XCTestCase {
 
         XCTAssertEqual(mapped, CaptureArea(x: -1329, y: -803, width: 647, height: 422, displayID: 4))
     }
+
+    func testRegionArgumentForPrimaryDisplayBounds() {
+        let arg = ScreencaptureRegionMapper.regionArgument(
+            forDisplayBounds: CGRect(x: 0, y: 0, width: 1920, height: 1080)
+        )
+
+        XCTAssertEqual(arg, "-R0,0,1920,1080")
+    }
+
+    func testRegionArgumentForDisplayAboveAndLeftOfPrimary() {
+        let arg = ScreencaptureRegionMapper.regionArgument(
+            forDisplayBounds: CGRect(x: -1920, y: -1080, width: 1920, height: 1080)
+        )
+
+        XCTAssertEqual(arg, "-R-1920,-1080,1920,1080")
+    }
+
+    func testRegionArgumentRejectsEmptyBounds() {
+        XCTAssertNil(ScreencaptureRegionMapper.regionArgument(forDisplayBounds: .zero))
+        XCTAssertNil(ScreencaptureRegionMapper.regionArgument(forDisplayBounds: .null))
+    }
 }
