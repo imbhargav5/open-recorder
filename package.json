@@ -4,6 +4,7 @@
 	"license": "Apache-2.0",
 	"packageManager": "pnpm@10.17.1",
 	"scripts": {
+		"setup": "make setup",
 		"dev": "make dev-macos",
 		"dev:landing": "pnpm --dir apps/landing dev",
 		"build": "make build-macos",
