@@ -40,6 +40,12 @@ Requirements:
 - Xcode command line tools with Swift 6.2+
 - Rust 1.93+
 
+Install locked JavaScript dependencies and prefetch Rust crates:
+
+```bash
+pnpm run setup
+```
+
 Build everything:
 
 ```bash
