@@ -1,6 +1,6 @@
 {
-  "tagName": "v0.2.18",
-  "releaseName": "Open Recorder v0.2.18",
-  "releaseNotes": "",
+  "tagName": "v0.2.19",
+  "releaseName": "Open Recorder v0.2.19",
+  "releaseNotes": "## Commits since v0.2.18\n\n- cfe3dbb Consolidate app state machines\n- 11d7138 Refactor editor state machines\n- 1ecb0ff Refactor editor state into machines\n- 6e93fe4 Refactor capture flow state machine\n- 399a78a Keep capture UI hidden during captures\n- bc4e42c Add screenshot project tabs and autosave\n- a0a7318 Respect preview aspect in video exports\n- 872b739 Hide desktop from window source picker\n- e87c988 Generate release notes from commits\n- 77a8ab4 Update appcast for v0.2.18",
   "makeLatest": true
 }
