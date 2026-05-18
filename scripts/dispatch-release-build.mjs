@@ -19,7 +19,7 @@ or updates the release PR. Merging that PR triggers the macOS release build.
 Options:
   --release-type VALUE     Release type: patch, minor, or major. Uses a selector if omitted.
   --name VALUE             Optional release title override.
-  --notes VALUE            Optional release notes body.
+  --notes VALUE            Optional release notes body. Defaults to commits since the previous release.
   --latest true|false      Whether the eventual release should be marked latest. Defaults to true.
   --yes                    Skip the interactive confirmation prompt.
   --ref VALUE              Git branch that contains the workflow file. Defaults to the current branch.

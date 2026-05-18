@@ -19,7 +19,7 @@ on:
         required: true
         type: string
       release_notes:
-        description: Optional release notes
+        description: Optional release notes; defaults to commits since the previous release
         required: false
         type: string
       make_latest:
@@ -45,7 +45,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          fetch-depth: 0
+
+      - name: Fetch release tags
+        run: git fetch --tags origin
 
       - name: Resolve release context
         id: resolve

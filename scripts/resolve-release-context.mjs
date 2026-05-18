@@ -4,6 +4,7 @@ import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { buildCommitReleaseNotes, latestSemverTag } from "./release-notes.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
@@ -64,7 +65,7 @@ Options:
   --before VALUE          Previous commit SHA for push events.
   --tag-name VALUE        Manual workflow tag override.
   --release-name VALUE    Manual workflow release title override.
-  --release-notes VALUE   Manual workflow release notes override.
+  --release-notes VALUE   Manual workflow release notes override. Defaults to commits since the previous release.
   --make-latest VALUE     Manual workflow latest flag override.
   --output PATH           Optional GitHub Actions output file to append to.
   -h, --help              Show this help message.
@@ -167,7 +168,13 @@ if (args.eventName === "workflow_dispatch") {
 	shouldRelease = true;
 	tagName = args.tagName || defaultTagName;
 	releaseName = args.releaseName || `Open Recorder ${tagName}`;
-	releaseNotes = args.releaseNotes;
+	releaseNotes =
+		args.releaseNotes.trim() ||
+		buildCommitReleaseNotes({
+			previousTagName: latestSemverTag({ cwd: repoRoot, excludedTagNames: [tagName] }).tagName,
+			toRef: "HEAD",
+			cwd: repoRoot,
+		});
 	makeLatest = args.makeLatest || "true";
 } else if (args.eventName === "push") {
 	const previousVersion = previousPackageVersion(args.before);
@@ -183,7 +190,13 @@ if (args.eventName === "workflow_dispatch") {
 		}
 		tagName = releasePlan.tagName;
 		releaseName = releasePlan.releaseName || `Open Recorder ${tagName}`;
-		releaseNotes = releasePlan.releaseNotes || "";
+		releaseNotes =
+			String(releasePlan.releaseNotes || "").trim() ||
+			buildCommitReleaseNotes({
+				previousTagName: latestSemverTag({ cwd: repoRoot, excludedTagNames: [tagName] }).tagName,
+				toRef: "HEAD",
+				cwd: repoRoot,
+			});
 		makeLatest = String(releasePlan.makeLatest ?? true);
 	}
 } else {

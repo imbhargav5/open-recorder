@@ -4,6 +4,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } fr
 import { spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { buildCommitReleaseNotes, latestSemverTag } from "./release-notes.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
@@ -57,7 +58,7 @@ Rust service version and writing .github/release-plan.json.
 Options:
   --release-type VALUE     Release type: patch, minor, or major.
   --name VALUE             Optional release title override.
-  --notes VALUE            Optional release notes body.
+  --notes VALUE            Optional release notes body. Defaults to commits since the previous release.
   --latest true|false      Whether the eventual release should be marked latest.
   --output PATH            Optional GitHub Actions output file to append to.
   -h, --help               Show this help message.
@@ -144,17 +145,6 @@ function currentPackageVersion() {
 		die(`Could not find a semantic version in ${rustServiceCargoTomlPath}`);
 	}
 	return match[1];
-}
-
-function latestSemverTagVersion() {
-	const tags = capture("git", ["tag", "--list", "v*", "--sort=-version:refname"], {
-		allowFailure: true,
-	});
-
-	return tags
-		.split(/\r?\n/)
-		.map((tag) => /^v(\d+\.\d+\.\d+)$/.exec(tag)?.[1] ?? "")
-		.find(Boolean) ?? "";
 }
 
 function updateCargoVersion(filePath, nextVersion) {
@@ -262,13 +252,20 @@ function buildPrBody({
 
 const args = parseArgs(process.argv.slice(2));
 const packageVersion = currentPackageVersion();
-const latestTagVersion = latestSemverTagVersion();
+const latestTag = latestSemverTag({ cwd: repoRoot });
+const latestTagVersion = latestTag.version;
 const { baseVersion, versionSource } = determineBaseVersion(packageVersion, latestTagVersion);
 const nextVersion = bumpVersion(baseVersion, args.releaseType);
 const tagName = `v${nextVersion}`;
 const releaseName = args.name || `Open Recorder v${nextVersion}`;
 const makeLatest = args.latest === "true";
-const releaseNotes = args.notes;
+const releaseNotes =
+	args.notes.trim() ||
+	buildCommitReleaseNotes({
+		previousTagName: latestTag.tagName,
+		toRef: "HEAD",
+		cwd: repoRoot,
+	});
 const branchName = `release/${tagName}`;
 const commitMessage = `Prepare release ${tagName}`;
 const prTitle = `Prepare release ${tagName}`;

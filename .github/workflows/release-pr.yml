@@ -16,7 +16,7 @@ on:
         required: false
         type: string
       release_notes:
-        description: Optional release notes
+        description: Optional release notes; defaults to commits since the previous release
         required: false
         type: string
       make_latest:
