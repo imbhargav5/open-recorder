@@ -11,9 +11,7 @@ struct ScreenshotEditorStudioView: View {
     var initialScreenshotState: ScreenshotEditorState?
     var editorSessionID: UUID?
     @ObservedObject var editor: ScreenshotEditorController
-    @StateObject private var autosave = ProjectAutosaveCoordinator()
-    @State private var isExportDialogPresented = false
-    @State private var appliedScreenshotStateIdentity: String?
+    @State private var presentation = ScreenshotEditorPresentationDriver()
     private let sidebarWidth: CGFloat = 320
 
     var body: some View {
@@ -44,14 +42,14 @@ struct ScreenshotEditorStudioView: View {
                 imageShadow: editor.binding(for: \.imageShadow),
                 onEditingChanged: handleUndoTransaction,
                 onExport: {
-                    isExportDialogPresented = true
+                    presentation.send(.exportRequested)
                 }
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .padding(16)
         .background(Color.studioMutedBackground)
-        .sheet(isPresented: $isExportDialogPresented) {
+        .sheet(isPresented: presentation.exportDialogBinding) {
             ScreenshotExportDialog(
                 onSave: saveComposedPNG,
                 onCopy: copyComposedPNG
@@ -59,34 +57,37 @@ struct ScreenshotEditorStudioView: View {
             .frame(width: 360)
         }
         .onChange(of: model.screenshotExportRequestID) { _, requestID in
-            guard requestID != nil, screenshotURL != nil else { return }
-            isExportDialogPresented = true
+            guard requestID != nil, isScreenshotExportRequestTarget else { return }
+            presentation.send(.exportRequested)
         }
         .onChange(of: screenshotURL) { _, _ in
-            applyInitialEditorState(markAutosaved: true)
+            syncEditorSession()
         }
         .onChange(of: editorSessionID) { _, _ in
-            applyInitialEditorState(markAutosaved: true)
+            syncEditorSession()
         }
         .onChange(of: editor.state) { _, _ in
-            autosave.schedule(autosaveSnapshot)
+            presentation.send(.autosaveSnapshotChanged(autosaveSnapshot))
         }
         .onAppear {
-            autosave.configure(
+            presentation.configure(
+                applyScreenshotState: { state in
+                    editor.apply(state)
+                },
                 saveHandler: { snapshot in
                     try await model.autosaveProject(snapshot)
                 },
                 statusHandler: { status in
                     model.handleProjectAutosaveStatus(status)
+                },
+                setStatusMessage: { message in
+                    model.statusMessage = message
                 }
             )
-            applyInitialEditorState(markAutosaved: true)
+            syncEditorSession()
         }
         .onDisappear {
-            let snapshot = autosaveSnapshot
-            Task {
-                await autosave.flush(snapshot)
-            }
+            presentation.send(.disappeared(autosaveSnapshot))
         }
     }
 
@@ -97,7 +98,7 @@ struct ScreenshotEditorStudioView: View {
 
     private func saveComposedPNG() {
         guard let data = renderComposedPNG() else {
-            model.statusMessage = "Failed to render screenshot."
+            presentation.send(.saveFailed("Failed to render screenshot."))
             return
         }
 
@@ -115,15 +116,15 @@ struct ScreenshotEditorStudioView: View {
                 ? targetURL.appendingPathExtension("png")
                 : targetURL
             try data.write(to: resolvedURL, options: .atomic)
-            model.statusMessage = "Exported \(resolvedURL.lastPathComponent)"
+            presentation.send(.saveSucceeded(resolvedURL))
         } catch {
-            model.statusMessage = error.localizedDescription
+            presentation.send(.saveFailed(error.localizedDescription))
         }
     }
 
     private func copyComposedPNG() {
         guard let data = renderComposedPNG() else {
-            model.statusMessage = "Failed to render screenshot."
+            presentation.send(.copyFailed("Failed to render screenshot."))
             return
         }
 
@@ -133,7 +134,7 @@ struct ScreenshotEditorStudioView: View {
         if let image = NSImage(data: data), let tiffData = image.tiffRepresentation {
             pasteboard.setData(tiffData, forType: .tiff)
         }
-        model.statusMessage = "Screenshot PNG copied"
+        presentation.send(.copySucceeded)
     }
 
     private var suggestedExportFileName: String {
@@ -161,26 +162,34 @@ struct ScreenshotEditorStudioView: View {
         }
     }
 
-    private func applyInitialEditorState(markAutosaved: Bool = false) {
-        let identity = editorSessionID?.uuidString ?? screenshotURL?.path ?? "empty"
-        guard appliedScreenshotStateIdentity != identity else { return }
-        appliedScreenshotStateIdentity = identity
-        editor.apply(initialScreenshotState ?? .default)
-        if markAutosaved {
-            autosave.markSaved(autosaveSnapshot)
-        }
+    private func syncEditorSession() {
+        presentation.send(.sessionChanged(ScreenshotEditorSessionContext(
+            screenshotURL: screenshotURL,
+            projectPath: projectPath,
+            editorTitle: editorTitle,
+            initialScreenshotState: initialScreenshotState,
+            editorSessionID: editorSessionID
+        )))
     }
 
     private var autosaveSnapshot: ProjectAutosaveSnapshot? {
-        guard let projectPath, let screenshotURL else { return nil }
-        return ProjectAutosaveSnapshot(
+        presentation.autosaveSnapshot(
             projectPath: projectPath,
-            title: editorTitle ?? EditorMediaKind.screenshot.displayTitle(for: screenshotURL),
-            recordingPath: nil,
-            screenshotPath: screenshotURL.path,
-            sourceName: nil,
-            editorState: ProjectEditorState(screenshot: editor.state)
+            screenshotURL: screenshotURL,
+            editorTitle: editorTitle,
+            editorState: editor.state
         )
+    }
+
+    private var isScreenshotExportRequestTarget: Bool {
+        guard let screenshotURL else { return false }
+        if let requestedEditorSessionID = model.screenshotExportRequestEditorSessionID {
+            return requestedEditorSessionID == editorSessionID
+        }
+        if let requestedURL = model.screenshotExportRequestURL {
+            return requestedURL == screenshotURL
+        }
+        return true
     }
 }
 

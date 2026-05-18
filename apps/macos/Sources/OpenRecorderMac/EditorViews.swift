@@ -79,37 +79,8 @@ struct VideoEditorStudioView: View {
     var initialVideoState: ProjectVideoEditorState?
     var editorSessionID: UUID?
     @StateObject private var playback = VideoPlaybackController()
-    @StateObject private var autosave = ProjectAutosaveCoordinator()
     @ObservedObject var timelineEdits: TimelineEditController
-    @State private var borderRadius = 12.0
-    @State private var padding = 18.0
-    @State private var shadow = 0.35
-    @State private var backgroundBlur = 0.0
-    @State private var background: BackgroundStyle = BackgroundPresets.default
-    @State private var inset = 0.0
-    @State private var insetColor = SerializableColor(hex: "#276FAA")
-    @State private var insetOpacity = 1.0
-    @State private var insetBalance = VideoInsetBalance.centered
-    @State private var showCursorOverlay = true
-    @State private var loopCursor = false
-    @State private var cursorSize = 1.0
-    @State private var cursorSmoothing = 0.40
-    @State private var cursorStyle = CursorStyle.arrow
-    @State private var cursorVariant = CursorVariant.standard
-    @State private var facecamEnabled = false
-    @State private var facecamShape = "circle"
-    @State private var facecamSize = 22.0
-    @State private var facecamCornerRadius = 24.0
-    @State private var facecamBorderWidth = 4.0
-    @State private var facecamBorderColor = "#FFFFFF"
-    @State private var facecamMargin = 4.0
-    @State private var facecamAnchor = FacecamAnchor.bottomRight.rawValue
-    @State private var activeSheet: VideoEditorSheet?
-    @State private var presentedSheet: VideoEditorSheet?
-    @State private var videoCropSelection = VideoCropSelection.fullFrame
-    @State private var previewAspectPreset: VideoPreviewAspectPreset = .auto
-    @State private var appliedTimelineIdentity: String?
-    @State private var appliedVideoStateIdentity: String?
+    @State private var driver = VideoEditorDriver()
     private let sidebarWidth: CGFloat = 320
     private let timelineHeight = TimelineMetrics.compactPanelHeight
 
@@ -128,7 +99,7 @@ struct VideoEditorStudioView: View {
         }
         .padding(16)
         .background(Color.studioMutedBackground)
-        .sheet(item: $activeSheet, onDismiss: handleSheetDismiss) { sheet in
+        .sheet(item: driver.activeSheetBinding(exportIsBusy: model.videoExportPhase.isBusy)) { sheet in
             switch sheet {
             case .export:
                 exportDialog
@@ -137,34 +108,43 @@ struct VideoEditorStudioView: View {
             }
         }
         .onChange(of: model.videoExportRequestID) { _, requestID in
-            guard requestID != nil, videoURL != nil else { return }
-            presentSheet(.export)
+            guard requestID != nil, isVideoExportRequestTarget else { return }
+            driver.send(.exportRequested)
         }
         .onChange(of: videoURL) { _, _ in
-            applyInitialEditorState(markAutosaved: true)
+            syncEditorSession()
         }
         .onChange(of: editorSessionID) { _, _ in
-            applyInitialEditorState(markAutosaved: true)
+            syncEditorSession()
         }
         .onChange(of: autosaveSnapshot) { _, snapshot in
-            autosave.schedule(snapshot)
+            driver.send(.autosaveSnapshotChanged(snapshot))
         }
         .onAppear {
-            autosave.configure(
+            driver.configure(
+                applyTimelineSnapshot: { snapshot in
+                    timelineEdits.applySnapshot(snapshot)
+                },
                 saveHandler: { snapshot in
                     try await model.autosaveProject(snapshot)
                 },
                 statusHandler: { status in
                     model.handleProjectAutosaveStatus(status)
+                },
+                pausePlayback: {
+                    playback.pause()
+                },
+                exportVideo: { recordingURL, options, edits in
+                    model.exportCurrentRecording(recordingURL, options: options, edits: edits)
+                },
+                clearVideoExportDialogState: {
+                    model.clearVideoExportDialogState()
                 }
             )
-            applyInitialEditorState(markAutosaved: true)
+            syncEditorSession()
         }
         .onDisappear {
-            let snapshot = autosaveSnapshot
-            Task {
-                await autosave.flush(snapshot)
-            }
+            driver.send(.disappeared(autosaveSnapshot))
         }
         .background {
             StudioKeyDownMonitor { event in
@@ -187,24 +167,23 @@ struct VideoEditorStudioView: View {
                 recordingSession: recordingSession,
                 playback: playback,
                 timelineEdits: timelineEdits,
-                background: background,
-                padding: padding,
-                borderRadius: borderRadius,
-                shadow: shadow,
-                backgroundBlur: backgroundBlur,
-                inset: inset,
-                insetColor: insetColor,
-                insetOpacity: insetOpacity,
-                insetBalance: insetBalance,
+                background: driver.state.video.background,
+                padding: driver.state.video.padding,
+                borderRadius: driver.state.video.borderRadius,
+                shadow: driver.state.video.shadow,
+                backgroundBlur: driver.state.video.backgroundBlur,
+                inset: driver.state.video.inset,
+                insetColor: driver.state.video.insetColor,
+                insetOpacity: driver.state.video.insetOpacity,
+                insetBalance: driver.state.video.insetBalance,
                 cursorTelemetryURL: cursorTelemetryURL,
-                cursorSettings: cursorOverlaySettings,
-                cropSelection: videoCropSelection,
-                facecamSettings: currentFacecamSettings,
-                previewAspectPreset: $previewAspectPreset,
+                cursorSettings: driver.state.cursorOverlaySettings,
+                cropSelection: driver.state.video.cropSelection,
+                facecamSettings: driver.state.currentFacecamSettings,
+                previewAspectPreset: driver.previewAspectPresetBinding,
                 onCropVideo: {
                     guard let videoURL else { return }
-                    playback.pause()
-                    presentSheet(.crop(videoURL))
+                    driver.send(.cropRequested(videoURL))
                 },
                 onRequestClearSelection: {
                     timelineEdits.clearSelection()
@@ -223,25 +202,25 @@ struct VideoEditorStudioView: View {
             TimelineSelectionSidebar(edits: timelineEdits, playback: playback)
         } else {
             SettingsInspector(
-                borderRadius: $borderRadius,
-                padding: $padding,
-                shadow: $shadow,
-                backgroundBlur: $backgroundBlur,
-                background: $background,
-                inset: $inset,
-                insetColor: $insetColor,
-                insetOpacity: $insetOpacity,
-                insetBalance: $insetBalance,
-                showCursor: $showCursorOverlay,
-                loopCursor: $loopCursor,
-                cursorSize: $cursorSize,
-                cursorSmoothing: $cursorSmoothing,
-                cursorStyle: $cursorStyle,
-                cursorVariant: $cursorVariant,
-                facecamEnabled: $facecamEnabled,
-                facecamSize: $facecamSize,
-                facecamBorderWidth: $facecamBorderWidth,
-                facecamAnchor: $facecamAnchor,
+                borderRadius: driver.binding(\.borderRadius),
+                padding: driver.binding(\.padding),
+                shadow: driver.binding(\.shadow),
+                backgroundBlur: driver.binding(\.backgroundBlur),
+                background: driver.binding(\.background),
+                inset: driver.binding(\.inset),
+                insetColor: driver.binding(\.insetColor),
+                insetOpacity: driver.binding(\.insetOpacity),
+                insetBalance: driver.binding(\.insetBalance),
+                showCursor: driver.binding(\.cursorOverlay.isVisible),
+                loopCursor: driver.binding(\.cursorOverlay.loops),
+                cursorSize: driver.binding(\.cursorOverlay.size),
+                cursorSmoothing: driver.binding(\.cursorOverlay.smoothing),
+                cursorStyle: driver.binding(\.cursorOverlay.style),
+                cursorVariant: driver.binding(\.cursorOverlay.variant),
+                facecamEnabled: driver.facecamBinding(\.enabled, default: false),
+                facecamSize: driver.facecamBinding(\.size, default: 22),
+                facecamBorderWidth: driver.facecamBinding(\.borderWidth, default: 4),
+                facecamAnchor: driver.facecamBinding(\.anchor, default: FacecamAnchor.bottomRight.rawValue),
                 recordingSession: recordingSession
             )
         }
@@ -290,16 +269,15 @@ struct VideoEditorStudioView: View {
             errorMessage: model.videoExportError,
             exportedFileName: model.exportedVideoURL?.lastPathComponent,
             isExporting: model.isVideoExporting,
-            initialOptions: VideoExportOptions.default.withCropSelection(videoCropSelection),
+            initialOptions: driver.state.initialExportOptions,
             onExport: { options in
-                let styled = styledExportOptions(from: options)
-                let edits = timelineEdits.snapshot
-                let recordingURL = model.videoExportRequestURL ?? videoURL
-                let snapshot = autosaveSnapshot
-                Task {
-                    await autosave.flush(snapshot)
-                    model.exportCurrentRecording(recordingURL, options: styled, edits: edits)
-                }
+                driver.send(.exportConfirmed(
+                    recordingURL: model.videoExportRequestURL ?? videoURL,
+                    options: options,
+                    edits: timelineEdits.snapshot,
+                    snapshot: autosaveSnapshot,
+                    cursorTelemetryURL: cursorTelemetryURL
+                ))
             },
             onRetrySave: {
                 model.retryPendingVideoExportSave()
@@ -311,7 +289,7 @@ struct VideoEditorStudioView: View {
                 model.cancelVideoExport()
             },
             onClose: {
-                activeSheet = nil
+                driver.send(.sheetDismissed(exportIsBusy: model.videoExportPhase.isBusy))
             }
         )
         .frame(width: 420)
@@ -321,167 +299,39 @@ struct VideoEditorStudioView: View {
     private func cropDialog(videoURL: URL) -> some View {
         VideoCropDialog(
             videoURL: videoURL,
-            initialSelection: videoCropSelection,
+            initialSelection: driver.state.video.cropSelection,
             initialTime: playback.currentTime,
             sourceSize: playback.naturalVideoSize,
             onConfirm: { selection in
-                videoCropSelection = selection
-                activeSheet = nil
+                driver.send(.cropConfirmed(selection))
             },
             onCancel: {
-                activeSheet = nil
+                driver.send(.cropCanceled)
             }
         )
     }
 
-    private func presentSheet(_ sheet: VideoEditorSheet) {
-        presentedSheet = sheet
-        activeSheet = sheet
-    }
-
-    private func handleSheetDismiss() {
-        if presentedSheet == .export, !model.videoExportPhase.isBusy {
-            model.clearVideoExportDialogState()
-        }
-        presentedSheet = nil
-    }
-
-    private func applyInitialEditorState(markAutosaved: Bool = false) {
-        applyInitialTimelineEdits()
-        applyInitialVideoState()
-        if markAutosaved {
-            autosave.markSaved(autosaveSnapshot)
-        }
-    }
-
-    private func applyInitialTimelineEdits() {
-        let identity = editorSessionID?.uuidString ?? videoURL?.path ?? "empty"
-        guard appliedTimelineIdentity != identity else { return }
-        appliedTimelineIdentity = identity
-        timelineEdits.applySnapshot(initialTimelineEdits ?? .empty)
-    }
-
-    private func applyInitialVideoState() {
-        let identity = editorSessionID?.uuidString ?? videoURL?.path ?? "empty"
-        guard appliedVideoStateIdentity != identity else { return }
-        appliedVideoStateIdentity = identity
-
-        let state = initialVideoState
-        let defaults = ProjectVideoEditorState.default
-        background = state?.background ?? defaults.background
-        padding = state?.padding ?? defaults.padding
-        borderRadius = state?.borderRadius ?? defaults.borderRadius
-        shadow = state?.shadow ?? defaults.shadow
-        backgroundBlur = state?.backgroundBlur ?? defaults.backgroundBlur
-        inset = state?.inset ?? defaults.inset
-        insetColor = state?.insetColor ?? defaults.insetColor
-        insetOpacity = state?.insetOpacity ?? defaults.insetOpacity
-        insetBalance = state?.insetBalance ?? defaults.insetBalance
-        videoCropSelection = state?.cropSelection ?? defaults.cropSelection
-        previewAspectPreset = .auto
-
-        let defaultCursor = CursorOverlaySettings(
-            isVisible: recordingSession?.showCursorOverlay ?? model.showCursor,
-            loops: defaults.cursorOverlay.loops,
-            size: defaults.cursorOverlay.size,
-            smoothing: defaults.cursorOverlay.smoothing
-        )
-        let cursor = state?.cursorOverlay ?? defaultCursor
-        showCursorOverlay = cursor.isVisible
-        loopCursor = cursor.loops
-        cursorSize = cursor.size
-        cursorSmoothing = cursor.smoothing
-        cursorStyle = cursor.style
-        cursorVariant = cursor.variant
-
-        let facecam = (state?.facecamSettings
-            ?? recordingSession?.facecamSettings
-            ?? defaultFacecamSettings(enabled: recordingSession?.hasRecordedCamera == true))
-            .clamped
-        let hasRecordedCamera = recordingSession?.hasRecordedCamera == true
-        facecamEnabled = hasRecordedCamera && facecam.enabled
-        facecamShape = facecam.shape
-        facecamSize = facecam.size
-        facecamCornerRadius = facecam.cornerRadius
-        facecamBorderWidth = facecam.borderWidth
-        facecamBorderColor = facecam.borderColor
-        facecamMargin = facecam.margin
-        facecamAnchor = facecam.anchor
-    }
-
-    private func styledExportOptions(from options: VideoExportOptions) -> VideoExportOptions {
-        options.with(
-            background: background,
-            padding: padding,
-            borderRadius: borderRadius,
-            shadow: shadow,
-            backgroundBlur: backgroundBlur,
-            inset: inset,
-            insetColor: insetColor,
-            insetOpacity: insetOpacity,
-            insetBalance: insetBalance
-        )
-        .withAspectPreset(previewAspectPreset)
-        .withCursorOverlay(cursorOverlaySettings, telemetryURL: cursorTelemetryURL)
+    private func syncEditorSession() {
+        driver.send(.sessionChanged(VideoEditorSessionContext(
+            videoURL: videoURL,
+            projectPath: projectPath,
+            editorTitle: editorTitle,
+            recordingSession: recordingSession,
+            initialTimelineEdits: initialTimelineEdits,
+            initialVideoState: initialVideoState,
+            editorSessionID: editorSessionID,
+            defaultShowCursor: model.showCursor
+        )))
     }
 
     private var autosaveSnapshot: ProjectAutosaveSnapshot? {
-        guard let projectPath, let videoURL else { return nil }
-        return ProjectAutosaveSnapshot(
+        driver.autosaveSnapshot(
             projectPath: projectPath,
-            title: editorTitle ?? EditorMediaKind.video.displayTitle(for: videoURL),
-            recordingPath: videoURL.path,
-            screenshotPath: nil,
-            sourceName: recordingSession?.sourceName,
-            editorState: ProjectEditorState(timelineEdits: timelineEdits.snapshot, video: currentVideoState)
+            videoURL: videoURL,
+            editorTitle: editorTitle,
+            recordingSession: recordingSession,
+            timelineEdits: timelineEdits.snapshot
         )
-    }
-
-    private var currentVideoState: ProjectVideoEditorState {
-        ProjectVideoEditorState(
-            background: background,
-            padding: padding,
-            borderRadius: borderRadius,
-            shadow: shadow,
-            backgroundBlur: backgroundBlur,
-            inset: inset,
-            insetColor: insetColor,
-            insetOpacity: insetOpacity,
-            insetBalance: insetBalance,
-            cropSelection: videoCropSelection,
-            cursorOverlay: cursorOverlaySettings,
-            facecamSettings: currentFacecamSettings
-        )
-    }
-
-    private var currentFacecamSettings: FacecamSettings? {
-        guard recordingSession?.hasRecordedCamera == true else {
-            return nil
-        }
-
-        return FacecamSettings(
-            enabled: facecamEnabled,
-            shape: facecamShape,
-            size: facecamSize,
-            cornerRadius: facecamCornerRadius,
-            borderWidth: facecamBorderWidth,
-            borderColor: facecamBorderColor,
-            margin: facecamMargin,
-            anchor: facecamAnchor
-        )
-        .clamped
-    }
-
-    private var cursorOverlaySettings: CursorOverlaySettings {
-        CursorOverlaySettings(
-            isVisible: showCursorOverlay,
-            loops: loopCursor,
-            size: cursorSize,
-            smoothing: cursorSmoothing,
-            style: cursorStyle,
-            variant: cursorStyle.resolvedVariant(cursorVariant)
-        )
-        .clamped
     }
 
     private var cursorTelemetryURL: URL? {
@@ -493,18 +343,15 @@ struct VideoEditorStudioView: View {
         let derivedURL = CursorTelemetryRecorder.telemetryURL(for: videoURL)
         return FileManager.default.fileExists(atPath: derivedURL.path) ? derivedURL : nil
     }
-}
 
-private enum VideoEditorSheet: Identifiable, Equatable {
-    case export
-    case crop(URL)
-
-    var id: String {
-        switch self {
-        case .export:
-            "export"
-        case .crop(let videoURL):
-            "crop:\(videoURL.path)"
+    private var isVideoExportRequestTarget: Bool {
+        guard let videoURL else { return false }
+        if let requestedEditorSessionID = model.videoExportRequestEditorSessionID {
+            return requestedEditorSessionID == editorSessionID
         }
+        if let requestedURL = model.videoExportRequestURL {
+            return requestedURL == videoURL
+        }
+        return true
     }
 }

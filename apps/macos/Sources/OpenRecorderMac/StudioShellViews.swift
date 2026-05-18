@@ -302,7 +302,7 @@ struct StudioTitleBar: View {
     private var exportButton: some View {
         if model.selectedSection == .editor, let videoURL {
             StudioButton(hitTarget: .rounded(7)) {
-                model.requestVideoExport(videoURL)
+                model.requestVideoExport(videoURL, editorSessionID: editorSession?.id)
             } label: {
                 Label("Export Video", systemImage: "arrow.down.circle")
                     .font(.system(size: 12, weight: .semibold))
@@ -311,10 +311,10 @@ struct StudioTitleBar: View {
                     .frame(height: 32)
                     .background(Color.brand, in: RoundedRectangle(cornerRadius: 7))
                     .foregroundStyle(Color.white)
-            }
+                }
         } else if model.selectedSection == .editor, screenshotURL != nil {
             StudioButton(hitTarget: .rounded(7)) {
-                model.requestScreenshotExport()
+                model.requestScreenshotExport(screenshotURL, editorSessionID: editorSession?.id)
             } label: {
                 Label("Export PNG", systemImage: "square.and.arrow.up")
                     .font(.system(size: 12, weight: .semibold))

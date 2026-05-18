@@ -31,8 +31,11 @@ final class AppModel: ObservableObject {
     @Published var selectedCameraDeviceID: String?
     @Published var windowCommand: NativeWindowCommand?
     @Published var screenshotExportRequestID: UUID?
+    @Published var screenshotExportRequestURL: URL?
+    @Published var screenshotExportRequestEditorSessionID: UUID?
     @Published var videoExportRequestID: UUID?
     @Published var videoExportRequestURL: URL?
+    @Published var videoExportRequestEditorSessionID: UUID?
     @Published var isVideoExporting = false
     @Published var videoExportPhase: VideoExportPhase = .idle
     @Published var videoExportProgress = 0.0
@@ -980,16 +983,23 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func requestScreenshotExport() {
+    func requestScreenshotExport(_ screenshotURL: URL? = nil, editorSessionID: UUID? = nil) {
+        guard let url = screenshotURL ?? currentScreenshotURL else {
+            statusMessage = "Open a screenshot first."
+            return
+        }
+        screenshotExportRequestURL = url
+        screenshotExportRequestEditorSessionID = editorSessionID
         screenshotExportRequestID = UUID()
     }
 
-    func requestVideoExport(_ recordingURL: URL? = nil) {
+    func requestVideoExport(_ recordingURL: URL? = nil, editorSessionID: UUID? = nil) {
         guard let url = recordingURL ?? currentVideoURL else {
             statusMessage = "Open a recording first."
             return
         }
         videoExportRequestURL = url
+        videoExportRequestEditorSessionID = editorSessionID
         videoExportRequestID = UUID()
     }
 
@@ -1063,6 +1073,7 @@ final class AppModel: ObservableObject {
         cancelVideoExportTask()
         resetVideoExportResult(removePendingFile: true)
         videoExportRequestURL = nil
+        videoExportRequestEditorSessionID = nil
         videoExportPhase = .idle
         videoExportProgress = 0
         isVideoExporting = false
