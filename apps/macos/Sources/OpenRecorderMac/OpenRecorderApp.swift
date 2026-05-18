@@ -12,6 +12,7 @@ final class OpenRecorderAppDelegate: NSObject, NSApplicationDelegate {
     private let hotKeyController = GlobalRecordingHotKeyController()
     private let updateChecker = UpdateChecker.shared
     private var windowCommandCancellable: AnyCancellable?
+    private var hudStateCancellable: AnyCancellable?
 
     func attach(model: AppModel) {
         if self.model !== model {
@@ -25,12 +26,21 @@ final class OpenRecorderAppDelegate: NSObject, NSApplicationDelegate {
                         self?.handleWindowCommand(command)
                     }
                 }
+            hudStateCancellable = model.$hudState
+                .removeDuplicates()
+                .receive(on: RunLoop.main)
+                .sink { [weak self] hudState in
+                    Task { @MainActor in
+                        self?.syncCaptureUIPresentation(hudState)
+                    }
+                }
         } else {
             self.model = model
         }
         pendingFileURLs.append(contentsOf: launchArgumentFileURLs())
         flushPendingFileURLs()
         handleWindowCommand(model.windowCommand)
+        syncCaptureUIPresentation(model.hudState)
     }
 
     func installWindowActions(
@@ -40,6 +50,7 @@ final class OpenRecorderAppDelegate: NSObject, NSApplicationDelegate {
     ) {
         windowActions.install(openWindow: openWindow, openEditor: openEditor, dismissWindow: dismissWindow)
         handleWindowCommand(model?.windowCommand)
+        syncCaptureUIPresentation(model?.hudState)
     }
 
     func application(_ sender: NSApplication, openFiles filenames: [String]) {
@@ -63,6 +74,14 @@ final class OpenRecorderAppDelegate: NSObject, NSApplicationDelegate {
         }
 
         windowActions.perform(command)
+    }
+
+    private func syncCaptureUIPresentation(_ hudState: HUDState?) {
+        guard windowActions.isInstalled, let hudState else {
+            return
+        }
+
+        windowActions.syncCaptureUIPresentation(hudState)
     }
 
     private func launchArgumentFileURLs() -> [URL] {
@@ -272,6 +291,14 @@ final class AppWindowActions {
         openEditor(session)
     }
 
+    func syncCaptureUIPresentation(_ state: HUDState) {
+        guard state.requiresHiddenCaptureUI else {
+            return
+        }
+
+        dismissCaptureWindows()
+    }
+
     func perform(_ command: NativeWindowCommand) {
         switch command.action {
         case .showHUD:
@@ -297,8 +324,7 @@ final class AppWindowActions {
             openWindow("hud")
             activateApp()
         case .hideRecordingSetup:
-            dismissWindow("hud")
-            dismissWindow("source-selector")
+            dismissCaptureWindows()
         case .showSourceSelector:
             openWindow("source-selector")
         case .showMicrophoneSelector:
@@ -326,6 +352,14 @@ final class AppWindowActions {
         case .closeAreaSelector:
             dismissWindow("area-selector")
         }
+    }
+
+    private func dismissCaptureWindows() {
+        dismissWindow("hud")
+        dismissWindow("source-selector")
+        dismissWindow("area-selector")
+        dismissWindow("microphone-selector")
+        dismissWindow("camera-selector")
     }
 }
 
@@ -425,6 +459,7 @@ private final class OpenRecorderStatusItemController: NSObject {
         let hudTitle = model?.isHUDVisible == true ? "Hide Recorder" : "Show Recorder"
         let hudItem = NSMenuItem(title: hudTitle, action: #selector(toggleRecorderHUD), keyEquivalent: "")
         hudItem.target = self
+        hudItem.isEnabled = model?.canShowCaptureUI ?? true
         menu.addItem(hudItem)
 
         if model?.lastEditorSession != nil {
@@ -471,6 +506,9 @@ private final class OpenRecorderStatusItemController: NSObject {
 
     @objc private func toggleRecorderHUD() {
         guard let model, let windowActions else { return }
+        guard model.canShowCaptureUI else {
+            return
+        }
         if model.isHUDVisible {
             model.hideHUD()
             windowActions.dismiss("hud")

@@ -411,10 +411,14 @@ struct WindowCommandBridge: View {
         Color.clear
             .frame(width: 1, height: 1)
             .onAppear {
+                syncCaptureUIPresentation(model.hudState)
                 handle(model.windowCommand)
             }
             .onChange(of: model.windowCommand?.id) { _, _ in
                 handle(model.windowCommand)
+            }
+            .onChange(of: model.hudState) { _, hudState in
+                syncCaptureUIPresentation(hudState)
             }
     }
 
@@ -445,8 +449,7 @@ struct WindowCommandBridge: View {
             openWindow(id: "hud")
             NSApp.activate(ignoringOtherApps: true)
         case .hideRecordingSetup:
-            dismissWindow(id: "hud")
-            dismissWindow(id: "source-selector")
+            dismissCaptureWindows()
         case .showSourceSelector:
             openWindow(id: "source-selector")
         case .showMicrophoneSelector:
@@ -474,6 +477,22 @@ struct WindowCommandBridge: View {
         case .closeAreaSelector:
             dismissWindow(id: "area-selector")
         }
+    }
+
+    private func syncCaptureUIPresentation(_ state: HUDState) {
+        guard state.requiresHiddenCaptureUI else {
+            return
+        }
+
+        dismissCaptureWindows()
+    }
+
+    private func dismissCaptureWindows() {
+        dismissWindow(id: "hud")
+        dismissWindow(id: "source-selector")
+        dismissWindow(id: "area-selector")
+        dismissWindow(id: "microphone-selector")
+        dismissWindow(id: "camera-selector")
     }
 }
 

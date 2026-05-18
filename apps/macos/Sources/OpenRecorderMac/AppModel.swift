@@ -61,6 +61,7 @@ final class AppModel: ObservableObject {
     private var recordingStartTask: Task<Void, Never>?
     private var stopAfterRecordingStart = false
     private let countdownOverlayController = RecordingCountdownOverlayController()
+    private let captureUIHideDelayNanoseconds: UInt64
 
     let service: RustServiceClient
     let capture: CaptureController
@@ -80,6 +81,7 @@ final class AppModel: ObservableObject {
         accessibilityPermission: AccessibilityPermission = AccessibilityPermission(),
         onboardingStore: OnboardingStateStore = .live,
         screenSelectionPresenter: ScreenSelectionPresenting = ScreenSelectionOverlayController(),
+        captureUIHideDelayNanoseconds: UInt64 = 180_000_000,
         screenshotCapture: (@MainActor (CaptureSource, URL) throws -> Void)? = nil,
         rememberScreenshot: (@Sendable (URL) throws -> Void)? = nil
     ) {
@@ -91,6 +93,7 @@ final class AppModel: ObservableObject {
         self.accessibilityPermission = accessibilityPermission
         self.onboardingStore = onboardingStore
         self.screenSelectionPresenter = screenSelectionPresenter
+        self.captureUIHideDelayNanoseconds = captureUIHideDelayNanoseconds
         self.capture = capture
         self.screenshotCapture = screenshotCapture ?? { source, outputURL in
             try capture.takeScreenshot(source: source, outputURL: outputURL)
@@ -112,6 +115,10 @@ final class AppModel: ObservableObject {
 
     var isHUDVisible: Bool {
         hudState.presentation.isVisible
+    }
+
+    var canShowCaptureUI: Bool {
+        !hudState.requiresHiddenCaptureUI
     }
 
     var canChangeRecordingOptions: Bool {
@@ -482,6 +489,10 @@ final class AppModel: ObservableObject {
     }
 
     func showHUD() {
+        guard canShowCaptureUI else {
+            hudState = hudState.withPresentation(.hidden)
+            return
+        }
         hudState = hudState.withPresentation(.visible)
         requestWindow(.showHUD)
     }
@@ -501,7 +512,7 @@ final class AppModel: ObservableObject {
 
     func showEditor(for session: EditorSession) {
         screenSelectionPresenter.dismiss()
-        setHUDPhase(.choosingMode)
+        hudState = .choosingMode
         isAreaSelectionActive = false
         preferredSourceSelectorKind = nil
         lastEditorSession = session
@@ -534,7 +545,7 @@ final class AppModel: ObservableObject {
         case .screenSelecting:
             requestWindow(.showHUD)
         case .countingDownRecording, .startingRecording, .recording, .stoppingRecording, .capturingScreenshot:
-            showHUD()
+            hudState = hudState.withPresentation(.hidden)
         case .idle, .choosingMode:
             showHUD()
         }
@@ -543,6 +554,11 @@ final class AppModel: ObservableObject {
     private func setHUDPhase(_ phase: HUDPhase) {
         let previousPhase = hudState.phase
         hudState = hudState.withPhase(phase)
+
+        if phase.requiresHiddenCaptureUI {
+            screenSelectionPresenter.dismiss()
+            return
+        }
 
         if shouldCloseCaptureSetup(from: previousPhase, to: phase) {
             requestWindow(.closeCaptureSetup)
@@ -612,8 +628,7 @@ final class AppModel: ObservableObject {
             let outputURL = URL(fileURLWithPath: prepared.path)
             statusMessage = "Recording starts in 3..."
             recordingPhase = .countingDown
-            hudState = HUDState(phase: .countingDownRecording(selectedSource), presentation: .hidden)
-            requestWindow(.hideRecordingSetup)
+            setHUDPhase(.countingDownRecording(selectedSource))
             stopAfterRecordingStart = false
             recordingStartTask?.cancel()
             recordingStartTask = Task { [weak self] in
@@ -809,6 +824,20 @@ final class AppModel: ObservableObject {
 
         do {
             setHUDPhase(.capturingScreenshot(selectedSource))
+            Task { [weak self] in
+                await self?.runScreenshotCapture(source: selectedSource)
+            }
+        }
+    }
+
+    private func runScreenshotCapture(source selectedSource: CaptureSource) async {
+        do {
+            if captureUIHideDelayNanoseconds > 0 {
+                try await Task.sleep(nanoseconds: captureUIHideDelayNanoseconds)
+            } else {
+                await Task.yield()
+            }
+
             let ensuredPaths = try paths ?? service.call("paths", as: AppPaths.self)
             let outputURL = URL(fileURLWithPath: ensuredPaths.screenshotsDir)
                 .appendingPathComponent(timestampedFileName(prefix: "screenshot", extension: "png"))
@@ -827,10 +856,17 @@ final class AppModel: ObservableObject {
             if summary == nil {
                 rememberScreenshotInBackground(outputURL)
             }
+        } catch is CancellationError {
+            restoreScreenshotSetup(source: selectedSource, message: "Screenshot canceled.")
         } catch {
-            setHUDPhase(.ready(.screenshot, selectedSource))
-            statusMessage = error.localizedDescription
+            restoreScreenshotSetup(source: selectedSource, message: error.localizedDescription)
         }
+    }
+
+    private func restoreScreenshotSetup(source: CaptureSource, message: String) {
+        hudState = HUDState(phase: .ready(.screenshot, source), presentation: .visible)
+        statusMessage = message
+        requestWindow(.showHUD)
     }
 
     private func rememberScreenshotInBackground(_ outputURL: URL) {

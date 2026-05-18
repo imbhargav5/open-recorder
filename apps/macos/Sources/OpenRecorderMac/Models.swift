@@ -681,6 +681,25 @@ enum HUDPhase: Hashable {
     case recording(CaptureSource)
     case stoppingRecording(CaptureSource)
     case capturingScreenshot(CaptureSource)
+
+    var requiresHiddenCaptureUI: Bool {
+        switch self {
+        case .countingDownRecording,
+             .startingRecording,
+             .recording,
+             .stoppingRecording,
+             .capturingScreenshot:
+            true
+        case .idle,
+             .choosingMode,
+             .choosingSourceType,
+             .screenSelecting,
+             .selectingSource,
+             .ready,
+             .areaSelecting:
+            false
+        }
+    }
 }
 
 struct HUDState: Hashable {
@@ -689,7 +708,7 @@ struct HUDState: Hashable {
 
     init(phase: HUDPhase = .choosingMode, presentation: HUDPresentationState = .visible) {
         self.phase = phase
-        self.presentation = presentation
+        self.presentation = phase.requiresHiddenCaptureUI ? .hidden : presentation
     }
 
     static var idle: HUDState {
@@ -824,6 +843,10 @@ struct HUDState: Hashable {
         case .capturingScreenshot:
             .screenshotSetup
         }
+    }
+
+    var requiresHiddenCaptureUI: Bool {
+        phase.requiresHiddenCaptureUI
     }
 }
 

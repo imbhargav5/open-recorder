@@ -338,7 +338,7 @@ final class AppModelStateTests: XCTestCase {
         XCTAssertEqual(model.statusMessage, "Opened example-screenshot.png")
     }
 
-    func testAreaScreenshotCompletionOpensEditorEvenIfScreenshotIndexingFails() throws {
+    func testAreaScreenshotCompletionOpensEditorEvenIfScreenshotIndexingFails() async throws {
         var capturedSources: [CaptureSource] = []
         let screenshotsDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("open-recorder-screenshots-\(UUID().uuidString)", isDirectory: true)
@@ -353,6 +353,7 @@ final class AppModelStateTests: XCTestCase {
         )
         let model = AppModel(
             screenRecordingPermission: makeScreenRecordingPermission(isGranted: true),
+            captureUIHideDelayNanoseconds: 0,
             screenshotCapture: { source, outputURL in
                 capturedSources.append(source)
                 try FileManager.default.createDirectory(
@@ -373,6 +374,9 @@ final class AppModelStateTests: XCTestCase {
         model.beginCapture(.screenshot)
         model.requestInteractiveAreaSelection()
         model.completeInteractiveAreaSelection(area)
+        await waitForCondition {
+            model.windowCommand?.action == .showStudio
+        }
 
         let editorSession = try XCTUnwrap(model.windowCommand?.editorSession)
         let screenshotURL = try XCTUnwrap(model.currentScreenshotURL)
@@ -386,6 +390,58 @@ final class AppModelStateTests: XCTestCase {
         XCTAssertEqual(editorSession.url, screenshotURL)
         XCTAssertTrue(screenshotURL.path.hasPrefix(screenshotsDir.path))
         XCTAssertEqual(model.statusMessage, "Captured \(screenshotURL.lastPathComponent)")
+    }
+
+    func testScreenshotCaptureHidesCaptureUIBeforeInvokingCapturer() async throws {
+        var observedPresentation: HUDPresentationState?
+        var observedWindowAction: NativeWindowCommandAction?
+        var model: AppModel!
+        let screenshotsDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("open-recorder-screenshots-\(UUID().uuidString)", isDirectory: true)
+        defer {
+            try? FileManager.default.removeItem(at: screenshotsDir)
+        }
+        let paths = AppPaths(
+            recordingsDir: screenshotsDir.path,
+            screenshotsDir: screenshotsDir.path,
+            projectsDir: screenshotsDir.path,
+            supportDir: screenshotsDir.path
+        )
+        model = AppModel(
+            screenRecordingPermission: makeScreenRecordingPermission(isGranted: true),
+            captureUIHideDelayNanoseconds: 0,
+            screenshotCapture: { _, outputURL in
+                observedPresentation = model.hudState.presentation
+                observedWindowAction = model.windowCommand?.action
+                try FileManager.default.createDirectory(
+                    at: outputURL.deletingLastPathComponent(),
+                    withIntermediateDirectories: true
+                )
+                guard FileManager.default.createFile(atPath: outputURL.path, contents: Data("png".utf8)) else {
+                    throw TestScreenshotError.writeFailed
+                }
+            }
+        )
+        let source = makeSource()
+
+        model.paths = paths
+        model.captureMode = .screenshot
+        model.selectedSource = source
+        model.hudState = HUDState(phase: .ready(.screenshot, source), presentation: .visible)
+
+        model.takeScreenshot()
+        await waitForCondition {
+            observedPresentation != nil
+        }
+
+        XCTAssertEqual(observedPresentation, .hidden)
+        XCTAssertNil(observedWindowAction)
+
+        await waitForCondition {
+            model.windowCommand?.action == .showStudio
+        }
+        XCTAssertEqual(model.hudState, .choosingMode)
+        XCTAssertEqual(model.windowCommand?.action, .showStudio)
     }
 
     func testEditorSessionCanCarryRecordingSessionMetadata() {
@@ -747,7 +803,7 @@ final class AppModelStateTests: XCTestCase {
         XCTAssertTrue(dismissedWindows.isEmpty)
     }
 
-    func testAppWindowActionsHideRecordingSetupClosesCaptureWindows() {
+    func testAppWindowActionsSyncHidesCaptureWindowsForActiveCaptureState() {
         let actions = AppWindowActions()
         var openedWindows: [String] = []
         var dismissedWindows: [String] = []
@@ -758,10 +814,10 @@ final class AppModelStateTests: XCTestCase {
             dismissWindow: { dismissedWindows.append($0) },
             activateApp: {}
         )
-        actions.perform(NativeWindowCommand(action: .hideRecordingSetup))
+        actions.syncCaptureUIPresentation(.capturingScreenshot(makeSource()))
 
         XCTAssertTrue(openedWindows.isEmpty)
-        XCTAssertEqual(dismissedWindows, ["hud", "source-selector"])
+        XCTAssertEqual(dismissedWindows, ["hud", "source-selector", "area-selector", "microphone-selector", "camera-selector"])
     }
 
     func testAppWindowActionsShowScreenRecordingSetupDoesNotOpenSourceSelector() {
@@ -887,6 +943,17 @@ private func makeSource(
         area: nil,
         thumbnailData: nil
     )
+}
+
+@MainActor
+private func waitForCondition(
+    timeout: TimeInterval = 1,
+    condition: @escaping @MainActor () -> Bool
+) async {
+    let deadline = Date().addingTimeInterval(timeout)
+    while !condition(), Date() < deadline {
+        try? await Task.sleep(nanoseconds: 10_000_000)
+    }
 }
 
 @MainActor

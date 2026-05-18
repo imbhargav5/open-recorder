@@ -92,6 +92,25 @@ final class HUDStateMachineTests: XCTestCase {
         XCTAssertEqual(state.presentation, .hidden)
     }
 
+    func testActiveCaptureStatesForceHiddenPresentation() {
+        let source = makeSource()
+        let phases: [HUDPhase] = [
+            .countingDownRecording(source),
+            .startingRecording(source),
+            .recording(source),
+            .stoppingRecording(source),
+            .capturingScreenshot(source)
+        ]
+
+        for phase in phases {
+            let state = HUDState(phase: phase, presentation: .visible)
+
+            XCTAssertTrue(state.requiresHiddenCaptureUI)
+            XCTAssertEqual(state.presentation, .hidden)
+            XCTAssertEqual(state.withPresentation(.visible).presentation, .hidden)
+        }
+    }
+
     func testScreenshotCaptureStateExposesScreenshotModeSourceAndFlow() {
         let source = makeSource()
         let state = HUDState.capturingScreenshot(source)
@@ -145,7 +164,7 @@ final class HUDStateMachineTests: XCTestCase {
         XCTAssertEqual(model.windowCommand?.action, .showHUD)
     }
 
-    func testDuplicateCaptureRequestDuringActiveRecordingStateFocusesHUD() {
+    func testDuplicateCaptureRequestDuringActiveRecordingStateKeepsCaptureUIHidden() {
         let model = AppModel()
         let source = makeSource()
         model.hudState = HUDState(phase: .recording(source), presentation: .hidden)
@@ -155,26 +174,38 @@ final class HUDStateMachineTests: XCTestCase {
         model.beginCapture(.screenshot)
 
         XCTAssertEqual(model.hudState.phase, .recording(source))
-        XCTAssertEqual(model.hudState.presentation, .visible)
-        XCTAssertEqual(model.windowCommand?.action, .showHUD)
+        XCTAssertEqual(model.hudState.presentation, .hidden)
+        XCTAssertNil(model.windowCommand)
     }
 
     func testHUDPresentationTransitionsPreserveCapturePhase() {
         let model = AppModel()
         let source = makeSource()
-        model.hudState = HUDState(phase: .recording(source), presentation: .visible)
+        model.hudState = HUDState(phase: .ready(.recording, source), presentation: .visible)
 
         model.hideHUD()
 
-        XCTAssertEqual(model.hudState.phase, .recording(source))
+        XCTAssertEqual(model.hudState.phase, .ready(.recording, source))
         XCTAssertEqual(model.hudState.presentation, .hidden)
         XCTAssertEqual(model.windowCommand?.action, .hideHUD)
 
         model.showHUD()
 
-        XCTAssertEqual(model.hudState.phase, .recording(source))
+        XCTAssertEqual(model.hudState.phase, .ready(.recording, source))
         XCTAssertEqual(model.hudState.presentation, .visible)
         XCTAssertEqual(model.windowCommand?.action, .showHUD)
+    }
+
+    func testShowHUDDuringActiveCaptureKeepsCaptureUIHidden() {
+        let model = AppModel()
+        let source = makeSource()
+        model.hudState = HUDState(phase: .recording(source), presentation: .hidden)
+
+        model.showHUD()
+
+        XCTAssertEqual(model.hudState.phase, .recording(source))
+        XCTAssertEqual(model.hudState.presentation, .hidden)
+        XCTAssertNil(model.windowCommand)
     }
 
     func testToggleHUDPresentationSwitchesBetweenHiddenAndVisible() {
