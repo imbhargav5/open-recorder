@@ -96,7 +96,7 @@ final class HUDStateMachineTests: XCTestCase {
         let source = makeSource()
         let phases: [HUDPhase] = [
             .countingDownRecording(source),
-            .startingRecording(source),
+            .startingRecording(source, stopRequested: false),
             .recording(source),
             .stoppingRecording(source),
             .capturingScreenshot(source)
@@ -124,11 +124,12 @@ final class HUDStateMachineTests: XCTestCase {
     func testBeginCaptureWithExistingSourceStillShowsSourceTypeChoice() {
         let model = AppModel()
         let source = makeSource()
-        model.selectedSource = source
+        model.setCaptureStateForTesting(CaptureState(phase: .choosingMode, selectedSource: source))
 
         model.beginCapture(.recording)
 
-        XCTAssertEqual(model.hudState, .choosingSourceType(.recording))
+        XCTAssertEqual(model.hudState.phase, .choosingSourceType(.recording))
+        XCTAssertEqual(model.selectedSource, source)
         XCTAssertEqual(model.captureFlow, .recordingSetup)
         XCTAssertFalse(model.canStartNewCapture)
         XCTAssertEqual(model.windowCommand?.action, .showHUD)
@@ -137,9 +138,7 @@ final class HUDStateMachineTests: XCTestCase {
     func testDuplicateCaptureRequestDuringReadyStatePreservesExistingModeAndFocusesSelector() {
         let model = AppModel()
         let source = makeSource(id: "window:1", kind: .window)
-        model.hudState = .ready(.recording, source)
-        model.captureMode = .recording
-        model.selectedSource = source
+        model.setCaptureStateForTesting(.ready(.recording, source))
 
         model.beginCapture(.screenshot)
 
@@ -152,9 +151,7 @@ final class HUDStateMachineTests: XCTestCase {
     func testDuplicateCaptureRequestDuringReadyScreenStateFocusesHUD() {
         let model = AppModel()
         let source = makeSource()
-        model.hudState = .ready(.recording, source)
-        model.captureMode = .recording
-        model.selectedSource = source
+        model.setCaptureStateForTesting(.ready(.recording, source))
 
         model.beginCapture(.screenshot)
 
@@ -167,9 +164,7 @@ final class HUDStateMachineTests: XCTestCase {
     func testDuplicateCaptureRequestDuringActiveRecordingStateKeepsCaptureUIHidden() {
         let model = AppModel()
         let source = makeSource()
-        model.hudState = HUDState(phase: .recording(source), presentation: .hidden)
-        model.captureMode = .recording
-        model.selectedSource = source
+        model.setCaptureStateForTesting(HUDState(phase: .recording(source), presentation: .hidden))
 
         model.beginCapture(.screenshot)
 
@@ -181,7 +176,7 @@ final class HUDStateMachineTests: XCTestCase {
     func testHUDPresentationTransitionsPreserveCapturePhase() {
         let model = AppModel()
         let source = makeSource()
-        model.hudState = HUDState(phase: .ready(.recording, source), presentation: .visible)
+        model.setCaptureStateForTesting(HUDState(phase: .ready(.recording, source), presentation: .visible))
 
         model.hideHUD()
 
@@ -199,7 +194,7 @@ final class HUDStateMachineTests: XCTestCase {
     func testShowHUDDuringActiveCaptureKeepsCaptureUIHidden() {
         let model = AppModel()
         let source = makeSource()
-        model.hudState = HUDState(phase: .recording(source), presentation: .hidden)
+        model.setCaptureStateForTesting(HUDState(phase: .recording(source), presentation: .hidden))
 
         model.showHUD()
 
@@ -228,13 +223,15 @@ final class HUDStateMachineTests: XCTestCase {
         model.beginCapture(.screenshot)
         model.requestInteractiveAreaSelection()
 
-        XCTAssertEqual(model.hudState, .areaSelecting(.screenshot))
+        XCTAssertEqual(model.hudState.phase, .areaSelecting(.screenshot))
+        XCTAssertEqual(model.selectedSource?.kind, .area)
         XCTAssertTrue(model.isAreaSelectionActive)
         XCTAssertFalse(model.canStartNewCapture)
 
         model.beginCapture(.recording)
 
-        XCTAssertEqual(model.hudState, .areaSelecting(.screenshot))
+        XCTAssertEqual(model.hudState.phase, .areaSelecting(.screenshot))
+        XCTAssertEqual(model.selectedSource?.kind, .area)
         XCTAssertEqual(model.captureMode, .screenshot)
         XCTAssertEqual(model.windowCommand?.action, .showAreaSelector)
 
@@ -254,7 +251,7 @@ final class HUDStateMachineTests: XCTestCase {
         let screenshotSession = EditorSession(kind: .screenshot, url: URL(fileURLWithPath: "/tmp/example-screenshot.png"))
 
         let recordingModel = AppModel()
-        recordingModel.hudState = .stoppingRecording(source)
+        recordingModel.setCaptureStateForTesting(.stoppingRecording(source))
         recordingModel.showEditor(for: videoSession)
 
         XCTAssertEqual(recordingModel.hudState, .choosingMode)
@@ -262,7 +259,7 @@ final class HUDStateMachineTests: XCTestCase {
         XCTAssertEqual(recordingModel.windowCommand?.action, .showStudio)
 
         let screenshotModel = AppModel()
-        screenshotModel.hudState = .capturingScreenshot(source)
+        screenshotModel.setCaptureStateForTesting(.capturingScreenshot(source))
         screenshotModel.showEditor(for: screenshotSession)
 
         XCTAssertEqual(screenshotModel.hudState, .choosingMode)

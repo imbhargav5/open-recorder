@@ -31,7 +31,7 @@ final class AppModelStateTests: XCTestCase {
         model.beginCapture(.recording)
         model.chooseSourceType(.window)
 
-        XCTAssertEqual(model.hudState, .selectingSource(.recording))
+        XCTAssertEqual(model.hudState.phase, .selectingSource(.recording))
         XCTAssertEqual(model.preferredSourceSelectorKind, .window)
         XCTAssertEqual(model.statusMessage, "Choose a window.")
         XCTAssertEqual(model.windowCommand?.action, .showSourceSelector)
@@ -43,7 +43,7 @@ final class AppModelStateTests: XCTestCase {
         model.beginCapture(.screenshot)
         model.chooseSourceType(.area)
 
-        XCTAssertEqual(model.hudState, .selectingSource(.screenshot))
+        XCTAssertEqual(model.hudState.phase, .selectingSource(.screenshot))
         XCTAssertEqual(model.preferredSourceSelectorKind, .area)
         XCTAssertEqual(model.statusMessage, "Choose an area.")
         XCTAssertEqual(model.windowCommand?.action, .showSourceSelector)
@@ -76,7 +76,7 @@ final class AppModelStateTests: XCTestCase {
     func testCancelReadySetupDoesNotLeaveSelectorOrAreaCloseCommand() {
         let model = AppModel()
         let source = makeSource()
-        model.selectedSource = source
+        model.setCaptureStateForTesting(CaptureState(phase: .choosingMode, selectedSource: source))
 
         model.beginCapture(.recording)
         model.cancelCapture()
@@ -130,17 +130,18 @@ final class AppModelStateTests: XCTestCase {
 
     func testNewCaptureIsDisabledDuringRecordingTransitions() {
         let model = AppModel()
+        let source = makeSource()
 
-        model.recordingPhase = .starting
+        model.setCaptureStateForTesting(.startingRecording(source))
         XCTAssertFalse(model.canStartNewCapture)
 
-        model.recordingPhase = .countingDown
+        model.setCaptureStateForTesting(.countingDownRecording(source))
         XCTAssertFalse(model.canStartNewCapture)
 
-        model.recordingPhase = .stopping
+        model.setCaptureStateForTesting(.stoppingRecording(source))
         XCTAssertFalse(model.canStartNewCapture)
 
-        model.recordingPhase = .idle
+        model.setCaptureStateForTesting(.choosingMode)
         XCTAssertTrue(model.canStartNewCapture)
     }
 
@@ -172,7 +173,7 @@ final class AppModelStateTests: XCTestCase {
         for state in occupiedStates {
             let model = AppModel()
 
-            model.hudState = state
+            model.setCaptureStateForTesting(state)
 
             XCTAssertFalse(model.canStartNewCapture, "\(state) should occupy the capture slot")
         }
@@ -281,13 +282,11 @@ final class AppModelStateTests: XCTestCase {
         let model = AppModel(screenSelectionPresenter: presenter)
         let source = makeSource(displayID: 42)
         model.capture.setSourcesForTesting([source])
-        model.captureMode = .recording
-        model.selectedSource = source
-        model.hudState = .ready(.recording, source)
+        model.setCaptureStateForTesting(.ready(.recording, source))
 
         model.requestSourceSelector()
 
-        XCTAssertEqual(model.hudState, .screenSelecting(.recording))
+        XCTAssertEqual(model.hudState.phase, .screenSelecting(.recording))
         XCTAssertEqual(model.preferredSourceSelectorKind, .display)
         XCTAssertEqual(presenter.presentedSources, [source])
         XCTAssertNotEqual(model.windowCommand?.action, .showSourceSelector)
@@ -303,7 +302,7 @@ final class AppModelStateTests: XCTestCase {
         model.chooseSourceType(.screen)
         presenter.cancel()
 
-        XCTAssertEqual(model.hudState, .choosingSourceType(.recording))
+        XCTAssertEqual(model.hudState.phase, .choosingSourceType(.recording))
         XCTAssertEqual(model.statusMessage, "Choose a source type.")
         XCTAssertEqual(model.windowCommand?.action, .showHUD)
         XCTAssertGreaterThanOrEqual(presenter.dismissCallCount, 1)
@@ -425,9 +424,7 @@ final class AppModelStateTests: XCTestCase {
         let source = makeSource()
 
         model.paths = paths
-        model.captureMode = .screenshot
-        model.selectedSource = source
-        model.hudState = HUDState(phase: .ready(.screenshot, source), presentation: .visible)
+        model.setCaptureStateForTesting(HUDState(phase: .ready(.screenshot, source), presentation: .visible))
 
         model.takeScreenshot()
         await waitForCondition {
@@ -435,13 +432,83 @@ final class AppModelStateTests: XCTestCase {
         }
 
         XCTAssertEqual(observedPresentation, .hidden)
-        XCTAssertNil(observedWindowAction)
+        XCTAssertEqual(observedWindowAction, .hideRecordingSetup)
 
         await waitForCondition {
             model.windowCommand?.action == .showStudio
         }
         XCTAssertEqual(model.hudState, .choosingMode)
         XCTAssertEqual(model.windowCommand?.action, .showStudio)
+    }
+
+    func testCancelingScreenshotDuringCaptureDoesNotOpenEditor() async throws {
+        var didCapture = false
+        var model: AppModel!
+        let screenshotsDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("open-recorder-screenshots-\(UUID().uuidString)", isDirectory: true)
+        defer {
+            try? FileManager.default.removeItem(at: screenshotsDir)
+        }
+        let paths = AppPaths(
+            recordingsDir: screenshotsDir.path,
+            screenshotsDir: screenshotsDir.path,
+            projectsDir: screenshotsDir.path,
+            supportDir: screenshotsDir.path
+        )
+        model = AppModel(
+            screenRecordingPermission: makeScreenRecordingPermission(isGranted: true),
+            captureUIHideDelayNanoseconds: 0,
+            screenshotCapture: { _, outputURL in
+                didCapture = true
+                try FileManager.default.createDirectory(
+                    at: outputURL.deletingLastPathComponent(),
+                    withIntermediateDirectories: true
+                )
+                guard FileManager.default.createFile(atPath: outputURL.path, contents: Data("png".utf8)) else {
+                    throw TestScreenshotError.writeFailed
+                }
+                model.cancelCapture()
+            }
+        )
+        let source = makeSource()
+
+        model.paths = paths
+        model.setCaptureStateForTesting(.ready(.screenshot, source))
+        model.takeScreenshot()
+        await waitForCondition {
+            didCapture
+        }
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertEqual(model.hudState, .choosingMode)
+        XCTAssertEqual(model.statusMessage, "Ready")
+        XCTAssertNil(model.currentScreenshotURL)
+        XCTAssertNil(model.currentVideoURL)
+        XCTAssertNotEqual(model.windowCommand?.action, .showStudio)
+        XCTAssertTrue(model.canStartNewCapture)
+    }
+
+    func testStoppingRecordingWithoutWrittenFileReleasesCaptureState() async throws {
+        let outputURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("missing-recording-\(UUID().uuidString).mp4")
+        let model = AppModel(
+            stopRecording: {
+                outputURL
+            }
+        )
+        let source = makeSource()
+
+        model.setCaptureStateForTesting(.recording(source))
+        model.stopRecording()
+        await waitForCondition {
+            model.statusMessage == "Recording stopped before a file was written."
+        }
+
+        XCTAssertEqual(model.hudState, .choosingMode)
+        XCTAssertEqual(model.captureFlow, .choice)
+        XCTAssertTrue(model.canStartNewCapture)
+        XCTAssertEqual(model.currentVideoURL, outputURL)
+        XCTAssertNil(model.currentScreenshotURL)
     }
 
     func testEditorSessionCanCarryRecordingSessionMetadata() {
@@ -493,7 +560,6 @@ final class AppModelStateTests: XCTestCase {
     func testSystemAudioToggleIsLockedDuringActiveRecording() {
         let model = AppModel()
         model.includeSystemAudio = true
-        model.recordingPhase = .recording
         model.capture.setRecordingForTesting(true)
 
         XCTAssertFalse(model.canChangeRecordingOptions)
@@ -742,9 +808,7 @@ final class AppModelStateTests: XCTestCase {
             area: nil,
             thumbnailData: nil
         )
-        model.selectedSource = source
-        model.recordingPhase = .countingDown
-        model.hudState = HUDState(phase: .countingDownRecording(source), presentation: .hidden)
+        model.setCaptureStateForTesting(HUDState(phase: .countingDownRecording(source), presentation: .hidden))
 
         model.toggleRecordingShortcut()
 
@@ -768,13 +832,12 @@ final class AppModelStateTests: XCTestCase {
             area: nil,
             thumbnailData: nil
         )
-        model.recordingPhase = .starting
-        model.hudState = .startingRecording(source)
+        model.setCaptureStateForTesting(.startingRecording(source))
 
         model.toggleRecordingShortcut()
 
         XCTAssertEqual(model.recordingPhase, .starting)
-        XCTAssertEqual(model.hudState, .startingRecording(source))
+        XCTAssertEqual(model.hudState, .startingRecording(source, stopRequested: true))
         XCTAssertEqual(model.statusMessage, "Recording will stop after it starts.")
     }
 
@@ -803,7 +866,7 @@ final class AppModelStateTests: XCTestCase {
         XCTAssertTrue(dismissedWindows.isEmpty)
     }
 
-    func testAppWindowActionsSyncHidesCaptureWindowsForActiveCaptureState() {
+    func testAppWindowActionsHideRecordingSetupDismissesCaptureWindows() {
         let actions = AppWindowActions()
         var openedWindows: [String] = []
         var dismissedWindows: [String] = []
@@ -814,7 +877,7 @@ final class AppModelStateTests: XCTestCase {
             dismissWindow: { dismissedWindows.append($0) },
             activateApp: {}
         )
-        actions.syncCaptureUIPresentation(.capturingScreenshot(makeSource()))
+        actions.perform(NativeWindowCommand(action: .hideRecordingSetup))
 
         XCTAssertTrue(openedWindows.isEmpty)
         XCTAssertEqual(dismissedWindows, ["hud", "source-selector", "area-selector", "microphone-selector", "camera-selector"])

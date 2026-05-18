@@ -7,10 +7,7 @@ import UniformTypeIdentifiers
 @MainActor
 final class AppModel: ObservableObject {
     @Published var selectedSection: AppSection = .capture
-    @Published var captureMode: CaptureMode = .recording
-    @Published var hudState: HUDState = .choosingMode
-    @Published var selectedSource: CaptureSource?
-    @Published var preferredSourceSelectorKind: CaptureSourceKind?
+    @Published private(set) var captureState: CaptureState = .choosingMode
     @Published var paths: AppPaths?
     @Published var projects: [ProjectSummary] = []
     @Published var currentVideoURL: URL?
@@ -18,7 +15,6 @@ final class AppModel: ObservableObject {
     @Published var lastEditorSession: EditorSession?
     @Published var statusMessage = "Ready"
     @Published var serviceHealth: HealthPayload?
-    @Published var recordingPhase: RecordingPhase = .idle
     @Published var includeMicrophone = false
     @Published var includeSystemAudio = false
     @Published var includeCamera = false
@@ -34,7 +30,6 @@ final class AppModel: ObservableObject {
     @Published var selectedMicrophoneDeviceID: String?
     @Published var selectedCameraDeviceID: String?
     @Published var windowCommand: NativeWindowCommand?
-    @Published var isAreaSelectionActive = false
     @Published var screenshotExportRequestID: UUID?
     @Published var videoExportRequestID: UUID?
     @Published var videoExportRequestURL: URL?
@@ -59,7 +54,7 @@ final class AppModel: ObservableObject {
     private var activeFacecamURL: URL?
     private var displayFlashWindows: [NSWindow] = []
     private var recordingStartTask: Task<Void, Never>?
-    private var stopAfterRecordingStart = false
+    private var screenshotCaptureTask: Task<Void, Never>?
     private let countdownOverlayController = RecordingCountdownOverlayController()
     private let captureUIHideDelayNanoseconds: UInt64
 
@@ -70,6 +65,7 @@ final class AppModel: ObservableObject {
     private let onboardingStore: OnboardingStateStore
     private let screenSelectionPresenter: ScreenSelectionPresenting
     private let screenshotCapture: @MainActor (CaptureSource, URL) throws -> Void
+    private let stopRecordingCapture: @MainActor () async throws -> URL
     private let rememberScreenshot: @Sendable (URL) throws -> Void
     private let facecamRecorder = FacecamRecorder()
     private let cursorTelemetryRecorder = CursorTelemetryRecorder()
@@ -83,6 +79,7 @@ final class AppModel: ObservableObject {
         screenSelectionPresenter: ScreenSelectionPresenting = ScreenSelectionOverlayController(),
         captureUIHideDelayNanoseconds: UInt64 = 180_000_000,
         screenshotCapture: (@MainActor (CaptureSource, URL) throws -> Void)? = nil,
+        stopRecording: (@MainActor () async throws -> URL)? = nil,
         rememberScreenshot: (@Sendable (URL) throws -> Void)? = nil
     ) {
         let service = RustServiceClient()
@@ -98,6 +95,9 @@ final class AppModel: ObservableObject {
         self.screenshotCapture = screenshotCapture ?? { source, outputURL in
             try capture.takeScreenshot(source: source, outputURL: outputURL)
         }
+        self.stopRecordingCapture = stopRecording ?? {
+            try await capture.stopRecording()
+        }
         self.rememberScreenshot = rememberScreenshot ?? { outputURL in
             let _: PreparedFile = try service.call(
                 "rememberScreenshot",
@@ -109,20 +109,48 @@ final class AppModel: ObservableObject {
         self.accessibilityPermissionState = accessibilityPermission.currentState()
     }
 
+    var captureMode: CaptureMode {
+        captureState.mode ?? .recording
+    }
+
+    var hudState: HUDState {
+        captureState
+    }
+
+    var selectedSource: CaptureSource? {
+        captureState.source
+    }
+
+    var preferredSourceSelectorKind: CaptureSourceKind? {
+        captureState.preferredSourceKind ?? captureState.source?.kind
+    }
+
+    var recordingPhase: RecordingPhase {
+        captureState.recordingPhase
+    }
+
+    var isAreaSelectionActive: Bool {
+        captureState.isAreaSelectionActive
+    }
+
+    func setCaptureStateForTesting(_ state: CaptureState) {
+        captureState = state
+    }
+
     var captureFlow: CaptureFlow {
-        hudState.captureFlow
+        captureState.captureFlow
     }
 
     var isHUDVisible: Bool {
-        hudState.presentation.isVisible
+        captureState.presentation.isVisible
     }
 
     var canShowCaptureUI: Bool {
-        !hudState.requiresHiddenCaptureUI
+        captureState.canShowCaptureUI
     }
 
     var canChangeRecordingOptions: Bool {
-        recordingPhase == .idle && !capture.isRecording
+        captureState.canChangeRecordingOptions(runtimeIsRecording: capture.isRecording)
     }
 
     func bootstrap() {
@@ -164,7 +192,7 @@ final class AppModel: ObservableObject {
 
     func showOnboarding() {
         refreshOnboardingPermissionStates()
-        hudState = hudState.withPresentation(.hidden)
+        captureState = captureState.withPresentation(.hidden)
         requestWindow(.showOnboarding)
     }
 
@@ -217,7 +245,7 @@ final class AppModel: ObservableObject {
         onboardingStore.setCompleted(true)
         onboardingStatusMessage = ""
         statusMessage = "Ready"
-        hudState = hudState.withPresentation(.visible)
+        captureState = captureState.withPresentation(.visible)
         requestWindow(.finishOnboarding)
         return true
     }
@@ -250,15 +278,7 @@ final class AppModel: ObservableObject {
         await capture.reloadSources(requestScreenRecordingPermission: requestScreenRecordingPermission)
 
         let resolved = resolveSelection(previous: previousSelection, in: capture.sources)
-        selectedSource = resolved
-
-        guard let resolved, let previousSelection else {
-            return
-        }
-        if case .ready(let mode, let hudSource) = hudState.phase,
-           hudSource.id == previousSelection.id || matchesIdentity(hudSource, previousSelection) {
-            setHUDPhase(.ready(mode, resolved))
-        }
+        dispatch(.refreshSelectedSource(resolved))
     }
 
     private func resolveSelection(previous: CaptureSource?, in sources: [CaptureSource]) -> CaptureSource? {
@@ -303,40 +323,99 @@ final class AppModel: ObservableObject {
         }
     }
 
+    @discardableResult
+    private func dispatch(_ event: CaptureEvent) -> CaptureTransition {
+        let transition = captureState.applying(event)
+        captureState = transition.state
+        if let message = transition.statusMessage {
+            statusMessage = message
+        }
+        interpretCaptureEffects(transition.effects)
+        return transition
+    }
+
+    private func interpretCaptureEffects(_ effects: [CaptureEffect]) {
+        for effect in effects {
+            switch effect {
+            case .showHUD:
+                requestWindow(.showHUD)
+            case .hideHUD:
+                requestWindow(.hideHUD)
+            case .closeCaptureSetup:
+                requestWindow(.closeCaptureSetup)
+            case .showSourceSelector:
+                requestWindow(.showSourceSelector)
+            case .showAreaSelector:
+                requestWindow(.showAreaSelector)
+            case .showRecordingSetup(let kind):
+                requestWindow(kind == .display ? .showScreenRecordingSetup : .showRecordingSetup)
+            case .dismissScreenSelection:
+                screenSelectionPresenter.dismiss()
+            case .dismissCaptureWindows:
+                requestWindow(.hideRecordingSetup)
+            case .focusActiveCaptureWindow:
+                focusActiveCaptureWindow()
+            case .flashDisplay(let source):
+                flashDisplay(for: source)
+            case .cancelRecordingStart:
+                recordingStartTask?.cancel()
+                recordingStartTask = nil
+                countdownOverlayController.dismiss()
+            case .cancelScreenshotCapture:
+                screenshotCaptureTask?.cancel()
+                screenshotCaptureTask = nil
+            case .prepareRecordingFile(let source):
+                prepareRecordingFile(for: source)
+            case .runRecordingStart(let source, let outputURL):
+                recordingStartTask?.cancel()
+                recordingStartTask = Task { [weak self] in
+                    await self?.runRecordingStartFlow(source: source, outputURL: outputURL)
+                }
+            case .stopRecording(let source):
+                Task {
+                    await runRecordingStopFlow(source: source)
+                }
+            case .runScreenshotCapture(let source):
+                screenshotCaptureTask?.cancel()
+                screenshotCaptureTask = Task { [weak self] in
+                    await self?.runScreenshotCapture(source: source)
+                }
+            }
+        }
+    }
+
+    private func prepareRecordingFile(for source: CaptureSource) {
+        do {
+            let fileName = timestampedFileName(prefix: "recording", extension: "mp4")
+            let prepared: PreparedFile = try service.call(
+                "prepareRecordingFile",
+                params: ["fileName": fileName],
+                as: PreparedFile.self
+            )
+            dispatch(.recordingFilePrepared(source, URL(fileURLWithPath: prepared.path)))
+        } catch {
+            dispatch(.recordingFilePreparationFailed(source, message: error.localizedDescription))
+        }
+    }
+
     var canStartNewCapture: Bool {
-        recordingPhase == .idle &&
-            !capture.isRecording &&
-            !isAreaSelectionActive &&
-            !hudState.isCaptureOccupied
+        captureState.canStartNewCapture(runtimeIsRecording: capture.isRecording)
     }
 
     func beginCapture(_ mode: CaptureMode) {
-        guard canStartNewCapture else {
-            statusMessage = "Finish or cancel the current capture before starting another."
-            focusActiveCaptureWindow()
-            return
-        }
-
-        captureMode = mode
-        preferredSourceSelectorKind = nil
-        screenSelectionPresenter.dismiss()
-        setHUDPhase(.choosingSourceType(mode))
-        statusMessage = "Choose a source type."
-        requestWindow(.showHUD)
+        dispatch(.beginCapture(mode, runtimeIsRecording: capture.isRecording))
     }
 
     func selectSource(_ source: CaptureSource) {
-        preferredSourceSelectorKind = source.kind
-        selectedSource = source
-        setHUDPhase(.ready(hudState.mode ?? captureMode, source))
-        statusMessage = "Selected \(source.name)"
-        if source.kind == .display {
-            flashDisplay(for: source)
-        }
+        dispatch(.selectSource(source))
     }
 
     func selectInteractiveAreaSource(area: CaptureArea? = nil) {
-        let source = CaptureSource(
+        dispatch(.selectSource(interactiveAreaSource(area: area)))
+    }
+
+    private func interactiveAreaSource(area: CaptureArea? = nil) -> CaptureSource {
+        CaptureSource(
             id: "area:interactive",
             kind: .area,
             name: "Selected Area",
@@ -347,54 +426,39 @@ final class AppModel: ObservableObject {
             area: area,
             thumbnailData: nil
         )
-        preferredSourceSelectorKind = .area
-        selectedSource = source
-        setHUDPhase(.ready(hudState.mode ?? captureMode, source))
-        statusMessage = "Selected area"
     }
 
     func chooseSourceType(_ sourceType: CaptureSourceType) {
-        let mode = hudState.mode ?? captureMode
-        captureMode = mode
-
-        switch sourceType {
-        case .screen:
-            requestScreenSelection()
-        case .window:
-            requestSourceSelector(kind: .window, mode: mode, statusMessage: "Choose a window.")
-        case .area:
-            requestSourceSelector(kind: .area, mode: mode, statusMessage: "Choose an area.")
+        dispatch(.chooseSourceType(sourceType))
+        if sourceType == .screen {
+            presentCurrentScreenSelection()
         }
     }
 
     func requestSourceSelector(kind: CaptureSourceKind? = nil) {
-        let resolvedKind = kind ?? selectedSource?.kind ?? preferredSourceSelectorKind ?? .window
-        guard resolvedKind != .display else {
-            requestScreenSelection()
-            return
+        dispatch(.requestSourceSelector(kind))
+        if case .screenSelecting = captureState.phase {
+            presentCurrentScreenSelection()
         }
-
-        preferredSourceSelectorKind = resolvedKind
-        requestWindow(.showSourceSelector)
-    }
-
-    private func requestSourceSelector(
-        kind: CaptureSourceKind,
-        mode: CaptureMode,
-        statusMessage: String
-    ) {
-        preferredSourceSelectorKind = kind
-        setHUDPhase(.selectingSource(mode))
-        self.statusMessage = statusMessage
-        requestWindow(.showSourceSelector)
     }
 
     func requestScreenSelection() {
-        let mode = hudState.mode ?? captureMode
-        captureMode = mode
-        preferredSourceSelectorKind = .display
-        setHUDPhase(.screenSelecting(mode))
-        statusMessage = "Choose a screen."
+        dispatch(.requestScreenSelection)
+        presentCurrentScreenSelection()
+    }
+
+    func completeScreenSelection(_ source: CaptureSource) {
+        dispatch(.completeScreenSelection(source))
+    }
+
+    func cancelScreenSelection(message: String? = nil) {
+        dispatch(.cancelScreenSelection(message: message))
+    }
+
+    private func presentCurrentScreenSelection() {
+        guard case .screenSelecting(let mode) = captureState.phase else {
+            return
+        }
 
         let currentDisplaySources = capture.sources.filter { $0.kind == .display }
         guard currentDisplaySources.isEmpty else {
@@ -410,27 +474,8 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func completeScreenSelection(_ source: CaptureSource) {
-        guard source.kind == .display else {
-            statusMessage = "Choose a screen."
-            return
-        }
-
-        screenSelectionPresenter.dismiss()
-        selectSource(source)
-        requestWindow(.showHUD)
-    }
-
-    func cancelScreenSelection(message: String? = nil) {
-        screenSelectionPresenter.dismiss()
-        let mode = hudState.mode ?? captureMode
-        setHUDPhase(.choosingSourceType(mode))
-        statusMessage = message ?? "Choose a source type."
-        requestWindow(.showHUD)
-    }
-
     private func presentScreenSelection(displaySources: [CaptureSource], mode: CaptureMode) {
-        guard case .screenSelecting(let activeMode) = hudState.phase,
+        guard case .screenSelecting(let activeMode) = captureState.phase,
               activeMode == mode else {
             return
         }
@@ -452,24 +497,12 @@ final class AppModel: ObservableObject {
     }
 
     func requestInteractiveAreaSelection() {
-        let mode = hudState.mode ?? captureMode
-        selectInteractiveAreaSource()
-        setHUDPhase(.areaSelecting(mode))
-        isAreaSelectionActive = true
-        statusMessage = "Draw an area to capture."
-        requestWindow(.showAreaSelector)
+        dispatch(.selectSource(interactiveAreaSource()))
+        dispatch(.requestInteractiveAreaSelection)
     }
 
     func completeInteractiveAreaSelection(_ area: CaptureArea) {
-        isAreaSelectionActive = false
-        selectInteractiveAreaSource(area: area)
-
-        switch captureMode {
-        case .recording:
-            startRecording()
-        case .screenshot:
-            takeScreenshot()
-        }
+        dispatch(.completeInteractiveAreaSelection(interactiveAreaSource(area: area)))
     }
 
     func cancelInteractiveAreaSelection() {
@@ -477,11 +510,7 @@ final class AppModel: ObservableObject {
     }
 
     func cancelCapture() {
-        isAreaSelectionActive = false
-        screenSelectionPresenter.dismiss()
-        preferredSourceSelectorKind = nil
-        setHUDPhase(.choosingMode)
-        statusMessage = "Ready"
+        dispatch(.cancelCapture)
     }
 
     func requestWindow(_ action: NativeWindowCommandAction, editorSession: EditorSession? = nil) {
@@ -489,17 +518,11 @@ final class AppModel: ObservableObject {
     }
 
     func showHUD() {
-        guard canShowCaptureUI else {
-            hudState = hudState.withPresentation(.hidden)
-            return
-        }
-        hudState = hudState.withPresentation(.visible)
-        requestWindow(.showHUD)
+        dispatch(.showHUD)
     }
 
     func hideHUD() {
-        hudState = hudState.withPresentation(.hidden)
-        requestWindow(.hideHUD)
+        dispatch(.hideHUD)
     }
 
     func toggleHUDPresentation() {
@@ -511,10 +534,7 @@ final class AppModel: ObservableObject {
     }
 
     func showEditor(for session: EditorSession) {
-        screenSelectionPresenter.dismiss()
-        hudState = .choosingMode
-        isAreaSelectionActive = false
-        preferredSourceSelectorKind = nil
+        dispatch(.showEditor)
         lastEditorSession = session
         selectedSection = .editor
         requestWindow(.showStudio, editorSession: session)
@@ -529,7 +549,7 @@ final class AppModel: ObservableObject {
     }
 
     private func focusActiveCaptureWindow() {
-        switch hudState.phase {
+        switch captureState.phase {
         case .selectingSource:
             requestWindow(.showSourceSelector)
         case .ready(_, let source):
@@ -545,54 +565,20 @@ final class AppModel: ObservableObject {
         case .screenSelecting:
             requestWindow(.showHUD)
         case .countingDownRecording, .startingRecording, .recording, .stoppingRecording, .capturingScreenshot:
-            hudState = hudState.withPresentation(.hidden)
+            captureState = captureState.withPresentation(.hidden)
         case .idle, .choosingMode:
             showHUD()
         }
     }
 
-    private func setHUDPhase(_ phase: HUDPhase) {
-        let previousPhase = hudState.phase
-        hudState = hudState.withPhase(phase)
-
-        if phase.requiresHiddenCaptureUI {
-            screenSelectionPresenter.dismiss()
-            return
-        }
-
-        if shouldCloseCaptureSetup(from: previousPhase, to: phase) {
-            requestWindow(.closeCaptureSetup)
-        }
-    }
-
-    private func shouldCloseCaptureSetup(from previousPhase: HUDPhase, to nextPhase: HUDPhase) -> Bool {
-        guard case .choosingMode = nextPhase else {
-            return false
-        }
-
-        switch previousPhase {
-        case .choosingSourceType, .screenSelecting, .selectingSource, .ready, .areaSelecting:
-            return true
-        case .idle,
-             .choosingMode,
-             .countingDownRecording,
-             .startingRecording,
-             .recording,
-             .stoppingRecording,
-             .capturingScreenshot:
-            return false
-        }
-    }
-
     func toggleRecordingShortcut() {
-        switch hudState.phase {
+        switch captureState.phase {
         case .ready(.recording, _):
             startRecording()
         case .countingDownRecording:
             cancelCountdownRecording()
         case .startingRecording:
-            stopAfterRecordingStart = true
-            statusMessage = "Recording will stop after it starts."
+            dispatch(.recordingStopRequested)
         case .recording:
             stopRecording()
         case .stoppingRecording:
@@ -610,33 +596,7 @@ final class AppModel: ObservableObject {
     }
 
     func startRecording() {
-        guard let selectedSource = hudState.source ?? selectedSource else {
-            statusMessage = "Choose a source first."
-            return
-        }
-        guard recordingPhase == .idle else {
-            return
-        }
-
-        do {
-            let fileName = timestampedFileName(prefix: "recording", extension: "mp4")
-            let prepared: PreparedFile = try service.call(
-                "prepareRecordingFile",
-                params: ["fileName": fileName],
-                as: PreparedFile.self
-            )
-            let outputURL = URL(fileURLWithPath: prepared.path)
-            statusMessage = "Recording starts in 3..."
-            recordingPhase = .countingDown
-            setHUDPhase(.countingDownRecording(selectedSource))
-            stopAfterRecordingStart = false
-            recordingStartTask?.cancel()
-            recordingStartTask = Task { [weak self] in
-                await self?.runRecordingStartFlow(source: selectedSource, outputURL: outputURL)
-            }
-        } catch {
-            statusMessage = error.localizedDescription
-        }
+        dispatch(.recordingStartRequested)
     }
 
     private func runRecordingStartFlow(source selectedSource: CaptureSource, outputURL: URL) async {
@@ -651,9 +611,7 @@ final class AppModel: ObservableObject {
             try await countdownOverlayController.run(for: selectedSource)
             guard !Task.isCancelled else { return }
 
-            statusMessage = "Starting recording..."
-            recordingPhase = .starting
-            setHUDPhase(.startingRecording(selectedSource))
+            dispatch(.recordingStarting(selectedSource))
 
             cursorTelemetryRecorder.start(for: selectedSource)
             try await capture.startRecording(
@@ -686,14 +644,19 @@ final class AppModel: ObservableObject {
 
             currentVideoURL = outputURL
             currentScreenshotURL = nil
-            recordingPhase = .recording
-            setHUDPhase(.recording(selectedSource))
-            recordingStartTask = nil
-            if !statusMessage.hasPrefix("Recording without facecam") {
-                statusMessage = "Recording \(selectedSource.name)"
+            let shouldStopAfterStart: Bool
+            if case .startingRecording(_, let stopRequested) = captureState.phase {
+                shouldStopAfterStart = stopRequested
+            } else {
+                shouldStopAfterStart = false
             }
-            if stopAfterRecordingStart {
-                stopAfterRecordingStart = false
+            let facecamStatusMessage = statusMessage.hasPrefix("Recording without facecam") ? statusMessage : nil
+            dispatch(.recordingStarted(selectedSource))
+            recordingStartTask = nil
+            if let facecamStatusMessage {
+                statusMessage = facecamStatusMessage
+            }
+            if shouldStopAfterStart {
                 stopRecording()
             }
         } catch is CancellationError {
@@ -707,127 +670,98 @@ final class AppModel: ObservableObject {
             activeScreenStartedAt = nil
             activeFacecamStartedAt = nil
             activeFacecamURL = nil
-            recordingPhase = .interrupted
             restoreRecordingSetup(source: selectedSource, message: error.localizedDescription)
         }
     }
 
     private func cancelCountdownRecording() {
-        guard case .countingDownRecording(let source) = hudState.phase else { return }
-        recordingStartTask?.cancel()
-        recordingStartTask = nil
-        stopAfterRecordingStart = false
-        countdownOverlayController.dismiss()
-        restoreRecordingSetup(source: source, message: "Recording canceled.")
+        guard case .countingDownRecording = captureState.phase else { return }
+        dispatch(.recordingStopRequested)
     }
 
     private func restoreRecordingSetup(source: CaptureSource, message: String? = nil) {
-        recordingPhase = .idle
-        stopAfterRecordingStart = false
         recordingStartTask = nil
         countdownOverlayController.dismiss()
-        hudState = HUDState(phase: .ready(.recording, source), presentation: .visible)
-        statusMessage = message ?? statusMessage
-        requestWindow(source.kind == .display ? .showScreenRecordingSetup : .showRecordingSetup)
+        dispatch(.recordingRestored(source, message: message ?? statusMessage))
     }
 
     func stopRecording() {
-        if recordingPhase == .countingDown {
-            cancelCountdownRecording()
+        guard recordingPhase != .idle || capture.isRecording else {
             return
         }
-        if recordingPhase == .starting {
-            stopAfterRecordingStart = true
-            statusMessage = "Recording will stop after it starts."
-            return
-        }
-        guard recordingPhase == .recording || capture.isRecording else {
-            return
-        }
-        let source = hudState.source ?? selectedSource
-        recordingPhase = .stopping
-        if let source {
-            setHUDPhase(.stoppingRecording(source))
-        }
-        Task {
-            do {
-                let outputURL = try await capture.stopRecording()
-                let stoppedFacecamURL = try? await facecamRecorder.stop()
-                let cursorTelemetryURL = cursorTelemetryRecorder.stop(videoURL: outputURL)
-                currentVideoURL = outputURL
-                currentScreenshotURL = nil
-
-                if FileManager.default.fileExists(atPath: outputURL.path) {
-                    let timelineEdits = await initialTimelineEdits(
-                        videoURL: outputURL,
-                        cursorTelemetryURL: cursorTelemetryURL
-                    )
-                    let recordingSession = RecordingSessionBuilder.build(
-                        screenVideoURL: outputURL,
-                        facecamURL: stoppedFacecamURL ?? activeFacecamURL,
-                        sourceName: selectedSource?.name,
-                        showCursor: showCursor,
-                        cursorTelemetryURL: cursorTelemetryURL,
-                        screenStartedAt: activeScreenStartedAt,
-                        facecamStartedAt: activeFacecamStartedAt
-                    )
-                    let summary: ProjectSummary = try service.call(
-                        "registerRecording",
-                        params: [
-                            "path": outputURL.path,
-                            "sourceName": selectedSource?.name ?? "Screen Recording",
-                            "title": outputURL.deletingPathExtension().lastPathComponent,
-                            "editorState": jsonObject(for: ProjectEditorState(timelineEdits: timelineEdits)) ?? [:]
-                        ],
-                        as: ProjectSummary.self
-                    )
-                    projects = try service.call("listProjects", as: [ProjectSummary].self)
-                    showEditor(for: EditorSession(
-                        kind: .video,
-                        url: outputURL,
-                        title: summary.title,
-                        projectPath: summary.path,
-                        recordingSession: recordingSession,
-                        timelineEditSnapshot: timelineEdits
-                    ))
-                    statusMessage = "Saved \(summary.title)"
-                } else {
-                    statusMessage = "Recording stopped before a file was written."
-                }
-            } catch {
-                recordingPhase = .interrupted
-                _ = cursorTelemetryRecorder.stop(videoURL: nil)
-                statusMessage = error.localizedDescription
-                if let source {
-                    setHUDPhase(.ready(.recording, source))
-                } else {
-                    setHUDPhase(.choosingMode)
-                }
-            }
-            activeScreenStartedAt = nil
-            activeFacecamStartedAt = nil
-            activeFacecamURL = nil
-            recordingPhase = .idle
+        if recordingPhase == .idle, capture.isRecording {
+            dispatch(.recordingStopping(captureState.source))
+        } else {
+            dispatch(.recordingStopRequested)
         }
     }
 
-    func takeScreenshot() {
-        guard let selectedSource = hudState.source ?? selectedSource else {
-            statusMessage = "Choose a source first."
-            return
+    private func runRecordingStopFlow(source: CaptureSource?) async {
+        do {
+            let outputURL = try await stopRecordingCapture()
+            let stoppedFacecamURL = try? await facecamRecorder.stop()
+            let cursorTelemetryURL = cursorTelemetryRecorder.stop(videoURL: outputURL)
+            currentVideoURL = outputURL
+            currentScreenshotURL = nil
+
+            if FileManager.default.fileExists(atPath: outputURL.path) {
+                let timelineEdits = await initialTimelineEdits(
+                    videoURL: outputURL,
+                    cursorTelemetryURL: cursorTelemetryURL
+                )
+                let sourceName = source?.name ?? selectedSource?.name
+                let recordingSession = RecordingSessionBuilder.build(
+                    screenVideoURL: outputURL,
+                    facecamURL: stoppedFacecamURL ?? activeFacecamURL,
+                    sourceName: sourceName,
+                    showCursor: showCursor,
+                    cursorTelemetryURL: cursorTelemetryURL,
+                    screenStartedAt: activeScreenStartedAt,
+                    facecamStartedAt: activeFacecamStartedAt
+                )
+                let summary: ProjectSummary = try service.call(
+                    "registerRecording",
+                    params: [
+                        "path": outputURL.path,
+                        "sourceName": sourceName ?? "Screen Recording",
+                        "title": outputURL.deletingPathExtension().lastPathComponent,
+                        "editorState": jsonObject(for: ProjectEditorState(timelineEdits: timelineEdits)) ?? [:]
+                    ],
+                    as: ProjectSummary.self
+                )
+                projects = try service.call("listProjects", as: [ProjectSummary].self)
+                showEditor(for: EditorSession(
+                    kind: .video,
+                    url: outputURL,
+                    title: summary.title,
+                    projectPath: summary.path,
+                    recordingSession: recordingSession,
+                    timelineEditSnapshot: timelineEdits
+                ))
+                statusMessage = "Saved \(summary.title)"
+            } else {
+                dispatch(.recordingStopped(message: "Recording stopped before a file was written."))
+            }
+        } catch {
+            _ = cursorTelemetryRecorder.stop(videoURL: nil)
+            if let source {
+                dispatch(.recordingFailed(source, message: error.localizedDescription))
+            } else {
+                dispatch(.recordingFailed(nil, message: error.localizedDescription))
+            }
         }
+        activeScreenStartedAt = nil
+        activeFacecamStartedAt = nil
+        activeFacecamURL = nil
+    }
+
+    func takeScreenshot() {
         guard !capture.isRecording else {
             statusMessage = "Finish or cancel the current capture before starting another."
             focusActiveCaptureWindow()
             return
         }
-
-        do {
-            setHUDPhase(.capturingScreenshot(selectedSource))
-            Task { [weak self] in
-                await self?.runScreenshotCapture(source: selectedSource)
-            }
-        }
+        dispatch(.screenshotRequested)
     }
 
     private func runScreenshotCapture(source selectedSource: CaptureSource) async {
@@ -837,14 +771,27 @@ final class AppModel: ObservableObject {
             } else {
                 await Task.yield()
             }
+            try Task.checkCancellation()
+            guard isActiveScreenshotCapture(for: selectedSource) else {
+                throw CancellationError()
+            }
 
             let ensuredPaths = try paths ?? service.call("paths", as: AppPaths.self)
             let outputURL = URL(fileURLWithPath: ensuredPaths.screenshotsDir)
                 .appendingPathComponent(timestampedFileName(prefix: "screenshot", extension: "png"))
             try screenshotCapture(selectedSource, outputURL)
+            try Task.checkCancellation()
+            guard isActiveScreenshotCapture(for: selectedSource) else {
+                throw CancellationError()
+            }
             let summary = registerScreenshotProject(outputURL, sourceName: selectedSource.name)
+            try Task.checkCancellation()
+            guard isActiveScreenshotCapture(for: selectedSource) else {
+                throw CancellationError()
+            }
             currentScreenshotURL = outputURL
             currentVideoURL = nil
+            screenshotCaptureTask = nil
             showEditor(for: EditorSession(
                 kind: .screenshot,
                 url: outputURL,
@@ -857,16 +804,26 @@ final class AppModel: ObservableObject {
                 rememberScreenshotInBackground(outputURL)
             }
         } catch is CancellationError {
-            restoreScreenshotSetup(source: selectedSource, message: "Screenshot canceled.")
+            screenshotCaptureTask = nil
+            if case .capturingScreenshot(let activeSource) = captureState.phase,
+               activeSource.id == selectedSource.id {
+                restoreScreenshotSetup(source: selectedSource, message: "Screenshot canceled.")
+            }
         } catch {
+            screenshotCaptureTask = nil
             restoreScreenshotSetup(source: selectedSource, message: error.localizedDescription)
         }
     }
 
     private func restoreScreenshotSetup(source: CaptureSource, message: String) {
-        hudState = HUDState(phase: .ready(.screenshot, source), presentation: .visible)
-        statusMessage = message
-        requestWindow(.showHUD)
+        dispatch(.screenshotRestored(source, message: message))
+    }
+
+    private func isActiveScreenshotCapture(for source: CaptureSource) -> Bool {
+        if case .capturingScreenshot(let activeSource) = captureState.phase {
+            return activeSource.id == source.id
+        }
+        return false
     }
 
     private func rememberScreenshotInBackground(_ outputURL: URL) {
