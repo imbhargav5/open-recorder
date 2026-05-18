@@ -510,7 +510,7 @@ final class CaptureController: ObservableObject {
     private func shareableContent() async throws -> SCShareableContent {
         try await withCheckedThrowingContinuation { continuation in
             SCShareableContent.getExcludingDesktopWindows(
-                false,
+                true,
                 onScreenWindowsOnly: true
             ) { content, error in
                 if let error {
