@@ -410,6 +410,7 @@ struct VideoEditorStudioView: View {
             insetOpacity: insetOpacity,
             insetBalance: insetBalance
         )
+        .withAspectPreset(previewAspectPreset)
         .withCursorOverlay(cursorOverlaySettings, telemetryURL: cursorTelemetryURL)
     }
 

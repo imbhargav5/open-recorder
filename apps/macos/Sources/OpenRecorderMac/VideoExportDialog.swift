@@ -237,6 +237,7 @@ struct VideoExportDialog: View {
             resolution: resolution,
             format: format,
             frameRate: frameRate,
+            aspectPreset: initialOptions.aspectPreset,
             styling: .none,
             cropSelection: initialOptions.cropSelection,
             customOutputSize: resolution == .custom ? initialOptions.customOutputSize : nil,

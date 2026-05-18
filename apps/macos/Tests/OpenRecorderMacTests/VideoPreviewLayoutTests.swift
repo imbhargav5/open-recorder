@@ -17,6 +17,14 @@ final class VideoPreviewLayoutTests: XCTestCase {
         XCTAssertEqual(ratio, 0.75, accuracy: 0.001)
     }
 
+    func testAutoExportAspectUsesRenderedCropSize() {
+        let ratio = VideoPreviewAspectPreset.auto.aspectRatio(
+            forExportSourceSize: CGSize(width: 1200, height: 800)
+        )
+
+        XCTAssertEqual(ratio, 1.5, accuracy: 0.001)
+    }
+
     func testFixedPreviewAspectPresetsResolveExpectedRatios() {
         let cases: [(preset: VideoPreviewAspectPreset, ratio: CGFloat)] = [
             (.wide, 16.0 / 9.0),

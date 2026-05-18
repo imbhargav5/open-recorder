@@ -186,6 +186,7 @@ struct VideoExportOptions: Equatable {
     var resolution: VideoExportResolution
     var format: VideoExportFormat
     var frameRate: VideoExportFrameRate
+    var aspectPreset: VideoPreviewAspectPreset = .auto
     var styling: VideoBackgroundStyling
     var cropSelection: VideoCropSelection?
     var customOutputSize: CGSize?
@@ -196,6 +197,7 @@ struct VideoExportOptions: Equatable {
         resolution: VideoExportResolution.defaultExportOption,
         format: .mov,
         frameRate: VideoExportFrameRate.defaultExportOption,
+        aspectPreset: .auto,
         styling: .none,
         cropSelection: nil,
         customOutputSize: nil,
@@ -244,6 +246,12 @@ struct VideoExportOptions: Equatable {
             copy.resolution = .custom
             copy.customOutputSize = CGSize(width: width, height: height)
         }
+        return copy
+    }
+
+    func withAspectPreset(_ preset: VideoPreviewAspectPreset) -> VideoExportOptions {
+        var copy = self
+        copy.aspectPreset = preset
         return copy
     }
 
@@ -478,18 +486,50 @@ enum VideoExportRenderer {
 
         let sourceWidth = max(abs(sourceSize.width), 2)
         let sourceHeight = max(abs(sourceSize.height), 2)
+        let aspectRatio = resolvedAspectRatio(
+            options.aspectPreset.aspectRatio(forExportSourceSize: CGSize(width: sourceWidth, height: sourceHeight))
+        )
         if let targetShortEdge = options.resolution.targetShortEdge {
-            let shortEdge = min(sourceWidth, sourceHeight)
-            let scale = targetShortEdge / max(shortEdge, 1)
-            return evenSize(width: sourceWidth * scale, height: sourceHeight * scale)
+            return outputSize(forAspectRatio: aspectRatio, targetShortEdge: targetShortEdge)
         }
-        guard let targetLongEdge = options.resolution.targetLongEdge else {
-            return evenSize(width: sourceWidth, height: sourceHeight)
+        if let targetLongEdge = options.resolution.targetLongEdge {
+            return outputSize(forAspectRatio: aspectRatio, targetLongEdge: targetLongEdge)
         }
 
-        let longEdge = max(sourceWidth, sourceHeight)
-        let scale = targetLongEdge / longEdge
-        return evenSize(width: sourceWidth * scale, height: sourceHeight * scale)
+        return sourceSizedCanvas(
+            width: sourceWidth,
+            height: sourceHeight,
+            aspectRatio: aspectRatio
+        )
+    }
+
+    private static func outputSize(forAspectRatio aspectRatio: CGFloat, targetShortEdge: CGFloat) -> CGSize {
+        if aspectRatio >= 1 {
+            return evenSize(width: targetShortEdge * aspectRatio, height: targetShortEdge)
+        }
+        return evenSize(width: targetShortEdge, height: targetShortEdge / aspectRatio)
+    }
+
+    private static func outputSize(forAspectRatio aspectRatio: CGFloat, targetLongEdge: CGFloat) -> CGSize {
+        if aspectRatio >= 1 {
+            return evenSize(width: targetLongEdge, height: targetLongEdge / aspectRatio)
+        }
+        return evenSize(width: targetLongEdge * aspectRatio, height: targetLongEdge)
+    }
+
+    private static func sourceSizedCanvas(width sourceWidth: CGFloat, height sourceHeight: CGFloat, aspectRatio: CGFloat) -> CGSize {
+        let sourceAspectRatio = sourceWidth / max(sourceHeight, 1)
+        if sourceAspectRatio > aspectRatio {
+            return evenSize(width: sourceWidth, height: sourceWidth / aspectRatio)
+        }
+        return evenSize(width: sourceHeight * aspectRatio, height: sourceHeight)
+    }
+
+    private static func resolvedAspectRatio(_ aspectRatio: CGFloat) -> CGFloat {
+        guard aspectRatio.isFinite, aspectRatio > 0 else {
+            return PreviewStageLayout.videoAspectRatio
+        }
+        return aspectRatio
     }
 
     private static func evenSize(width: CGFloat, height: CGFloat) -> CGSize {

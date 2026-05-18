@@ -90,6 +90,59 @@ final class VideoCropSelectionTests: XCTestCase {
         XCTAssertEqual(outputSize.height, 720, accuracy: 0.001)
     }
 
+    func testExportOutputSizeUsesSelectedAspectPreset() {
+        let cropSize = CGSize(width: 1920, height: 1080)
+        let baseOptions = VideoExportOptions(
+            resolution: .p1080,
+            format: .mov,
+            frameRate: .fps30,
+            styling: .none,
+            cropSelection: nil,
+            customOutputSize: nil
+        )
+
+        let tallSize = VideoExportRenderer.resolvedOutputSize(
+            for: cropSize,
+            options: baseOptions.withAspectPreset(.tall)
+        )
+        let squareSize = VideoExportRenderer.resolvedOutputSize(
+            for: cropSize,
+            options: baseOptions.withAspectPreset(.square)
+        )
+        let verticalSize = VideoExportRenderer.resolvedOutputSize(
+            for: cropSize,
+            options: baseOptions.withAspectPreset(.vertical)
+        )
+
+        XCTAssertEqual(tallSize.width, 1080, accuracy: 0.001)
+        XCTAssertEqual(tallSize.height, 1440, accuracy: 0.001)
+        XCTAssertEqual(squareSize.width, 1080, accuracy: 0.001)
+        XCTAssertEqual(squareSize.height, 1080, accuracy: 0.001)
+        XCTAssertEqual(verticalSize.width, 1080, accuracy: 0.001)
+        XCTAssertEqual(verticalSize.height, 1920, accuracy: 0.001)
+    }
+
+    func testSourceExportOutputSizeExpandsCanvasForSelectedAspectPreset() {
+        let cropSize = CGSize(width: 1920, height: 1080)
+        let options = VideoExportOptions(
+            resolution: .source,
+            format: .mov,
+            frameRate: .fps30,
+            styling: .none,
+            cropSelection: nil,
+            customOutputSize: nil
+        )
+        .withAspectPreset(.tall)
+
+        let outputSize = VideoExportRenderer.resolvedOutputSize(
+            for: cropSize,
+            options: options
+        )
+
+        XCTAssertEqual(outputSize.width, 1920, accuracy: 0.001)
+        XCTAssertEqual(outputSize.height, 2560, accuracy: 0.001)
+    }
+
     func testExportOutputSizeHonorsCustomEvenDimensions() {
         let options = VideoExportOptions(
             resolution: .custom,

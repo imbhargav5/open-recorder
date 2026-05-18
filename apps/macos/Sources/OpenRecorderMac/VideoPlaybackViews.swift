@@ -28,9 +28,22 @@ enum VideoPreviewAspectPreset: String, CaseIterable, Identifiable {
     }
 
     func aspectRatio(for cropSelection: VideoCropSelection, sourceSize: CGSize) -> CGFloat {
+        fixedAspectRatio ?? cropSelection.previewAspectRatio(in: sourceSize)
+    }
+
+    func aspectRatio(forExportSourceSize sourceSize: CGSize) -> CGFloat {
+        if let fixedAspectRatio {
+            return fixedAspectRatio
+        }
+
+        let safeSize = VideoCropSelection.safeSourceSize(sourceSize)
+        return safeSize.width / max(safeSize.height, 1)
+    }
+
+    private var fixedAspectRatio: CGFloat? {
         switch self {
         case .auto:
-            cropSelection.previewAspectRatio(in: sourceSize)
+            nil
         case .wide:
             16.0 / 9.0
         case .square:
