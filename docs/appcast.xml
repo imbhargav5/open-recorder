@@ -53,5 +53,13 @@
             <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
             <enclosure url="https://github.com/imbhargav5/open-recorder/releases/download/v0.2.17/open-recorder-macos.zip" sparkle:edSignature="H5WEO0iw/M7dcjius2tcM9zdg+4FCc5Qn2zzOlDk0TpqcQQwMyv29h2T7oPc0UFZUff5LbnkwcyZSzDBfFO8Cw==" length="38977920" type="application/octet-stream"/>
         </item>
+        <item>
+            <title>Version 0.2.18</title>
+            <pubDate>Mon, 18 May 2026 03:53:05 GMT</pubDate>
+            <sparkle:version>0.2.18</sparkle:version>
+            <sparkle:shortVersionString>0.2.18</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/imbhargav5/open-recorder/releases/download/v0.2.18/open-recorder-macos.zip" sparkle:edSignature="1pba+2V3ijY73g2nSIHgTsWCzUJtLvZd/gTpAUEmBNcRp2q2WYq6L51ZH1Gk+kVRwmlMAIBXFuLWC2yNqYeFCA==" length="38977709" type="application/octet-stream"/>
+        </item>
     </channel>
 </rss>
