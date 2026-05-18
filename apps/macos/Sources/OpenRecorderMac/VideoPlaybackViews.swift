@@ -64,7 +64,7 @@ struct VideoPreviewPanel: View {
     var videoURL: URL?
     var recordingSession: RecordingSession?
     @ObservedObject var playback: VideoPlaybackController
-    @ObservedObject var timelineEdits: TimelineEditController
+    var timelineEdits: TimelineEditDriver
     var background: BackgroundStyle = .transparent
     var padding: Double = 0
     var borderRadius: Double = 0

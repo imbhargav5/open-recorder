@@ -10,8 +10,8 @@ struct ScreenshotEditorStudioView: View {
     var editorTitle: String?
     var initialScreenshotState: ScreenshotEditorState?
     var editorSessionID: UUID?
-    @ObservedObject var editor: ScreenshotEditorController
-    @State private var presentation = ScreenshotEditorPresentationDriver()
+    var editor: ScreenshotEditorDriver
+    var exportRequest: EditorExportRequest?
     private let sidebarWidth: CGFloat = 320
 
     var body: some View {
@@ -24,12 +24,12 @@ struct ScreenshotEditorStudioView: View {
         ) {
             ScreenshotCanvas(
                 image: image,
-                background: editor.state.background,
-                padding: editor.state.padding,
-                backgroundRoundness: editor.state.backgroundRoundness,
-                backgroundShadow: editor.state.backgroundShadow,
-                imageRoundness: editor.state.imageRoundness,
-                imageShadow: editor.state.imageShadow
+                background: editor.state.screenshot.background,
+                padding: editor.state.screenshot.padding,
+                backgroundRoundness: editor.state.screenshot.backgroundRoundness,
+                backgroundShadow: editor.state.screenshot.backgroundShadow,
+                imageRoundness: editor.state.screenshot.imageRoundness,
+                imageShadow: editor.state.screenshot.imageShadow
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } secondary: {
@@ -42,23 +42,27 @@ struct ScreenshotEditorStudioView: View {
                 imageShadow: editor.binding(for: \.imageShadow),
                 onEditingChanged: handleUndoTransaction,
                 onExport: {
-                    presentation.send(.exportRequested)
+                    editor.send(.exportRequested)
                 }
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .padding(16)
         .background(Color.studioMutedBackground)
-        .sheet(isPresented: presentation.exportDialogBinding) {
+        .sheet(isPresented: editor.exportDialogBinding) {
             ScreenshotExportDialog(
-                onSave: saveComposedPNG,
-                onCopy: copyComposedPNG
+                onSave: {
+                    editor.saveComposedPNG(image: image, suggestedFileName: suggestedExportFileName)
+                },
+                onCopy: {
+                    editor.copyComposedPNG(image: image)
+                }
             )
             .frame(width: 360)
         }
-        .onChange(of: model.screenshotExportRequestID) { _, requestID in
+        .onChange(of: exportRequest?.id) { _, requestID in
             guard requestID != nil, isScreenshotExportRequestTarget else { return }
-            presentation.send(.exportRequested)
+            editor.send(.exportRequested)
         }
         .onChange(of: screenshotURL) { _, _ in
             syncEditorSession()
@@ -66,14 +70,11 @@ struct ScreenshotEditorStudioView: View {
         .onChange(of: editorSessionID) { _, _ in
             syncEditorSession()
         }
-        .onChange(of: editor.state) { _, _ in
-            presentation.send(.autosaveSnapshotChanged(autosaveSnapshot))
+        .onChange(of: editor.state.screenshot) { _, _ in
+            editor.send(.autosaveSnapshotChanged(autosaveSnapshot))
         }
         .onAppear {
-            presentation.configure(
-                applyScreenshotState: { state in
-                    editor.apply(state)
-                },
+            editor.configure(
                 saveHandler: { snapshot in
                     try await model.autosaveProject(snapshot)
                 },
@@ -87,7 +88,7 @@ struct ScreenshotEditorStudioView: View {
             syncEditorSession()
         }
         .onDisappear {
-            presentation.send(.disappeared(autosaveSnapshot))
+            editor.send(.disappeared(autosaveSnapshot))
         }
     }
 
@@ -96,62 +97,8 @@ struct ScreenshotEditorStudioView: View {
         return NSImage(contentsOf: url)
     }
 
-    private func saveComposedPNG() {
-        guard let data = renderComposedPNG() else {
-            presentation.send(.saveFailed("Failed to render screenshot."))
-            return
-        }
-
-        let panel = NSSavePanel()
-        panel.canCreateDirectories = true
-        panel.isExtensionHidden = false
-        panel.nameFieldStringValue = suggestedExportFileName
-
-        guard panel.runModal() == .OK, let targetURL = panel.url else {
-            return
-        }
-
-        do {
-            let resolvedURL = targetURL.pathExtension.isEmpty
-                ? targetURL.appendingPathExtension("png")
-                : targetURL
-            try data.write(to: resolvedURL, options: .atomic)
-            presentation.send(.saveSucceeded(resolvedURL))
-        } catch {
-            presentation.send(.saveFailed(error.localizedDescription))
-        }
-    }
-
-    private func copyComposedPNG() {
-        guard let data = renderComposedPNG() else {
-            presentation.send(.copyFailed("Failed to render screenshot."))
-            return
-        }
-
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        pasteboard.setData(data, forType: .png)
-        if let image = NSImage(data: data), let tiffData = image.tiffRepresentation {
-            pasteboard.setData(tiffData, forType: .tiff)
-        }
-        presentation.send(.copySucceeded)
-    }
-
     private var suggestedExportFileName: String {
         ScreenshotExportRenderer.suggestedFileName(for: screenshotURL)
-    }
-
-    private func renderComposedPNG() -> Data? {
-        guard let image else { return nil }
-        let renderer = ScreenshotExportRenderer(configuration: ScreenshotExportConfiguration(
-            background: editor.state.background,
-            padding: editor.state.padding,
-            backgroundRoundness: editor.state.backgroundRoundness,
-            backgroundShadow: editor.state.backgroundShadow,
-            imageRoundness: editor.state.imageRoundness,
-            imageShadow: editor.state.imageShadow
-        ))
-        return renderer.renderPNG(from: image)
     }
 
     private func handleUndoTransaction(_ isEditing: Bool) {
@@ -163,7 +110,7 @@ struct ScreenshotEditorStudioView: View {
     }
 
     private func syncEditorSession() {
-        presentation.send(.sessionChanged(ScreenshotEditorSessionContext(
+        editor.send(.sessionChanged(ScreenshotEditorSessionContext(
             screenshotURL: screenshotURL,
             projectPath: projectPath,
             editorTitle: editorTitle,
@@ -173,20 +120,19 @@ struct ScreenshotEditorStudioView: View {
     }
 
     private var autosaveSnapshot: ProjectAutosaveSnapshot? {
-        presentation.autosaveSnapshot(
+        editor.autosaveSnapshot(
             projectPath: projectPath,
             screenshotURL: screenshotURL,
-            editorTitle: editorTitle,
-            editorState: editor.state
+            editorTitle: editorTitle
         )
     }
 
     private var isScreenshotExportRequestTarget: Bool {
         guard let screenshotURL else { return false }
-        if let requestedEditorSessionID = model.screenshotExportRequestEditorSessionID {
+        if let requestedEditorSessionID = exportRequest?.editorSessionID {
             return requestedEditorSessionID == editorSessionID
         }
-        if let requestedURL = model.screenshotExportRequestURL {
+        if let requestedURL = exportRequest?.url {
             return requestedURL == screenshotURL
         }
         return true

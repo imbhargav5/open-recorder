@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 struct TimelineSelectionSidebar: View {
-    @ObservedObject var edits: TimelineEditController
+    var edits: TimelineEditDriver
     @ObservedObject var playback: VideoPlaybackController
 
     var body: some View {

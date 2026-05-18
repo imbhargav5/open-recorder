@@ -2,6 +2,7 @@ import AVFoundation
 import AppKit
 import CoreGraphics
 import Foundation
+import Observation
 import QuartzCore
 import SwiftUI
 
@@ -294,103 +295,158 @@ struct TimelineEditState: Equatable {
     var selectedKind: TimelineRegionKind?
     var selectedID: TimelineRegionID?
     var selectedClipIndex: Int?
+    var statusMessage = "Use shortcuts to edit. Space plays, Z zooms, S cycles clip speed, T splits clips."
 
     static let empty = TimelineEditState()
-}
-
-@MainActor
-final class TimelineEditController: ObservableObject {
-    @Published var zoomRegions: [TimelineZoomRegion] = []
-    @Published var trimRegions: [TimelineTrimRegion] = []
-    @Published var annotationRegions: [TimelineAnnotationRegion] = []
-    @Published var clipSplitTimes: [Double] = []
-    @Published var clipSpeeds: [Int: Double] = [:]
-    @Published var selectedKind: TimelineRegionKind?
-    @Published var selectedID: TimelineRegionID?
-    @Published var selectedClipIndex: Int?
-    @Published var statusMessage = "Use shortcuts to edit. Space plays, Z zooms, S cycles clip speed, T splits clips."
-    private var history = EditorHistory<TimelineEditState>()
-
-    var snapshot: TimelineEditSnapshot {
-        TimelineEditSnapshot(
-            zoomRegions: zoomRegions,
-            trimRegions: trimRegions,
-            annotationRegions: annotationRegions,
-            clipSplitTimes: clipSplitTimes,
-            clipSpeeds: clipSpeeds
-        )
-    }
 
     var hasSelection: Bool {
         selectedClipIndex != nil || (selectedKind != nil && selectedID != nil)
     }
+}
 
-    var canUndo: Bool { history.canUndo }
-    var canRedo: Bool { history.canRedo }
+enum TimelineEditEvent: Equatable {
+    case applySnapshot(TimelineEditSnapshot)
+    case reset
+    case add(TimelineRegionKind, currentTime: Double, duration: Double)
+    case regenerateAutoZoomsRequested(videoURL: URL?, duration: Double)
+    case replaceAutoZooms([TimelineZoomRegion])
+    case addClipSplit(currentTime: Double, duration: Double)
+    case select(TimelineRegionKind?, TimelineRegionID?)
+    case selectClip(index: Int)
+    case clearSelection
+    case deleteSelection
+    case updateSpan(kind: TimelineRegionKind, id: TimelineRegionID, span: TimelineSpan, duration: Double)
+    case cycleClipSpeed(index: Int)
+    case cycleClipSpeedAt(currentTime: Double, duration: Double)
+    case updateClipSpeed(index: Int, speed: Double)
+    case deepenZoom(id: TimelineRegionID)
+    case updateZoomDepth(id: TimelineRegionID, depth: Double)
+    case updateZoomFocus(id: TimelineRegionID, focusX: Double?, focusY: Double?)
+    case updateAnnotationText(id: TimelineRegionID, text: String)
+    case removeClipSplit(splitTime: Double, duration: Double)
+}
 
-    func undo() {
-        guard let previous = history.undo(current: editState) else { return }
-        apply(previous)
-        statusMessage = "Undid timeline edit."
-    }
+enum TimelineEditEffect: Equatable {
+    case generateAutoZooms(URL, duration: Double)
+}
 
-    func redo() {
-        guard let next = history.redo(current: editState) else { return }
-        apply(next)
-        statusMessage = "Redid timeline edit."
-    }
+extension TimelineEditState {
+    mutating func applying(_ event: TimelineEditEvent) -> [TimelineEditEffect] {
+        switch event {
+        case .applySnapshot(let snapshot):
+            self.snapshot = snapshot
+            clearSelection()
+            statusMessage = Self.empty.statusMessage
+            return []
 
-    func resetHistory() {
-        history.reset()
-        objectWillChange.send()
-    }
+        case .reset:
+            snapshot = .empty
+            clearSelection()
+            statusMessage = "Timeline edits reset."
+            return []
 
-    func beginUndoTransaction() {
-        history.beginTransaction(current: editState)
-    }
+        case .add(let kind, let currentTime, let duration):
+            add(kind, at: currentTime, duration: duration)
+            return []
 
-    func endUndoTransaction() {
-        if history.commitTransaction(current: editState, shouldRecord: timelineContentChanged) {
-            objectWillChange.send()
+        case .regenerateAutoZoomsRequested(let videoURL, let duration):
+            guard let videoURL else {
+                statusMessage = "Open a recording before generating automatic zooms."
+                return []
+            }
+            return [.generateAutoZooms(videoURL, duration: duration)]
+
+        case .replaceAutoZooms(let generatedZooms):
+            replaceAutoZooms(with: generatedZooms)
+            return []
+
+        case .addClipSplit(let currentTime, let duration):
+            addClipSplit(at: currentTime, duration: duration)
+            return []
+
+        case .select(let kind, let id):
+            select(kind, id: id)
+            return []
+
+        case .selectClip(let index):
+            selectClip(index: index)
+            return []
+
+        case .clearSelection:
+            clearSelection()
+            return []
+
+        case .deleteSelection:
+            deleteSelection()
+            return []
+
+        case .updateSpan(let kind, let id, let span, let duration):
+            updateSpan(kind: kind, id: id, span: span, duration: duration)
+            return []
+
+        case .cycleClipSpeed(let index):
+            cycleClipSpeed(index: index)
+            return []
+
+        case .cycleClipSpeedAt(let currentTime, let duration):
+            cycleClipSpeed(at: currentTime, duration: duration)
+            return []
+
+        case .updateClipSpeed(let index, let speed):
+            updateClipSpeed(index: index, speed: speed)
+            return []
+
+        case .deepenZoom(let id):
+            deepenZoom(id: id)
+            return []
+
+        case .updateZoomDepth(let id, let depth):
+            updateZoomDepth(id: id, depth: depth)
+            return []
+
+        case .updateZoomFocus(let id, let focusX, let focusY):
+            updateZoomFocus(id: id, focusX: focusX, focusY: focusY)
+            return []
+
+        case .updateAnnotationText(let id, let text):
+            updateAnnotationText(id: id, text: text)
+            return []
+
+        case .removeClipSplit(let splitTime, let duration):
+            removeClipSplit(at: splitTime, duration: duration)
+            return []
         }
     }
 
-    func cancelUndoTransaction() {
-        history.cancelTransaction()
-        objectWillChange.send()
+    func selectedClip(duration: Double) -> TimelineClipSegment? {
+        guard let selectedClipIndex else { return nil }
+        let segments = snapshot.clipSegments(duration: duration)
+        guard segments.indices.contains(selectedClipIndex) else { return nil }
+        return segments[selectedClipIndex]
     }
 
-    func reset() {
-        let before = editState
-        zoomRegions.removeAll()
-        trimRegions.removeAll()
-        annotationRegions.removeAll()
-        clipSplitTimes.removeAll()
-        clipSpeeds.removeAll()
-        clearSelection()
-        recordUndo(from: before)
-        statusMessage = "Timeline edits reset."
+    func clipSpeed(index: Int) -> Double {
+        TimelineClipSpeed.normalized(snapshot.clipSpeeds[index] ?? TimelineClipSpeed.defaultSpeed)
     }
 
-    func add(_ kind: TimelineRegionKind, at currentTime: Double, duration: Double) {
+    private mutating func add(_ kind: TimelineRegionKind, at currentTime: Double, duration: Double) {
         guard duration.isFinite, duration > 0 else {
             statusMessage = "Open a video before adding timeline edits."
             return
         }
 
-        let before = editState
         let defaultDuration = min(1.0, duration)
         let start = min(max(currentTime, 0), duration)
         let span = TimelineSpan(start: start, end: min(start + defaultDuration, duration)).normalized(duration: duration)
 
         switch kind {
         case .zoom:
-            guard canPlaceNonOverlapping(span, existing: zoomRegions.map(\.span)) else {
+            guard canPlaceNonOverlapping(span, existing: snapshot.zoomRegions.map(\.span)) else {
                 statusMessage = "Cannot place zoom on top of another zoom."
                 return
             }
             let region = TimelineZoomRegion(span: span, mode: .manual)
-            zoomRegions.append(region)
+            snapshot.zoomRegions.append(region)
             select(.zoom, id: region.id)
         case .trim:
             statusMessage = "Use clip splitting instead of trim sections."
@@ -401,47 +457,25 @@ final class TimelineEditController: ObservableObject {
             select(nil, id: nil)
             return
         }
-        recordUndo(from: before)
+
         statusMessage = "Added \(kind.title.lowercased()) at \(formatPlaybackTime(span.start))."
     }
 
-    func applySnapshot(_ snapshot: TimelineEditSnapshot) {
-        zoomRegions = snapshot.zoomRegions
-        trimRegions = snapshot.trimRegions
-        annotationRegions = snapshot.annotationRegions
-        clipSplitTimes = snapshot.clipSplitTimes
-        clipSpeeds = snapshot.clipSpeeds
-        clearSelection()
-        resetHistory()
-    }
-
-    func regenerateAutoZooms(from videoURL: URL?, duration: Double) {
-        guard let videoURL else {
-            statusMessage = "Open a recording before generating automatic zooms."
-            return
-        }
-        let telemetryURL = CursorTelemetryRecorder.telemetryURL(for: videoURL)
-        let generated = AutoZoomGenerator.generate(from: telemetryURL, duration: duration)
-        replaceAutoZooms(with: generated)
-    }
-
-    func replaceAutoZooms(with generatedZooms: [TimelineZoomRegion]) {
-        let before = editState
-        zoomRegions.removeAll { $0.mode == .auto }
-        zoomRegions.append(contentsOf: generatedZooms.map { zoom in
+    private mutating func replaceAutoZooms(with generatedZooms: [TimelineZoomRegion]) {
+        snapshot.zoomRegions.removeAll { $0.mode == .auto }
+        snapshot.zoomRegions.append(contentsOf: generatedZooms.map { zoom in
             var copy = zoom
             copy.mode = .auto
             return copy
         })
-        zoomRegions.sort { $0.span.start < $1.span.start }
+        snapshot.zoomRegions.sort { $0.span.start < $1.span.start }
         clearSelection()
-        recordUndo(from: before)
         statusMessage = generatedZooms.isEmpty
             ? "No clicks found. Add a manual zoom with Z."
             : "Generated \(generatedZooms.count) automatic \(generatedZooms.count == 1 ? "zoom" : "zooms")."
     }
 
-    func addClipSplit(at currentTime: Double, duration: Double) {
+    private mutating func addClipSplit(at currentTime: Double, duration: Double) {
         guard duration.isFinite, duration > 0 else {
             statusMessage = "Open a video before splitting the clip."
             return
@@ -454,23 +488,25 @@ final class TimelineEditController: ObservableObject {
             return
         }
 
-        guard !clipSplitTimes.contains(where: { abs($0 - splitTime) < minimumDistance }) else {
+        guard !snapshot.clipSplitTimes.contains(where: { abs($0 - splitTime) < minimumDistance }) else {
             statusMessage = "There is already a split at \(formatPlaybackTime(splitTime))."
             return
         }
 
-        let before = editState
-        let oldSegments = TimelineClipSegment.segments(duration: duration, splitTimes: clipSplitTimes, clipSpeeds: clipSpeeds)
-        clipSplitTimes.append(splitTime)
-        clipSplitTimes.sort()
-        let newSegments = TimelineClipSegment.segments(duration: duration, splitTimes: clipSplitTimes, clipSpeeds: [:])
-        clipSpeeds = remappedClipSpeeds(from: oldSegments, to: newSegments)
+        let oldSegments = TimelineClipSegment.segments(
+            duration: duration,
+            splitTimes: snapshot.clipSplitTimes,
+            clipSpeeds: snapshot.clipSpeeds
+        )
+        snapshot.clipSplitTimes.append(splitTime)
+        snapshot.clipSplitTimes.sort()
+        let newSegments = TimelineClipSegment.segments(duration: duration, splitTimes: snapshot.clipSplitTimes, clipSpeeds: [:])
+        snapshot.clipSpeeds = remappedClipSpeeds(from: oldSegments, to: newSegments)
         clearSelection()
-        recordUndo(from: before)
         statusMessage = "Split clip at \(formatPlaybackTime(splitTime))."
     }
 
-    func select(_ kind: TimelineRegionKind?, id: TimelineRegionID?) {
+    private mutating func select(_ kind: TimelineRegionKind?, id: TimelineRegionID?) {
         selectedClipIndex = nil
         guard let kind, let id else {
             selectedKind = nil
@@ -481,59 +517,59 @@ final class TimelineEditController: ObservableObject {
         selectedID = id
     }
 
-    func selectClip(index: Int) {
+    private mutating func selectClip(index: Int) {
         selectedKind = nil
         selectedID = nil
         selectedClipIndex = max(0, index)
     }
 
-    func clearSelection() {
+    private mutating func clearSelection() {
         selectedKind = nil
         selectedID = nil
         selectedClipIndex = nil
     }
 
-    func deleteSelection() {
+    private mutating func deleteSelection() {
         guard let selectedKind, let selectedID else { return }
-        let before = editState
         switch selectedKind {
-        case .zoom: zoomRegions.removeAll { $0.id == selectedID }
-        case .trim: trimRegions.removeAll { $0.id == selectedID }
-        case .annotation: annotationRegions.removeAll { $0.id == selectedID }
+        case .zoom: snapshot.zoomRegions.removeAll { $0.id == selectedID }
+        case .trim: snapshot.trimRegions.removeAll { $0.id == selectedID }
+        case .annotation: snapshot.annotationRegions.removeAll { $0.id == selectedID }
         }
         clearSelection()
-        recordUndo(from: before)
         statusMessage = "Deleted \(selectedKind.title.lowercased())."
     }
 
-    func updateSpan(kind: TimelineRegionKind, id: TimelineRegionID, span: TimelineSpan, duration: Double) {
-        let before = editState
+    private mutating func updateSpan(kind: TimelineRegionKind, id: TimelineRegionID, span: TimelineSpan, duration: Double) {
         let normalized = span.normalized(duration: duration)
         switch kind {
         case .zoom:
-            mutate(&zoomRegions, id: id) { $0.span = normalized }
+            mutate(&snapshot.zoomRegions, id: id) { $0.span = normalized }
         case .trim:
-            mutate(&trimRegions, id: id) { $0.span = normalized }
+            mutate(&snapshot.trimRegions, id: id) { $0.span = normalized }
         case .annotation:
-            mutate(&annotationRegions, id: id) { $0.span = normalized }
+            mutate(&snapshot.annotationRegions, id: id) { $0.span = normalized }
         }
-        recordUndo(from: before)
     }
 
-    func cycleClipSpeed(index: Int) {
+    private mutating func cycleClipSpeed(index: Int) {
         let currentSpeed = clipSpeed(index: index)
         let currentIndex = TimelineClipSpeed.values.firstIndex(of: currentSpeed) ?? 0
         let nextSpeed = TimelineClipSpeed.values[(currentIndex + 1) % TimelineClipSpeed.values.count]
         updateClipSpeed(index: index, speed: nextSpeed)
     }
 
-    func cycleClipSpeed(at currentTime: Double, duration: Double) {
+    private mutating func cycleClipSpeed(at currentTime: Double, duration: Double) {
         guard duration.isFinite, duration > 0 else {
             statusMessage = "Open a video before changing clip speed."
             return
         }
 
-        let segments = TimelineClipSegment.segments(duration: duration, splitTimes: clipSplitTimes, clipSpeeds: clipSpeeds)
+        let segments = TimelineClipSegment.segments(
+            duration: duration,
+            splitTimes: snapshot.clipSplitTimes,
+            clipSpeeds: snapshot.clipSpeeds
+        )
         let targetIndex = selectedClipIndex.flatMap { selected in
             segments.indices.contains(selected) ? selected : nil
         } ?? segments.first { currentTime >= $0.start && (currentTime < $0.end || $0.index == segments.last?.index) }?.index
@@ -547,43 +583,32 @@ final class TimelineEditController: ObservableObject {
         cycleClipSpeed(index: targetIndex)
     }
 
-    func updateClipSpeed(index: Int, speed: Double) {
+    private mutating func updateClipSpeed(index: Int, speed: Double) {
         guard index >= 0 else { return }
-        let before = editState
         if let storedSpeed = TimelineClipSpeed.storedValue(speed) {
-            clipSpeeds[index] = storedSpeed
+            snapshot.clipSpeeds[index] = storedSpeed
         } else {
-            clipSpeeds.removeValue(forKey: index)
+            snapshot.clipSpeeds.removeValue(forKey: index)
         }
-        recordUndo(from: before)
         statusMessage = "Set Clip \(index + 1) speed to \(TimelineClipSpeed.label(speed))."
     }
 
-    func clipSpeed(index: Int) -> Double {
-        TimelineClipSpeed.normalized(clipSpeeds[index] ?? TimelineClipSpeed.defaultSpeed)
-    }
-
-    func deepenZoom(id: TimelineRegionID) {
-        let before = editState
+    private mutating func deepenZoom(id: TimelineRegionID) {
         let values = TimelineZoomDepth.values
-        mutate(&zoomRegions, id: id) { region in
+        mutate(&snapshot.zoomRegions, id: id) { region in
             let nearest = values.enumerated().min { abs($0.element - region.depth) < abs($1.element - region.depth) }?.offset ?? 1
             region.depth = values[(nearest + 1) % values.count]
         }
-        recordUndo(from: before)
     }
 
-    func updateZoomDepth(id: TimelineRegionID, depth: Double) {
-        let before = editState
-        mutate(&zoomRegions, id: id) { region in
+    private mutating func updateZoomDepth(id: TimelineRegionID, depth: Double) {
+        mutate(&snapshot.zoomRegions, id: id) { region in
             region.depth = min(max(depth, 1.0), 5.0)
         }
-        recordUndo(from: before)
     }
 
-    func updateZoomFocus(id: TimelineRegionID, focusX: Double? = nil, focusY: Double? = nil) {
-        let before = editState
-        mutate(&zoomRegions, id: id) { region in
+    private mutating func updateZoomFocus(id: TimelineRegionID, focusX: Double? = nil, focusY: Double? = nil) {
+        mutate(&snapshot.zoomRegions, id: id) { region in
             if let focusX {
                 region.focusX = min(max(focusX, 0), 1)
             }
@@ -593,69 +618,28 @@ final class TimelineEditController: ObservableObject {
             region.mode = .manual
             region.sourceClickTimestamp = nil
         }
-        recordUndo(from: before)
     }
 
-    func updateAnnotationText(id: TimelineRegionID, text: String) {
-        let before = editState
-        mutate(&annotationRegions, id: id) { $0.text = text }
-        recordUndo(from: before)
+    private mutating func updateAnnotationText(id: TimelineRegionID, text: String) {
+        mutate(&snapshot.annotationRegions, id: id) { $0.text = text }
     }
 
-    func selectedClip(duration: Double) -> TimelineClipSegment? {
-        guard let selectedClipIndex else { return nil }
-        let segments = TimelineClipSegment.segments(duration: duration, splitTimes: clipSplitTimes, clipSpeeds: clipSpeeds)
-        guard segments.indices.contains(selectedClipIndex) else { return nil }
-        return segments[selectedClipIndex]
-    }
-
-    func removeClipSplit(at splitTime: Double, duration: Double) {
-        guard let index = clipSplitTimes.firstIndex(where: { abs($0 - splitTime) < 0.001 }) else { return }
-        let before = editState
-        let oldSegments = TimelineClipSegment.segments(duration: duration, splitTimes: clipSplitTimes, clipSpeeds: clipSpeeds)
-        clipSplitTimes.remove(at: index)
-        let newSegments = TimelineClipSegment.segments(duration: duration, splitTimes: clipSplitTimes, clipSpeeds: [:])
-        clipSpeeds = remappedClipSpeeds(from: oldSegments, to: newSegments)
-        clearSelection()
-        recordUndo(from: before)
-        statusMessage = "Removed split at \(formatPlaybackTime(splitTime))."
-    }
-
-    private var editState: TimelineEditState {
-        TimelineEditState(
-            snapshot: snapshot,
-            selectedKind: selectedKind,
-            selectedID: selectedID,
-            selectedClipIndex: selectedClipIndex
+    private mutating func removeClipSplit(at splitTime: Double, duration: Double) {
+        guard let index = snapshot.clipSplitTimes.firstIndex(where: { abs($0 - splitTime) < 0.001 }) else { return }
+        let oldSegments = TimelineClipSegment.segments(
+            duration: duration,
+            splitTimes: snapshot.clipSplitTimes,
+            clipSpeeds: snapshot.clipSpeeds
         )
-    }
-
-    private func apply(_ state: TimelineEditState) {
-        zoomRegions = state.snapshot.zoomRegions
-        trimRegions = state.snapshot.trimRegions
-        annotationRegions = state.snapshot.annotationRegions
-        clipSplitTimes = state.snapshot.clipSplitTimes
-        clipSpeeds = state.snapshot.clipSpeeds
-        selectedKind = state.selectedKind
-        selectedID = state.selectedID
-        selectedClipIndex = state.selectedClipIndex
-    }
-
-    private func recordUndo(from before: TimelineEditState) {
-        history.recordChange(from: before, to: editState, shouldRecord: timelineContentChanged)
-    }
-
-    private func timelineContentChanged(_ before: TimelineEditState, _ after: TimelineEditState) -> Bool {
-        before.snapshot != after.snapshot
+        snapshot.clipSplitTimes.remove(at: index)
+        let newSegments = TimelineClipSegment.segments(duration: duration, splitTimes: snapshot.clipSplitTimes, clipSpeeds: [:])
+        snapshot.clipSpeeds = remappedClipSpeeds(from: oldSegments, to: newSegments)
+        clearSelection()
+        statusMessage = "Removed split at \(formatPlaybackTime(splitTime))."
     }
 
     private func canPlaceNonOverlapping(_ span: TimelineSpan, existing: [TimelineSpan]) -> Bool {
         !existing.contains { span.end > $0.start && span.start < $0.end }
-    }
-
-    private func mutate<T: Identifiable>(_ array: inout [T], id: T.ID, update: (inout T) -> Void) where T.ID: Equatable {
-        guard let index = array.firstIndex(where: { $0.id == id }) else { return }
-        update(&array[index])
     }
 
     private func remappedClipSpeeds(from oldSegments: [TimelineClipSegment], to newSegments: [TimelineClipSegment]) -> [Int: Double] {
@@ -667,6 +651,228 @@ final class TimelineEditController: ObservableObject {
             guard let speed = sourceSegment?.speed, let storedSpeed = TimelineClipSpeed.storedValue(speed) else { return }
             result[segment.index] = storedSpeed
         }
+    }
+
+    private func mutate<T: Identifiable>(_ array: inout [T], id: T.ID, update: (inout T) -> Void) where T.ID: Equatable {
+        guard let index = array.firstIndex(where: { $0.id == id }) else { return }
+        update(&array[index])
+    }
+}
+
+@Observable
+@MainActor
+final class TimelineEditDriver {
+    var state = TimelineEditState.empty
+    private var historyRevision = 0
+    @ObservationIgnored private var history = EditorHistory<TimelineEditState>()
+
+    var snapshot: TimelineEditSnapshot {
+        state.snapshot
+    }
+
+    var hasSelection: Bool {
+        state.hasSelection
+    }
+
+    var canUndo: Bool {
+        _ = historyRevision
+        return history.canUndo
+    }
+
+    var canRedo: Bool {
+        _ = historyRevision
+        return history.canRedo
+    }
+
+    var zoomRegions: [TimelineZoomRegion] {
+        get { state.snapshot.zoomRegions }
+        set { state.snapshot.zoomRegions = newValue }
+    }
+
+    var trimRegions: [TimelineTrimRegion] {
+        get { state.snapshot.trimRegions }
+        set { state.snapshot.trimRegions = newValue }
+    }
+
+    var annotationRegions: [TimelineAnnotationRegion] {
+        get { state.snapshot.annotationRegions }
+        set { state.snapshot.annotationRegions = newValue }
+    }
+
+    var clipSplitTimes: [Double] {
+        get { state.snapshot.clipSplitTimes }
+        set { state.snapshot.clipSplitTimes = newValue }
+    }
+
+    var clipSpeeds: [Int: Double] {
+        get { state.snapshot.clipSpeeds }
+        set { state.snapshot.clipSpeeds = newValue }
+    }
+
+    var selectedKind: TimelineRegionKind? {
+        get { state.selectedKind }
+        set { state.selectedKind = newValue }
+    }
+
+    var selectedID: TimelineRegionID? {
+        get { state.selectedID }
+        set { state.selectedID = newValue }
+    }
+
+    var selectedClipIndex: Int? {
+        get { state.selectedClipIndex }
+        set { state.selectedClipIndex = newValue }
+    }
+
+    var statusMessage: String {
+        get { state.statusMessage }
+        set { state.statusMessage = newValue }
+    }
+
+    func undo() {
+        guard let previous = history.undo(current: state) else { return }
+        state = previous
+        state.statusMessage = "Undid timeline edit."
+        historyRevision += 1
+    }
+
+    func redo() {
+        guard let next = history.redo(current: state) else { return }
+        state = next
+        state.statusMessage = "Redid timeline edit."
+        historyRevision += 1
+    }
+
+    func resetHistory() {
+        history.reset()
+        historyRevision += 1
+    }
+
+    func beginUndoTransaction() {
+        history.beginTransaction(current: state)
+    }
+
+    func endUndoTransaction() {
+        if history.commitTransaction(current: state, shouldRecord: timelineContentChanged) {
+            historyRevision += 1
+        }
+    }
+
+    func cancelUndoTransaction() {
+        history.cancelTransaction()
+        historyRevision += 1
+    }
+
+    func reset() {
+        send(.reset)
+    }
+
+    func add(_ kind: TimelineRegionKind, at currentTime: Double, duration: Double) {
+        send(.add(kind, currentTime: currentTime, duration: duration))
+    }
+
+    func applySnapshot(_ snapshot: TimelineEditSnapshot) {
+        send(.applySnapshot(snapshot), recordsUndo: false)
+        resetHistory()
+    }
+
+    func regenerateAutoZooms(from videoURL: URL?, duration: Double) {
+        send(.regenerateAutoZoomsRequested(videoURL: videoURL, duration: duration))
+    }
+
+    func replaceAutoZooms(with generatedZooms: [TimelineZoomRegion]) {
+        send(.replaceAutoZooms(generatedZooms))
+    }
+
+    func addClipSplit(at currentTime: Double, duration: Double) {
+        send(.addClipSplit(currentTime: currentTime, duration: duration))
+    }
+
+    func select(_ kind: TimelineRegionKind?, id: TimelineRegionID?) {
+        send(.select(kind, id), recordsUndo: false)
+    }
+
+    func selectClip(index: Int) {
+        send(.selectClip(index: index), recordsUndo: false)
+    }
+
+    func clearSelection() {
+        send(.clearSelection, recordsUndo: false)
+    }
+
+    func deleteSelection() {
+        send(.deleteSelection)
+    }
+
+    func updateSpan(kind: TimelineRegionKind, id: TimelineRegionID, span: TimelineSpan, duration: Double) {
+        send(.updateSpan(kind: kind, id: id, span: span, duration: duration))
+    }
+
+    func cycleClipSpeed(index: Int) {
+        send(.cycleClipSpeed(index: index))
+    }
+
+    func cycleClipSpeed(at currentTime: Double, duration: Double) {
+        send(.cycleClipSpeedAt(currentTime: currentTime, duration: duration))
+    }
+
+    func updateClipSpeed(index: Int, speed: Double) {
+        send(.updateClipSpeed(index: index, speed: speed))
+    }
+
+    func clipSpeed(index: Int) -> Double {
+        state.clipSpeed(index: index)
+    }
+
+    func deepenZoom(id: TimelineRegionID) {
+        send(.deepenZoom(id: id))
+    }
+
+    func updateZoomDepth(id: TimelineRegionID, depth: Double) {
+        send(.updateZoomDepth(id: id, depth: depth))
+    }
+
+    func updateZoomFocus(id: TimelineRegionID, focusX: Double? = nil, focusY: Double? = nil) {
+        send(.updateZoomFocus(id: id, focusX: focusX, focusY: focusY))
+    }
+
+    func updateAnnotationText(id: TimelineRegionID, text: String) {
+        send(.updateAnnotationText(id: id, text: text))
+    }
+
+    func selectedClip(duration: Double) -> TimelineClipSegment? {
+        state.selectedClip(duration: duration)
+    }
+
+    func removeClipSplit(at splitTime: Double, duration: Double) {
+        send(.removeClipSplit(splitTime: splitTime, duration: duration))
+    }
+
+    func send(_ event: TimelineEditEvent, recordsUndo: Bool = true) {
+        let before = state
+        let effects = state.applying(event)
+        if recordsUndo {
+            history.recordChange(from: before, to: state, shouldRecord: timelineContentChanged)
+            if before.snapshot != state.snapshot {
+                historyRevision += 1
+            }
+        }
+        perform(effects)
+    }
+
+    private func perform(_ effects: [TimelineEditEffect]) {
+        for effect in effects {
+            switch effect {
+            case .generateAutoZooms(let videoURL, let duration):
+                let telemetryURL = CursorTelemetryRecorder.telemetryURL(for: videoURL)
+                let generated = AutoZoomGenerator.generate(from: telemetryURL, duration: duration)
+                replaceAutoZooms(with: generated)
+            }
+        }
+    }
+
+    private func timelineContentChanged(_ before: TimelineEditState, _ after: TimelineEditState) -> Bool {
+        before.snapshot != after.snapshot
     }
 }
 

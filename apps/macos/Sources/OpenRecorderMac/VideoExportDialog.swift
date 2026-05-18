@@ -1,21 +1,19 @@
 import SwiftUI
 
 struct VideoExportDialog: View {
-    @State private var resolution: VideoExportResolution = VideoExportResolution.defaultExportOption
-    @State private var format: VideoExportFormat = .mov
-    @State private var frameRate: VideoExportFrameRate = VideoExportFrameRate.defaultExportOption
     var phase: VideoExportPhase
     var progress: Double
     var errorMessage: String?
     var exportedFileName: String?
     var isExporting: Bool
-    var initialOptions: VideoExportOptions = .default
-    var onExport: (VideoExportOptions) -> Void
+    @Binding var resolution: VideoExportResolution
+    var format: VideoExportFormat
+    @Binding var frameRate: VideoExportFrameRate
+    var onExport: () -> Void
     var onRetrySave: () -> Void
     var onShowInFinder: () -> Void
     var onCancelExport: () -> Void
     var onClose: () -> Void
-    @State private var didApplyInitialOptions = false
 
     private var canEditOptions: Bool {
         phase == .idle || phase == .failed
@@ -38,13 +36,6 @@ struct VideoExportDialog: View {
         }
         .padding(20)
         .background(Color.studioPanel)
-        .onAppear {
-            guard !didApplyInitialOptions else { return }
-            resolution = resolutionOptions.contains(initialOptions.resolution) ? initialOptions.resolution : VideoExportResolution.defaultExportOption
-            format = initialOptions.format
-            frameRate = VideoExportFrameRate.exportOptions.contains(initialOptions.frameRate) ? initialOptions.frameRate : VideoExportFrameRate.defaultExportOption
-            didApplyInitialOptions = true
-        }
     }
 
     private var header: some View {
@@ -227,23 +218,9 @@ struct VideoExportDialog: View {
                 minWidth: 136,
                 isDisabled: isExporting
             ) {
-                onExport(currentOptions)
+                onExport()
             }
         }
-    }
-
-    private var currentOptions: VideoExportOptions {
-        VideoExportOptions(
-            resolution: resolution,
-            format: format,
-            frameRate: frameRate,
-            aspectPreset: initialOptions.aspectPreset,
-            styling: .none,
-            cropSelection: initialOptions.cropSelection,
-            customOutputSize: resolution == .custom ? initialOptions.customOutputSize : nil,
-            cursorOverlay: initialOptions.cursorOverlay,
-            cursorTelemetryURL: initialOptions.cursorTelemetryURL
-        )
     }
 
     private var selectedExportSummary: String {

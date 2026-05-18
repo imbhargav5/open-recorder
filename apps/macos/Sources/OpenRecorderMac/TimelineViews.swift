@@ -25,7 +25,7 @@ enum TimelineMetrics {
 struct TimelinePanel: View {
     var videoURL: URL?
     @ObservedObject var playback: VideoPlaybackController
-    @ObservedObject var edits: TimelineEditController
+    var edits: TimelineEditDriver
     @State private var timelineViewport = TimelineViewport(duration: 0)
     @State private var isDraggingTimelineZoom = false
 
@@ -126,7 +126,7 @@ struct TimelinePanel: View {
 struct TimelineTrackContent: View {
     var videoURL: URL?
     @ObservedObject var playback: VideoPlaybackController
-    @ObservedObject var edits: TimelineEditController
+    var edits: TimelineEditDriver
     @Binding var viewport: TimelineViewport
     @State private var timelineSize = CGSize.zero
 
@@ -516,7 +516,7 @@ struct TimelineClipRow: View {
     var clipSpeeds: [Int: Double]
     var selectedClipIndex: Int?
     var seek: (Double) -> Void
-    @ObservedObject var edits: TimelineEditController
+    var edits: TimelineEditDriver
     @State private var waveformSamples = TimelineAudioWaveformLoader.quietSamples()
 
     var body: some View {
@@ -694,7 +694,7 @@ struct TimelineLayerRow: View {
     var viewport: TimelineViewport
     var regions: [TimelineRegionRenderData]
     var selectedID: TimelineRegionID?
-    @ObservedObject var edits: TimelineEditController
+    var edits: TimelineEditDriver
 
     var body: some View {
         GeometryReader { proxy in
@@ -757,7 +757,7 @@ struct TimelineRegionItem: View {
     var viewport: TimelineViewport
     var width: CGFloat
     var isSelected: Bool
-    @ObservedObject var edits: TimelineEditController
+    var edits: TimelineEditDriver
     @State private var dragStartSpan: TimelineSpan?
 
     var body: some View {

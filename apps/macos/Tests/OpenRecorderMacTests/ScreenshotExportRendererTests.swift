@@ -399,47 +399,47 @@ final class ScreenshotEditorHistoryTests: XCTestCase {
 
     @MainActor
     func testUndoRedoBackgroundStyleChange() {
-        let editor = ScreenshotEditorController()
+        let editor = ScreenshotEditorDriver()
         let background = BackgroundStyle.solid(BackgroundPresets.solidColors[1])
 
         editor.update(\.background, to: background)
 
-        XCTAssertEqual(editor.state.background, background)
+        XCTAssertEqual(editor.state.screenshot.background, background)
         XCTAssertTrue(editor.canUndo)
 
         editor.undo()
 
-        XCTAssertEqual(editor.state.background, ScreenshotEditorState.default.background)
+        XCTAssertEqual(editor.state.screenshot.background, ScreenshotEditorState.default.background)
         XCTAssertFalse(editor.canUndo)
         XCTAssertTrue(editor.canRedo)
 
         editor.redo()
 
-        XCTAssertEqual(editor.state.background, background)
+        XCTAssertEqual(editor.state.screenshot.background, background)
     }
 
     @MainActor
     func testSliderTransactionCollapsesScreenshotStyleChanges() {
-        let editor = ScreenshotEditorController()
+        let editor = ScreenshotEditorDriver()
 
         editor.beginUndoTransaction()
         editor.update(\.padding, to: 72)
         editor.update(\.padding, to: 96)
         editor.endUndoTransaction()
 
-        XCTAssertEqual(editor.state.padding, 96)
+        XCTAssertEqual(editor.state.screenshot.padding, 96)
         XCTAssertTrue(editor.canUndo)
 
         editor.undo()
 
-        XCTAssertEqual(editor.state.padding, ScreenshotEditorState.default.padding)
+        XCTAssertEqual(editor.state.screenshot.padding, ScreenshotEditorState.default.padding)
         XCTAssertFalse(editor.canUndo)
         XCTAssertTrue(editor.canRedo)
     }
 
     @MainActor
     func testRedoIsClearedAfterNewScreenshotStyleChange() {
-        let editor = ScreenshotEditorController()
+        let editor = ScreenshotEditorDriver()
 
         editor.update(\.padding, to: 72)
         editor.undo()
@@ -448,19 +448,19 @@ final class ScreenshotEditorHistoryTests: XCTestCase {
         editor.update(\.imageShadow, to: 0.2)
 
         XCTAssertFalse(editor.canRedo)
-        XCTAssertEqual(editor.state.imageShadow, 0.2, accuracy: 0.001)
+        XCTAssertEqual(editor.state.screenshot.imageShadow, 0.2, accuracy: 0.001)
     }
 
     @MainActor
     func testResetHistoryKeepsScreenshotStyleButClearsUndo() {
-        let editor = ScreenshotEditorController()
+        let editor = ScreenshotEditorDriver()
 
         editor.update(\.imageRoundness, to: 24)
         XCTAssertTrue(editor.canUndo)
 
         editor.resetHistory()
 
-        XCTAssertEqual(editor.state.imageRoundness, 24, accuracy: 0.001)
+        XCTAssertEqual(editor.state.screenshot.imageRoundness, 24, accuracy: 0.001)
         XCTAssertFalse(editor.canUndo)
         XCTAssertFalse(editor.canRedo)
     }

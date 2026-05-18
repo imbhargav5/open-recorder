@@ -7,8 +7,7 @@ import UniformTypeIdentifiers
 struct EditorStudioView: View {
     @EnvironmentObject private var model: AppModel
     var editorSession: EditorSession?
-    @ObservedObject var timelineEdits: TimelineEditController
-    @ObservedObject var screenshotEditor: ScreenshotEditorController
+    var workspace: EditorWorkspaceDriver
 
     var body: some View {
         if screenshotURL != nil {
@@ -18,7 +17,8 @@ struct EditorStudioView: View {
                 editorTitle: editorTitle,
                 initialScreenshotState: initialScreenshotState,
                 editorSessionID: editorSession?.id,
-                editor: screenshotEditor
+                editor: workspace.screenshot,
+                exportRequest: workspace.state.screenshotExportRequest
             )
         } else {
             VideoEditorStudioView(
@@ -29,7 +29,8 @@ struct EditorStudioView: View {
                 initialTimelineEdits: editorSession?.timelineEditSnapshot,
                 initialVideoState: initialVideoState,
                 editorSessionID: editorSession?.id,
-                timelineEdits: timelineEdits
+                timelineEdits: workspace.timeline,
+                exportRequest: workspace.state.videoExportRequest
             )
         }
     }
@@ -79,7 +80,8 @@ struct VideoEditorStudioView: View {
     var initialVideoState: ProjectVideoEditorState?
     var editorSessionID: UUID?
     @StateObject private var playback = VideoPlaybackController()
-    @ObservedObject var timelineEdits: TimelineEditController
+    var timelineEdits: TimelineEditDriver
+    var exportRequest: EditorExportRequest?
     @State private var driver = VideoEditorDriver()
     private let sidebarWidth: CGFloat = 320
     private let timelineHeight = TimelineMetrics.compactPanelHeight
@@ -107,7 +109,7 @@ struct VideoEditorStudioView: View {
                 cropDialog(videoURL: cropVideoURL)
             }
         }
-        .onChange(of: model.videoExportRequestID) { _, requestID in
+        .onChange(of: exportRequest?.id) { _, requestID in
             guard requestID != nil, isVideoExportRequestTarget else { return }
             driver.send(.exportRequested)
         }
@@ -269,11 +271,12 @@ struct VideoEditorStudioView: View {
             errorMessage: model.videoExportError,
             exportedFileName: model.exportedVideoURL?.lastPathComponent,
             isExporting: model.isVideoExporting,
-            initialOptions: driver.state.initialExportOptions,
-            onExport: { options in
+            resolution: driver.exportResolutionBinding,
+            format: driver.state.exportDraft.format,
+            frameRate: driver.exportFrameRateBinding,
+            onExport: {
                 driver.send(.exportConfirmed(
-                    recordingURL: model.videoExportRequestURL ?? videoURL,
-                    options: options,
+                    recordingURL: exportRequest?.url ?? videoURL,
                     edits: timelineEdits.snapshot,
                     snapshot: autosaveSnapshot,
                     cursorTelemetryURL: cursorTelemetryURL
@@ -346,10 +349,10 @@ struct VideoEditorStudioView: View {
 
     private var isVideoExportRequestTarget: Bool {
         guard let videoURL else { return false }
-        if let requestedEditorSessionID = model.videoExportRequestEditorSessionID {
+        if let requestedEditorSessionID = exportRequest?.editorSessionID {
             return requestedEditorSessionID == editorSessionID
         }
-        if let requestedURL = model.videoExportRequestURL {
+        if let requestedURL = exportRequest?.url {
             return requestedURL == videoURL
         }
         return true

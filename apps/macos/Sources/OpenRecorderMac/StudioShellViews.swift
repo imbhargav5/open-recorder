@@ -22,24 +22,20 @@ struct StudioWindowView: View {
 struct StudioShell: View {
     @EnvironmentObject private var model: AppModel
     var editorSession: EditorSession?
-    @State private var isShortcutsHelpPresented = false
-    @StateObject private var timelineEdits = TimelineEditController()
-    @StateObject private var screenshotEditor = ScreenshotEditorController()
+    @State private var workspace = EditorWorkspaceDriver()
 
     var body: some View {
         VStack(spacing: 0) {
             StudioTitleBar(
                 editorSession: editorSession,
-                isShortcutsHelpPresented: $isShortcutsHelpPresented,
-                timelineEdits: timelineEdits,
-                screenshotEditor: screenshotEditor
+                workspace: workspace
             )
             detailView
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.studioBackground)
-        .sheet(isPresented: $isShortcutsHelpPresented) {
-            EditorShortcutsHelpDialog(isPresented: $isShortcutsHelpPresented)
+        .sheet(isPresented: workspace.shortcutsHelpBinding) {
+            EditorShortcutsHelpDialog(isPresented: workspace.shortcutsHelpBinding)
         }
         .background {
             StudioKeyDownMonitor { event in
@@ -48,9 +44,22 @@ struct StudioShell: View {
             .frame(width: 0, height: 0)
         }
         .onAppear {
+            workspace.configure(
+                setAppSection: { section in
+                    model.selectedSection = section
+                },
+                setStatusMessage: { message in
+                    model.statusMessage = message
+                }
+            )
             if model.selectedSection == .capture {
-                model.selectedSection = .editor
+                workspace.send(.sectionSelected(.editor))
+            } else {
+                workspace.send(.appSectionSynced(model.selectedSection))
             }
+        }
+        .onChange(of: model.selectedSection) { _, section in
+            workspace.send(.appSectionSynced(section))
         }
     }
 
@@ -63,15 +72,15 @@ struct StudioShell: View {
 
         let key = (event.charactersIgnoringModifiers ?? event.characters ?? "").lowercased()
         if key == "k" {
-            isShortcutsHelpPresented.toggle()
+            workspace.send(.shortcutsHelpToggled)
             return true
         }
 
         if key == "z", !isTextInputActive {
             if event.modifierFlags.contains(.shift) {
-                return redoActiveEditor()
+                return workspace.redoActiveEditor(kind: activeEditorMediaKind)
             }
-            return undoActiveEditor()
+            return workspace.undoActiveEditor(kind: activeEditorMediaKind)
         }
 
         return false
@@ -79,13 +88,13 @@ struct StudioShell: View {
 
     @ViewBuilder
     private var detailView: some View {
-        switch model.selectedSection {
+        switch workspace.state.selectedSection {
         case .capture:
-            EditorStudioView(editorSession: editorSession, timelineEdits: timelineEdits, screenshotEditor: screenshotEditor)
+            EditorStudioView(editorSession: editorSession, workspace: workspace)
         case .projects:
             ProjectsStudioView()
         case .editor:
-            EditorStudioView(editorSession: editorSession, timelineEdits: timelineEdits, screenshotEditor: screenshotEditor)
+            EditorStudioView(editorSession: editorSession, workspace: workspace)
         case .settings:
             SettingsStudioView()
         }
@@ -104,38 +113,6 @@ struct StudioShell: View {
         return nil
     }
 
-    private func undoActiveEditor() -> Bool {
-        guard model.selectedSection == .editor else { return false }
-        switch activeEditorMediaKind {
-        case .video:
-            guard timelineEdits.canUndo else { return false }
-            timelineEdits.undo()
-            return true
-        case .screenshot:
-            guard screenshotEditor.canUndo else { return false }
-            screenshotEditor.undo()
-            return true
-        case nil:
-            return false
-        }
-    }
-
-    private func redoActiveEditor() -> Bool {
-        guard model.selectedSection == .editor else { return false }
-        switch activeEditorMediaKind {
-        case .video:
-            guard timelineEdits.canRedo else { return false }
-            timelineEdits.redo()
-            return true
-        case .screenshot:
-            guard screenshotEditor.canRedo else { return false }
-            screenshotEditor.redo()
-            return true
-        case nil:
-            return false
-        }
-    }
-
     private var isTextInputActive: Bool {
         guard let responder = NSApp.keyWindow?.firstResponder else { return false }
         return responder is NSTextView || responder is NSTextField
@@ -143,13 +120,12 @@ struct StudioShell: View {
 }
 
 struct StudioNavBar: View {
-    @EnvironmentObject private var model: AppModel
-    @Binding var isShortcutsHelpPresented: Bool
+    var selectedSection: AppSection
+    var isScreenshotEditor: Bool
+    var onSelectSection: (AppSection) -> Void
+    var onToggleHelp: () -> Void
 
     private let items: [AppSection] = [.editor, .projects]
-    private var isScreenshotEditor: Bool {
-        model.currentScreenshotURL != nil && model.currentVideoURL == nil
-    }
 
     var body: some View {
         HStack(spacing: 4) {
@@ -157,14 +133,14 @@ struct StudioNavBar: View {
                 StudioNavButton(
                     title: section.title,
                     symbolName: navSymbol(for: section),
-                    isActive: model.selectedSection == section
+                    isActive: selectedSection == section
                 ) {
-                    model.selectedSection = section
+                    onSelectSection(section)
                 }
             }
 
             StudioIconNavButton(title: "Help", symbolName: "questionmark.circle") {
-                isShortcutsHelpPresented.toggle()
+                onToggleHelp()
             }
         }
         .padding(4)
@@ -247,13 +223,20 @@ struct EditorHistoryButton: View {
 struct StudioTitleBar: View {
     @EnvironmentObject private var model: AppModel
     var editorSession: EditorSession?
-    @Binding var isShortcutsHelpPresented: Bool
-    @ObservedObject var timelineEdits: TimelineEditController
-    @ObservedObject var screenshotEditor: ScreenshotEditorController
+    var workspace: EditorWorkspaceDriver
 
     var body: some View {
         HStack(spacing: 12) {
-            StudioNavBar(isShortcutsHelpPresented: $isShortcutsHelpPresented)
+            StudioNavBar(
+                selectedSection: workspace.state.selectedSection,
+                isScreenshotEditor: editorMediaKind == .screenshot,
+                onSelectSection: { section in
+                    workspace.send(.sectionSelected(section))
+                },
+                onToggleHelp: {
+                    workspace.send(.shortcutsHelpToggled)
+                }
+            )
 
             titleLabel
                 .frame(minWidth: 0, maxWidth: .infinity)
@@ -273,20 +256,20 @@ struct StudioTitleBar: View {
         }
         .simultaneousGesture(
             TapGesture().onEnded {
-                timelineEdits.clearSelection()
+                workspace.send(.timelineSelectionClearRequested)
             }
         )
     }
 
     @ViewBuilder
     private var editorHistoryControls: some View {
-        if model.selectedSection == .editor, editorMediaKind != nil {
+        if workspace.state.selectedSection == .editor, editorMediaKind != nil {
             HStack(spacing: 4) {
                 EditorHistoryButton(title: "Undo", symbolName: "arrow.uturn.backward", isEnabled: canUndo) {
-                    undo()
+                    workspace.undoActiveEditor(kind: editorMediaKind)
                 }
                 EditorHistoryButton(title: "Redo", symbolName: "arrow.uturn.forward", isEnabled: canRedo) {
-                    redo()
+                    workspace.redoActiveEditor(kind: editorMediaKind)
                 }
             }
             .padding(3)
@@ -300,9 +283,9 @@ struct StudioTitleBar: View {
 
     @ViewBuilder
     private var exportButton: some View {
-        if model.selectedSection == .editor, let videoURL {
+        if workspace.state.selectedSection == .editor, let videoURL {
             StudioButton(hitTarget: .rounded(7)) {
-                model.requestVideoExport(videoURL, editorSessionID: editorSession?.id)
+                workspace.send(.videoExportRequested(videoURL, editorSessionID: editorSession?.id))
             } label: {
                 Label("Export Video", systemImage: "arrow.down.circle")
                     .font(.system(size: 12, weight: .semibold))
@@ -312,9 +295,9 @@ struct StudioTitleBar: View {
                     .background(Color.brand, in: RoundedRectangle(cornerRadius: 7))
                     .foregroundStyle(Color.white)
                 }
-        } else if model.selectedSection == .editor, screenshotURL != nil {
+        } else if workspace.state.selectedSection == .editor, screenshotURL != nil {
             StudioButton(hitTarget: .rounded(7)) {
-                model.requestScreenshotExport(screenshotURL, editorSessionID: editorSession?.id)
+                workspace.send(.screenshotExportRequested(screenshotURL, editorSessionID: editorSession?.id))
             } label: {
                 Label("Export PNG", systemImage: "square.and.arrow.up")
                     .font(.system(size: 12, weight: .semibold))
@@ -328,52 +311,16 @@ struct StudioTitleBar: View {
     }
 
     private var canUndo: Bool {
-        switch editorMediaKind {
-        case .video:
-            timelineEdits.canUndo
-        case .screenshot:
-            screenshotEditor.canUndo
-        case nil:
-            false
-        }
+        workspace.canUndo(kind: editorMediaKind)
     }
 
     private var canRedo: Bool {
-        switch editorMediaKind {
-        case .video:
-            timelineEdits.canRedo
-        case .screenshot:
-            screenshotEditor.canRedo
-        case nil:
-            false
-        }
-    }
-
-    private func undo() {
-        switch editorMediaKind {
-        case .video:
-            timelineEdits.undo()
-        case .screenshot:
-            screenshotEditor.undo()
-        case nil:
-            break
-        }
-    }
-
-    private func redo() {
-        switch editorMediaKind {
-        case .video:
-            timelineEdits.redo()
-        case .screenshot:
-            screenshotEditor.redo()
-        case nil:
-            break
-        }
+        workspace.canRedo(kind: editorMediaKind)
     }
 
     private var titleLabel: some View {
         HStack(spacing: 7) {
-            if model.selectedSection == .editor, let editorMediaKind {
+            if workspace.state.selectedSection == .editor, let editorMediaKind {
                 Image(systemName: editorMediaKind.titleIconSystemName)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.secondary)
@@ -388,7 +335,7 @@ struct StudioTitleBar: View {
     }
 
     private var title: String {
-        switch model.selectedSection {
+        switch workspace.state.selectedSection {
         case .capture:
             "Capture"
         case .projects:

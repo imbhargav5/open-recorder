@@ -238,7 +238,7 @@ final class TimelineEditingPlanTests: XCTestCase {
 
     @MainActor
     func testClipSplitUsesPlayheadAndDeduplicatesNearbySplits() {
-        let edits = TimelineEditController()
+        let edits = TimelineEditDriver()
 
         edits.addClipSplit(at: 3, duration: 10)
         edits.addClipSplit(at: 3.01, duration: 10)
@@ -249,7 +249,7 @@ final class TimelineEditingPlanTests: XCTestCase {
 
     @MainActor
     func testAddingTrimRegionIsDisabled() {
-        let edits = TimelineEditController()
+        let edits = TimelineEditDriver()
 
         edits.add(.trim, at: 3, duration: 10)
 
@@ -260,7 +260,7 @@ final class TimelineEditingPlanTests: XCTestCase {
 
     @MainActor
     func testSelectingClipClearsRegionSelection() {
-        let edits = TimelineEditController()
+        let edits = TimelineEditDriver()
         edits.add(.zoom, at: 2, duration: 10)
 
         edits.selectClip(index: 1)
@@ -273,7 +273,7 @@ final class TimelineEditingPlanTests: XCTestCase {
 
     @MainActor
     func testRemovingClipSplitClearsClipSelection() {
-        let edits = TimelineEditController()
+        let edits = TimelineEditDriver()
         edits.clipSplitTimes = [2, 4]
         edits.selectClip(index: 1)
 
@@ -286,7 +286,7 @@ final class TimelineEditingPlanTests: XCTestCase {
 
     @MainActor
     func testSplittingClipCopiesSpeedToBothSlices() {
-        let edits = TimelineEditController()
+        let edits = TimelineEditDriver()
         edits.updateClipSpeed(index: 0, speed: 1.5)
 
         edits.addClipSplit(at: 3, duration: 8)
@@ -299,7 +299,7 @@ final class TimelineEditingPlanTests: XCTestCase {
 
     @MainActor
     func testUndoRedoAddedZoomRegion() {
-        let edits = TimelineEditController()
+        let edits = TimelineEditDriver()
 
         edits.add(.zoom, at: 2, duration: 10)
 
@@ -319,7 +319,7 @@ final class TimelineEditingPlanTests: XCTestCase {
 
     @MainActor
     func testUndoRedoClipSplitAndMerge() {
-        let edits = TimelineEditController()
+        let edits = TimelineEditDriver()
 
         edits.addClipSplit(at: 2, duration: 8)
         XCTAssertEqual(edits.clipSplitTimes, [2])
@@ -339,7 +339,7 @@ final class TimelineEditingPlanTests: XCTestCase {
 
     @MainActor
     func testUndoRedoDeleteResetZoomDepthAndClipSpeed() {
-        let edits = TimelineEditController()
+        let edits = TimelineEditDriver()
         edits.add(.zoom, at: 1, duration: 8)
         let zoomID = edits.zoomRegions[0].id
         edits.addClipSplit(at: 4, duration: 8)
@@ -374,7 +374,7 @@ final class TimelineEditingPlanTests: XCTestCase {
 
     @MainActor
     func testTimelineTransactionCollapsesSpanUpdatesIntoOneUndoStep() {
-        let edits = TimelineEditController()
+        let edits = TimelineEditDriver()
         edits.add(.zoom, at: 1, duration: 8)
         let zoomID = edits.zoomRegions[0].id
         let originalSpan = edits.zoomRegions[0].span
@@ -397,7 +397,7 @@ final class TimelineEditingPlanTests: XCTestCase {
 
     @MainActor
     func testRedoIsClearedAfterNewTimelineEdit() {
-        let edits = TimelineEditController()
+        let edits = TimelineEditDriver()
         edits.add(.zoom, at: 1, duration: 8)
         edits.undo()
         XCTAssertTrue(edits.canRedo)
@@ -409,7 +409,7 @@ final class TimelineEditingPlanTests: XCTestCase {
 
     @MainActor
     func testAddedRegionStartsAtPlayheadWhenNearClipEnd() {
-        let edits = TimelineEditController()
+        let edits = TimelineEditDriver()
 
         edits.add(.zoom, at: 9.8, duration: 10)
 

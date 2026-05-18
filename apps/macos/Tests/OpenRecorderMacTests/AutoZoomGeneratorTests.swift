@@ -122,7 +122,7 @@ final class AutoZoomGeneratorTests: XCTestCase {
 
     @MainActor
     func testRegenerateAutoZoomsPreservesManualZooms() {
-        let edits = TimelineEditController()
+        let edits = TimelineEditDriver()
         let manual = TimelineZoomRegion(span: TimelineSpan(start: 0, end: 1), mode: .manual)
         let oldAuto = TimelineZoomRegion(span: TimelineSpan(start: 1, end: 2), mode: .auto, sourceClickTimestamp: 1_000)
         let newAuto = TimelineZoomRegion(span: TimelineSpan(start: 3, end: 4), mode: .auto, sourceClickTimestamp: 3_000)

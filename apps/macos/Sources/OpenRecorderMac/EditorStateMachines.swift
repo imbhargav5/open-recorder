@@ -31,6 +31,42 @@ struct VideoEditorSessionContext: Equatable {
     }
 }
 
+struct VideoExportDraftState: Equatable {
+    var resolution: VideoExportResolution = VideoExportResolution.defaultExportOption
+    var format: VideoExportFormat = .mov
+    var frameRate: VideoExportFrameRate = VideoExportFrameRate.defaultExportOption
+    var baseOptions: VideoExportOptions = .default
+
+    init(options: VideoExportOptions = .default) {
+        applyInitialOptions(options)
+    }
+
+    var currentOptions: VideoExportOptions {
+        VideoExportOptions(
+            resolution: resolution,
+            format: format,
+            frameRate: frameRate,
+            aspectPreset: baseOptions.aspectPreset,
+            styling: .none,
+            cropSelection: baseOptions.cropSelection,
+            customOutputSize: resolution == .custom ? baseOptions.customOutputSize : nil,
+            cursorOverlay: baseOptions.cursorOverlay,
+            cursorTelemetryURL: baseOptions.cursorTelemetryURL
+        )
+    }
+
+    mutating func applyInitialOptions(_ options: VideoExportOptions) {
+        baseOptions = options
+        resolution = VideoExportResolution.exportOptions.contains(options.resolution)
+            ? options.resolution
+            : VideoExportResolution.defaultExportOption
+        format = options.format
+        frameRate = VideoExportFrameRate.exportOptions.contains(options.frameRate)
+            ? options.frameRate
+            : VideoExportFrameRate.defaultExportOption
+    }
+}
+
 struct VideoEditorState: Equatable {
     var video = ProjectVideoEditorState.default
     var previewAspectPreset: VideoPreviewAspectPreset = .auto
@@ -39,6 +75,7 @@ struct VideoEditorState: Equatable {
     var appliedTimelineIdentity: String?
     var appliedVideoStateIdentity: String?
     var hasRecordedCamera = false
+    var exportDraft = VideoExportDraftState()
 
     var initialExportOptions: VideoExportOptions {
         VideoExportOptions.default.withCropSelection(video.cropSelection)
@@ -95,9 +132,10 @@ enum VideoEditorEvent: Equatable {
     case cropConfirmed(VideoCropSelection)
     case cropCanceled
     case exportRequested
+    case exportResolutionChanged(VideoExportResolution)
+    case exportFrameRateChanged(VideoExportFrameRate)
     case exportConfirmed(
         recordingURL: URL?,
-        options: VideoExportOptions,
         edits: TimelineEditSnapshot,
         snapshot: ProjectAutosaveSnapshot?,
         cursorTelemetryURL: URL?
@@ -155,12 +193,23 @@ extension VideoEditorState {
             return []
 
         case .exportRequested:
+            exportDraft.applyInitialOptions(initialExportOptions)
             activeSheet = .export
             presentedSheet = .export
             return []
 
-        case .exportConfirmed(let recordingURL, let options, let edits, let snapshot, let cursorTelemetryURL):
-            let styledOptions = styledExportOptions(from: options, cursorTelemetryURL: cursorTelemetryURL)
+        case .exportResolutionChanged(let resolution):
+            guard exportDraft.resolution != resolution else { return [] }
+            exportDraft.resolution = resolution
+            return []
+
+        case .exportFrameRateChanged(let frameRate):
+            guard exportDraft.frameRate != frameRate else { return [] }
+            exportDraft.frameRate = frameRate
+            return []
+
+        case .exportConfirmed(let recordingURL, let edits, let snapshot, let cursorTelemetryURL):
+            let styledOptions = styledExportOptions(from: exportDraft.currentOptions, cursorTelemetryURL: cursorTelemetryURL)
             return [.startVideoExport(recordingURL: recordingURL, options: styledOptions, edits: edits, snapshot: snapshot)]
 
         case .sheetDismissed(let exportIsBusy):
@@ -303,6 +352,20 @@ final class VideoEditorDriver {
         )
     }
 
+    var exportResolutionBinding: Binding<VideoExportResolution> {
+        Binding(
+            get: { self.state.exportDraft.resolution },
+            set: { self.send(.exportResolutionChanged($0)) }
+        )
+    }
+
+    var exportFrameRateBinding: Binding<VideoExportFrameRate> {
+        Binding(
+            get: { self.state.exportDraft.frameRate },
+            set: { self.send(.exportFrameRateChanged($0)) }
+        )
+    }
+
     func activeSheetBinding(exportIsBusy: Bool) -> Binding<VideoEditorSheet?> {
         Binding(
             get: { self.state.activeSheet },
@@ -409,166 +472,188 @@ struct ScreenshotEditorSessionContext: Equatable {
     }
 }
 
-struct ScreenshotEditorPresentationState: Equatable {
-    var isExportDialogPresented = false
-    var appliedScreenshotStateIdentity: String?
-
-    func autosaveSnapshot(
-        projectPath: String?,
-        screenshotURL: URL?,
-        editorTitle: String?,
-        editorState: ScreenshotEditorState
-    ) -> ProjectAutosaveSnapshot? {
-        guard let projectPath, let screenshotURL else { return nil }
-        return ProjectAutosaveSnapshot(
-            projectPath: projectPath,
-            title: editorTitle ?? EditorMediaKind.screenshot.displayTitle(for: screenshotURL),
-            recordingPath: nil,
-            screenshotPath: screenshotURL.path,
-            sourceName: nil,
-            editorState: ProjectEditorState(screenshot: editorState)
-        )
-    }
+struct EditorExportRequest: Identifiable, Equatable {
+    var id = UUID()
+    var url: URL
+    var editorSessionID: UUID?
 }
 
-enum ScreenshotEditorPresentationEvent: Equatable {
-    case sessionChanged(ScreenshotEditorSessionContext)
-    case exportRequested
-    case exportDialogDismissed
-    case autosaveSnapshotChanged(ProjectAutosaveSnapshot?)
-    case disappeared(ProjectAutosaveSnapshot?)
-    case saveFailed(String)
-    case saveSucceeded(URL)
-    case copyFailed(String)
-    case copySucceeded
+struct EditorWorkspaceState: Equatable {
+    var selectedSection: AppSection = .editor
+    var isShortcutsHelpPresented = false
+    var videoExportRequest: EditorExportRequest?
+    var screenshotExportRequest: EditorExportRequest?
 }
 
-enum ScreenshotEditorPresentationEffect: Equatable {
-    case applyScreenshotState(ScreenshotEditorState)
-    case markAutosaved(ProjectAutosaveSnapshot?)
-    case scheduleAutosave(ProjectAutosaveSnapshot?)
-    case flushAutosave(ProjectAutosaveSnapshot?)
+enum EditorWorkspaceEvent: Equatable {
+    case appSectionSynced(AppSection)
+    case sectionSelected(AppSection)
+    case shortcutsHelpToggled
+    case shortcutsHelpPresented(Bool)
+    case videoExportRequested(URL?, editorSessionID: UUID?)
+    case screenshotExportRequested(URL?, editorSessionID: UUID?)
+    case undoRequested(EditorMediaKind?)
+    case redoRequested(EditorMediaKind?)
+    case timelineSelectionClearRequested
+}
+
+enum EditorWorkspaceEffect: Equatable {
+    case setAppSection(AppSection)
     case setStatusMessage(String)
+    case undoTimeline
+    case redoTimeline
+    case undoScreenshot
+    case redoScreenshot
+    case clearTimelineSelection
 }
 
-extension ScreenshotEditorPresentationState {
-    mutating func applying(_ event: ScreenshotEditorPresentationEvent) -> [ScreenshotEditorPresentationEffect] {
+extension EditorWorkspaceState {
+    mutating func applying(_ event: EditorWorkspaceEvent) -> [EditorWorkspaceEffect] {
         switch event {
-        case .sessionChanged(let context):
-            guard appliedScreenshotStateIdentity != context.identity else { return [] }
-            appliedScreenshotStateIdentity = context.identity
-            let nextState = context.initialScreenshotState ?? .default
-            return [
-                .applyScreenshotState(nextState),
-                .markAutosaved(autosaveSnapshot(
-                    projectPath: context.projectPath,
-                    screenshotURL: context.screenshotURL,
-                    editorTitle: context.editorTitle,
-                    editorState: nextState
-                ))
-            ]
-
-        case .exportRequested:
-            isExportDialogPresented = true
+        case .appSectionSynced(let section):
+            selectedSection = section
             return []
 
-        case .exportDialogDismissed:
-            isExportDialogPresented = false
+        case .sectionSelected(let section):
+            guard selectedSection != section else { return [] }
+            selectedSection = section
+            return [.setAppSection(section)]
+
+        case .shortcutsHelpToggled:
+            isShortcutsHelpPresented.toggle()
             return []
 
-        case .autosaveSnapshotChanged(let snapshot):
-            return [.scheduleAutosave(snapshot)]
+        case .shortcutsHelpPresented(let isPresented):
+            isShortcutsHelpPresented = isPresented
+            return []
 
-        case .disappeared(let snapshot):
-            return [.flushAutosave(snapshot)]
+        case .videoExportRequested(let url, let editorSessionID):
+            guard let url else {
+                return [.setStatusMessage("Open a recording first.")]
+            }
+            videoExportRequest = EditorExportRequest(url: url, editorSessionID: editorSessionID)
+            return []
 
-        case .saveFailed(let message):
-            return [.setStatusMessage(message)]
+        case .screenshotExportRequested(let url, let editorSessionID):
+            guard let url else {
+                return [.setStatusMessage("Open a screenshot first.")]
+            }
+            screenshotExportRequest = EditorExportRequest(url: url, editorSessionID: editorSessionID)
+            return []
 
-        case .saveSucceeded(let url):
-            return [.setStatusMessage("Exported \(url.lastPathComponent)")]
+        case .undoRequested(let kind):
+            guard selectedSection == .editor else { return [] }
+            switch kind {
+            case .video:
+                return [.undoTimeline]
+            case .screenshot:
+                return [.undoScreenshot]
+            case nil:
+                return []
+            }
 
-        case .copyFailed(let message):
-            return [.setStatusMessage(message)]
+        case .redoRequested(let kind):
+            guard selectedSection == .editor else { return [] }
+            switch kind {
+            case .video:
+                return [.redoTimeline]
+            case .screenshot:
+                return [.redoScreenshot]
+            case nil:
+                return []
+            }
 
-        case .copySucceeded:
-            return [.setStatusMessage("Screenshot PNG copied")]
+        case .timelineSelectionClearRequested:
+            return [.clearTimelineSelection]
         }
     }
 }
 
 @Observable
 @MainActor
-final class ScreenshotEditorPresentationDriver {
-    var state = ScreenshotEditorPresentationState()
+final class EditorWorkspaceDriver {
+    var state = EditorWorkspaceState()
+    let timeline = TimelineEditDriver()
+    let screenshot = ScreenshotEditorDriver()
 
-    @ObservationIgnored private let autosave = ProjectAutosaveCoordinator()
-    @ObservationIgnored private var applyScreenshotState: (ScreenshotEditorState) -> Void = { _ in }
+    @ObservationIgnored private var setAppSection: (AppSection) -> Void = { _ in }
     @ObservationIgnored private var setStatusMessage: (String) -> Void = { _ in }
 
     func configure(
-        applyScreenshotState: @escaping (ScreenshotEditorState) -> Void,
-        saveHandler: @escaping ProjectAutosaveCoordinator.SaveHandler,
-        statusHandler: @escaping ProjectAutosaveCoordinator.StatusHandler,
+        setAppSection: @escaping (AppSection) -> Void,
         setStatusMessage: @escaping (String) -> Void
     ) {
-        self.applyScreenshotState = applyScreenshotState
+        self.setAppSection = setAppSection
         self.setStatusMessage = setStatusMessage
-        autosave.configure(saveHandler: saveHandler, statusHandler: statusHandler)
     }
 
-    func send(_ event: ScreenshotEditorPresentationEvent) {
-        let effects = state.applying(event)
-        perform(effects)
+    func send(_ event: EditorWorkspaceEvent) {
+        perform(state.applying(event))
     }
 
-    var exportDialogBinding: Binding<Bool> {
+    var shortcutsHelpBinding: Binding<Bool> {
         Binding(
-            get: { self.state.isExportDialogPresented },
-            set: { isPresented in
-                if isPresented {
-                    self.send(.exportRequested)
-                } else {
-                    self.send(.exportDialogDismissed)
-                }
-            }
+            get: { self.state.isShortcutsHelpPresented },
+            set: { self.send(.shortcutsHelpPresented($0)) }
         )
     }
 
-    func autosaveSnapshot(
-        projectPath: String?,
-        screenshotURL: URL?,
-        editorTitle: String?,
-        editorState: ScreenshotEditorState
-    ) -> ProjectAutosaveSnapshot? {
-        state.autosaveSnapshot(
-            projectPath: projectPath,
-            screenshotURL: screenshotURL,
-            editorTitle: editorTitle,
-            editorState: editorState
-        )
-    }
-
-    private func perform(_ effects: [ScreenshotEditorPresentationEffect]) {
-        for effect in effects {
-            switch effect {
-            case .applyScreenshotState(let state):
-                applyScreenshotState(state)
-            case .markAutosaved(let snapshot):
-                autosave.markSaved(snapshot)
-            case .scheduleAutosave(let snapshot):
-                autosave.schedule(snapshot)
-            case .flushAutosave(let snapshot):
-                Task { [weak self] in
-                    await self?.flushAutosave(snapshot)
-                }
-            case .setStatusMessage(let message):
-                setStatusMessage(message)
-            }
+    func canUndo(kind: EditorMediaKind?) -> Bool {
+        guard state.selectedSection == .editor else { return false }
+        switch kind {
+        case .video:
+            return timeline.canUndo
+        case .screenshot:
+            return screenshot.canUndo
+        case nil:
+            return false
         }
     }
 
-    private func flushAutosave(_ snapshot: ProjectAutosaveSnapshot?) async {
-        await autosave.flush(snapshot)
+    func canRedo(kind: EditorMediaKind?) -> Bool {
+        guard state.selectedSection == .editor else { return false }
+        switch kind {
+        case .video:
+            return timeline.canRedo
+        case .screenshot:
+            return screenshot.canRedo
+        case nil:
+            return false
+        }
+    }
+
+    @discardableResult
+    func undoActiveEditor(kind: EditorMediaKind?) -> Bool {
+        guard canUndo(kind: kind) else { return false }
+        send(.undoRequested(kind))
+        return true
+    }
+
+    @discardableResult
+    func redoActiveEditor(kind: EditorMediaKind?) -> Bool {
+        guard canRedo(kind: kind) else { return false }
+        send(.redoRequested(kind))
+        return true
+    }
+
+    private func perform(_ effects: [EditorWorkspaceEffect]) {
+        for effect in effects {
+            switch effect {
+            case .setAppSection(let section):
+                setAppSection(section)
+            case .setStatusMessage(let message):
+                setStatusMessage(message)
+            case .undoTimeline:
+                timeline.undo()
+            case .redoTimeline:
+                timeline.redo()
+            case .undoScreenshot:
+                screenshot.undo()
+            case .redoScreenshot:
+                screenshot.redo()
+            case .clearTimelineSelection:
+                timeline.clearSelection()
+            }
+        }
     }
 }
