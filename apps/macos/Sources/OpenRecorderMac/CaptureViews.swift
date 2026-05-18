@@ -6,7 +6,7 @@ import UniformTypeIdentifiers
 
 struct CaptureStudioView: View {
     @EnvironmentObject private var model: AppModel
-    @State private var sourceTab: SourceSelectorTab = .screens
+    @State private var sourceSelector = SourceSelectorDriver(sourceTab: .screens)
 
     private var visibleTabs: [SourceSelectorTab] {
         SourceSelectorTab.allCases
@@ -33,24 +33,27 @@ struct CaptureStudioView: View {
                 VStack(spacing: 18) {
                     Spacer(minLength: 10)
                     SourceSelectorCard(
-                        sourceTab: $sourceTab,
-                        visibleTabs: visibleTabs,
+                        sourceTab: sourceSelector.sourceTabBinding,
+                        visibleTabs: sourceSelector.state.visibleTabs,
                         onDrawArea: {
                             model.requestInteractiveAreaSelection()
                         }
                     )
                         .frame(maxWidth: 860)
-                    CaptureHUD(sourceTab: $sourceTab)
+                    CaptureHUD(options: model.captureOptions, sourceTab: sourceSelector.sourceTabBinding)
                         .padding(.bottom, 12)
                 }
                 .padding(16)
                 .background(Color.studioMutedBackground)
                 .onAppear {
+                    sourceSelector.configure(refreshSources: {
+                        model.reloadSourcesForPreview()
+                    })
+                    sourceSelector.state.visibleTabs = visibleTabs
                     model.reloadSourcesForPreview()
                 }
                 .onChange(of: model.preferredSourceSelectorKind) { _, kind in
-                    guard let kind else { return }
-                    sourceTab = SourceSelectorTab(sourceKind: kind)
+                    sourceSelector.send(.preferredSourceKindSynced(kind))
                 }
             }
         }

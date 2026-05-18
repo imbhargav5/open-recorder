@@ -6,15 +6,55 @@ import UniformTypeIdentifiers
 
 @MainActor
 final class AppModel: ObservableObject {
-    @Published var selectedSection: AppSection = .capture
+    @Published var selectedSection: AppSection = .capture {
+        didSet {
+            guard !isSyncingAppShellMirror else { return }
+            appShell.state.selectedSection = selectedSection
+        }
+    }
     @Published private(set) var captureState: CaptureState = .choosingMode
-    @Published var paths: AppPaths?
-    @Published var projects: [ProjectSummary] = []
-    @Published var currentVideoURL: URL?
-    @Published var currentScreenshotURL: URL?
-    @Published var lastEditorSession: EditorSession?
-    @Published var statusMessage = "Ready"
-    @Published var serviceHealth: HealthPayload?
+    @Published var paths: AppPaths? {
+        didSet {
+            guard !isSyncingAppShellMirror else { return }
+            appShell.state.paths = paths
+        }
+    }
+    @Published var projects: [ProjectSummary] = [] {
+        didSet {
+            guard !isSyncingAppShellMirror else { return }
+            appShell.state.projects = projects
+        }
+    }
+    @Published var currentVideoURL: URL? {
+        didSet {
+            guard !isSyncingAppShellMirror else { return }
+            appShell.state.currentVideoURL = currentVideoURL
+        }
+    }
+    @Published var currentScreenshotURL: URL? {
+        didSet {
+            guard !isSyncingAppShellMirror else { return }
+            appShell.state.currentScreenshotURL = currentScreenshotURL
+        }
+    }
+    @Published var lastEditorSession: EditorSession? {
+        didSet {
+            guard !isSyncingAppShellMirror else { return }
+            appShell.state.lastEditorSession = lastEditorSession
+        }
+    }
+    @Published var statusMessage = "Ready" {
+        didSet {
+            guard !isSyncingAppShellMirror else { return }
+            appShell.state.statusMessage = statusMessage
+        }
+    }
+    @Published var serviceHealth: HealthPayload? {
+        didSet {
+            guard !isSyncingAppShellMirror else { return }
+            appShell.state.serviceHealth = serviceHealth
+        }
+    }
     @Published var includeMicrophone = false
     @Published var includeSystemAudio = false
     @Published var includeCamera = false
@@ -29,7 +69,12 @@ final class AppModel: ObservableObject {
     @Published var cameraDevices: [CaptureDeviceInfo] = []
     @Published var selectedMicrophoneDeviceID: String?
     @Published var selectedCameraDeviceID: String?
-    @Published var windowCommand: NativeWindowCommand?
+    @Published var windowCommand: NativeWindowCommand? {
+        didSet {
+            guard !isSyncingAppShellMirror else { return }
+            appShell.state.windowCommand = windowCommand
+        }
+    }
     @Published var isVideoExporting = false
     @Published var videoExportPhase: VideoExportPhase = .idle
     @Published var videoExportProgress = 0.0
@@ -46,6 +91,7 @@ final class AppModel: ObservableObject {
     private var videoExportCancellationToken: VideoExportCancellationToken?
 
     private var handledWindowCommandID: UUID?
+    private var isSyncingAppShellMirror = false
     private var activeScreenStartedAt: Date?
     private var activeFacecamStartedAt: Date?
     private var activeFacecamURL: URL?
@@ -57,6 +103,9 @@ final class AppModel: ObservableObject {
 
     let service: RustServiceClient
     let capture: CaptureController
+    let appShell = AppShellDriver()
+    let captureMachine = CaptureDriver()
+    let captureOptions = CaptureOptionsDriver()
     private let screenRecordingPermission: ScreenRecordingPermission
     private let accessibilityPermission: AccessibilityPermission
     private let onboardingStore: OnboardingStateStore
@@ -104,6 +153,105 @@ final class AppModel: ObservableObject {
         }
         self.screenRecordingPermissionState = screenRecordingPermission.currentState()
         self.accessibilityPermissionState = accessibilityPermission.currentState()
+        appShell.configure(
+            refreshBackend: { [weak self] in
+                self?.refreshBackendState()
+            },
+            emitWindowCommand: { [weak self] command in
+                self?.windowCommand = command
+            },
+            setStatusMessage: { [weak self] message in
+                self?.statusMessage = message
+            }
+        )
+        captureMachine.configure(
+            transitionHandler: { [weak self] transition in
+                guard let self else { return }
+                self.captureState = transition.state
+                self.captureOptions.send(.availabilityChanged(self.canChangeRecordingOptions))
+                self.syncCaptureOptionsMirror()
+                if let message = transition.statusMessage {
+                    self.statusMessage = message
+                }
+            },
+            effectHandlers: CaptureEffectHandlers(
+                showHUD: { [weak self] in
+                    self?.requestWindow(.showHUD)
+                },
+                hideHUD: { [weak self] in
+                    self?.requestWindow(.hideHUD)
+                },
+                closeCaptureSetup: { [weak self] in
+                    self?.requestWindow(.closeCaptureSetup)
+                },
+                showSourceSelector: { [weak self] in
+                    self?.requestWindow(.showSourceSelector)
+                },
+                showAreaSelector: { [weak self] in
+                    self?.requestWindow(.showAreaSelector)
+                },
+                showRecordingSetup: { [weak self] kind in
+                    self?.requestWindow(kind == .display ? .showScreenRecordingSetup : .showRecordingSetup)
+                },
+                dismissScreenSelection: { [weak self] in
+                    self?.screenSelectionPresenter.dismiss()
+                },
+                dismissCaptureWindows: { [weak self] in
+                    self?.requestWindow(.hideRecordingSetup)
+                },
+                focusActiveCaptureWindow: { [weak self] in
+                    self?.focusActiveCaptureWindow()
+                },
+                flashDisplay: { [weak self] source in
+                    self?.flashDisplay(for: source)
+                },
+                cancelRecordingStart: { [weak self] in
+                    self?.recordingStartTask?.cancel()
+                    self?.recordingStartTask = nil
+                    self?.countdownOverlayController.dismiss()
+                },
+                cancelScreenshotCapture: { [weak self] in
+                    self?.screenshotCaptureTask?.cancel()
+                    self?.screenshotCaptureTask = nil
+                },
+                prepareRecordingFile: { [weak self] source in
+                    self?.prepareRecordingFile(for: source)
+                },
+                runRecordingStart: { [weak self] source, outputURL in
+                    self?.recordingStartTask?.cancel()
+                    self?.recordingStartTask = Task { [weak self] in
+                        await self?.runRecordingStartFlow(source: source, outputURL: outputURL)
+                    }
+                },
+                stopRecording: { [weak self] source in
+                    Task { [weak self] in
+                        await self?.runRecordingStopFlow(source: source)
+                    }
+                },
+                runScreenshotCapture: { [weak self] source in
+                    self?.screenshotCaptureTask?.cancel()
+                    self?.screenshotCaptureTask = Task { [weak self] in
+                        await self?.runScreenshotCapture(source: source)
+                    }
+                }
+            )
+        )
+        captureOptions.configure(
+            refreshDevices: { [weak self] in
+                guard let self else { return ([], []) }
+                let microphones = self.captureDeviceProvider.devices(for: .audio)
+                let cameras = self.captureDeviceProvider.devices(for: .video)
+                return (microphones, cameras)
+            },
+            requestWindow: { [weak self] action in
+                self?.requestWindow(action)
+            },
+            setStatusMessage: { [weak self] message in
+                self?.statusMessage = message
+            }
+        )
+        syncAppShellMirror()
+        syncCaptureOptionsMirror()
     }
 
     var captureMode: CaptureMode {
@@ -131,7 +279,34 @@ final class AppModel: ObservableObject {
     }
 
     func setCaptureStateForTesting(_ state: CaptureState) {
+        setCaptureStateMirror(state)
+    }
+
+    private func setCaptureStateMirror(_ state: CaptureState) {
+        captureMachine.setStateForTesting(state)
         captureState = state
+        captureOptions.send(.availabilityChanged(canChangeRecordingOptions))
+        syncCaptureOptionsMirror()
+    }
+
+    private func sendAppShell(_ event: AppShellEvent) {
+        appShell.send(event)
+        syncAppShellMirror()
+    }
+
+    private func syncAppShellMirror() {
+        let state = appShell.state
+        isSyncingAppShellMirror = true
+        selectedSection = state.selectedSection
+        paths = state.paths
+        projects = state.projects
+        currentVideoURL = state.currentVideoURL
+        currentScreenshotURL = state.currentScreenshotURL
+        lastEditorSession = state.lastEditorSession
+        statusMessage = state.statusMessage
+        serviceHealth = state.serviceHealth
+        windowCommand = state.windowCommand
+        isSyncingAppShellMirror = false
     }
 
     var captureFlow: CaptureFlow {
@@ -156,7 +331,7 @@ final class AppModel: ObservableObject {
             await refreshSources()
             refreshCaptureDevices()
         }
-        refreshBackendState()
+        sendAppShell(.bootstrapRequested)
     }
 
     var canContinueOnboarding: Bool {
@@ -189,14 +364,16 @@ final class AppModel: ObservableObject {
 
     func showOnboarding() {
         refreshOnboardingPermissionStates()
-        captureState = captureState.withPresentation(.hidden)
+        setCaptureStateMirror(captureState.withPresentation(.hidden))
         requestWindow(.showOnboarding)
     }
 
-    func requestOnboardingScreenRecordingPermission() {
+    @discardableResult
+    func requestOnboardingScreenRecordingPermission() -> ScreenRecordingPermissionRequestOutcome {
         switch screenRecordingPermission.currentState() {
         case .granted:
             onboardingStatusMessage = "Screen Recording is enabled."
+            return .granted
         case .requestAvailable:
             let outcome = screenRecordingPermission.requestGrant()
             switch outcome {
@@ -205,17 +382,22 @@ final class AppModel: ObservableObject {
             case .promptShownWithoutGrant, .promptAlreadyShown:
                 onboardingStatusMessage = "Enable Screen Recording in System Settings, then quit and reopen Open Recorder if macOS asks."
             }
+            refreshOnboardingPermissionStates()
+            return outcome
         case .requestAlreadyShown:
             onboardingStatusMessage = "Enable Screen Recording in System Settings, then quit and reopen Open Recorder if macOS asks."
             openPrivacySettings()
+            refreshOnboardingPermissionStates()
+            return .promptAlreadyShown
         }
-        refreshOnboardingPermissionStates()
     }
 
-    func requestOnboardingAccessibilityPermission() {
+    @discardableResult
+    func requestOnboardingAccessibilityPermission() -> AccessibilityPermissionRequestOutcome {
         switch accessibilityPermission.currentState() {
         case .granted:
             onboardingStatusMessage = "Accessibility access is enabled."
+            return .granted
         case .requestAvailable:
             let outcome = accessibilityPermission.requestGrant()
             switch outcome {
@@ -224,11 +406,14 @@ final class AppModel: ObservableObject {
             case .promptShownWithoutGrant, .promptAlreadyShown:
                 onboardingStatusMessage = "Enable Accessibility access in System Settings to capture shortcuts and cursor details."
             }
+            refreshOnboardingPermissionStates()
+            return outcome
         case .requestAlreadyShown:
             onboardingStatusMessage = "Enable Accessibility access in System Settings to capture shortcuts and cursor details."
             openAccessibilitySettings()
+            refreshOnboardingPermissionStates()
+            return .promptAlreadyShown
         }
-        refreshOnboardingPermissionStates()
     }
 
     @discardableResult
@@ -242,19 +427,22 @@ final class AppModel: ObservableObject {
         onboardingStore.setCompleted(true)
         onboardingStatusMessage = ""
         statusMessage = "Ready"
-        captureState = captureState.withPresentation(.visible)
+        setCaptureStateMirror(captureState.withPresentation(.visible))
         requestWindow(.finishOnboarding)
         return true
     }
 
-    func refreshBackendState() {
+    @discardableResult
+    func refreshBackendState() -> Bool {
         do {
-            serviceHealth = try service.call("health", as: HealthPayload.self)
-            paths = try service.call("paths", as: AppPaths.self)
-            projects = try service.call("listProjects", as: [ProjectSummary].self)
-            statusMessage = "Rust service ready"
+            let serviceHealth = try service.call("health", as: HealthPayload.self)
+            let paths = try service.call("paths", as: AppPaths.self)
+            let projects = try service.call("listProjects", as: [ProjectSummary].self)
+            sendAppShell(.backendRefreshed(paths: paths, projects: projects, health: serviceHealth))
+            return true
         } catch {
-            statusMessage = error.localizedDescription
+            sendAppShell(.backendRefreshFailed(error.localizedDescription))
+            return false
         }
     }
 
@@ -322,63 +510,7 @@ final class AppModel: ObservableObject {
 
     @discardableResult
     private func dispatch(_ event: CaptureEvent) -> CaptureTransition {
-        let transition = captureState.applying(event)
-        captureState = transition.state
-        if let message = transition.statusMessage {
-            statusMessage = message
-        }
-        interpretCaptureEffects(transition.effects)
-        return transition
-    }
-
-    private func interpretCaptureEffects(_ effects: [CaptureEffect]) {
-        for effect in effects {
-            switch effect {
-            case .showHUD:
-                requestWindow(.showHUD)
-            case .hideHUD:
-                requestWindow(.hideHUD)
-            case .closeCaptureSetup:
-                requestWindow(.closeCaptureSetup)
-            case .showSourceSelector:
-                requestWindow(.showSourceSelector)
-            case .showAreaSelector:
-                requestWindow(.showAreaSelector)
-            case .showRecordingSetup(let kind):
-                requestWindow(kind == .display ? .showScreenRecordingSetup : .showRecordingSetup)
-            case .dismissScreenSelection:
-                screenSelectionPresenter.dismiss()
-            case .dismissCaptureWindows:
-                requestWindow(.hideRecordingSetup)
-            case .focusActiveCaptureWindow:
-                focusActiveCaptureWindow()
-            case .flashDisplay(let source):
-                flashDisplay(for: source)
-            case .cancelRecordingStart:
-                recordingStartTask?.cancel()
-                recordingStartTask = nil
-                countdownOverlayController.dismiss()
-            case .cancelScreenshotCapture:
-                screenshotCaptureTask?.cancel()
-                screenshotCaptureTask = nil
-            case .prepareRecordingFile(let source):
-                prepareRecordingFile(for: source)
-            case .runRecordingStart(let source, let outputURL):
-                recordingStartTask?.cancel()
-                recordingStartTask = Task { [weak self] in
-                    await self?.runRecordingStartFlow(source: source, outputURL: outputURL)
-                }
-            case .stopRecording(let source):
-                Task {
-                    await runRecordingStopFlow(source: source)
-                }
-            case .runScreenshotCapture(let source):
-                screenshotCaptureTask?.cancel()
-                screenshotCaptureTask = Task { [weak self] in
-                    await self?.runScreenshotCapture(source: source)
-                }
-            }
-        }
+        captureMachine.send(event)
     }
 
     private func prepareRecordingFile(for source: CaptureSource) {
@@ -511,7 +643,7 @@ final class AppModel: ObservableObject {
     }
 
     func requestWindow(_ action: NativeWindowCommandAction, editorSession: EditorSession? = nil) {
-        windowCommand = NativeWindowCommand(action: action, editorSession: editorSession)
+        sendAppShell(.windowCommandRequested(action, editorSession: editorSession))
     }
 
     func showHUD() {
@@ -532,9 +664,7 @@ final class AppModel: ObservableObject {
 
     func showEditor(for session: EditorSession) {
         dispatch(.showEditor)
-        lastEditorSession = session
-        selectedSection = .editor
-        requestWindow(.showStudio, editorSession: session)
+        sendAppShell(.editorSessionShown(session))
     }
 
     func consumeWindowCommand(_ command: NativeWindowCommand?) -> NativeWindowCommand? {
@@ -562,7 +692,7 @@ final class AppModel: ObservableObject {
         case .screenSelecting:
             requestWindow(.showHUD)
         case .countingDownRecording, .startingRecording, .recording, .stoppingRecording, .capturingScreenshot:
-            captureState = captureState.withPresentation(.hidden)
+            setCaptureStateMirror(captureState.withPresentation(.hidden))
         case .idle, .choosingMode:
             showHUD()
         }
@@ -632,7 +762,8 @@ final class AppModel: ObservableObject {
                     )
                     activeFacecamURL = facecamURL
                 } catch {
-                    includeCamera = false
+                    captureOptions.send(.cameraDisabled)
+                    syncCaptureOptionsMirror()
                     activeFacecamURL = nil
                     activeFacecamStartedAt = nil
                     statusMessage = "Recording without facecam: \(error.localizedDescription)"
@@ -726,7 +857,7 @@ final class AppModel: ObservableObject {
                     ],
                     as: ProjectSummary.self
                 )
-                projects = try service.call("listProjects", as: [ProjectSummary].self)
+                sendAppShell(.projectsReplaced(try service.call("listProjects", as: [ProjectSummary].self)))
                 showEditor(for: EditorSession(
                     kind: .video,
                     url: outputURL,
@@ -1168,8 +1299,7 @@ final class AppModel: ObservableObject {
     }
 
     private func upsertProjectSummary(_ summary: ProjectSummary) {
-        projects.removeAll { $0.path == summary.path }
-        projects.insert(summary, at: 0)
+        sendAppShell(.projectSummaryUpserted(summary))
     }
 
     private func jsonObject<T: Encodable>(for value: T) -> Any? {
@@ -1226,32 +1356,26 @@ final class AppModel: ObservableObject {
     }
 
     func refreshCaptureDevices() {
-        microphoneDevices = captureDeviceProvider.devices(for: .audio)
-        cameraDevices = captureDeviceProvider.devices(for: .video)
-
-        if let selectedMicrophoneDeviceID,
-           !microphoneDevices.contains(where: { $0.id == selectedMicrophoneDeviceID }) {
-            self.selectedMicrophoneDeviceID = nil
-        }
-
-        if let selectedCameraDeviceID,
-           !cameraDevices.contains(where: { $0.id == selectedCameraDeviceID }) {
-            self.selectedCameraDeviceID = nil
-        }
+        let microphones = captureDeviceProvider.devices(for: .audio)
+        let cameras = captureDeviceProvider.devices(for: .video)
+        captureOptions.send(.devicesRefreshed(microphones: microphones, cameras: cameras))
+        syncCaptureOptionsMirror()
     }
 
     func requestMicrophoneSelection(refreshDevices: Bool = true) {
         if refreshDevices {
             refreshCaptureDevices()
         }
-        requestWindow(.showMicrophoneSelector)
+        captureOptions.send(.microphoneSelectionRequested)
+        syncCaptureOptionsMirror()
     }
 
     func requestCameraSelection(refreshDevices: Bool = true) {
         if refreshDevices {
             refreshCaptureDevices()
         }
-        requestWindow(.showCameraSelector)
+        captureOptions.send(.cameraSelectionRequested)
+        syncCaptureOptionsMirror()
     }
 
     func cancelMicrophoneSelection() {
@@ -1263,17 +1387,15 @@ final class AppModel: ObservableObject {
     }
 
     func selectMicrophoneDevice(_ deviceID: String?) {
-        includeMicrophone = true
-        selectedMicrophoneDeviceID = deviceID
-        statusMessage = "Microphone set to \(selectedMicrophoneDeviceName)"
-        requestWindow(.closeMicrophoneSelector)
+        syncCaptureOptionsDriverFromMirror()
+        captureOptions.send(.microphoneSelected(deviceID))
+        syncCaptureOptionsMirror()
     }
 
     func selectCameraDevice(_ deviceID: String?) {
-        includeCamera = true
-        selectedCameraDeviceID = deviceID
-        statusMessage = "Camera set to \(selectedCameraDeviceName)"
-        requestWindow(.closeCameraSelector)
+        syncCaptureOptionsDriverFromMirror()
+        captureOptions.send(.cameraSelected(deviceID))
+        syncCaptureOptionsMirror()
     }
 
     func selectNoMicrophoneInput() {
@@ -1287,51 +1409,60 @@ final class AppModel: ObservableObject {
     }
 
     func disableMicrophone() {
-        includeMicrophone = false
-        statusMessage = "Microphone off"
+        syncCaptureOptionsDriverFromMirror()
+        captureOptions.send(.microphoneDisabled)
+        syncCaptureOptionsMirror()
     }
 
     func toggleSystemAudio() {
-        guard canChangeRecordingOptions else {
-            statusMessage = includeSystemAudio ? "System audio is on for this recording." : "System audio is off for this recording."
-            return
-        }
-
-        includeSystemAudio.toggle()
-        statusMessage = includeSystemAudio ? "System audio on" : "System audio off"
+        syncCaptureOptionsDriverFromMirror()
+        captureOptions.send(.availabilityChanged(canChangeRecordingOptions))
+        captureOptions.send(.systemAudioToggled)
+        syncCaptureOptionsMirror()
     }
 
     func disableCamera() {
-        includeCamera = false
-        statusMessage = "Camera off"
+        syncCaptureOptionsDriverFromMirror()
+        captureOptions.send(.cameraDisabled)
+        syncCaptureOptionsMirror()
     }
 
     var selectedMicrophoneDeviceName: String {
-        guard let selectedMicrophoneDeviceID,
-              let device = microphoneDevices.first(where: { $0.id == selectedMicrophoneDeviceID }) else {
-            return "System Default"
-        }
-        return device.name
+        captureOptions.state.selectedMicrophoneDeviceName
     }
 
     var selectedCameraDeviceName: String {
-        guard let selectedCameraDeviceID,
-              let device = cameraDevices.first(where: { $0.id == selectedCameraDeviceID }) else {
-            return "System Default"
-        }
-        return device.name
+        captureOptions.state.selectedCameraDeviceName
+    }
+
+    private func syncCaptureOptionsMirror() {
+        let options = captureOptions.state
+        includeMicrophone = options.includeMicrophone
+        includeSystemAudio = options.includeSystemAudio
+        includeCamera = options.includeCamera
+        showCursor = options.showCursor
+        showClicks = options.showClicks
+        microphoneDevices = options.microphoneDevices
+        cameraDevices = options.cameraDevices
+        selectedMicrophoneDeviceID = options.selectedMicrophoneDeviceID
+        selectedCameraDeviceID = options.selectedCameraDeviceID
+    }
+
+    private func syncCaptureOptionsDriverFromMirror() {
+        captureOptions.state.includeMicrophone = includeMicrophone
+        captureOptions.state.includeSystemAudio = includeSystemAudio
+        captureOptions.state.includeCamera = includeCamera
+        captureOptions.state.showCursor = showCursor
+        captureOptions.state.showClicks = showClicks
+        captureOptions.state.microphoneDevices = microphoneDevices
+        captureOptions.state.cameraDevices = cameraDevices
+        captureOptions.state.selectedMicrophoneDeviceID = selectedMicrophoneDeviceID
+        captureOptions.state.selectedCameraDeviceID = selectedCameraDeviceID
+        captureOptions.state.canChangeOptions = canChangeRecordingOptions
     }
 
     private var currentCaptureOptions: RecordingCaptureOptions {
-        RecordingCaptureOptions(
-            includeMicrophone: includeMicrophone,
-            microphoneDeviceID: includeMicrophone ? selectedMicrophoneDeviceID : nil,
-            includeSystemAudio: includeSystemAudio,
-            includeCamera: includeCamera,
-            cameraDeviceID: includeCamera ? selectedCameraDeviceID : nil,
-            showCursor: showCursor,
-            showClicks: showClicks
-        )
+        captureOptions.state.recordingOptions
     }
 
     private func preparePermissions(for options: RecordingCaptureOptions) async -> Bool {

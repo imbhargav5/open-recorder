@@ -9,6 +9,10 @@ enum OnboardingWindowMetrics {
 
 struct OnboardingView: View {
     @EnvironmentObject private var model: AppModel
+    @State private var driver = OnboardingDriver(
+        screenRecordingPermissionState: .requestAvailable,
+        accessibilityPermissionState: .requestAvailable
+    )
     private let permissionRefreshTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     var body: some View {
@@ -35,7 +39,7 @@ struct OnboardingView: View {
                     buttonTitle: screenRecordingButtonTitle,
                     buttonState: screenRecordingButtonState
                 ) {
-                    model.requestOnboardingScreenRecordingPermission()
+                    driver.send(.screenPermissionButtonTapped)
                 }
 
                 OnboardingPermissionRow(
@@ -44,12 +48,12 @@ struct OnboardingView: View {
                     buttonTitle: accessibilityButtonTitle,
                     buttonState: accessibilityButtonState
                 ) {
-                    model.requestOnboardingAccessibilityPermission()
+                    driver.send(.accessibilityPermissionButtonTapped)
                 }
             }
             .padding(.top, 42)
 
-            Text(model.onboardingStatusMessage)
+            Text(driver.state.statusMessage)
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(Color.white.opacity(0.48))
                 .multilineTextAlignment(.center)
@@ -58,40 +62,61 @@ struct OnboardingView: View {
                 .padding(.top, 20)
 
             StudioButton(hitTarget: .rounded(8)) {
-                model.completeOnboarding()
+                driver.send(.continueRequested)
             } label: {
                 Label("Continue", systemImage: "checkmark.circle.fill")
                     .font(.system(size: 13, weight: .semibold))
                     .frame(width: 180, height: 40)
-                    .foregroundStyle(model.canContinueOnboarding ? Color.white : Color.white.opacity(0.34))
+                    .foregroundStyle(driver.state.canContinue ? Color.white : Color.white.opacity(0.34))
                     .background(
-                        model.canContinueOnboarding ? Color.brand : Color.studioControl,
+                        driver.state.canContinue ? Color.brand : Color.studioControl,
                         in: RoundedRectangle(cornerRadius: 8)
                     )
                     .overlay {
                         RoundedRectangle(cornerRadius: 8)
-                            .stroke(model.canContinueOnboarding ? Color.brand.opacity(0.45) : Color.studioBorder)
+                            .stroke(driver.state.canContinue ? Color.brand.opacity(0.45) : Color.studioBorder)
                     }
             }
-            .disabled(!model.canContinueOnboarding)
+            .disabled(!driver.state.canContinue)
 
             Spacer(minLength: 46)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.studioBackground)
         .onAppear {
-            model.refreshOnboardingPermissionStates()
+            driver.configure(
+                currentPermissions: {
+                    model.refreshOnboardingPermissionStates()
+                    return (model.screenRecordingPermissionState, model.accessibilityPermissionState)
+                },
+                requestScreenPermission: {
+                    model.requestOnboardingScreenRecordingPermission()
+                },
+                requestAccessibilityPermission: {
+                    model.requestOnboardingAccessibilityPermission()
+                },
+                openScreenRecordingSettings: {
+                    model.openPrivacySettings()
+                },
+                openAccessibilitySettings: {
+                    model.openAccessibilitySettings()
+                },
+                completeOnboarding: {
+                    model.completeOnboarding()
+                }
+            )
+            driver.send(.appeared)
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            model.refreshOnboardingPermissionStates()
+            driver.send(.appBecameActive)
         }
         .onReceive(permissionRefreshTimer) { _ in
-            model.refreshOnboardingPermissionStates()
+            driver.send(.timerTicked)
         }
     }
 
     private var screenRecordingButtonTitle: String {
-        switch model.screenRecordingPermissionState {
+        switch driver.state.screenRecordingPermissionState {
         case .granted:
             "Screen Recording enabled"
         case .requestAvailable:
@@ -102,7 +127,7 @@ struct OnboardingView: View {
     }
 
     private var screenRecordingButtonState: OnboardingPermissionButtonState {
-        switch model.screenRecordingPermissionState {
+        switch driver.state.screenRecordingPermissionState {
         case .granted:
             .enabled
         case .requestAvailable:
@@ -113,7 +138,7 @@ struct OnboardingView: View {
     }
 
     private var accessibilityButtonTitle: String {
-        switch model.accessibilityPermissionState {
+        switch driver.state.accessibilityPermissionState {
         case .granted:
             "Accessibility access enabled"
         case .requestAvailable:
@@ -124,7 +149,7 @@ struct OnboardingView: View {
     }
 
     private var accessibilityButtonState: OnboardingPermissionButtonState {
-        switch model.accessibilityPermissionState {
+        switch driver.state.accessibilityPermissionState {
         case .granted:
             .enabled
         case .requestAvailable:

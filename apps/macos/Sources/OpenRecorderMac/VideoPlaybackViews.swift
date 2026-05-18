@@ -63,7 +63,7 @@ enum VideoPreviewAspectPreset: String, CaseIterable, Identifiable {
 struct VideoPreviewPanel: View {
     var videoURL: URL?
     var recordingSession: RecordingSession?
-    @ObservedObject var playback: VideoPlaybackController
+    var playback: VideoPlaybackController
     var timelineEdits: TimelineEditDriver
     var background: BackgroundStyle = .transparent
     var padding: Double = 0
@@ -401,191 +401,6 @@ private struct AspectRatioFitContainer<Content: View, Overlay: View>: View {
 }
 
 @MainActor
-final class VideoPlaybackController: ObservableObject {
-    @Published var player: AVPlayer?
-    @Published var currentTime = 0.0
-    @Published var duration = 0.0
-    @Published var isPlaying = false
-    @Published var naturalVideoSize = CGSize.zero
-    @Published var previewPlaybackSpeed = 1.0
-    private var timelineEdits = TimelineEditSnapshot.empty
-
-    static let previewPlaybackSpeeds = [1.0, 2.0, 4.0, 8.0]
-
-    private var currentURL: URL?
-    private var timeObserver: Any?
-    private var endObserver: NSObjectProtocol?
-
-    func load(url: URL) {
-        if currentURL == url, player != nil {
-            return
-        }
-
-        teardownPlayer()
-        currentURL = url
-        currentTime = 0
-        duration = 0
-        isPlaying = false
-        naturalVideoSize = .zero
-        previewPlaybackSpeed = Self.previewPlaybackSpeeds[0]
-
-        let item = AVPlayerItem(url: url)
-        let player = AVPlayer(playerItem: item)
-        self.player = player
-        attachTimeObserver(to: player)
-
-        endObserver = NotificationCenter.default.addObserver(
-            forName: .AVPlayerItemDidPlayToEndTime,
-            object: item,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor in
-                self?.isPlaying = false
-                self?.seek(to: 0)
-            }
-        }
-
-        let asset = AVURLAsset(url: url)
-        Task { [weak self] in
-            let loadedDuration = try? await asset.load(.duration)
-            let seconds = loadedDuration?.seconds ?? 0
-            let tracks = (try? await asset.loadTracks(withMediaType: .video)) ?? []
-            let loadedVideoSize: CGSize
-            if let track = tracks.first,
-               let naturalSize = try? await track.load(.naturalSize),
-               let preferredTransform = try? await track.load(.preferredTransform) {
-                let transformedRect = CGRect(origin: .zero, size: naturalSize).applying(preferredTransform)
-                loadedVideoSize = CGSize(width: abs(transformedRect.width), height: abs(transformedRect.height))
-            } else {
-                loadedVideoSize = .zero
-            }
-            await MainActor.run {
-                guard let self, self.currentURL == url else { return }
-                self.duration = seconds.isFinite && seconds > 0 ? seconds : 0
-                self.naturalVideoSize = loadedVideoSize
-            }
-        }
-    }
-
-    func clear() {
-        teardownPlayer()
-        currentURL = nil
-        currentTime = 0
-        duration = 0
-        isPlaying = false
-        naturalVideoSize = .zero
-        previewPlaybackSpeed = Self.previewPlaybackSpeeds[0]
-    }
-
-    func togglePlayback() {
-        guard player != nil else { return }
-
-        if isPlaying {
-            pause()
-        } else {
-            if duration > 0, currentTime >= duration {
-                seek(to: 0)
-            }
-            applyPlaybackRate()
-            isPlaying = true
-        }
-    }
-
-    func pause() {
-        player?.pause()
-        isPlaying = false
-    }
-
-    func cyclePreviewPlaybackSpeed() {
-        let currentIndex = Self.previewPlaybackSpeeds
-            .enumerated()
-            .min { abs($0.element - previewPlaybackSpeed) < abs($1.element - previewPlaybackSpeed) }?
-            .offset ?? 0
-        let nextIndex = (currentIndex + 1) % Self.previewPlaybackSpeeds.count
-        previewPlaybackSpeed = Self.previewPlaybackSpeeds[nextIndex]
-        if isPlaying {
-            applyPlaybackRate()
-        }
-    }
-
-    func previewPlaybackSpeedLabel() -> String {
-        "\(Int(previewPlaybackSpeed.rounded()))x"
-    }
-
-    func effectivePlaybackRate(at time: Double? = nil) -> Double {
-        let playbackTime = time ?? currentTime
-        return timelineEdits.activeSpeed(at: playbackTime, duration: duration) * previewPlaybackSpeed
-    }
-
-    func setTimelineEdits(_ edits: TimelineEditSnapshot) {
-        timelineEdits = edits
-        enforceTimelineEdits(at: currentTime)
-        if isPlaying { applyPlaybackRate() }
-    }
-
-    func seek(to seconds: Double) {
-        let upperBound = duration > 0 ? duration : max(seconds, 0)
-        let clamped = min(max(seconds, 0), upperBound)
-        currentTime = clamped
-        player?.seek(
-            to: CMTime(seconds: clamped, preferredTimescale: 600),
-            toleranceBefore: .zero,
-            toleranceAfter: .zero
-        )
-    }
-
-    private func attachTimeObserver(to player: AVPlayer) {
-        timeObserver = player.addPeriodicTimeObserver(
-            forInterval: CMTime(seconds: 0.05, preferredTimescale: 600),
-            queue: .main
-        ) { [weak self] time in
-            let seconds = time.seconds
-            Task { @MainActor in
-                guard let self, seconds.isFinite else { return }
-                self.currentTime = seconds
-                self.enforceTimelineEdits(at: seconds)
-
-                let itemDuration = self.player?.currentItem?.duration.seconds ?? 0
-                if itemDuration.isFinite, itemDuration > 0, self.duration == 0 {
-                    self.duration = itemDuration
-                }
-            }
-        }
-    }
-
-    private func enforceTimelineEdits(at seconds: Double) {
-        if let trimEnd = timelineEdits.nextTrimEnd(containing: seconds), trimEnd > seconds {
-            seek(to: min(trimEnd, duration))
-            return
-        }
-        if isPlaying {
-            applyPlaybackRate()
-        }
-    }
-
-    private func applyPlaybackRate() {
-        guard let player else { return }
-        let rate = Float(effectivePlaybackRate())
-        player.rate = max(0.05, rate)
-    }
-
-    private func teardownPlayer() {
-        if let timeObserver, let player {
-            player.removeTimeObserver(timeObserver)
-        }
-        timeObserver = nil
-
-        if let endObserver {
-            NotificationCenter.default.removeObserver(endObserver)
-        }
-        endObserver = nil
-
-        player?.pause()
-        player = nil
-    }
-
-}
-
 struct EmptyEditorState: View {
     var body: some View {
         VStack(spacing: 12) {
@@ -618,7 +433,7 @@ func formatPlaybackTime(_ seconds: Double) -> String {
 }
 
 struct PlaybackPreview: View {
-    @ObservedObject var playback: VideoPlaybackController
+    var playback: VideoPlaybackController
     var edits: TimelineEditSnapshot
     var cursorTelemetryURL: URL?
     var cursorSettings: CursorOverlaySettings = .hidden
@@ -760,7 +575,7 @@ struct FacecamOverlayLayout {
 
 private struct FacecamPlaybackOverlay: View {
     var facecamURL: URL
-    @ObservedObject var screenPlayback: VideoPlaybackController
+    var screenPlayback: VideoPlaybackController
     var offsetMs: Int?
     var settings: FacecamSettings
 
@@ -932,7 +747,7 @@ private struct PreviewAspectDropdown: View {
 }
 
 private struct CursorOverlayView: View {
-    @ObservedObject var playback: VideoPlaybackController
+    var playback: VideoPlaybackController
     var telemetryURL: URL?
     var settings: CursorOverlaySettings
     @State private var track: CursorTelemetryTrack?
@@ -1020,7 +835,7 @@ final class PlayerLayerView: NSView {
 }
 
 struct NativeVideoPlayer: NSViewRepresentable {
-    @ObservedObject var playback: VideoPlaybackController
+    var playback: VideoPlaybackController
 
     func makeNSView(context: Context) -> PlayerLayerView {
         let view = PlayerLayerView()

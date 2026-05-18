@@ -79,7 +79,7 @@ struct VideoEditorStudioView: View {
     var initialTimelineEdits: TimelineEditSnapshot?
     var initialVideoState: ProjectVideoEditorState?
     var editorSessionID: UUID?
-    @StateObject private var playback = VideoPlaybackController()
+    @State private var playback = VideoPlaybackController()
     var timelineEdits: TimelineEditDriver
     var exportRequest: EditorExportRequest?
     @State private var driver = VideoEditorDriver()

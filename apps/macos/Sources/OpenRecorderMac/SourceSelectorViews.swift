@@ -7,8 +7,7 @@ import UniformTypeIdentifiers
 struct SourceSelectorWindowView: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.dismissWindow) private var dismissWindow
-    @State private var sourceTab: SourceSelectorTab = .screens
-    @State private var preferredHeight: CGFloat = SourceSelectorWindowMetrics.compactHeight
+    @State private var sourceSelector = SourceSelectorDriver(sourceTab: .windows, visibleTabs: [.windows, .area])
 
     private var visibleTabs: [SourceSelectorTab] {
         [.windows, .area]
@@ -17,23 +16,16 @@ struct SourceSelectorWindowView: View {
     var body: some View {
         VStack(spacing: 0) {
             SourceSelectorCard(
-                sourceTab: $sourceTab,
-                visibleTabs: visibleTabs,
+                sourceTab: sourceSelector.sourceTabBinding,
+                visibleTabs: sourceSelector.state.visibleTabs,
                 onCancel: {
-                    model.cancelCapture()
+                    sourceSelector.send(.cancelRequested)
                 },
                 onShare: {
-                    if let selectedSource = model.selectedSource {
-                        model.selectSource(selectedSource)
-                    }
-                    dismissWindow(id: "source-selector")
+                    sourceSelector.send(.shareRequested)
                 },
                 onDrawArea: {
-                    model.selectInteractiveAreaSource()
-                    dismissWindow(id: "source-selector")
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                        model.requestInteractiveAreaSelection()
-                    }
+                    sourceSelector.send(.drawAreaRequested)
                 }
             )
             .padding(16)
@@ -44,16 +36,35 @@ struct SourceSelectorWindowView: View {
                 }
             }
         }
-        .background(SourceSelectorWindowSizer(size: CGSize(width: SourceSelectorWindowMetrics.width, height: preferredHeight)))
+        .background(SourceSelectorWindowSizer(size: CGSize(width: SourceSelectorWindowMetrics.width, height: sourceSelector.state.preferredHeight)))
         .background(Color.studioBackground.ignoresSafeArea())
         .onPreferenceChange(SourceSelectorCardHeightPreferenceKey.self) { cardHeight in
-            let nextHeight = ceil(cardHeight + (SourceSelectorWindowMetrics.outerPadding * 2))
-            guard abs(preferredHeight - nextHeight) > 0.5 else { return }
-            preferredHeight = nextHeight
+            sourceSelector.send(.heightMeasured(cardHeight))
         }
         .onAppear {
+            sourceSelector.configure(
+                refreshSources: {
+                    model.reloadSourcesForPreview()
+                },
+                cancel: {
+                    model.cancelCapture()
+                },
+                share: {
+                    if let selectedSource = model.selectedSource {
+                        model.selectSource(selectedSource)
+                    }
+                    dismissWindow(id: "source-selector")
+                },
+                drawArea: {
+                    model.selectInteractiveAreaSource()
+                    dismissWindow(id: "source-selector")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                        model.requestInteractiveAreaSelection()
+                    }
+                }
+            )
             applyPreferredSourceTab()
-            model.reloadSourcesForPreview()
+            sourceSelector.send(.refreshRequested)
         }
         .onChange(of: model.preferredSourceSelectorKind) { _, _ in
             applyPreferredSourceTab()
@@ -62,7 +73,7 @@ struct SourceSelectorWindowView: View {
 
     private func applyPreferredSourceTab() {
         let preferredKind = model.preferredSourceSelectorKind ?? model.selectedSource?.kind ?? .window
-        sourceTab = preferredKind == .display ? .windows : SourceSelectorTab(sourceKind: preferredKind)
+        sourceSelector.send(.tabSelected(preferredKind == .display ? .windows : SourceSelectorTab(sourceKind: preferredKind)))
     }
 }
 

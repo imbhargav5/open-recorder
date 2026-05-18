@@ -3,7 +3,7 @@ import SwiftUI
 
 struct TimelineSelectionSidebar: View {
     var edits: TimelineEditDriver
-    @ObservedObject var playback: VideoPlaybackController
+    var playback: VideoPlaybackController
 
     var body: some View {
         VStack(spacing: 0) {

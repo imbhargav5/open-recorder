@@ -115,11 +115,8 @@ struct VideoCropDialog: View {
     var onConfirm: (VideoCropSelection) -> Void
     var onCancel: () -> Void
 
-    @StateObject private var playback = VideoPlaybackController()
-    @State private var draftSelection: VideoCropSelection
-    @State private var sourceSize: CGSize
-    @State private var aspect: VideoCropAspect = .any
-    @State private var isShortcutDropdownPresented = false
+    @State private var playback = VideoPlaybackController()
+    @State private var driver: VideoCropDriver
 
     init(
         videoURL: URL,
@@ -133,8 +130,7 @@ struct VideoCropDialog: View {
         self.initialTime = initialTime
         self.onConfirm = onConfirm
         self.onCancel = onCancel
-        _draftSelection = State(initialValue: initialSelection)
-        _sourceSize = State(initialValue: VideoCropSelection.safeSourceSize(sourceSize))
+        _driver = State(initialValue: VideoCropDriver(initialSelection: initialSelection, sourceSize: sourceSize))
     }
 
     var body: some View {
@@ -145,9 +141,9 @@ struct VideoCropDialog: View {
 
             VideoCropCanvas(
                 playback: playback,
-                selection: $draftSelection,
-                aspect: $aspect,
-                sourceSize: effectiveSourceSize
+                selection: driver.selectionBinding,
+                aspect: driver.aspectBinding,
+                sourceSize: driver.state.effectiveSourceSize
             )
             .padding(.horizontal, 24)
             .padding(.top, 2)
@@ -178,15 +174,16 @@ struct VideoCropDialog: View {
             .frame(width: 0, height: 0)
         }
         .onAppear {
+            driver.configure(onConfirm: onConfirm, onCancel: onCancel)
             startStillPreview()
         }
         .onDisappear {
-            isShortcutDropdownPresented = false
+            driver.send(.shortcutsPresented(false))
         }
         .task(id: videoURL) {
             if let loadedSize = await VideoCropMetadataLoader.sourceSize(for: videoURL) {
                 await MainActor.run {
-                    sourceSize = loadedSize
+                    driver.send(.sourceSizeLoaded(loadedSize))
                 }
             }
         }
@@ -217,7 +214,7 @@ struct VideoCropDialog: View {
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "rectangle.on.rectangle")
-                    Text(aspect.title)
+                    Text(driver.state.aspect.title)
                     Image(systemName: "chevron.down")
                         .font(.system(size: 9, weight: .semibold))
                 }
@@ -251,20 +248,20 @@ struct VideoCropDialog: View {
             .foregroundStyle(.white)
 
             Button {
-                isShortcutDropdownPresented.toggle()
+                driver.send(.shortcutsPresented(!driver.state.isShortcutDropdownPresented))
             } label: {
                 Image(systemName: "keyboard")
                     .font(.system(size: 14, weight: .semibold))
                     .frame(width: 36, height: 36)
                     .foregroundStyle(.white.opacity(0.88))
                     .background(
-                        Color.white.opacity(isShortcutDropdownPresented ? 0.13 : 0.07),
+                        Color.white.opacity(driver.state.isShortcutDropdownPresented ? 0.13 : 0.07),
                         in: RoundedRectangle(cornerRadius: 7)
                     )
             }
             .buttonStyle(.plain)
             .help("Keyboard shortcuts")
-            .popover(isPresented: $isShortcutDropdownPresented, arrowEdge: .top) {
+            .popover(isPresented: driver.shortcutBinding, arrowEdge: .top) {
                 VideoCropKeyboardShortcutsDropdown()
             }
         }
@@ -282,7 +279,7 @@ struct VideoCropDialog: View {
     private var footer: some View {
         HStack(spacing: 10) {
             Button {
-                onConfirm(draftSelection)
+                driver.send(.confirmRequested)
             } label: {
                 Label("Confirm changes", systemImage: "return")
                     .font(.system(size: 13, weight: .semibold))
@@ -294,7 +291,7 @@ struct VideoCropDialog: View {
             .buttonStyle(.plain)
 
             Button {
-                onCancel()
+                driver.send(.cancelRequested)
             } label: {
                 Text("Discard changes")
                     .font(.system(size: 13, weight: .medium))
@@ -313,68 +310,27 @@ struct VideoCropDialog: View {
     }
 
     private var effectiveSourceSize: CGSize {
-        VideoCropSelection.safeSourceSize(sourceSize)
+        driver.state.effectiveSourceSize
     }
 
     private var currentPixelRect: CGRect {
-        draftSelection.pixelRect(in: effectiveSourceSize)
+        driver.state.currentPixelRect
     }
 
     private var widthBinding: Binding<Int> {
-        Binding(
-            get: { max(1, Int(currentPixelRect.width.rounded())) },
-            set: { setCropSize(width: $0, height: Int(currentPixelRect.height.rounded())) }
-        )
+        driver.widthBinding()
     }
 
     private var heightBinding: Binding<Int> {
-        Binding(
-            get: { max(1, Int(currentPixelRect.height.rounded())) },
-            set: { setCropSize(width: Int(currentPixelRect.width.rounded()), height: $0) }
-        )
+        driver.heightBinding()
     }
 
     private var xBinding: Binding<Int> {
-        Binding(
-            get: { max(0, Int(currentPixelRect.minX.rounded())) },
-            set: { setCropPosition(x: $0, y: Int(currentPixelRect.minY.rounded())) }
-        )
+        driver.xBinding()
     }
 
     private var yBinding: Binding<Int> {
-        Binding(
-            get: { max(0, Int(currentPixelRect.minY.rounded())) },
-            set: { setCropPosition(x: Int(currentPixelRect.minX.rounded()), y: $0) }
-        )
-    }
-
-    private func setCropSize(width: Int, height: Int) {
-        setCropSize(width: CGFloat(width), height: CGFloat(height))
-    }
-
-    private func setCropSize(width: CGFloat, height: CGFloat) {
-        let safeSize = effectiveSourceSize
-        let rect = currentPixelRect
-        var nextRect = CGRect(
-            x: rect.minX,
-            y: rect.minY,
-            width: max(width, VideoCropSelection.minimumPixelLength),
-            height: max(height, VideoCropSelection.minimumPixelLength)
-        )
-        if let ratio = aspect.ratio(for: draftSelection, sourceSize: safeSize) {
-            nextRect = aspectAdjustedRect(nextRect, ratio: ratio)
-        }
-        nextRect = VideoCropSelection.clampedPixelRect(nextRect, in: safeSize)
-        draftSelection = draftSelection
-            .withPixelRect(nextRect, in: safeSize)
-            .withSizing(.custom(width: Int(nextRect.width.rounded()), height: Int(nextRect.height.rounded())))
-    }
-
-    private func setCropPosition(x: Int, y: Int) {
-        let safeSize = effectiveSourceSize
-        let rect = currentPixelRect
-        let nextRect = CGRect(x: CGFloat(x), y: CGFloat(y), width: rect.width, height: rect.height)
-        draftSelection = draftSelection.withPixelRect(nextRect, in: safeSize)
+        driver.yBinding()
     }
 
     private func handleKeyboardAdjustment(_ event: NSEvent) -> Bool {
@@ -384,51 +340,15 @@ struct VideoCropDialog: View {
     }
 
     private func applyKeyboardAdjustment(_ adjustment: VideoCropKeyboardAdjustment) {
-        switch adjustment {
-        case .move(let dx, let dy):
-            moveCropSelection(dx: dx, dy: dy)
-        case .resize(let widthDelta, let heightDelta):
-            resizeCropSelection(widthDelta: widthDelta, heightDelta: heightDelta)
-        }
-    }
-
-    private func moveCropSelection(dx: Int, dy: Int) {
-        let safeSize = effectiveSourceSize
-        let nextRect = currentPixelRect.offsetBy(dx: CGFloat(dx), dy: CGFloat(dy))
-        draftSelection = draftSelection.withPixelRect(nextRect, in: safeSize)
-    }
-
-    private func resizeCropSelection(widthDelta: Int, heightDelta: Int) {
-        let rect = currentPixelRect
-        setCropSize(width: rect.width + CGFloat(widthDelta), height: rect.height + CGFloat(heightDelta))
+        driver.send(.keyboardAdjusted(adjustment))
     }
 
     private func applyAspect(_ option: VideoCropAspect) {
-        aspect = option
-        guard let ratio = option.ratio(for: draftSelection, sourceSize: effectiveSourceSize) else { return }
-        let rect = aspectAdjustedRect(currentPixelRect, ratio: ratio)
-        draftSelection = draftSelection.withPixelRect(rect, in: effectiveSourceSize)
+        driver.send(.aspectSelected(option))
     }
 
     private func resetCrop() {
-        aspect = .any
-        draftSelection = .fullFrame
-    }
-
-    private func aspectAdjustedRect(_ rect: CGRect, ratio: CGFloat) -> CGRect {
-        guard ratio.isFinite, ratio > 0 else { return rect }
-        let center = CGPoint(x: rect.midX, y: rect.midY)
-        var width = rect.width
-        var height = rect.height
-        if width / max(height, 1) > ratio {
-            width = height * ratio
-        } else {
-            height = width / ratio
-        }
-        return VideoCropSelection.clampedPixelRect(
-            CGRect(x: center.x - width / 2, y: center.y - height / 2, width: width, height: height),
-            in: effectiveSourceSize
-        )
+        driver.send(.reset)
     }
 
     private func startStillPreview() {
@@ -506,7 +426,7 @@ private struct VideoCropShortcutHelpItem: Identifiable {
 }
 
 private struct VideoCropCanvas: View {
-    @ObservedObject var playback: VideoPlaybackController
+    var playback: VideoPlaybackController
     @Binding var selection: VideoCropSelection
     @Binding var aspect: VideoCropAspect
     var sourceSize: CGSize

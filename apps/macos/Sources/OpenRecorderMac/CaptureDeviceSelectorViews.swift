@@ -10,6 +10,9 @@ enum CaptureDeviceSelectorWindowMetrics {
 struct MicrophoneSelectorWindowView: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.dismissWindow) private var dismissWindow
+    private var options: CaptureOptionsState {
+        model.captureOptions.state
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -44,7 +47,7 @@ struct MicrophoneSelectorWindowView: View {
                         microphoneRow(
                             title: "No Microphone",
                             subtitle: "Do not record microphone audio",
-                            isSelected: !model.includeMicrophone
+                            isSelected: !options.includeMicrophone
                         )
                     }
 
@@ -54,23 +57,23 @@ struct MicrophoneSelectorWindowView: View {
                         microphoneRow(
                             title: "System Default",
                             subtitle: "Use the current macOS default",
-                            isSelected: model.includeMicrophone && model.selectedMicrophoneDeviceID == nil
+                            isSelected: options.includeMicrophone && options.selectedMicrophoneDeviceID == nil
                         )
                     }
 
-                    ForEach(model.microphoneDevices) { device in
+                    ForEach(options.microphoneDevices) { device in
                         StudioButton(hitTarget: .rounded(8)) {
                             selectMicrophone(device.id)
                         } label: {
                             microphoneRow(
                                 title: device.name,
                                 subtitle: device.isDefault ? "Current macOS default" : "Microphone",
-                                isSelected: model.includeMicrophone && model.selectedMicrophoneDeviceID == device.id
+                                isSelected: options.includeMicrophone && options.selectedMicrophoneDeviceID == device.id
                             )
                         }
                     }
 
-                    if model.microphoneDevices.isEmpty {
+                    if options.microphoneDevices.isEmpty {
                         Text("No devices found")
                             .font(.system(size: 12, weight: .medium))
                             .foregroundStyle(.secondary)
@@ -154,6 +157,9 @@ struct MicrophoneSelectorWindowView: View {
 struct CameraSelectorWindowView: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.dismissWindow) private var dismissWindow
+    private var options: CaptureOptionsState {
+        model.captureOptions.state
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -188,7 +194,7 @@ struct CameraSelectorWindowView: View {
                         cameraRow(
                             title: "No Camera",
                             subtitle: "Do not record facecam video",
-                            isSelected: !model.includeCamera
+                            isSelected: !options.includeCamera
                         )
                     }
 
@@ -198,23 +204,23 @@ struct CameraSelectorWindowView: View {
                         cameraRow(
                             title: "System Default",
                             subtitle: "Use the current macOS default",
-                            isSelected: model.includeCamera && model.selectedCameraDeviceID == nil
+                            isSelected: options.includeCamera && options.selectedCameraDeviceID == nil
                         )
                     }
 
-                    ForEach(model.cameraDevices) { device in
+                    ForEach(options.cameraDevices) { device in
                         StudioButton(hitTarget: .rounded(8)) {
                             selectCamera(device.id)
                         } label: {
                             cameraRow(
                                 title: device.name,
                                 subtitle: device.isDefault ? "Current macOS default" : "Camera",
-                                isSelected: model.includeCamera && model.selectedCameraDeviceID == device.id
+                                isSelected: options.includeCamera && options.selectedCameraDeviceID == device.id
                             )
                         }
                     }
 
-                    if model.cameraDevices.isEmpty {
+                    if options.cameraDevices.isEmpty {
                         Text("No devices found")
                             .font(.system(size: 12, weight: .medium))
                             .foregroundStyle(.secondary)

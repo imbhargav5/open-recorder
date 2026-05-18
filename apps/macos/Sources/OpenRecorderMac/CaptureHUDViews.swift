@@ -7,6 +7,7 @@ import UniformTypeIdentifiers
 struct CaptureHUD: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.openWindow) private var openWindow
+    var options: CaptureOptionsDriver
     @Binding var sourceTab: SourceSelectorTab
 
     var body: some View {
@@ -201,10 +202,10 @@ struct CaptureHUD: View {
 
     private var systemAudioToggle: some View {
         HUDToggle(
-            symbolName: model.includeSystemAudio ? "speaker.wave.2.fill" : "speaker.slash.fill",
-            isActive: model.includeSystemAudio,
-            title: model.includeSystemAudio ? "System Audio On" : "System Audio Off",
-            isDisabled: !model.canChangeRecordingOptions
+            symbolName: options.state.includeSystemAudio ? "speaker.wave.2.fill" : "speaker.slash.fill",
+            isActive: options.state.includeSystemAudio,
+            title: options.state.includeSystemAudio ? "System Audio On" : "System Audio Off",
+            isDisabled: !options.state.canChangeOptions
         ) {
             model.toggleSystemAudio()
         }
@@ -213,21 +214,21 @@ struct CaptureHUD: View {
     @ViewBuilder
     private var microphoneToggle: some View {
         let button = HUDToggle(
-            symbolName: model.includeMicrophone ? "mic.fill" : "mic.slash.fill",
-            isActive: model.includeMicrophone,
-            title: model.includeMicrophone ? "Microphone On" : "Microphone Off",
-            isDisabled: !model.canChangeRecordingOptions
+            symbolName: options.state.includeMicrophone ? "mic.fill" : "mic.slash.fill",
+            isActive: options.state.includeMicrophone,
+            title: options.state.includeMicrophone ? "Microphone On" : "Microphone Off",
+            isDisabled: !options.state.canChangeOptions
         ) {
-            if model.includeMicrophone {
+            if options.state.includeMicrophone {
                 model.disableMicrophone()
             } else {
                 openMicrophoneSelector()
             }
         }
 
-        if model.includeMicrophone && model.canChangeRecordingOptions {
+        if options.state.includeMicrophone && options.state.canChangeOptions {
             button.contextMenu {
-                Button("Microphone: \(model.selectedMicrophoneDeviceName)") {}
+                Button("Microphone: \(options.state.selectedMicrophoneDeviceName)") {}
                     .disabled(true)
                 Divider()
                 Button("Change Device...") {
@@ -242,21 +243,21 @@ struct CaptureHUD: View {
     @ViewBuilder
     private var cameraToggle: some View {
         let button = HUDToggle(
-            symbolName: model.includeCamera ? "video.fill" : "video.slash.fill",
-            isActive: model.includeCamera,
-            title: model.includeCamera ? "Camera On" : "Camera Off",
-            isDisabled: !model.canChangeRecordingOptions
+            symbolName: options.state.includeCamera ? "video.fill" : "video.slash.fill",
+            isActive: options.state.includeCamera,
+            title: options.state.includeCamera ? "Camera On" : "Camera Off",
+            isDisabled: !options.state.canChangeOptions
         ) {
-            if model.includeCamera {
+            if options.state.includeCamera {
                 model.disableCamera()
             } else {
                 openCameraSelector()
             }
         }
 
-        if model.includeCamera && model.canChangeRecordingOptions {
+        if options.state.includeCamera && options.state.canChangeOptions {
             button.contextMenu {
-                Button("Camera: \(model.selectedCameraDeviceName)") {}
+                Button("Camera: \(options.state.selectedCameraDeviceName)") {}
                     .disabled(true)
                 Divider()
                 Button("Change Device...") {
@@ -270,10 +271,10 @@ struct CaptureHUD: View {
 
     private var narrowCaptureOptionsMenu: some View {
         StudioMenu(hitTarget: .circle, help: "Capture Options") {
-            Button(model.includeSystemAudio ? "Turn Off System Audio" : "Turn On System Audio") {
+            Button(options.state.includeSystemAudio ? "Turn Off System Audio" : "Turn On System Audio") {
                 model.toggleSystemAudio()
             }
-            .disabled(!model.canChangeRecordingOptions)
+            .disabled(!options.state.canChangeOptions)
             microphoneOptionsMenuItems
             cameraOptionsMenuItems
         } label: {
@@ -291,39 +292,39 @@ struct CaptureHUD: View {
 
     @ViewBuilder
     private var microphoneOptionsMenuItems: some View {
-        if model.includeMicrophone {
+        if options.state.includeMicrophone {
             Button("Turn Off Microphone") {
                 model.disableMicrophone()
             }
-            .disabled(!model.canChangeRecordingOptions)
+            .disabled(!options.state.canChangeOptions)
             Button("Change Microphone...") {
                 openMicrophoneSelector()
             }
-            .disabled(!model.canChangeRecordingOptions)
+            .disabled(!options.state.canChangeOptions)
         } else {
             Button("Choose Microphone...") {
                 openMicrophoneSelector()
             }
-            .disabled(!model.canChangeRecordingOptions)
+            .disabled(!options.state.canChangeOptions)
         }
     }
 
     @ViewBuilder
     private var cameraOptionsMenuItems: some View {
-        if model.includeCamera {
+        if options.state.includeCamera {
             Button("Turn Off Camera") {
                 model.disableCamera()
             }
-            .disabled(!model.canChangeRecordingOptions)
+            .disabled(!options.state.canChangeOptions)
             Button("Change Camera...") {
                 openCameraSelector()
             }
-            .disabled(!model.canChangeRecordingOptions)
+            .disabled(!options.state.canChangeOptions)
         } else {
             Button("Choose Camera...") {
                 openCameraSelector()
             }
-            .disabled(!model.canChangeRecordingOptions)
+            .disabled(!options.state.canChangeOptions)
         }
     }
 

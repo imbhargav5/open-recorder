@@ -497,7 +497,7 @@ struct HUDOverlayWindowView: View {
             case .choosingSourceType(let mode), .screenSelecting(let mode):
                 SourceTypeChoiceHUD(mode: mode)
             default:
-                CaptureHUD(sourceTab: .constant(model.captureMode == .screenshot ? .screens : .screens))
+                CaptureHUD(options: model.captureOptions, sourceTab: .constant(model.captureMode == .screenshot ? .screens : .screens))
             }
         }
         .padding(.horizontal, 12)

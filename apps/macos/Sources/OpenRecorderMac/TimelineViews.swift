@@ -24,7 +24,7 @@ enum TimelineMetrics {
 
 struct TimelinePanel: View {
     var videoURL: URL?
-    @ObservedObject var playback: VideoPlaybackController
+    var playback: VideoPlaybackController
     var edits: TimelineEditDriver
     @State private var timelineViewport = TimelineViewport(duration: 0)
     @State private var isDraggingTimelineZoom = false
@@ -125,7 +125,7 @@ struct TimelinePanel: View {
 
 struct TimelineTrackContent: View {
     var videoURL: URL?
-    @ObservedObject var playback: VideoPlaybackController
+    var playback: VideoPlaybackController
     var edits: TimelineEditDriver
     @Binding var viewport: TimelineViewport
     @State private var timelineSize = CGSize.zero
@@ -165,7 +165,7 @@ struct TimelineTrackContent: View {
 
 
 private struct TimelinePlaybackControl: View {
-    @ObservedObject var playback: VideoPlaybackController
+    var playback: VideoPlaybackController
     @State private var isHovering = false
 
     var body: some View {
@@ -199,7 +199,7 @@ private struct TimelinePlaybackControl: View {
 }
 
 private struct TimelinePreviewSpeedButton: View {
-    @ObservedObject var playback: VideoPlaybackController
+    var playback: VideoPlaybackController
     @State private var isHovering = false
 
     var body: some View {

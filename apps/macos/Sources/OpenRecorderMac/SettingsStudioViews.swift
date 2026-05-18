@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 
 struct SettingsStudioView: View {
     @EnvironmentObject private var model: AppModel
+    @State private var driver = SettingsDriver(createZoomsAutomatically: false)
 
     var body: some View {
         ScrollView {
@@ -13,10 +14,10 @@ struct SettingsStudioView: View {
                 Text("Settings")
                     .font(.system(size: 26, weight: .semibold))
                 SettingsSection(title: "Service") {
-                    SettingsRow(title: "Status", value: model.serviceHealth.map { "\($0.service) \($0.version)" } ?? "Unavailable")
-                    SettingsRow(title: "Platform", value: model.serviceHealth?.platform ?? "macOS")
+                    SettingsRow(title: "Status", value: driver.state.serviceHealth.map { "\($0.service) \($0.version)" } ?? "Unavailable")
+                    SettingsRow(title: "Platform", value: driver.state.serviceHealth?.platform ?? "macOS")
                     StudioButton(hitTarget: .rounded(8)) {
-                        model.refreshBackendState()
+                        driver.send(.serviceRefreshRequested)
                     } label: {
                         Label("Check Service", systemImage: "bolt.horizontal")
                             .frame(height: 34)
@@ -26,20 +27,26 @@ struct SettingsStudioView: View {
                 }
 
                 SettingsSection(title: "Folders") {
-                    FolderRow(title: "Recordings", path: model.paths?.recordingsDir)
-                    FolderRow(title: "Screenshots", path: model.paths?.screenshotsDir)
-                    FolderRow(title: "Projects", path: model.paths?.projectsDir)
+                    FolderRow(title: "Recordings", path: driver.state.paths?.recordingsDir) {
+                        driver.send(.folderOpenRequested($0))
+                    }
+                    FolderRow(title: "Screenshots", path: driver.state.paths?.screenshotsDir) {
+                        driver.send(.folderOpenRequested($0))
+                    }
+                    FolderRow(title: "Projects", path: driver.state.paths?.projectsDir) {
+                        driver.send(.folderOpenRequested($0))
+                    }
                 }
 
                 SettingsSection(title: "Recording") {
-                    SettingsToggleRow(title: "Create zooms automatically", isOn: $model.createZoomsAutomatically)
+                    SettingsToggleRow(title: "Create zooms automatically", isOn: driver.autoZoomBinding)
                 }
 
                 SettingsSection(title: "Permissions") {
                     VStack(alignment: .leading, spacing: 10) {
                         HStack(spacing: 10) {
                             StudioButton(hitTarget: .rounded(8)) {
-                                model.openPrivacySettings()
+                                driver.send(.screenRecordingSettingsRequested)
                             } label: {
                                 Label("Screen Recording", systemImage: "lock.shield")
                                     .frame(height: 34)
@@ -49,7 +56,7 @@ struct SettingsStudioView: View {
                             }
 
                             StudioButton(hitTarget: .rounded(8)) {
-                                model.openAccessibilitySettings()
+                                driver.send(.accessibilitySettingsRequested)
                             } label: {
                                 Label("Accessibility", systemImage: "accessibility")
                                     .frame(height: 34)
@@ -60,7 +67,7 @@ struct SettingsStudioView: View {
                         }
 
                         StudioButton(hitTarget: .rounded(8)) {
-                            model.showOnboarding()
+                            driver.send(.onboardingReviewRequested)
                         } label: {
                             Label("Review Permissions", systemImage: "checklist")
                                 .frame(height: 34)
@@ -76,6 +83,40 @@ struct SettingsStudioView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.studioMutedBackground)
+        .onAppear {
+            driver.configure(
+                refreshService: {
+                    if model.refreshBackendState() {
+                        driver.send(.serviceRefreshSucceeded(serviceHealth: model.serviceHealth, paths: model.paths))
+                    } else {
+                        driver.send(.serviceRefreshFailed(model.statusMessage))
+                    }
+                },
+                persistAutoZoomPreference: { value in
+                    model.createZoomsAutomatically = value
+                },
+                openFolder: { path in
+                    model.openPath(path)
+                },
+                openScreenRecordingSettings: {
+                    model.openPrivacySettings()
+                },
+                openAccessibilitySettings: {
+                    model.openAccessibilitySettings()
+                },
+                showOnboarding: {
+                    model.showOnboarding()
+                }
+            )
+            driver.send(.autoZoomPreferenceSynced(model.createZoomsAutomatically))
+            driver.send(.appeared(serviceHealth: model.serviceHealth, paths: model.paths))
+        }
+        .onChange(of: model.serviceHealth) { _, _ in
+            driver.send(.appeared(serviceHealth: model.serviceHealth, paths: model.paths))
+        }
+        .onChange(of: model.paths) { _, _ in
+            driver.send(.appeared(serviceHealth: model.serviceHealth, paths: model.paths))
+        }
     }
 }
 
@@ -117,9 +158,9 @@ struct SettingsRow: View {
 }
 
 struct FolderRow: View {
-    @EnvironmentObject private var model: AppModel
     var title: String
     var path: String?
+    var onOpen: (String) -> Void = { _ in }
 
     var body: some View {
         HStack {
@@ -131,7 +172,7 @@ struct FolderRow: View {
                 .truncationMode(.middle)
             if let path {
                 StudioButton(hitTarget: .rounded(7)) {
-                    model.openPath(path)
+                    onOpen(path)
                 } label: {
                     Image(systemName: "folder")
                         .frame(width: 28, height: 28)
