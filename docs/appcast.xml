@@ -83,5 +83,21 @@
 ]]></description>
             <enclosure url="https://github.com/imbhargav5/open-recorder/releases/download/v0.2.19/open-recorder-macos.zip" sparkle:edSignature="G7NnMLmKkrxUM2dURI0r7a3wAihmzYij4bVD2ONQ9cYB6qdUopa4uoaeihZAo8X8TdMPFDYkWBu0lI5xQYjKAA==" length="39865372" type="application/octet-stream"/>
         </item>
+        <item>
+            <title>Version 0.2.20</title>
+            <pubDate>Tue, 19 May 2026 11:16:20 GMT</pubDate>
+            <sparkle:version>0.2.20</sparkle:version>
+            <sparkle:shortVersionString>0.2.20</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+## Commits since v0.2.19
+
+- 0a38e48 Fix settings dialog legibility
+- 55083d0 Refactor colors into shadcn-aligned Theme tokens
+- 58db054 Consolidate app state machines
+- 26673cd Update appcast for v0.2.19
+]]></description>
+            <enclosure url="https://github.com/imbhargav5/open-recorder/releases/download/v0.2.20/open-recorder-macos.zip" sparkle:edSignature="LEA8nXvU/Fh9Pj1uaHB0OR2q0Pv3mtVdQv3eXCB/4ZBFpTNsarvQHDJ8vqjlTGo3AWfBPW280syBwQGiXPshBg==" length="39915586" type="application/octet-stream"/>
+        </item>
     </channel>
 </rss>
