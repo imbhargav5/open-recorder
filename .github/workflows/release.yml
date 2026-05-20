@@ -8,6 +8,7 @@ on:
       - .github/release-plan.json
       - apps/rust-service/Cargo.toml
       - apps/rust-service/Cargo.lock
+      - apps/macos/Resources/Info.plist
   workflow_dispatch:
     inputs:
       tag_name:
@@ -104,6 +105,21 @@ jobs:
       - name: Package app bundle
         run: make package-macos
 
+      - name: Verify packaged bundle version
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected="${{ needs.resolve-release.outputs.tag_name }}"
+          expected="${expected#v}"
+          plist="release/Open Recorder.app/Contents/Info.plist"
+          short_version=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$plist")
+          bundle_version=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$plist")
+          if [ "$short_version" != "$expected" ] || [ "$bundle_version" != "$expected" ]; then
+            echo "Expected packaged bundle version ${expected}, got CFBundleShortVersionString=${short_version} CFBundleVersion=${bundle_version}" >&2
+            exit 1
+          fi
+          echo "Packaged bundle version verified: ${short_version}"
+
       - name: Verify Developer ID signature
         run: zsh scripts/verify-macos-production-signature.zsh "release/Open Recorder.app"
 
@@ -189,6 +205,8 @@ jobs:
           app="universal-work/Open Recorder.app"
           arm_app="universal-work/arm64/Open Recorder.app"
           x64_app="universal-work/x64/Open Recorder.app"
+          expected_version="${{ needs.resolve-release.outputs.tag_name }}"
+          expected_version="${expected_version#v}"
 
           for binary in "OpenRecorderMac" "open-recorder-service"; do
             lipo -create \
@@ -204,6 +222,14 @@ jobs:
               exit 1
             fi
           done
+
+          short_version=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$app/Contents/Info.plist")
+          bundle_version=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$app/Contents/Info.plist")
+          if [ "$short_version" != "$expected_version" ] || [ "$bundle_version" != "$expected_version" ]; then
+            echo "Expected universal bundle version ${expected_version}, got CFBundleShortVersionString=${short_version} CFBundleVersion=${bundle_version}" >&2
+            exit 1
+          fi
+          echo "Universal bundle version verified: ${short_version}"
 
           find "$app" \( -name '._*' -o -name '.__CodeSignature' \) -delete
           zsh scripts/sign-macos-production-app.zsh "$app"

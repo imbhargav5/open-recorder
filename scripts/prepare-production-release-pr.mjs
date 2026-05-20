@@ -11,6 +11,7 @@ const repoRoot = resolve(scriptDir, "..");
 const rustServiceRoot = resolve(repoRoot, "apps", "rust-service");
 const rustServiceCargoTomlPath = resolve(rustServiceRoot, "Cargo.toml");
 const rustServiceCargoLockPath = resolve(rustServiceRoot, "Cargo.lock");
+const macosInfoPlistPath = resolve(repoRoot, "apps", "macos", "Resources", "Info.plist");
 const releasePlanPath = resolve(repoRoot, ".github", "release-plan.json");
 
 process.chdir(repoRoot);
@@ -162,11 +163,47 @@ function updateCargoLockVersion(filePath, nextVersion) {
 	writeFileSync(filePath, updated);
 }
 
+function escapeRegExp(value) {
+	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function validatePlist(filePath) {
+	const result = spawnSync("plutil", ["-lint", filePath], {
+		cwd: repoRoot,
+		encoding: "utf8",
+		stdio: ["ignore", "pipe", "pipe"],
+	});
+
+	if (result.status === 0) {
+		return;
+	}
+
+	const errorText = result.stderr.trim() || result.stdout.trim() || `plutil exited with status ${result.status}`;
+	die(errorText);
+}
+
+function updatePlistStringValue(content, key, value) {
+	const pattern = new RegExp(`(<key>${escapeRegExp(key)}</key>\\s*<string>)([^<]*)(</string>)`);
+	if (!pattern.test(content)) {
+		die(`Could not find ${key} string value in ${macosInfoPlistPath}`);
+	}
+	return content.replace(pattern, `$1${value}$3`);
+}
+
+function updateMacOSBundleVersion(filePath, nextVersion) {
+	let updated = readFileSync(filePath, "utf8");
+	updated = updatePlistStringValue(updated, "CFBundleShortVersionString", nextVersion);
+	updated = updatePlistStringValue(updated, "CFBundleVersion", nextVersion);
+	writeFileSync(filePath, updated);
+	validatePlist(filePath);
+}
+
 function syncVersionFiles(nextVersion) {
 	updateCargoVersion(rustServiceCargoTomlPath, nextVersion);
 	if (existsSync(rustServiceCargoLockPath)) {
 		updateCargoLockVersion(rustServiceCargoLockPath, nextVersion);
 	}
+	updateMacOSBundleVersion(macosInfoPlistPath, nextVersion);
 }
 
 function determineBaseVersion(packageVersion, latestTagVersion) {
