@@ -99,5 +99,23 @@
 ]]></description>
             <enclosure url="https://github.com/imbhargav5/open-recorder/releases/download/v0.2.20/open-recorder-macos.zip" sparkle:edSignature="LEA8nXvU/Fh9Pj1uaHB0OR2q0Pv3mtVdQv3eXCB/4ZBFpTNsarvQHDJ8vqjlTGo3AWfBPW280syBwQGiXPshBg==" length="39915586" type="application/octet-stream"/>
         </item>
+        <item>
+            <title>Version 0.2.21</title>
+            <pubDate>Wed, 20 May 2026 17:16:16 GMT</pubDate>
+            <sparkle:version>0.2.21</sparkle:version>
+            <sparkle:shortVersionString>0.2.21</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+## Commits since v0.2.20
+
+- 3fd76e6 Fix cursor overlay sizing
+- 6874530 Fix editor opening after hidden captures
+- 389f8dc Fix capture hiding and signing scripts
+- a5ab73d Polish macOS app presentation
+- 7a1a9b7 Fix capture hiding and screenshot export state
+- f8f89ff Update appcast for v0.2.20
+]]></description>
+            <enclosure url="https://github.com/imbhargav5/open-recorder/releases/download/v0.2.21/open-recorder-macos.zip" sparkle:edSignature="NRTD7Ev1Q/mBm9Ag+X3weRpc2WF+Ubcj3rBny/cMZ8yn2Wk76jj9Fj+errRn4JgQC6j4oXbcvforQPCcOtTVCw==" length="40213308" type="application/octet-stream"/>
+        </item>
     </channel>
 </rss>
