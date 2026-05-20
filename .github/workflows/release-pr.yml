@@ -67,15 +67,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          changed_files=$(git diff --name-only -- apps/rust-service/Cargo.toml apps/rust-service/Cargo.lock .github/release-plan.json)
+          changed_files=$(git diff --name-only -- apps/rust-service/Cargo.toml apps/rust-service/Cargo.lock apps/macos/Resources/Info.plist .github/release-plan.json)
           changed_file_count=$(printf '%s\n' "$changed_files" | sed '/^$/d' | wc -l | tr -d ' ')
-          if [ "$changed_file_count" -lt 2 ]; then
-            echo "Expected release preparation to update native version files and release plan." >&2
+          if [ "$changed_file_count" -lt 4 ]; then
+            echo "Expected release preparation to update native version files, macOS bundle version, and release plan." >&2
             git diff --name-only >&2
             exit 1
           fi
 
-          unexpected=$(git diff --name-only -- . ':(exclude)apps/rust-service/Cargo.toml' ':(exclude)apps/rust-service/Cargo.lock' ':(exclude).github/release-plan.json')
+          unexpected=$(git diff --name-only -- . ':(exclude)apps/rust-service/Cargo.toml' ':(exclude)apps/rust-service/Cargo.lock' ':(exclude)apps/macos/Resources/Info.plist' ':(exclude).github/release-plan.json')
           if [ -n "$unexpected" ]; then
             echo "Unexpected files changed during release preparation:" >&2
             echo "$unexpected" >&2
@@ -104,3 +104,4 @@ jobs:
             .github/release-plan.json
             apps/rust-service/Cargo.toml
             apps/rust-service/Cargo.lock
+            apps/macos/Resources/Info.plist
