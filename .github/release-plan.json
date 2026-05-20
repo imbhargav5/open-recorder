@@ -1,6 +1,6 @@
 {
-  "tagName": "v0.2.21",
-  "releaseName": "Open Recorder v0.2.21",
-  "releaseNotes": "## Commits since v0.2.20\n\n- 3fd76e6 Fix cursor overlay sizing\n- 6874530 Fix editor opening after hidden captures\n- 389f8dc Fix capture hiding and signing scripts\n- a5ab73d Polish macOS app presentation\n- 7a1a9b7 Fix capture hiding and screenshot export state\n- f8f89ff Update appcast for v0.2.20",
+  "tagName": "v0.2.22",
+  "releaseName": "Open Recorder v0.2.22",
+  "releaseNotes": "## Commits since v0.2.21\n\n- 7800fb6 Merge pull request #289 from imbhargav5/codex/sync-bundle-release-version\n- 3362fa1 Sync macOS bundle version with releases\n- e65d3f1 Update appcast for v0.2.21",
   "makeLatest": true
 }
