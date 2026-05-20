@@ -1,6 +1,6 @@
 {
-  "tagName": "v0.2.20",
-  "releaseName": "Open Recorder v0.2.20",
-  "releaseNotes": "## Commits since v0.2.19\n\n- 0a38e48 Fix settings dialog legibility\n- 55083d0 Refactor colors into shadcn-aligned Theme tokens\n- 58db054 Consolidate app state machines\n- 26673cd Update appcast for v0.2.19",
+  "tagName": "v0.2.21",
+  "releaseName": "Open Recorder v0.2.21",
+  "releaseNotes": "## Commits since v0.2.20\n\n- 3fd76e6 Fix cursor overlay sizing\n- 6874530 Fix editor opening after hidden captures\n- 389f8dc Fix capture hiding and signing scripts\n- a5ab73d Polish macOS app presentation\n- 7a1a9b7 Fix capture hiding and screenshot export state\n- f8f89ff Update appcast for v0.2.20",
   "makeLatest": true
 }
