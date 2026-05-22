@@ -584,14 +584,14 @@ enum VideoExportRenderer {
             instruction.timeRange = CMTimeRange(start: .zero, duration: duration)
 
             let layerInstruction = AVMutableVideoCompositionLayerInstruction(assetTrack: videoTrack)
-            applyZoomTransforms(to: layerInstruction, baseTransform: transform, outputSize: outputSize, edits: edits, editPlan: editPlan)
+            layerInstruction.setTransform(transform, at: .zero)
             instruction.layerInstructions = [layerInstruction]
 
             let composition = AVMutableVideoComposition()
             composition.renderSize = outputSize
             composition.frameDuration = frameDuration
             composition.instructions = [instruction]
-            if needsOverlayTool(edits: edits, cursorTrack: cursorTrack, cursorSettings: cursorSettings) {
+            if needsFinalCanvasOverlayTool(edits: edits, cursorTrack: cursorTrack, cursorSettings: cursorSettings) {
                 let contentRect = exportSourceContentRect(
                     renderSize: outputSize,
                     cropSize: clampedCropRect.size,
@@ -630,7 +630,7 @@ enum VideoExportRenderer {
         composition.renderSize = outputSize
         composition.frameDuration = frameDuration
         composition.instructions = [instruction]
-        if edits.annotationRegions.isEmpty == false {
+        if needsFinalCanvasOverlayTool(edits: edits, cursorTrack: nil, cursorSettings: .hidden) {
             let contentRect = exportSourceContentRect(
                 renderSize: outputSize,
                 cropSize: clampedCropRect.size,
@@ -650,58 +650,10 @@ enum VideoExportRenderer {
         return composition
     }
 
-    private static func applyZoomTransforms(to layerInstruction: AVMutableVideoCompositionLayerInstruction, baseTransform: CGAffineTransform, outputSize: CGSize, edits: TimelineEditSnapshot, editPlan: TimelineExportEditPlan) {
-        layerInstruction.setTransform(baseTransform, at: .zero)
-        for zoom in edits.zoomRegions {
-            let start = editPlan.outputTime(forSourceTime: zoom.span.start) ?? zoom.span.start
-            let end = editPlan.outputTime(forSourceTime: zoom.span.end) ?? zoom.span.end
-            guard end > start else { continue }
-            let zoomTransform = zoomedTransform(base: baseTransform, outputSize: outputSize, zoom: zoom)
-            let duration = end - start
-            let rampIn = min(TimelineZoomAnimator.rampInSeconds, duration * 0.4)
-            let rampOut = min(TimelineZoomAnimator.rampOutSeconds, duration * 0.4)
-            let holdStart = start + rampIn
-            let holdEnd = max(holdStart, end - rampOut)
-
-            if rampIn > 0 {
-                layerInstruction.setTransformRamp(
-                    fromStart: baseTransform,
-                    toEnd: zoomTransform,
-                    timeRange: CMTimeRange(
-                        start: CMTime(seconds: start, preferredTimescale: 600),
-                        duration: CMTime(seconds: rampIn, preferredTimescale: 600)
-                    )
-                )
-            } else {
-                layerInstruction.setTransform(zoomTransform, at: CMTime(seconds: start, preferredTimescale: 600))
-            }
-
-            layerInstruction.setTransform(zoomTransform, at: CMTime(seconds: holdStart, preferredTimescale: 600))
-            if rampOut > 0 {
-                layerInstruction.setTransformRamp(
-                    fromStart: zoomTransform,
-                    toEnd: baseTransform,
-                    timeRange: CMTimeRange(
-                        start: CMTime(seconds: holdEnd, preferredTimescale: 600),
-                        duration: CMTime(seconds: max(0, end - holdEnd), preferredTimescale: 600)
-                    )
-                )
-            }
-            layerInstruction.setTransform(baseTransform, at: CMTime(seconds: end, preferredTimescale: 600))
-        }
-    }
-
-    private static func zoomedTransform(base: CGAffineTransform, outputSize: CGSize, zoom: TimelineZoomRegion) -> CGAffineTransform {
-        let scale = max(1, zoom.depth)
-        let focus = CGPoint(x: outputSize.width * zoom.focusX, y: outputSize.height * zoom.focusY)
-        let translateToFocus = CGAffineTransform(translationX: focus.x, y: focus.y)
-        let zoomScale = CGAffineTransform(scaleX: scale, y: scale)
-        let translateBack = CGAffineTransform(translationX: -focus.x, y: -focus.y)
-        return base.concatenating(translateBack).concatenating(zoomScale).concatenating(translateToFocus)
-    }
-
-    private static func needsOverlayTool(edits: TimelineEditSnapshot, cursorTrack: CursorTelemetryTrack?, cursorSettings: CursorOverlaySettings) -> Bool {
-        edits.annotationRegions.isEmpty == false || (cursorSettings.clamped.isVisible && cursorTrack?.samples.isEmpty == false)
+    nonisolated static func needsFinalCanvasOverlayTool(edits: TimelineEditSnapshot, cursorTrack: CursorTelemetryTrack?, cursorSettings: CursorOverlaySettings) -> Bool {
+        edits.zoomRegions.isEmpty == false ||
+            edits.annotationRegions.isEmpty == false ||
+            (cursorSettings.clamped.isVisible && cursorTrack?.samples.isEmpty == false)
     }
 
     private static func makeOverlayTool(
@@ -716,9 +668,15 @@ enum VideoExportRenderer {
     ) -> AVVideoCompositionCoreAnimationTool {
         let parentLayer = CALayer()
         parentLayer.frame = CGRect(origin: .zero, size: outputSize)
+        let contentLayer = CALayer()
+        contentLayer.bounds = parentLayer.bounds
+        contentLayer.anchorPoint = .zero
+        contentLayer.position = .zero
+        parentLayer.addSublayer(contentLayer)
+
         let videoLayer = CALayer()
-        videoLayer.frame = parentLayer.frame
-        parentLayer.addSublayer(videoLayer)
+        videoLayer.frame = contentLayer.bounds
+        contentLayer.addSublayer(videoLayer)
 
         for annotation in edits.annotationRegions {
             let textLayer = CATextLayer()
@@ -744,7 +702,7 @@ enum VideoExportRenderer {
             animation.isRemovedOnCompletion = false
             animation.fillMode = .both
             textLayer.add(animation, forKey: "visible")
-            parentLayer.addSublayer(textLayer)
+            contentLayer.addSublayer(textLayer)
         }
 
         if let cursorTrack, cursorSettings.clamped.isVisible {
@@ -758,10 +716,57 @@ enum VideoExportRenderer {
                 track: cursorTrack,
                 settings: cursorSettings
             )
-            parentLayer.addSublayer(cursorLayer)
+            contentLayer.addSublayer(cursorLayer)
         }
 
+        applyFinalCanvasZoomAnimations(
+            to: contentLayer,
+            outputSize: outputSize,
+            edits: edits,
+            editPlan: editPlan
+        )
         return AVVideoCompositionCoreAnimationTool(postProcessingAsVideoLayer: videoLayer, in: parentLayer)
+    }
+
+    private static func applyFinalCanvasZoomAnimations(
+        to layer: CALayer,
+        outputSize: CGSize,
+        edits: TimelineEditSnapshot,
+        editPlan: TimelineExportEditPlan
+    ) {
+        guard edits.zoomRegions.isEmpty == false,
+              editPlan.outputDuration > 0 else {
+            return
+        }
+
+        let duration = max(0.001, editPlan.outputDuration)
+        let sampleCount = max(2, min(9_000, Int(ceil(duration * 30)) + 1))
+        let rect = CGRect(origin: .zero, size: outputSize)
+        var values: [CATransform3D] = []
+        var keyTimes: [NSNumber] = []
+
+        for index in 0..<sampleCount {
+            let progress = sampleCount == 1 ? 0 : Double(index) / Double(sampleCount - 1)
+            let outputTime = duration * progress
+            let effect = TimelineZoomCanvasTransform.activeEffect(
+                edits: edits,
+                editPlan: editPlan,
+                outputTime: outputTime
+            )
+            let transform = TimelineZoomCanvasTransform.transform(for: effect, in: rect, flipsY: true)
+            values.append(CATransform3DMakeAffineTransform(transform))
+            keyTimes.append(NSNumber(value: progress))
+        }
+
+        let animation = CAKeyframeAnimation(keyPath: "transform")
+        animation.values = values
+        animation.keyTimes = keyTimes
+        animation.beginTime = AVCoreAnimationBeginTimeAtZero
+        animation.duration = duration
+        animation.calculationMode = .linear
+        animation.isRemovedOnCompletion = false
+        animation.fillMode = .both
+        layer.add(animation, forKey: "final-canvas-zoom")
     }
 
     private static func makeCursorLayer(
@@ -871,43 +876,9 @@ enum VideoExportRenderer {
             y: placedRect.maxY - cropRelativeY * scale
         )
 
-        if let zoomEffect = activeZoomEffect(edits: edits, editPlan: editPlan, outputTime: outputTime) {
-            let focus = CGPoint(
-                x: placedRect.minX + placedRect.width * CGFloat(zoomEffect.focusX),
-                y: placedRect.minY + placedRect.height * CGFloat(1 - zoomEffect.focusY)
-            )
-            let depth = CGFloat(max(1, zoomEffect.depth))
-            point = CGPoint(
-                x: focus.x + (point.x - focus.x) * depth,
-                y: focus.y + (point.y - focus.y) * depth
-            )
-        }
-
         point.x = min(max(point.x, 0), outputSize.width)
         point.y = min(max(point.y, 0), outputSize.height)
         return point
-    }
-
-    private static func activeZoomEffect(edits: TimelineEditSnapshot, editPlan: TimelineExportEditPlan, outputTime: Double) -> TimelineZoomEffect? {
-        guard outputTime.isFinite else { return nil }
-        let activeZoom = edits.zoomRegions
-            .sorted { $0.span.start < $1.span.start }
-            .last { zoom in
-                let start = editPlan.outputTime(forSourceTime: zoom.span.start) ?? zoom.span.start
-                let end = editPlan.outputTime(forSourceTime: zoom.span.end) ?? zoom.span.end
-                return outputTime >= start && outputTime < end
-            }
-        guard let zoom = activeZoom else { return nil }
-
-        let start = editPlan.outputTime(forSourceTime: zoom.span.start) ?? zoom.span.start
-        let end = editPlan.outputTime(forSourceTime: zoom.span.end) ?? zoom.span.end
-        let outputSpan = TimelineSpan(start: start, end: end)
-        let progress = TimelineZoomAnimator.animationProgress(for: outputSpan, at: outputTime)
-        return TimelineZoomEffect(
-            depth: 1 + (max(1, zoom.depth) - 1) * progress,
-            focusX: zoom.focusX,
-            focusY: zoom.focusY
-        )
     }
 
     private static func exportSourceContentRect(renderSize: CGSize, cropSize: CGSize, styling: VideoBackgroundStyling) -> CGRect {

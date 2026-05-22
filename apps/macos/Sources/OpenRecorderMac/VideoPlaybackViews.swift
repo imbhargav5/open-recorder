@@ -485,7 +485,6 @@ struct PlaybackPreview: View {
                     .frame(width: sourceDisplaySize.width, height: sourceDisplaySize.height)
                     .offset(contentOffset)
                     .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
-                    .clipped()
 
                 if let facecamURL,
                    let facecamSettings,
@@ -498,6 +497,10 @@ struct PlaybackPreview: View {
                     )
                 }
             }
+            .scaleEffect(activeZoomScale, anchor: activeZoomAnchor)
+            .animation(.easeInOut(duration: 0.18), value: activeZoomScale)
+            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
+            .clipped()
             .background(letterboxFill.color)
             .clipShape(RoundedRectangle(cornerRadius: 8))
             .overlay {
@@ -524,8 +527,6 @@ struct PlaybackPreview: View {
                 )
                 .frame(width: size.width, height: size.height)
             }
-                .scaleEffect(activeZoomScale, anchor: activeZoomAnchor)
-                .animation(.easeInOut(duration: 0.18), value: activeZoomScale)
                 .frame(width: size.width, height: size.height)
 
             ForEach(edits.annotations(at: playback.currentTime)) { annotation in
