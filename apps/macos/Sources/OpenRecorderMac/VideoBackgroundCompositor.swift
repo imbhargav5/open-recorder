@@ -54,24 +54,7 @@ enum VideoInsetGeometry {
             return VideoInsetLayout(frameRect: .zero, contentRect: .zero)
         }
 
-        let resolvedAmount = max(0, min(amountRatio, 0.95))
-        guard resolvedAmount > 0 else {
-            return VideoInsetLayout(frameRect: frameRect, contentRect: contentRect)
-        }
-
-        let targetInset = min(frameRect.width, frameRect.height) * resolvedAmount / 2
-        let leftInset = min(targetInset, max(0, contentRect.minX - frameRect.minX))
-        let rightInset = min(targetInset, max(0, frameRect.maxX - contentRect.maxX))
-        let topInset = min(targetInset, max(0, contentRect.minY - frameRect.minY))
-        let bottomInset = min(targetInset, max(0, frameRect.maxY - contentRect.maxY))
-        let insetFrameRect = CGRect(
-            x: contentRect.minX - leftInset,
-            y: contentRect.minY - topInset,
-            width: contentRect.width + leftInset + rightInset,
-            height: contentRect.height + topInset + bottomInset
-        )
-
-        return VideoInsetLayout(frameRect: insetFrameRect, contentRect: contentRect)
+        return VideoInsetLayout(frameRect: frameRect, contentRect: contentRect)
     }
 
     static func contentRect(in frameRect: CGRect, amountRatio: Double, balance: VideoInsetBalance) -> CGRect {
