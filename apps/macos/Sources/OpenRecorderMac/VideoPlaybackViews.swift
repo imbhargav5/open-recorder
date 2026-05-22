@@ -191,18 +191,6 @@ struct VideoPreviewPanel: View {
                 in: proxy.size,
                 paddingValue: padding
             )
-            let zoomEffect = timelineEdits.snapshot.activeZoomEffect(at: playback.currentTime)
-            let zoomScale = CGFloat(zoomEffect?.depth ?? 1)
-            let zoomAnchor = PreviewStageLayout.fullStageZoomAnchor(
-                effect: zoomEffect,
-                stageSize: proxy.size,
-                recordingFrame: recordingFrame,
-                sourceSize: playback.naturalVideoSize,
-                cropSelection: cropSelection,
-                inset: inset,
-                insetBalance: insetBalance
-            )
-
             ZStack(alignment: .topLeading) {
                 BackgroundFillView(style: background)
                     .frame(width: proxy.size.width, height: proxy.size.height)
@@ -237,8 +225,6 @@ struct VideoPreviewPanel: View {
                 )
                 .offset(x: recordingFrame.minX, y: recordingFrame.minY)
             }
-            .scaleEffect(zoomScale, anchor: zoomAnchor)
-            .animation(.easeInOut(duration: 0.18), value: zoomScale)
             .frame(width: proxy.size.width, height: proxy.size.height)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -459,6 +445,60 @@ enum PreviewStageLayout {
             y: min(max(focusPoint.y / stageSize.height, 0), 1)
         )
     }
+
+    static func previewSourceZoomTransform(effect: TimelineZoomEffect?, sourceDisplaySize: CGSize) -> CGAffineTransform {
+        TimelineZoomCanvasTransform.transform(
+            for: effect,
+            in: CGRect(origin: .zero, size: sourceDisplaySize)
+        )
+    }
+
+    static func previewViewportZoomTransform(
+        effect: TimelineZoomEffect?,
+        viewportSize: CGSize,
+        sourceSize: CGSize,
+        cropSelection: VideoCropSelection
+    ) -> CGAffineTransform {
+        guard let effect,
+              viewportSize.width.isFinite,
+              viewportSize.height.isFinite,
+              viewportSize.width > 0,
+              viewportSize.height > 0 else {
+            return .identity
+        }
+
+        let safeSourceSize = VideoCropSelection.safeSourceSize(sourceSize)
+        let cropRect = cropSelection.pixelRect(in: safeSourceSize)
+        guard cropRect.width > 0, cropRect.height > 0 else { return .identity }
+
+        let scale = min(
+            viewportSize.width / max(cropRect.width, 1),
+            viewportSize.height / max(cropRect.height, 1)
+        )
+        let fittedCropSize = CGSize(width: cropRect.width * scale, height: cropRect.height * scale)
+        let origin = CGPoint(
+            x: (viewportSize.width - fittedCropSize.width) / 2,
+            y: (viewportSize.height - fittedCropSize.height) / 2
+        )
+        let sourceFocus = CGPoint(
+            x: safeSourceSize.width * CGFloat(effect.focusX),
+            y: safeSourceSize.height * CGFloat(effect.focusY)
+        )
+        let viewportFocus = CGPoint(
+            x: origin.x + (sourceFocus.x - cropRect.minX) * scale,
+            y: origin.y + (sourceFocus.y - cropRect.minY) * scale
+        )
+        let normalizedEffect = TimelineZoomEffect(
+            depth: effect.depth,
+            focusX: Double(min(max(viewportFocus.x / viewportSize.width, 0), 1)),
+            focusY: Double(min(max(viewportFocus.y / viewportSize.height, 0), 1))
+        )
+
+        return TimelineZoomCanvasTransform.transform(
+            for: normalizedEffect,
+            in: CGRect(origin: .zero, size: viewportSize)
+        )
+    }
 }
 
 private struct AspectRatioFitContainer<Content: View, Overlay: View>: View {
@@ -546,9 +586,27 @@ struct PlaybackPreview: View {
                 width: centeredOffset.x - cropRect.minX * scale,
                 height: centeredOffset.y - cropRect.minY * scale
             )
+            let zoomEffect = edits.activeZoomEffect(at: playback.currentTime)
+            let sourceZoomTransform = PreviewStageLayout.previewSourceZoomTransform(
+                effect: zoomEffect,
+                sourceDisplaySize: sourceDisplaySize
+            )
+            let viewportZoomTransform = PreviewStageLayout.previewViewportZoomTransform(
+                effect: zoomEffect,
+                viewportSize: proxy.size,
+                sourceSize: sourceSize,
+                cropSelection: cropSelection
+            )
 
             ZStack(alignment: .topLeading) {
-                fullSourcePreview(size: sourceDisplaySize)
+                ZStack(alignment: .topLeading) {
+                    NativeVideoPlayer(playback: playback, zoomTransform: sourceZoomTransform)
+                        .frame(width: sourceDisplaySize.width, height: sourceDisplaySize.height)
+
+                    sourceOverlays(size: sourceDisplaySize)
+                        .frame(width: sourceDisplaySize.width, height: sourceDisplaySize.height)
+                        .transformEffect(sourceZoomTransform)
+                }
                     .frame(width: sourceDisplaySize.width, height: sourceDisplaySize.height)
                     .offset(contentOffset)
                     .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
@@ -562,6 +620,7 @@ struct PlaybackPreview: View {
                         offsetMs: facecamOffsetMs,
                         settings: facecamSettings
                     )
+                    .transformEffect(viewportZoomTransform)
                 }
             }
             .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
@@ -579,20 +638,14 @@ struct PlaybackPreview: View {
         .onAppear { playback.setTimelineEdits(edits) }
     }
 
-    private func fullSourcePreview(size: CGSize) -> some View {
+    private func sourceOverlays(size: CGSize) -> some View {
         ZStack(alignment: .topLeading) {
-            ZStack(alignment: .topLeading) {
-                NativeVideoPlayer(playback: playback)
-                    .frame(width: size.width, height: size.height)
-
-                CursorOverlayView(
-                    playback: playback,
-                    telemetryURL: cursorTelemetryURL,
-                    settings: cursorSettings
-                )
-                .frame(width: size.width, height: size.height)
-            }
-                .frame(width: size.width, height: size.height)
+            CursorOverlayView(
+                playback: playback,
+                telemetryURL: cursorTelemetryURL,
+                settings: cursorSettings
+            )
+            .frame(width: size.width, height: size.height)
 
             ForEach(edits.annotations(at: playback.currentTime)) { annotation in
                 Text(annotation.text)
@@ -904,41 +957,96 @@ private struct CursorOverlayView: View {
 }
 
 final class PlayerLayerView: NSView {
+    private let rootLayer = CALayer()
+    private let contentLayer = CALayer()
+    private let playbackLayer = AVPlayerLayer()
+    private var zoomTransform = CGAffineTransform.identity
+
+    override var isFlipped: Bool { true }
+
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
-        wantsLayer = true
-        layer = AVPlayerLayer()
-        playerLayer.videoGravity = .resizeAspect
-        playerLayer.backgroundColor = NSColor.clear.cgColor
+        configureLayers()
     }
 
     required init?(coder: NSCoder) {
         super.init(coder: coder)
-        wantsLayer = true
-        layer = AVPlayerLayer()
-        playerLayer.videoGravity = .resizeAspect
-        playerLayer.backgroundColor = NSColor.clear.cgColor
+        configureLayers()
     }
 
     var playerLayer: AVPlayerLayer {
-        guard let playerLayer = layer as? AVPlayerLayer else {
-            preconditionFailure("PlayerLayerView requires an AVPlayerLayer backing layer.")
+        playbackLayer
+    }
+
+    func update(player: AVPlayer?, zoomTransform: CGAffineTransform = .identity) {
+        playbackLayer.player = player
+        self.zoomTransform = Self.sanitized(zoomTransform)
+        layoutPlayerLayers()
+    }
+
+    override func layout() {
+        super.layout()
+        layoutPlayerLayers()
+    }
+
+    private func configureLayers() {
+        wantsLayer = true
+        rootLayer.backgroundColor = NSColor.clear.cgColor
+        rootLayer.masksToBounds = true
+        rootLayer.isGeometryFlipped = true
+
+        contentLayer.anchorPoint = .zero
+        contentLayer.position = .zero
+        contentLayer.isGeometryFlipped = true
+
+        playbackLayer.videoGravity = .resizeAspect
+        playbackLayer.backgroundColor = NSColor.clear.cgColor
+
+        layer = rootLayer
+        rootLayer.addSublayer(contentLayer)
+        contentLayer.addSublayer(playbackLayer)
+    }
+
+    private func layoutPlayerLayers() {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+
+        let layerBounds = CGRect(origin: .zero, size: bounds.size)
+        rootLayer.bounds = layerBounds
+        contentLayer.bounds = layerBounds
+        contentLayer.anchorPoint = .zero
+        contentLayer.position = .zero
+        contentLayer.setAffineTransform(zoomTransform)
+        playbackLayer.frame = layerBounds
+
+        CATransaction.commit()
+    }
+
+    private static func sanitized(_ transform: CGAffineTransform) -> CGAffineTransform {
+        guard transform.a.isFinite,
+              transform.b.isFinite,
+              transform.c.isFinite,
+              transform.d.isFinite,
+              transform.tx.isFinite,
+              transform.ty.isFinite else {
+            return .identity
         }
-        return playerLayer
+        return transform
     }
 }
 
 struct NativeVideoPlayer: NSViewRepresentable {
     var playback: VideoPlaybackController
+    var zoomTransform: CGAffineTransform = .identity
 
     func makeNSView(context: Context) -> PlayerLayerView {
         let view = PlayerLayerView()
-        view.playerLayer.player = playback.player
+        view.update(player: playback.player, zoomTransform: zoomTransform)
         return view
     }
 
     func updateNSView(_ nsView: PlayerLayerView, context: Context) {
-        nsView.playerLayer.player = playback.player
+        nsView.update(player: playback.player, zoomTransform: zoomTransform)
     }
 
     static func dismantleNSView(_ nsView: PlayerLayerView, coordinator: ()) {
@@ -951,12 +1059,12 @@ struct FacecamPlayerView: NSViewRepresentable {
 
     func makeNSView(context: Context) -> PlayerLayerView {
         let view = PlayerLayerView()
-        view.playerLayer.player = player
+        view.update(player: player)
         return view
     }
 
     func updateNSView(_ nsView: PlayerLayerView, context: Context) {
-        nsView.playerLayer.player = player
+        nsView.update(player: player)
     }
 
     static func dismantleNSView(_ nsView: PlayerLayerView, coordinator: ()) {

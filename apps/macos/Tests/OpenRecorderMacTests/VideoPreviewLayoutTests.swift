@@ -144,6 +144,43 @@ final class VideoPreviewLayoutTests: XCTestCase {
         XCTAssertEqual(anchor.y, 0.65, accuracy: 0.001)
     }
 
+    func testPreviewSourceZoomTransformMatchesFinalCanvasTransform() {
+        let effect = TimelineZoomEffect(depth: 1.75, focusX: 0.35, focusY: 0.6)
+        let rect = CGRect(x: 0, y: 0, width: 960, height: 540)
+
+        let transform = PreviewStageLayout.previewSourceZoomTransform(
+            effect: effect,
+            sourceDisplaySize: rect.size
+        )
+
+        XCTAssertEqual(
+            transform,
+            TimelineZoomCanvasTransform.transform(for: effect, in: rect)
+        )
+    }
+
+    func testPreviewViewportZoomTransformKeepsCroppedFocusFixed() {
+        let viewportSize = CGSize(width: 1000, height: 500)
+        let sourceSize = CGSize(width: 1600, height: 800)
+        let cropSelection = VideoCropSelection(
+            normalizedRect: CGRect(x: 0.25, y: 0, width: 0.5, height: 1),
+            sizing: .preset(.source)
+        )
+        let effect = TimelineZoomEffect(depth: 1.75, focusX: 0.5, focusY: 0.25)
+        let focus = CGPoint(x: 500, y: 125)
+
+        let transform = PreviewStageLayout.previewViewportZoomTransform(
+            effect: effect,
+            viewportSize: viewportSize,
+            sourceSize: sourceSize,
+            cropSelection: cropSelection
+        )
+
+        let transformedFocus = focus.applying(transform)
+        XCTAssertEqual(transformedFocus.x, focus.x, accuracy: 0.001)
+        XCTAssertEqual(transformedFocus.y, focus.y, accuracy: 0.001)
+    }
+
     func testInsetGeometryUsesBalanceToDistributeFreeSpace() {
         let rect = VideoInsetGeometry.contentRect(
             in: CGRect(x: 10, y: 20, width: 200, height: 100),
