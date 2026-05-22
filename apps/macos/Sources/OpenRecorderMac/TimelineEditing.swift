@@ -261,6 +261,50 @@ struct TimelineZoomEffect: Equatable {
     var focusY: Double
 }
 
+enum TimelineZoomCanvasTransform {
+    static func transform(for effect: TimelineZoomEffect?, in rect: CGRect, flipsY: Bool = false) -> CGAffineTransform {
+        guard let effect else { return .identity }
+        let depth = CGFloat(max(1, effect.depth))
+        guard depth > 1,
+              rect.width.isFinite,
+              rect.height.isFinite,
+              rect.width > 0,
+              rect.height > 0 else {
+            return .identity
+        }
+
+        let focus = CGPoint(
+            x: rect.minX + rect.width * CGFloat(effect.focusX),
+            y: rect.minY + rect.height * CGFloat(flipsY ? 1 - effect.focusY : effect.focusY)
+        )
+        return CGAffineTransform(translationX: -focus.x, y: -focus.y)
+            .concatenating(CGAffineTransform(scaleX: depth, y: depth))
+            .concatenating(CGAffineTransform(translationX: focus.x, y: focus.y))
+    }
+
+    static func activeEffect(edits: TimelineEditSnapshot, editPlan: TimelineExportEditPlan, outputTime: Double) -> TimelineZoomEffect? {
+        guard outputTime.isFinite else { return nil }
+        let activeZoom = edits.zoomRegions
+            .sorted { $0.span.start < $1.span.start }
+            .last { zoom in
+                let start = editPlan.outputTime(forSourceTime: zoom.span.start) ?? zoom.span.start
+                let end = editPlan.outputTime(forSourceTime: zoom.span.end) ?? zoom.span.end
+                return outputTime >= start && outputTime < end
+            }
+        guard let zoom = activeZoom else { return nil }
+
+        let start = editPlan.outputTime(forSourceTime: zoom.span.start) ?? zoom.span.start
+        let end = editPlan.outputTime(forSourceTime: zoom.span.end) ?? zoom.span.end
+        let outputSpan = TimelineSpan(start: start, end: end)
+        let progress = TimelineZoomAnimator.animationProgress(for: outputSpan, at: outputTime)
+        return TimelineZoomEffect(
+            depth: 1 + (max(1, zoom.depth) - 1) * progress,
+            focusX: zoom.focusX,
+            focusY: zoom.focusY
+        )
+    }
+}
+
 enum TimelineZoomAnimator {
     static let rampInSeconds = 0.22
     static let rampOutSeconds = 0.25

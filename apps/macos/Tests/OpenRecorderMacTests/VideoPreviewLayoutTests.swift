@@ -211,4 +211,61 @@ final class VideoPreviewLayoutTests: XCTestCase {
         XCTAssertEqual(settings.margin, 12)
         XCTAssertEqual(settings.resolvedAnchor, .bottomRight)
     }
+
+    func testFinalCanvasZoomTransformIsIdentityAtOneX() {
+        let transform = TimelineZoomCanvasTransform.transform(
+            for: TimelineZoomEffect(depth: 1, focusX: 0.25, focusY: 0.75),
+            in: CGRect(x: 0, y: 0, width: 400, height: 300)
+        )
+
+        XCTAssertEqual(transform, .identity)
+    }
+
+    func testFinalCanvasZoomTransformKeepsFocusFixed() {
+        let rect = CGRect(x: 0, y: 0, width: 400, height: 300)
+        let focus = CGPoint(x: 100, y: 225)
+
+        let transform = TimelineZoomCanvasTransform.transform(
+            for: TimelineZoomEffect(depth: 2, focusX: 0.25, focusY: 0.75),
+            in: rect
+        )
+
+        let transformedFocus = focus.applying(transform)
+        XCTAssertEqual(transformedFocus.x, focus.x, accuracy: 0.001)
+        XCTAssertEqual(transformedFocus.y, focus.y, accuracy: 0.001)
+    }
+
+    func testFinalCanvasZoomTransformDoublesDistanceFromFocus() {
+        let rect = CGRect(x: 0, y: 0, width: 400, height: 300)
+        let point = CGPoint(x: 130, y: 205)
+
+        let transform = TimelineZoomCanvasTransform.transform(
+            for: TimelineZoomEffect(depth: 2, focusX: 0.25, focusY: 0.75),
+            in: rect
+        )
+
+        let transformedPoint = point.applying(transform)
+        XCTAssertEqual(transformedPoint.x, 160, accuracy: 0.001)
+        XCTAssertEqual(transformedPoint.y, 185, accuracy: 0.001)
+    }
+
+    func testZoomOnlyExportRequiresFinalCanvasOverlayTool() {
+        let edits = TimelineEditSnapshot(zoomRegions: [
+            TimelineZoomRegion(span: TimelineSpan(start: 1, end: 2), depth: 2)
+        ])
+
+        XCTAssertTrue(VideoExportRenderer.needsFinalCanvasOverlayTool(
+            edits: edits,
+            cursorTrack: nil,
+            cursorSettings: .hidden
+        ))
+    }
+
+    func testPlainExportWithoutOverlayContentDoesNotRequireFinalCanvasOverlayTool() {
+        XCTAssertFalse(VideoExportRenderer.needsFinalCanvasOverlayTool(
+            edits: .empty,
+            cursorTrack: nil,
+            cursorSettings: .hidden
+        ))
+    }
 }

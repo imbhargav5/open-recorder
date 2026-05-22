@@ -333,7 +333,7 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
         let scaledExtent = scaledImage.extent
         let dx = contentRect.midX - scaledExtent.midX
         let dy = contentRect.midY - scaledExtent.midY
-        var positionedImage = scaledImage.transformed(by: CGAffineTransform(translationX: dx, y: dy))
+        let positionedImage = scaledImage.transformed(by: CGAffineTransform(translationX: dx, y: dy))
 
         let placedRect = CGRect(
             x: contentRect.midX - scaledSize.width / 2,
@@ -341,9 +341,6 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
             width: scaledSize.width,
             height: scaledSize.height
         )
-        if let zoomEffect = activeZoomEffect(for: instruction, at: compositionTime) {
-            positionedImage = applyZoom(to: positionedImage, effect: zoomEffect, in: placedRect)
-        }
         let cornerRadius = instruction.styling.borderRadiusRatio * minDim
         let maskedSource = applyRoundedMask(positionedImage, cornerRadius: cornerRadius, in: placedRect)
 
@@ -485,18 +482,6 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
             y: placedRect.maxY - cropRelativeY * scale
         )
 
-        if let zoomEffect = activeZoomEffect(for: instruction, at: outputTime) {
-            let focus = CGPoint(
-                x: placedRect.minX + placedRect.width * CGFloat(zoomEffect.focusX),
-                y: placedRect.minY + placedRect.height * CGFloat(1 - zoomEffect.focusY)
-            )
-            let depth = CGFloat(max(1, zoomEffect.depth))
-            point = CGPoint(
-                x: focus.x + (point.x - focus.x) * depth,
-                y: focus.y + (point.y - focus.y) * depth
-            )
-        }
-
         point.x = min(max(point.x, 0), instruction.renderSize.width)
         point.y = min(max(point.y, 0), instruction.renderSize.height)
         return point
@@ -553,41 +538,6 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
             width: clamped.width,
             height: clamped.height
         )
-    }
-
-    private func activeZoomEffect(for instruction: VideoBackgroundCompositionInstruction, at outputTime: Double) -> TimelineZoomEffect? {
-        guard outputTime.isFinite else { return nil }
-        let activeZoom = instruction.edits.zoomRegions
-            .sorted { $0.span.start < $1.span.start }
-            .last { zoom in
-                let start = instruction.editPlan.outputTime(forSourceTime: zoom.span.start) ?? zoom.span.start
-                let end = instruction.editPlan.outputTime(forSourceTime: zoom.span.end) ?? zoom.span.end
-                return outputTime >= start && outputTime < end
-            }
-        guard let zoom = activeZoom else { return nil }
-
-        let start = instruction.editPlan.outputTime(forSourceTime: zoom.span.start) ?? zoom.span.start
-        let end = instruction.editPlan.outputTime(forSourceTime: zoom.span.end) ?? zoom.span.end
-        let outputSpan = TimelineSpan(start: start, end: end)
-        let progress = TimelineZoomAnimator.animationProgress(for: outputSpan, at: outputTime)
-        return TimelineZoomEffect(
-            depth: 1 + (max(1, zoom.depth) - 1) * progress,
-            focusX: zoom.focusX,
-            focusY: zoom.focusY
-        )
-    }
-
-    private func applyZoom(to image: CIImage, effect: TimelineZoomEffect, in rect: CGRect) -> CIImage {
-        let depth = CGFloat(max(1, effect.depth))
-        guard depth > 1 else { return image }
-        let focus = CGPoint(
-            x: rect.minX + rect.width * CGFloat(effect.focusX),
-            y: rect.minY + rect.height * CGFloat(1 - effect.focusY)
-        )
-        let transform = CGAffineTransform(translationX: -focus.x, y: -focus.y)
-            .concatenating(CGAffineTransform(scaleX: depth, y: depth))
-            .concatenating(CGAffineTransform(translationX: focus.x, y: focus.y))
-        return image.transformed(by: transform)
     }
 
     private func makeBackground(_ style: BackgroundStyle, extent: CGRect) -> CIImage {
