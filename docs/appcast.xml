@@ -132,5 +132,18 @@
 ]]></description>
             <enclosure url="https://github.com/imbhargav5/open-recorder/releases/download/v0.2.22/open-recorder-macos.zip" sparkle:edSignature="SwnAGHu+OLoh3yuOuTNiwoCHbe+O1TCuuJr+e8f7lmoAoGeoB/H/WF0frW7ta7vwll6zXLvREZKJ4uVGluSEBg==" length="40213344" type="application/octet-stream"/>
         </item>
+        <item>
+            <title>Version 0.2.23</title>
+            <pubDate>Fri, 22 May 2026 04:31:02 GMT</pubDate>
+            <sparkle:version>0.2.23</sparkle:version>
+            <sparkle:shortVersionString>0.2.23</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+## Commits since v0.2.22
+
+- bce0b24 Update appcast for v0.2.22
+]]></description>
+            <enclosure url="https://github.com/imbhargav5/open-recorder/releases/download/v0.2.23/open-recorder-macos.zip" sparkle:edSignature="aIJ2J1UulcA7s5UVoBDIvZ96cNbIJdpt2c49JKfmGmCugNkiHPIGjsZuE8suf54IQY2cju5Wy23GnHyGh+jwCw==" length="40003061" type="application/octet-stream"/>
+        </item>
     </channel>
 </rss>
