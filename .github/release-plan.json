@@ -1,6 +1,6 @@
 {
-  "tagName": "v0.2.25",
-  "releaseName": "Open Recorder v0.2.25",
-  "releaseNotes": "## Commits since v0.2.24\n\n- 85c16ac Merge pull request #305 from imbhargav5/codex/full-stage-zoom-waveform\n- 421547d Apply full-stage zoom and waveform updates\n- bb29f40 Update appcast for v0.2.24",
+  "tagName": "v0.2.26",
+  "releaseName": "Open Recorder v0.2.26",
+  "releaseNotes": "## Commits since v0.2.25\n\n- 565afe0 Merge pull request #309 from imbhargav5/codex/fix-preview-cursor-square\n- 21d9754 Fix preview zoom layer rendering\n- 8a4994a Update appcast for v0.2.25",
   "makeLatest": true
 }
