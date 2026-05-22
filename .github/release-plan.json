@@ -1,6 +1,6 @@
 {
-  "tagName": "v0.2.24",
-  "releaseName": "Open Recorder v0.2.24",
-  "releaseNotes": "## Commits since v0.2.23\n\n- cd054b0 Merge pull request #301 from imbhargav5/codex/fix-service-pipe-deadlock\n- f33abbc Fix Rust service pipe deadlock\n- 9da2867 Merge pull request #299 from imbhargav5/codex/fix-centered-video-inset\n- 888a09f Fix centered video inset layout\n- 01c9541 Update appcast for v0.2.23",
+  "tagName": "v0.2.25",
+  "releaseName": "Open Recorder v0.2.25",
+  "releaseNotes": "## Commits since v0.2.24\n\n- 85c16ac Merge pull request #305 from imbhargav5/codex/full-stage-zoom-waveform\n- 421547d Apply full-stage zoom and waveform updates\n- bb29f40 Update appcast for v0.2.24",
   "makeLatest": true
 }
