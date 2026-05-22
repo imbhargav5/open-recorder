@@ -1,6 +1,6 @@
 {
-  "tagName": "v0.2.23",
-  "releaseName": "Open Recorder v0.2.23",
-  "releaseNotes": "## Commits since v0.2.22\n\n- bce0b24 Update appcast for v0.2.22",
+  "tagName": "v0.2.24",
+  "releaseName": "Open Recorder v0.2.24",
+  "releaseNotes": "## Commits since v0.2.23\n\n- cd054b0 Merge pull request #301 from imbhargav5/codex/fix-service-pipe-deadlock\n- f33abbc Fix Rust service pipe deadlock\n- 9da2867 Merge pull request #299 from imbhargav5/codex/fix-centered-video-inset\n- 888a09f Fix centered video inset layout\n- 01c9541 Update appcast for v0.2.23",
   "makeLatest": true
 }
