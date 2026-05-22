@@ -141,17 +141,43 @@ final class VideoPreviewLayoutTests: XCTestCase {
         XCTAssertEqual(rect.height, 75, accuracy: 0.001)
     }
 
-    func testInsetLayoutUsesEqualCenteredInsetOnAllEdges() {
+    func testInsetLayoutKeepsInsetFrameAtRecordingFrame() {
+        let frameRect = CGRect(x: 8, y: 12, width: 200, height: 100)
+        let layout = VideoInsetGeometry.layout(
+            in: frameRect,
+            amountRatio: 0.25,
+            balance: .centered
+        )
+
+        XCTAssertEqual(layout.frameRect, frameRect)
+    }
+
+    func testInsetLayoutUsesAspectAwareCenteredInsets() {
         let layout = VideoInsetGeometry.layout(
             in: CGRect(x: 0, y: 0, width: 200, height: 100),
             amountRatio: 0.25,
             balance: .centered
         )
 
-        XCTAssertEqual(layout.contentRect.minX - layout.frameRect.minX, 12.5, accuracy: 0.001)
-        XCTAssertEqual(layout.frameRect.maxX - layout.contentRect.maxX, 12.5, accuracy: 0.001)
+        XCTAssertEqual(layout.contentRect.width, 150, accuracy: 0.001)
+        XCTAssertEqual(layout.contentRect.height, 75, accuracy: 0.001)
+        XCTAssertEqual(layout.contentRect.minX - layout.frameRect.minX, 25, accuracy: 0.001)
+        XCTAssertEqual(layout.frameRect.maxX - layout.contentRect.maxX, 25, accuracy: 0.001)
         XCTAssertEqual(layout.contentRect.minY - layout.frameRect.minY, 12.5, accuracy: 0.001)
         XCTAssertEqual(layout.frameRect.maxY - layout.contentRect.maxY, 12.5, accuracy: 0.001)
+    }
+
+    func testCenteredInsetBalancesOpposingEdgesForTallFrame() {
+        let layout = VideoInsetGeometry.layout(
+            in: CGRect(x: 0, y: 0, width: 100, height: 200),
+            amountRatio: 0.25,
+            balance: .centered
+        )
+
+        XCTAssertEqual(layout.contentRect.minX - layout.frameRect.minX, layout.frameRect.maxX - layout.contentRect.maxX, accuracy: 0.001)
+        XCTAssertEqual(layout.contentRect.minY - layout.frameRect.minY, layout.frameRect.maxY - layout.contentRect.maxY, accuracy: 0.001)
+        XCTAssertEqual(layout.contentRect.midX, layout.frameRect.midX, accuracy: 0.001)
+        XCTAssertEqual(layout.contentRect.midY, layout.frameRect.midY, accuracy: 0.001)
     }
 
     func testInsetGeometryClampsOutOfRangeBalance() {
