@@ -41,6 +41,10 @@ struct RustServiceClient: Sendable {
         }
     }
 
+    init(executableURL: URL?) {
+        self.executableURL = executableURL
+    }
+
     var isAvailable: Bool {
         guard let executableURL else { return false }
         return FileManager.default.isExecutableFile(atPath: executableURL.path)
@@ -82,10 +86,14 @@ struct RustServiceClient: Sendable {
         process.standardError = errorPipe
 
         try process.run()
+        let outputReader = PipeDataReader(pipe: outputPipe, label: "dev.openrecorder.service.stdout")
+        let errorReader = PipeDataReader(pipe: errorPipe, label: "dev.openrecorder.service.stderr")
+        outputReader.start()
+        errorReader.start()
         process.waitUntilExit()
 
-        let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
-        let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+        let outputData = outputReader.waitForData()
+        let errorData = errorReader.waitForData()
 
         guard process.terminationStatus == 0 else {
             let message = String(data: errorData, encoding: .utf8)?
@@ -115,5 +123,36 @@ struct RustServiceClient: Sendable {
 
         return candidates.first { fileManager.isExecutableFile(atPath: $0.standardizedFileURL.path) }?
             .standardizedFileURL
+    }
+}
+
+private final class PipeDataReader: @unchecked Sendable {
+    private let fileHandle: FileHandle
+    private let queue: DispatchQueue
+    private let group = DispatchGroup()
+    private let lock = NSLock()
+    private var data = Data()
+
+    init(pipe: Pipe, label: String) {
+        fileHandle = pipe.fileHandleForReading
+        queue = DispatchQueue(label: label)
+    }
+
+    func start() {
+        group.enter()
+        queue.async { [self] in
+            let readData = fileHandle.readDataToEndOfFile()
+            lock.lock()
+            data = readData
+            lock.unlock()
+            group.leave()
+        }
+    }
+
+    func waitForData() -> Data {
+        group.wait()
+        lock.lock()
+        defer { lock.unlock() }
+        return data
     }
 }
