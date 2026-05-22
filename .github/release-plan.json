@@ -1,6 +1,6 @@
 {
-  "tagName": "v0.2.22",
-  "releaseName": "Open Recorder v0.2.22",
-  "releaseNotes": "## Commits since v0.2.21\n\n- 7800fb6 Merge pull request #289 from imbhargav5/codex/sync-bundle-release-version\n- 3362fa1 Sync macOS bundle version with releases\n- e65d3f1 Update appcast for v0.2.21",
+  "tagName": "v0.2.23",
+  "releaseName": "Open Recorder v0.2.23",
+  "releaseNotes": "## Commits since v0.2.22\n\n- bce0b24 Update appcast for v0.2.22",
   "makeLatest": true
 }
