@@ -1,4 +1,5 @@
 import CoreGraphics
+import SwiftUI
 import XCTest
 @testable import OpenRecorderMac
 
@@ -126,6 +127,21 @@ final class VideoPreviewLayoutTests: XCTestCase {
 
         XCTAssertEqual(backgroundFill, .clear)
         XCTAssertEqual(insetFill, .clear)
+    }
+
+    func testFullStageZoomAnchorMapsSourceFocusThroughInset() {
+        let anchor = PreviewStageLayout.fullStageZoomAnchor(
+            effect: TimelineZoomEffect(depth: 2, focusX: 0.25, focusY: 0.75),
+            stageSize: CGSize(width: 1000, height: 500),
+            recordingFrame: CGRect(x: 100, y: 50, width: 800, height: 400),
+            sourceSize: CGSize(width: 1600, height: 800),
+            cropSelection: .fullFrame,
+            inset: 50,
+            insetBalance: .centered
+        )
+
+        XCTAssertEqual(anchor.x, 0.35, accuracy: 0.001)
+        XCTAssertEqual(anchor.y, 0.65, accuracy: 0.001)
     }
 
     func testInsetGeometryUsesBalanceToDistributeFreeSpace() {

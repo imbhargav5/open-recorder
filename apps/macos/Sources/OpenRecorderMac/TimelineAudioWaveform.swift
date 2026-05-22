@@ -187,6 +187,20 @@ enum TimelineWaveformDownsampler {
     }
 }
 
+struct TimelineAudioWaveform: Equatable {
+    var samples: [Double]
+
+    var isAvailable: Bool {
+        !samples.isEmpty
+    }
+
+    static let none = TimelineAudioWaveform(samples: [])
+
+    static func available(samples: [Double]) -> TimelineAudioWaveform {
+        TimelineAudioWaveform(samples: samples.map { min(max($0, 0), 1) })
+    }
+}
+
 enum TimelineAudioWaveformLoader {
     static let defaultSampleCount = 180
 
@@ -194,23 +208,27 @@ enum TimelineAudioWaveformLoader {
         TimelineWaveformDownsampler.quietSamples(targetCount: targetCount)
     }
 
-    static func loadSamples(from url: URL, targetCount: Int = defaultSampleCount) async -> [Double] {
-        guard targetCount > 0 else { return [] }
+    static func loadWaveform(from url: URL, targetCount: Int = defaultSampleCount) async -> TimelineAudioWaveform {
+        guard targetCount > 0 else { return .none }
 
         return await Task.detached(priority: .utility) {
             do {
-                return try await readSamples(from: url, targetCount: targetCount)
+                return try await readWaveform(from: url, targetCount: targetCount)
             } catch {
-                return quietSamples(targetCount: targetCount)
+                return .none
             }
         }.value
     }
 
-    private static func readSamples(from url: URL, targetCount: Int) async throws -> [Double] {
+    static func loadSamples(from url: URL, targetCount: Int = defaultSampleCount) async -> [Double] {
+        await loadWaveform(from: url, targetCount: targetCount).samples
+    }
+
+    private static func readWaveform(from url: URL, targetCount: Int) async throws -> TimelineAudioWaveform {
         let asset = AVURLAsset(url: url)
         let audioTracks = try await asset.loadTracks(withMediaType: .audio)
         guard let audioTrack = audioTracks.first else {
-            return quietSamples(targetCount: targetCount)
+            return .none
         }
 
         let format = try await audioFormat(for: audioTrack)
@@ -266,7 +284,7 @@ enum TimelineAudioWaveformLoader {
             throw reader.error ?? TimelineAudioWaveformReaderError.readerFailed
         }
 
-        return accumulator.samples()
+        return .available(samples: accumulator.samples())
     }
 
     private static func audioFormat(for track: AVAssetTrack) async throws -> AudioTrackFormat {

@@ -2,6 +2,28 @@ import XCTest
 @testable import OpenRecorderMac
 
 final class TimelineAudioWaveformTests: XCTestCase {
+    func testNoAudioWaveformHasNoSamples() {
+        XCTAssertFalse(TimelineAudioWaveform.none.isAvailable)
+        XCTAssertTrue(TimelineAudioWaveform.none.samples.isEmpty)
+    }
+
+    func testAvailableWaveformClampsSamples() {
+        let waveform = TimelineAudioWaveform.available(samples: [-0.4, 0.25, 1.8])
+
+        XCTAssertTrue(waveform.isAvailable)
+        XCTAssertEqual(waveform.samples, [0, 0.25, 1])
+    }
+
+    func testWaveformBarRendererPreservesPeakWhenResampling() {
+        var samples = Array(repeating: 0.1, count: 60)
+        samples[28] = 0.95
+
+        let bars = TimelineWaveformBarRenderer.resampledLevels(from: samples, width: 60)
+
+        XCTAssertLessThan(bars.count, samples.count)
+        XCTAssertTrue(bars.contains { $0 >= 0.95 })
+    }
+
     func testEmptyWaveformReturnsQuietSamples() {
         let samples = TimelineWaveformDownsampler.downsample(
             interleavedSamples: [],

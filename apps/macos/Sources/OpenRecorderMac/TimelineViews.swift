@@ -517,7 +517,7 @@ struct TimelineClipRow: View {
     var selectedClipIndex: Int?
     var seek: (Double) -> Void
     var edits: TimelineEditDriver
-    @State private var waveformSamples = TimelineAudioWaveformLoader.quietSamples()
+    @State private var waveformSamples: [Double]?
 
     var body: some View {
         GeometryReader { proxy in
@@ -570,7 +570,15 @@ struct TimelineClipRow: View {
         RoundedRectangle(cornerRadius: 8, style: .continuous)
             .fill(Theme.timelineClip.opacity(isSelected ? 0.95 : 1))
             .overlay { RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(isSelected ? Theme.timelineHandle.opacity(0.95) : Theme.timelineClipBorder, lineWidth: isSelected ? 2 : 1) }
-            .overlay(alignment: .bottom) { TimelineWaveformPreview(samples: waveformSamples).frame(height: 23).padding(.horizontal, 14).padding(.bottom, 4).allowsHitTesting(false) }
+            .overlay(alignment: .bottom) {
+                if let waveformSamples, !waveformSamples.isEmpty {
+                    TimelineWaveformPreview(samples: waveformSamples)
+                        .frame(height: 24)
+                        .padding(.horizontal, 14)
+                        .padding(.bottom, 4)
+                        .allowsHitTesting(false)
+                }
+            }
             .overlay(alignment: .center) {
                 if width > 82 {
                     VStack(spacing: 2) {
@@ -619,11 +627,11 @@ struct TimelineClipRow: View {
     }
 
     private func loadWaveform() async {
-        guard let videoURL else { waveformSamples = TimelineAudioWaveformLoader.quietSamples(); return }
-        waveformSamples = TimelineAudioWaveformLoader.quietSamples()
-        let samples = await TimelineAudioWaveformLoader.loadSamples(from: videoURL)
+        guard let videoURL else { waveformSamples = nil; return }
+        waveformSamples = nil
+        let waveform = await TimelineAudioWaveformLoader.loadWaveform(from: videoURL)
         guard !Task.isCancelled else { return }
-        waveformSamples = samples
+        waveformSamples = waveform.isAvailable ? waveform.samples : nil
     }
 }
 
@@ -643,21 +651,56 @@ struct TimelineWaveformPreview: View {
 
     var body: some View {
         Canvas { context, size in
-            let levels = samples.isEmpty ? TimelineAudioWaveformLoader.quietSamples() : samples
+            let levels = TimelineWaveformBarRenderer.resampledLevels(from: samples, width: size.width)
             guard !levels.isEmpty, size.width > 0, size.height > 0 else { return }
-            let step = size.width / CGFloat(max(levels.count - 1, 1))
-            var fillPath = Path(); var strokePath = Path()
-            fillPath.move(to: CGPoint(x: 0, y: size.height))
+
+            let spacing: CGFloat = size.width < 140 ? 1.6 : 2
+            let barWidth = max(1.5, (size.width - spacing * CGFloat(levels.count - 1)) / CGFloat(levels.count))
+            let maxBarHeight = max(1, size.height - 1)
+
             for (index, sample) in levels.enumerated() {
-                let x = CGFloat(index) * step
-                let boostedLevel = CGFloat(sqrt(max(0.0, min(sample, 1.0))))
-                let height = max(2, boostedLevel * (size.height - 2))
-                let point = CGPoint(x: x, y: size.height - height)
-                if index == 0 { fillPath.addLine(to: point); strokePath.move(to: point) } else { fillPath.addLine(to: point); strokePath.addLine(to: point) }
+                let level = CGFloat(sqrt(max(0, min(sample, 1))))
+                let barHeight = max(3, level * maxBarHeight)
+                let x = CGFloat(index) * (barWidth + spacing)
+                let y = size.height - barHeight
+                let rect = CGRect(x: x, y: y, width: barWidth, height: barHeight)
+                let barPath = RoundedRectangle(cornerRadius: barWidth / 2, style: .continuous).path(in: rect)
+                let sheenRect = CGRect(x: x, y: y, width: max(1, barWidth * 0.38), height: barHeight)
+                let sheenPath = RoundedRectangle(cornerRadius: barWidth / 2, style: .continuous).path(in: sheenRect)
+
+                context.fill(
+                    barPath,
+                    with: .linearGradient(
+                        Gradient(colors: [
+                            Color.white.opacity(0.86),
+                            Theme.timelineHandle.opacity(0.70),
+                            Theme.timelineClipBorder.opacity(0.50)
+                        ]),
+                        startPoint: CGPoint(x: rect.midX, y: rect.minY),
+                        endPoint: CGPoint(x: rect.midX, y: rect.maxY)
+                    )
+                )
+                context.fill(sheenPath, with: .color(Color.white.opacity(0.16)))
             }
-            fillPath.addLine(to: CGPoint(x: size.width, y: size.height)); fillPath.closeSubpath()
-            context.fill(fillPath, with: .color(Theme.borderStrong))
-            context.stroke(strokePath, with: .color(Color.white.opacity(0.24)), lineWidth: 1)
+        }
+    }
+}
+
+enum TimelineWaveformBarRenderer {
+    static func resampledLevels(from samples: [Double], width: CGFloat) -> [Double] {
+        guard width > 0, !samples.isEmpty else { return [] }
+
+        let targetCount = max(1, min(samples.count, Int(width / 4.5)))
+        guard targetCount < samples.count else {
+            return samples.map { min(max($0, 0), 1) }
+        }
+
+        return (0..<targetCount).map { bucket in
+            let start = Int((Double(bucket) / Double(targetCount)) * Double(samples.count))
+            let end = max(start + 1, Int((Double(bucket + 1) / Double(targetCount)) * Double(samples.count)))
+            return samples[start..<min(end, samples.count)].reduce(0) { partial, sample in
+                max(partial, min(max(sample, 0), 1))
+            }
         }
     }
 }

@@ -191,6 +191,17 @@ struct VideoPreviewPanel: View {
                 in: proxy.size,
                 paddingValue: padding
             )
+            let zoomEffect = timelineEdits.snapshot.activeZoomEffect(at: playback.currentTime)
+            let zoomScale = CGFloat(zoomEffect?.depth ?? 1)
+            let zoomAnchor = PreviewStageLayout.fullStageZoomAnchor(
+                effect: zoomEffect,
+                stageSize: proxy.size,
+                recordingFrame: recordingFrame,
+                sourceSize: playback.naturalVideoSize,
+                cropSelection: cropSelection,
+                inset: inset,
+                insetBalance: insetBalance
+            )
 
             ZStack(alignment: .topLeading) {
                 BackgroundFillView(style: background)
@@ -226,6 +237,8 @@ struct VideoPreviewPanel: View {
                 )
                 .offset(x: recordingFrame.minX, y: recordingFrame.minY)
             }
+            .scaleEffect(zoomScale, anchor: zoomAnchor)
+            .animation(.easeInOut(duration: 0.18), value: zoomScale)
             .frame(width: proxy.size.width, height: proxy.size.height)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -392,6 +405,60 @@ enum PreviewStageLayout {
         let hasVisibleInset = VideoInsetGeometry.amountRatio(fromValue: inset.rounded()) > 0 && insetOpacity > 0
         return hasVisibleBackground || hasVisibleInset ? .clear : .black
     }
+
+    static func fullStageZoomAnchor(
+        effect: TimelineZoomEffect?,
+        stageSize: CGSize,
+        recordingFrame: CGRect,
+        sourceSize: CGSize,
+        cropSelection: VideoCropSelection,
+        inset: Double,
+        insetBalance: VideoInsetBalance
+    ) -> UnitPoint {
+        guard let effect,
+              stageSize.width.isFinite,
+              stageSize.height.isFinite,
+              stageSize.width > 0,
+              stageSize.height > 0,
+              recordingFrame.width.isFinite,
+              recordingFrame.height.isFinite,
+              recordingFrame.width > 0,
+              recordingFrame.height > 0 else {
+            return .center
+        }
+
+        let safeSourceSize = VideoCropSelection.safeSourceSize(sourceSize)
+        let cropRect = cropSelection.pixelRect(in: safeSourceSize)
+        guard cropRect.width > 0, cropRect.height > 0 else { return .center }
+
+        let insetLayout = VideoInsetGeometry.layout(
+            in: CGRect(origin: .zero, size: recordingFrame.size),
+            amountRatio: VideoInsetGeometry.amountRatio(fromValue: inset.rounded()),
+            balance: insetBalance
+        )
+        let contentRect = insetLayout.contentRect
+        guard contentRect.width > 0, contentRect.height > 0 else { return .center }
+
+        let scale = min(
+            contentRect.width / max(cropRect.width, 1),
+            contentRect.height / max(cropRect.height, 1)
+        )
+        let placedCropRect = CGRect(
+            x: recordingFrame.minX + contentRect.minX + (contentRect.width - cropRect.width * scale) / 2,
+            y: recordingFrame.minY + contentRect.minY + (contentRect.height - cropRect.height * scale) / 2,
+            width: cropRect.width * scale,
+            height: cropRect.height * scale
+        )
+        let focusPoint = CGPoint(
+            x: placedCropRect.minX + (safeSourceSize.width * CGFloat(effect.focusX) - cropRect.minX) * scale,
+            y: placedCropRect.minY + (safeSourceSize.height * CGFloat(effect.focusY) - cropRect.minY) * scale
+        )
+
+        return UnitPoint(
+            x: min(max(focusPoint.x / stageSize.width, 0), 1),
+            y: min(max(focusPoint.y / stageSize.height, 0), 1)
+        )
+    }
 }
 
 private struct AspectRatioFitContainer<Content: View, Overlay: View>: View {
@@ -497,8 +564,6 @@ struct PlaybackPreview: View {
                     )
                 }
             }
-            .scaleEffect(activeZoomScale, anchor: activeZoomAnchor)
-            .animation(.easeInOut(duration: 0.18), value: activeZoomScale)
             .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
             .clipped()
             .background(letterboxFill.color)
@@ -540,15 +605,6 @@ struct PlaybackPreview: View {
                     .shadow(color: .black.opacity(0.45), radius: 8, y: 4)
             }
         }
-    }
-
-    private var activeZoomScale: CGFloat {
-        CGFloat(edits.activeZoomEffect(at: playback.currentTime)?.depth ?? 1)
-    }
-
-    private var activeZoomAnchor: UnitPoint {
-        guard let effect = edits.activeZoomEffect(at: playback.currentTime) else { return .center }
-        return UnitPoint(x: effect.focusX, y: effect.focusY)
     }
 }
 
