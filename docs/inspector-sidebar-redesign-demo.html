@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Open Recorder Inspector Sidebar Redesign</title>
+  <style>
+    :root {
+      --app: #09090d;
+      --muted: #101017;
+      --surface: #15151d;
+      --panel: rgba(31, 31, 40, 0.28);
+      --border: rgba(255, 255, 255, 0.08);
+      --border-strong: rgba(255, 255, 255, 0.16);
+      --text: rgba(255, 255, 255, 0.92);
+      --muted-text: rgba(255, 255, 255, 0.62);
+      --subtle: rgba(255, 255, 255, 0.38);
+      --accent: #2563eb;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background:
+        radial-gradient(circle at 20% 12%, rgba(37, 99, 235, 0.14), transparent 24rem),
+        linear-gradient(135deg, #0b0b10, #050506 60%, #111117);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", sans-serif;
+    }
+
+    .stage {
+      width: min(1180px, calc(100vw - 48px));
+      display: grid;
+      grid-template-columns: 1fr 320px;
+      gap: 14px;
+      align-items: stretch;
+    }
+
+    .canvas {
+      min-height: 730px;
+      border: 1px solid var(--border-strong);
+      border-radius: 14px;
+      background: linear-gradient(180deg, rgba(31,31,36,0.95), rgba(15,15,19,0.98));
+      overflow: hidden;
+      position: relative;
+    }
+
+    .preview {
+      position: absolute;
+      inset: 70px 120px 110px 86px;
+      border-radius: 12px;
+      background:
+        linear-gradient(90deg, rgba(37,99,235,0.88), rgba(6,20,56,0.95)),
+        url("../apps/macos/Sources/OpenRecorderMac/Resources/Wallpapers/thumbs/cityscape.jpg");
+      background-blend-mode: multiply;
+      box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
+    }
+
+    .preview::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 48%;
+      height: 28%;
+      background: rgba(255, 255, 255, 0.9);
+    }
+
+    .timeline {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 132px;
+      border-top: 1px solid var(--border);
+      background: linear-gradient(180deg, rgba(22,22,28,0.96), rgba(12,12,17,0.98));
+    }
+
+    .clip {
+      position: absolute;
+      left: 28px;
+      right: 28px;
+      bottom: 34px;
+      height: 42px;
+      border-radius: 8px;
+      background: #2458ff;
+      box-shadow: inset 0 -5px 0 rgba(255,255,255,0.12);
+    }
+
+    .inspector {
+      display: grid;
+      grid-template-columns: 48px 1fr;
+      min-height: 730px;
+      border: 1px solid var(--border-strong);
+      border-radius: 14px;
+      overflow: hidden;
+      background: linear-gradient(180deg, rgba(20,20,27,0.96), rgba(12,12,17,0.98));
+    }
+
+    .rail {
+      padding-top: 12px;
+      display: grid;
+      align-content: start;
+      gap: 6px;
+      background: rgba(16,16,23,0.68);
+      border-right: 1px solid var(--border-strong);
+    }
+
+    .rail button {
+      width: 36px;
+      height: 36px;
+      margin-inline: auto;
+      border: 0;
+      border-radius: 8px;
+      background: transparent;
+      color: var(--subtle);
+      font-size: 15px;
+      position: relative;
+    }
+
+    .rail button.active {
+      color: #4d7cff;
+      background: rgba(37,99,235,0.14);
+      outline: 1px solid rgba(37,99,235,0.24);
+    }
+
+    .rail button.active::before {
+      content: "";
+      position: absolute;
+      left: -3px;
+      top: 11px;
+      width: 3px;
+      height: 14px;
+      border-radius: 99px;
+      background: var(--accent);
+    }
+
+    .content {
+      display: grid;
+      grid-template-rows: 1fr auto;
+      min-width: 0;
+    }
+
+    .scroll {
+      padding: 18px 20px 18px;
+      display: grid;
+      gap: 0;
+      align-content: start;
+    }
+
+    .header {
+      padding-bottom: 18px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 17px;
+      line-height: 1.2;
+      font-weight: 650;
+      letter-spacing: 0;
+    }
+
+    .section-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding-top: 18px;
+      padding-bottom: 17px;
+      border-top: 1px solid rgba(255,255,255,0.12);
+      color: var(--text);
+      font-size: 15px;
+      font-weight: 650;
+    }
+
+    .section:first-child .section-title {
+      border-top: 0;
+    }
+
+    .rows {
+      display: grid;
+      gap: 12px;
+      padding-bottom: 18px;
+    }
+
+    .row {
+      padding: 0;
+    }
+
+    .row-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      color: var(--muted-text);
+      font-size: 13px;
+      font-weight: 650;
+    }
+
+    .value {
+      min-width: 40px;
+      color: var(--muted-text);
+      font-family: "SF Mono", ui-monospace, monospace;
+      font-size: 12px;
+      text-align: right;
+    }
+
+    .slider {
+      margin-top: 8px;
+      height: 8px;
+      border-radius: 99px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.12), rgba(0,0,0,0.18));
+      border: 1px solid var(--border);
+      overflow: hidden;
+    }
+
+    .slider i {
+      display: block;
+      height: 100%;
+      border-radius: inherit;
+      background: var(--accent);
+    }
+
+    .segment {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 5px;
+    }
+
+    .segment button {
+      height: 28px;
+      border-radius: 7px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.06);
+      color: var(--muted-text);
+    }
+
+    .segment .selected {
+      background: rgba(37,99,235,0.92);
+      color: white;
+      border-color: rgba(86,125,255,0.75);
+    }
+
+    .swatches {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+    }
+
+    .swatch {
+      height: 34px;
+      border-radius: 7px;
+      border: 1px solid var(--border);
+      background-size: cover;
+      background-position: center;
+    }
+
+    .selected-swatch {
+      outline: 2px solid var(--accent);
+      outline-offset: -2px;
+    }
+
+    .footer {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      padding: 12px;
+      border-top: 1px solid var(--border-strong);
+      background: rgba(16,16,23,0.45);
+    }
+
+    .footer button {
+      height: 30px;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      background: rgba(255,255,255,0.06);
+      color: var(--muted-text);
+      font-size: 10px;
+      font-weight: 550;
+    }
+  </style>
+</head>
+<body>
+  <main class="stage">
+    <section class="canvas" aria-label="Editor preview mock">
+      <div class="preview"></div>
+      <div class="timeline"><div class="clip"></div></div>
+    </section>
+
+    <aside class="inspector" aria-label="Redesigned inspector mock">
+      <nav class="rail" aria-label="Inspector tools">
+        <button class="active" aria-label="Appearance">☷</button>
+        <button aria-label="Cursor">⌖</button>
+        <button aria-label="Camera">◉</button>
+        <button aria-label="Audio">◌</button>
+      </nav>
+
+      <div class="content">
+        <div class="scroll">
+          <header class="header">
+            <h1>Appearance</h1>
+          </header>
+
+          <section class="section">
+            <div class="section-title">Frame</div>
+            <div class="rows">
+              <div class="row">
+                <div class="row-head"><span>Shadow</span><span class="value">35%</span></div>
+                <div class="slider"><i style="width:35%"></i></div>
+              </div>
+              <div class="row">
+                <div class="row-head"><span>Roundness</span><span class="value">12px</span></div>
+                <div class="slider"><i style="width:48%"></i></div>
+              </div>
+              <div class="row">
+                <div class="row-head"><span>Padding</span><span class="value">18%</span></div>
+                <div class="slider"><i style="width:18%"></i></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="section">
+            <div class="section-title">Backdrop</div>
+            <div class="rows">
+              <div class="row">
+                <div class="row-head"><span>Inset</span><span class="value">0</span></div>
+                <div class="slider"><i style="width:0%"></i></div>
+              </div>
+              <div class="row">
+                <div class="row-head"><span>Background Blur</span><span class="value">0.8px</span></div>
+                <div class="slider"><i style="width:10%"></i></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="section">
+            <div class="section-title">Background</div>
+            <div class="rows">
+              <div class="segment">
+                <button>○</button>
+                <button>●</button>
+                <button class="selected">▣</button>
+                <button>□</button>
+              </div>
+              <div class="swatches">
+                <div class="swatch selected-swatch" style="background-image:url('../apps/macos/Sources/OpenRecorderMac/Resources/Wallpapers/thumbs/wallpaper1.jpg')"></div>
+                <div class="swatch" style="background-image:url('../apps/macos/Sources/OpenRecorderMac/Resources/Wallpapers/thumbs/farmvalley.jpg')"></div>
+                <div class="swatch" style="background-image:url('../apps/macos/Sources/OpenRecorderMac/Resources/Wallpapers/thumbs/mountaintrees.jpg')"></div>
+                <div class="swatch" style="background-image:url('../apps/macos/Sources/OpenRecorderMac/Resources/Wallpapers/thumbs/wallpaper7.jpg')"></div>
+                <div class="swatch" style="background:linear-gradient(135deg,#f8fafc,#a7b0bd)"></div>
+                <div class="swatch" style="background:linear-gradient(135deg,#ff8a3d,#c922ff)"></div>
+                <div class="swatch" style="background:linear-gradient(135deg,#1746d8,#ff9465)"></div>
+                <div class="swatch" style="background:linear-gradient(135deg,#fb416d,#ffb15e)"></div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <footer class="footer">
+          <button>Report Bug</button>
+          <button>Star on GitHub</button>
+        </footer>
+      </div>
+    </aside>
+  </main>
+</body>
+</html>

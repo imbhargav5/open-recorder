@@ -27,6 +27,34 @@ enum VideoPreviewAspectPreset: String, CaseIterable, Identifiable {
         }
     }
 
+    var ratioLabel: String {
+        switch self {
+        case .auto: "Auto"
+        case .wide: "16:9"
+        case .square: "1:1"
+        case .classic: "4:3"
+        case .vertical: "9:16"
+        case .tall: "3:4"
+        case .portrait: "4:5"
+        }
+    }
+
+    var menuLabel: String {
+        switch self {
+        case .auto: "Source"
+        case .wide: "Widescreen"
+        case .square: "Square"
+        case .classic: "Classic"
+        case .vertical: "Vertical"
+        case .tall: "Tall"
+        case .portrait: "Portrait"
+        }
+    }
+
+    var menuAspectRatio: CGFloat {
+        fixedAspectRatio ?? 1.35
+    }
+
     func aspectRatio(for cropSelection: VideoCropSelection, sourceSize: CGSize) -> CGFloat {
         fixedAspectRatio ?? cropSelection.previewAspectRatio(in: sourceSize)
     }
@@ -161,12 +189,13 @@ struct VideoPreviewPanel: View {
             isPreviewAspectDropdownPresented.toggle()
         } label: {
             HStack(spacing: 7) {
-                Image(systemName: "rectangle.inset.filled")
-                    .font(.system(size: 11, weight: .semibold))
-                Text(previewAspectPreset.title)
+                PreviewAspectGlyph(preset: previewAspectPreset, isSelected: true)
+                    .frame(width: 17, height: 17)
+                Text(previewAspectPreset.ratioLabel)
                     .lineLimit(1)
-                Image(systemName: "chevron.down")
+                Image(systemName: "chevron.up")
                     .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(Color.primary.opacity(0.58))
             }
             .font(.system(size: 11, weight: .semibold))
             .foregroundStyle(Color.primary.opacity(0.86))
@@ -841,36 +870,71 @@ private struct PreviewAspectDropdown: View {
     var onSelect: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 1) {
             ForEach(VideoPreviewAspectPreset.allCases) { option in
                 Button {
                     selection = option
                     onSelect()
                 } label: {
-                    HStack(spacing: 10) {
-                        Text(option.title)
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(Color.primary.opacity(0.92))
+                    HStack(spacing: 12) {
+                        PreviewAspectGlyph(preset: option, isSelected: selection == option)
+                            .frame(width: 19, height: 19)
+                        Text(option.ratioLabel)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Color.primary.opacity(0.95))
+                            .frame(width: 38, alignment: .leading)
                             .lineLimit(1)
-                        Spacer(minLength: 12)
-                        if selection == option {
-                            Image(systemName: "checkmark")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundStyle(Theme.accent)
-                        }
+                        Text(option.menuLabel)
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(selection == option ? Color.primary.opacity(0.92) : Theme.fgMuted)
+                            .lineLimit(1)
+                        Spacer(minLength: 0)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .frame(height: 28)
-                    .padding(.horizontal, 9)
+                    .frame(height: 36)
+                    .padding(.horizontal, 10)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .background(selection == option ? Theme.border : Color.clear, in: RoundedRectangle(cornerRadius: 6))
+                .background(selection == option ? Color.white.opacity(0.10) : Color.clear, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
         }
-        .padding(8)
-        .frame(width: 164)
-        .background(Theme.surface)
+        .padding(7)
+        .frame(width: 224)
+        .background(Theme.surfaceRaised)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Theme.borderStrong, lineWidth: 1)
+        }
+    }
+}
+
+private struct PreviewAspectGlyph: View {
+    var preset: VideoPreviewAspectPreset
+    var isSelected: Bool
+
+    var body: some View {
+        GeometryReader { proxy in
+            let maxWidth = proxy.size.width
+            let maxHeight = proxy.size.height
+            let ratio = preset.menuAspectRatio
+            let width = ratio >= 1 ? maxWidth : maxHeight * ratio
+            let height = ratio >= 1 ? maxWidth / ratio : maxHeight
+            let resolvedWidth = min(width, maxWidth)
+            let resolvedHeight = min(height, maxHeight)
+
+            RoundedRectangle(cornerRadius: min(resolvedWidth, resolvedHeight) * 0.22, style: .continuous)
+                .fill(preset == .auto ? Color.clear : (isSelected ? Color.white.opacity(0.94) : Color.white.opacity(0.22)))
+                .overlay {
+                    if preset == .auto {
+                        RoundedRectangle(cornerRadius: min(resolvedWidth, resolvedHeight) * 0.22, style: .continuous)
+                            .stroke(Color.white.opacity(isSelected ? 0.95 : 0.34), style: StrokeStyle(lineWidth: 1.2, dash: [3, 2]))
+                    }
+                }
+                .frame(width: resolvedWidth, height: resolvedHeight)
+                .frame(width: maxWidth, height: maxHeight, alignment: .center)
+        }
     }
 }
 

@@ -12,12 +12,11 @@ struct ScreenshotEditorStudioView: View {
     var editorSessionID: UUID?
     var editor: ScreenshotEditorDriver
     var exportRequest: EditorExportRequest?
-    private let sidebarWidth: CGFloat = 320
+    @State private var sidebarWidth: CGFloat = 320
 
     var body: some View {
-        StudioSplitPane(
-            axis: .horizontal,
-            secondarySize: sidebarWidth,
+        ResizableStudioSplitPane(
+            secondarySize: $sidebarWidth,
             minPrimarySize: 520,
             minSecondarySize: 280,
             maxSecondarySize: 440

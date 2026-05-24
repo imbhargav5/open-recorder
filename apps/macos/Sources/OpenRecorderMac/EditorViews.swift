@@ -86,13 +86,12 @@ struct VideoEditorStudioView: View {
     var timelineEdits: TimelineEditDriver
     var videoExport: VideoExportDriver
     var exportRequest: EditorExportRequest?
-    private let sidebarWidth: CGFloat = 320
+    @State private var sidebarWidth: CGFloat = 320
     private let timelineHeight = TimelineMetrics.compactPanelHeight
 
     var body: some View {
-        StudioSplitPane(
-            axis: .horizontal,
-            secondarySize: sidebarWidth,
+        ResizableStudioSplitPane(
+            secondarySize: $sidebarWidth,
             minPrimarySize: 520,
             minSecondarySize: 280,
             maxSecondarySize: 440
