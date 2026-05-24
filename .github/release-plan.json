@@ -1,6 +1,6 @@
 {
-  "tagName": "v0.2.26",
-  "releaseName": "Open Recorder v0.2.26",
-  "releaseNotes": "## Commits since v0.2.25\n\n- 565afe0 Merge pull request #309 from imbhargav5/codex/fix-preview-cursor-square\n- 21d9754 Fix preview zoom layer rendering\n- 8a4994a Update appcast for v0.2.25",
+  "tagName": "v0.2.27",
+  "releaseName": "Open Recorder v0.2.27",
+  "releaseNotes": "## Commits since v0.2.26\n\n- bf7685c Merge pull request #320 from imbhargav5/codex/extensible-cursor-registry\n- 745c429 Merge remote-tracking branch 'origin/main' into codex/extensible-cursor-registry\n- ba48b11 Add extensible cursor styles and camera timeline editing\n- 0d64139 Fix deleting selected timeline clips\n- 7a335be Merge pull request #318 from imbhargav5/codex/remove-timeline-tooltips\n- bb60bde Remove timeline toolbar tooltips\n- 44e97d0 Merge pull request #316 from imbhargav5/new-styling-changes\n- e46c2cf Revert zoom layer styling changes\n- 8e179d8 Align zoom handles to region ends\n- 48bbc71 Restore zoom resize icon handles\n- 6fd888b Refine timeline zoom region styling\n- 3452bd6 Merge pull request #314 from imbhargav5/styling-changes\n- 26d441b Polish editor styling controls\n- a7bfb30 Improve inspector sidebar controls\n- dabc2b8 Update appcast for v0.2.26",
   "makeLatest": true
 }
