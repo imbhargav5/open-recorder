@@ -772,27 +772,13 @@ struct TimelineClipRow: View {
 }
 
 struct TimelineResizeHandle: View {
-    var style: TimelineRegionKind = .zoom
-
     var body: some View {
-        if style == .zoom {
-            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                .fill(Color.white.opacity(0.92))
-                .frame(width: 6, height: 34)
-                .overlay {
-                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .stroke(Color.white.opacity(0.95), lineWidth: 1)
-                }
-                .shadow(color: Color.white.opacity(0.34), radius: 6)
-                .shadow(color: Color.black.opacity(0.34), radius: 8, y: 3)
-        } else {
-            Circle()
-                .fill(Theme.timelineHandle)
-                .frame(width: 20, height: 20)
-                .overlay { Image(systemName: "arrow.left.and.right").font(.system(size: 8, weight: .bold)).foregroundStyle(Color.black.opacity(0.82)) }
-                .overlay { Circle().stroke(Theme.scrim, lineWidth: 1) }
-                .shadow(color: Color.black.opacity(0.24), radius: 6, y: 3)
-        }
+        Circle()
+            .fill(Theme.timelineHandle)
+            .frame(width: 20, height: 20)
+            .overlay { Image(systemName: "arrow.left.and.right").font(.system(size: 8, weight: .bold)).foregroundStyle(Color.black.opacity(0.82)) }
+            .overlay { Circle().stroke(Theme.scrim, lineWidth: 1) }
+            .shadow(color: Color.black.opacity(0.24), radius: 6, y: 3)
     }
 }
 
@@ -957,17 +943,17 @@ struct TimelineRegionItem: View {
         let startX = x(for: region.span.start)
         let itemWidth = max(1, x(for: region.span.end) - startX)
         RoundedRectangle(cornerRadius: 7, style: .continuous)
-            .fill(regionFill)
-            .overlay { RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(regionStroke, lineWidth: isSelected ? 1.5 : 1) }
+            .fill(kind.accent.opacity(isSelected ? 0.55 : 0.34))
+            .overlay { RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(kind.accent.opacity(isSelected ? 0.95 : 0.65), lineWidth: isSelected ? 2 : 1) }
             .overlay { regionLabel(width: itemWidth) }
             .overlay(alignment: .leading) {
                 if showsLeadingHandle {
-                    TimelineResizeHandle(style: kind).offset(x: kind == .zoom ? 0 : -9).gesture(resizeGesture(edge: .leading))
+                    TimelineResizeHandle().offset(x: -9).gesture(resizeGesture(edge: .leading))
                 }
             }
             .overlay(alignment: .trailing) {
                 if showsTrailingHandle {
-                    TimelineResizeHandle(style: kind).offset(x: kind == .zoom ? 0 : 9).gesture(resizeGesture(edge: .trailing))
+                    TimelineResizeHandle().offset(x: 9).gesture(resizeGesture(edge: .trailing))
                 }
             }
             .frame(width: itemWidth, height: TimelineMetrics.regionItemHeight)
@@ -977,36 +963,11 @@ struct TimelineRegionItem: View {
             .gesture(moveGesture())
     }
 
-    private var regionFill: some ShapeStyle {
-        if kind == .zoom {
-            return AnyShapeStyle(
-                LinearGradient(
-                    colors: [
-                        Color(red: 0.05, green: 0.38, blue: 1.00).opacity(isSelected ? 0.98 : 0.88),
-                        Color(red: 0.42, green: 0.75, blue: 1.00).opacity(isSelected ? 0.94 : 0.80)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            )
-        }
-
-        return AnyShapeStyle(kind.accent.opacity(isSelected ? 0.55 : 0.34))
-    }
-
-    private var regionStroke: Color {
-        if kind == .zoom {
-            return Color.white.opacity(isSelected ? 0.72 : 0.42)
-        }
-
-        return kind.accent.opacity(isSelected ? 0.95 : 0.65)
-    }
-
     private func regionLabel(width: CGFloat) -> some View {
         HStack(spacing: 4) {
-            Text(labelText(width: width))
+            Text(region.label)
                 .font(.system(size: 10, weight: .bold))
-                .foregroundStyle(kind == .zoom ? Color.white.opacity(0.72) : .white)
+                .foregroundStyle(.white)
                 .lineLimit(1)
 
             if region.showsAutoBadge, width > 52 {
@@ -1021,11 +982,6 @@ struct TimelineRegionItem: View {
         .minimumScaleFactor(0.75)
         .padding(.horizontal, 7)
         .frame(maxWidth: max(0, width - 8))
-    }
-
-    private func labelText(width: CGFloat) -> String {
-        guard kind == .zoom else { return region.label }
-        return width > 78 ? "Zoom \(region.label)" : region.label
     }
 
     private enum ResizeEdge { case leading, trailing }
