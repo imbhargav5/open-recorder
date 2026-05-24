@@ -231,9 +231,6 @@ private struct TimelinePlayPauseButton: View {
         .disabled(playback.player == nil)
         .opacity(playback.player == nil ? 0.42 : 1)
         .accessibilityLabel(title)
-        .overlay(alignment: .top) {
-            TimelineToolbarTooltip(title: title, isVisible: isHovering && playback.player != nil)
-        }
         .onHover { hovering in
             isHovering = hovering
         }
@@ -257,38 +254,9 @@ private struct TimelineToolbarIconButton: View {
         }
         .disabled(!isEnabled)
         .accessibilityLabel(title)
-        .overlay(alignment: .top) {
-            TimelineToolbarTooltip(title: title, isVisible: isHovering && isEnabled)
-        }
         .onHover { hovering in
             isHovering = hovering
         }
-    }
-}
-
-private struct TimelineToolbarTooltip: View {
-    var title: String
-    var isVisible: Bool
-
-    var body: some View {
-        Text(title)
-            .font(.system(size: 11, weight: .semibold))
-            .foregroundStyle(Theme.fg.opacity(0.94))
-            .lineLimit(1)
-            .fixedSize(horizontal: true, vertical: false)
-            .padding(.horizontal, 9)
-            .frame(height: 28)
-            .background(Theme.surfaceRaised.opacity(0.96), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .stroke(Theme.borderStrong.opacity(0.72), lineWidth: 1)
-            }
-            .shadow(color: Color.black.opacity(0.28), radius: 10, y: 5)
-            .opacity(isVisible ? 1 : 0)
-            .offset(y: -34)
-            .allowsHitTesting(false)
-            .animation(.snappy(duration: 0.14), value: isVisible)
-            .zIndex(20)
     }
 }
 
