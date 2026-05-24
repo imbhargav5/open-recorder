@@ -778,7 +778,7 @@ struct TimelineResizeHandle: View {
         if style == .zoom {
             RoundedRectangle(cornerRadius: 4, style: .continuous)
                 .fill(Color.white.opacity(0.92))
-                .frame(width: 6, height: 34)
+                .frame(width: 3, height: 28)
                 .overlay {
                     RoundedRectangle(cornerRadius: 4, style: .continuous)
                         .stroke(Color.white.opacity(0.95), lineWidth: 1)
@@ -952,6 +952,8 @@ struct TimelineRegionItem: View {
     var isSelected: Bool
     var edits: TimelineEditDriver
     @State private var dragStartSpan: TimelineSpan?
+    @State private var isHovering = false
+    @State private var isResizing = false
 
     var body: some View {
         let startX = x(for: region.span.start)
@@ -961,13 +963,13 @@ struct TimelineRegionItem: View {
             .overlay { RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(regionStroke, lineWidth: isSelected ? 1.5 : 1) }
             .overlay { regionLabel(width: itemWidth) }
             .overlay(alignment: .leading) {
-                if showsLeadingHandle {
-                    TimelineResizeHandle(style: kind).offset(x: kind == .zoom ? 0 : -9).gesture(resizeGesture(edge: .leading))
+                if showsLeadingHandle && shouldShowResizeHandles {
+                    TimelineResizeHandle(style: kind).offset(x: kind == .zoom ? 8 : -9).gesture(resizeGesture(edge: .leading))
                 }
             }
             .overlay(alignment: .trailing) {
-                if showsTrailingHandle {
-                    TimelineResizeHandle(style: kind).offset(x: kind == .zoom ? 0 : 9).gesture(resizeGesture(edge: .trailing))
+                if showsTrailingHandle && shouldShowResizeHandles {
+                    TimelineResizeHandle(style: kind).offset(x: kind == .zoom ? -8 : 9).gesture(resizeGesture(edge: .trailing))
                 }
             }
             .frame(width: itemWidth, height: TimelineMetrics.regionItemHeight)
@@ -975,6 +977,8 @@ struct TimelineRegionItem: View {
             .onTapGesture(count: 2) { performPrimaryEdit() }
             .onTapGesture { edits.select(kind, id: region.id) }
             .gesture(moveGesture())
+            .onHover { isHovering = $0 }
+            .animation(.snappy(duration: 0.14), value: shouldShowResizeHandles)
     }
 
     private var regionFill: some ShapeStyle {
@@ -982,8 +986,8 @@ struct TimelineRegionItem: View {
             return AnyShapeStyle(
                 LinearGradient(
                     colors: [
-                        Color(red: 0.05, green: 0.38, blue: 1.00).opacity(isSelected ? 0.98 : 0.88),
-                        Color(red: 0.42, green: 0.75, blue: 1.00).opacity(isSelected ? 0.94 : 0.80)
+                        Color(red: 0.00, green: 0.60, blue: 0.95).opacity(isSelected ? 0.98 : 0.88),
+                        Color(red: 0.42, green: 0.88, blue: 1.00).opacity(isSelected ? 0.94 : 0.80)
                     ],
                     startPoint: .top,
                     endPoint: .bottom
@@ -1025,10 +1029,14 @@ struct TimelineRegionItem: View {
 
     private func labelText(width: CGFloat) -> String {
         guard kind == .zoom else { return region.label }
-        return width > 78 ? "Zoom \(region.label)" : region.label
+        return region.label
     }
 
     private enum ResizeEdge { case leading, trailing }
+
+    private var shouldShowResizeHandles: Bool {
+        kind != .zoom || isHovering || isResizing
+    }
 
     private var showsLeadingHandle: Bool {
         region.span.start >= viewport.visibleStart - 0.001
@@ -1066,6 +1074,7 @@ struct TimelineRegionItem: View {
                     dragStartSpan = region.span
                     edits.select(kind, id: region.id)
                 }
+                isResizing = true
                 let base = dragStartSpan ?? region.span
                 let delta = time(forDeltaX: value.translation.width)
                 switch edge {
@@ -1078,6 +1087,7 @@ struct TimelineRegionItem: View {
             .onEnded { _ in
                 edits.endUndoTransaction()
                 dragStartSpan = nil
+                isResizing = false
             }
     }
 
