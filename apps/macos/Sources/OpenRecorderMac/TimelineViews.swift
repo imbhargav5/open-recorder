@@ -20,12 +20,15 @@ enum TimelineMetrics {
         + rulerHeight
         + clipHeight
         + layerHeight
+        + layerHeight
 }
 
 struct TimelinePanel: View {
     var videoURL: URL?
     var playback: VideoPlaybackController
     var edits: TimelineEditDriver
+    var hasRecordedCamera: Bool
+    var defaultCameraSettings: FacecamSettings?
     @State private var timelineViewport = TimelineViewport(duration: 0)
     @State private var isDraggingTimelineZoom = false
     @FocusState private var isTimelineFocused: Bool
@@ -44,7 +47,14 @@ struct TimelinePanel: View {
                         isTimelineFocused = true
                     }
 
-                TimelineTrackContent(videoURL: videoURL, playback: playback, edits: edits, viewport: $timelineViewport)
+                TimelineTrackContent(
+                    videoURL: videoURL,
+                    playback: playback,
+                    edits: edits,
+                    hasRecordedCamera: hasRecordedCamera,
+                    defaultCameraSettings: defaultCameraSettings,
+                    viewport: $timelineViewport
+                )
                     .padding(.horizontal, TimelineMetrics.panelPadding)
                     .padding(.top, TimelineMetrics.trackTopPadding)
             }
@@ -71,9 +81,17 @@ struct TimelinePanel: View {
         }
         .onAppear {
             syncTimelineViewportDuration(playback.duration)
+            ensureCameraLayer()
         }
         .onChange(of: playback.duration) { _, newDuration in
             syncTimelineViewportDuration(newDuration)
+            ensureCameraLayer()
+        }
+        .onChange(of: hasRecordedCamera) { _, _ in
+            ensureCameraLayer()
+        }
+        .onChange(of: defaultCameraSettings) { _, _ in
+            ensureCameraLayer()
         }
         .onChange(of: playback.currentTime) { _, newTime in
             updateTimelineViewport(for: newTime)
@@ -132,6 +150,11 @@ struct TimelinePanel: View {
         }
     }
 
+    private func ensureCameraLayer() {
+        guard hasRecordedCamera else { return }
+        edits.ensureCameraClips(duration: playback.duration, fallback: defaultCameraSettings)
+    }
+
     private func deleteTimelineSelection() {
         edits.deleteSelection(duration: playback.duration)
     }
@@ -141,6 +164,8 @@ struct TimelineTrackContent: View {
     var videoURL: URL?
     var playback: VideoPlaybackController
     var edits: TimelineEditDriver
+    var hasRecordedCamera: Bool
+    var defaultCameraSettings: FacecamSettings?
     @Binding var viewport: TimelineViewport
     @State private var timelineSize = CGSize.zero
 
@@ -153,6 +178,14 @@ struct TimelineTrackContent: View {
                 }
             TimelineClipRow(videoURL: videoURL, duration: playback.duration, viewport: viewport, splitTimes: edits.clipSplitTimes, trimRegions: edits.trimRegions, clipSpeeds: edits.clipSpeeds, selectedClipIndex: edits.selectedClipIndex, seek: playback.seek(to:), edits: edits)
             TimelineLayerRow(kind: .zoom, duration: playback.duration, viewport: viewport, regions: edits.zoomRegions.map(TimelineRegionRenderData.zoom), selectedID: edits.selectedKind == .zoom ? edits.selectedID : nil, edits: edits)
+            TimelineCameraLayerRow(
+                duration: playback.duration,
+                viewport: viewport,
+                hasRecordedCamera: hasRecordedCamera,
+                cameraClips: edits.resolvedCameraClips(duration: playback.duration, fallback: defaultCameraSettings),
+                selectedID: edits.selectedCameraClipID,
+                edits: edits
+            )
         }
         .overlay(alignment: .topLeading) { TimelinePlayhead(viewport: viewport, currentTime: playback.currentTime) }
         .readSize { timelineSize = $0 }
@@ -812,6 +845,122 @@ struct TimelineLayerRow: View {
         }
 
         edits.add(.zoom, at: time, duration: duration)
+    }
+}
+
+struct TimelineCameraLayerRow: View {
+    var duration: Double
+    var viewport: TimelineViewport
+    var hasRecordedCamera: Bool
+    var cameraClips: [TimelineCameraClip]
+    var selectedID: TimelineRegionID?
+    var edits: TimelineEditDriver
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack(alignment: .leading) {
+                Rectangle()
+                    .fill(Color(red: 0.095, green: 0.095, blue: 0.11))
+                    .rectangularHitTarget()
+                    .gesture(
+                        SpatialTapGesture()
+                            .onEnded { value in
+                                handleBackgroundTap(at: value.location, width: proxy.size.width)
+                            }
+                    )
+
+                if cameraClips.isEmpty {
+                    Text(emptyMessage)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Color.secondary.opacity(0.64))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                        .allowsHitTesting(false)
+                }
+
+                ForEach(cameraClips.filter { viewport.intersects($0.span) }) { clip in
+                    TimelineCameraClipItem(
+                        clip: clip,
+                        duration: duration,
+                        viewport: viewport,
+                        width: proxy.size.width,
+                        isSelected: clip.id == selectedID,
+                        edits: edits
+                    )
+                }
+            }
+            .rectangularHitTarget()
+            .clipped()
+        }
+        .frame(height: TimelineMetrics.layerHeight)
+        .overlay(alignment: .bottom) { Rectangle().fill(Theme.border).frame(height: 1) }
+    }
+
+    private var emptyMessage: String {
+        hasRecordedCamera ? "Camera settings unavailable" : "No camera recorded"
+    }
+
+    private func handleBackgroundTap(at location: CGPoint, width: CGFloat) {
+        guard hasRecordedCamera,
+              duration.isFinite,
+              duration > 0,
+              let time = TimelineSeekMapper.time(forX: location.x, viewport: viewport, width: width) else {
+            edits.clearSelection()
+            return
+        }
+
+        guard let clip = cameraClips.first(where: { time >= $0.span.start && (time < $0.span.end || $0.id == cameraClips.last?.id) }) else {
+            edits.clearSelection()
+            return
+        }
+        edits.selectCameraClip(id: clip.id)
+    }
+}
+
+private struct TimelineCameraClipItem: View {
+    var clip: TimelineCameraClip
+    var duration: Double
+    var viewport: TimelineViewport
+    var width: CGFloat
+    var isSelected: Bool
+    var edits: TimelineEditDriver
+
+    private var accent: Color {
+        clip.settings.clamped.enabled ? Theme.timelineCamera : Color.secondary.opacity(0.52)
+    }
+
+    var body: some View {
+        let startX = x(for: clip.span.start)
+        let itemWidth = max(1, x(for: clip.span.end) - startX)
+
+        RoundedRectangle(cornerRadius: 7, style: .continuous)
+            .fill(accent.opacity(clip.settings.clamped.enabled ? (isSelected ? 0.55 : 0.34) : 0.18))
+            .overlay {
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .stroke(accent.opacity(isSelected ? 0.95 : 0.65), lineWidth: isSelected ? 2 : 1)
+            }
+            .overlay { label(width: itemWidth) }
+            .frame(width: itemWidth, height: TimelineMetrics.regionItemHeight)
+            .position(x: startX + itemWidth / 2, y: TimelineMetrics.layerHeight / 2)
+            .onTapGesture { edits.selectCameraClip(id: clip.id) }
+    }
+
+    private func label(width: CGFloat) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: clip.settings.clamped.enabled ? "camera.fill" : "camera.slash.fill")
+                .font(.system(size: 9, weight: .semibold))
+            Text(clip.settings.clamped.enabled ? "Camera" : "Hidden")
+                .font(.system(size: 10, weight: .bold))
+                .lineLimit(1)
+        }
+        .foregroundStyle(.white.opacity(clip.settings.clamped.enabled ? 0.94 : 0.66))
+        .minimumScaleFactor(0.72)
+        .padding(.horizontal, 8)
+        .frame(maxWidth: max(1, width))
+        .allowsHitTesting(false)
+    }
+
+    private func x(for time: Double) -> CGFloat {
+        viewport.x(for: time, width: width, clamped: true) ?? 0
     }
 }
 

@@ -4,6 +4,7 @@ import SwiftUI
 struct TimelineSelectionSidebar: View {
     var edits: TimelineEditDriver
     var playback: VideoPlaybackController
+    var defaultCameraSettings: FacecamSettings?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -55,6 +56,8 @@ struct TimelineSelectionSidebar: View {
     private var selectionContent: some View {
         if let clip = edits.selectedClip(duration: playback.duration) {
             clipControls(clip)
+        } else if let cameraClip = edits.selectedCameraClip(duration: playback.duration, fallback: defaultCameraSettings) {
+            cameraControls(cameraClip)
         } else if let kind = edits.selectedKind, let id = edits.selectedID {
             regionControls(kind: kind, id: id)
         } else {
@@ -105,6 +108,60 @@ struct TimelineSelectionSidebar: View {
             if playback.duration - clip.end > 0.001 {
                 TimelineSelectionActionButton(title: "Merge Next", symbolName: "arrow.right.to.line") {
                     edits.removeClipSplit(at: clip.end, duration: playback.duration)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func cameraControls(_ clip: TimelineCameraClip) -> some View {
+        InspectorGroup(title: "Camera", symbolName: clip.settings.clamped.enabled ? "camera.fill" : "camera.slash.fill") {
+            TimelineSelectionInfoRow(title: "Start", value: formatPlaybackTime(clip.span.start))
+            TimelineSelectionInfoRow(title: "End", value: formatPlaybackTime(clip.span.end))
+            TimelineSelectionInfoRow(title: "Duration", value: formatClipDuration(clip.span.duration))
+        }
+
+        InspectorGroup(title: "Visibility", symbolName: "eye") {
+            InspectorSwitch(title: "Visible", isOn: cameraEnabledBinding(id: clip.id))
+        }
+
+        InspectorGroup(title: "Position", symbolName: "square.grid.3x3") {
+            PositionGrid(selection: cameraAnchorBinding(id: clip.id))
+        }
+
+        InspectorGroup(title: "Style", symbolName: "slider.horizontal.3") {
+            InspectorSlider(
+                title: "Size",
+                valueText: "\(Int(clip.settings.clamped.size.rounded()))%",
+                value: cameraSizeBinding(id: clip.id),
+                range: 12...40,
+                step: 1,
+                onEditingChanged: handleUndoTransaction
+            )
+            InspectorSlider(
+                title: "Border",
+                valueText: "\(Int(clip.settings.clamped.borderWidth.rounded()))px",
+                value: cameraBorderWidthBinding(id: clip.id),
+                range: 0...16,
+                step: 1,
+                onEditingChanged: handleUndoTransaction
+            )
+        }
+
+        InspectorGroup(title: "Split", symbolName: "timeline.selection") {
+            TimelineSelectionActionButton(title: "Split at Playhead", symbolName: "scissors") {
+                edits.splitCameraClip(at: playback.currentTime, duration: playback.duration, fallback: defaultCameraSettings)
+            }
+
+            if clip.span.start > 0.001 {
+                TimelineSelectionActionButton(title: "Merge Previous", symbolName: "arrow.left.to.line") {
+                    edits.mergeCameraClip(id: clip.id, direction: .previous)
+                }
+            }
+
+            if playback.duration - clip.span.end > 0.001 {
+                TimelineSelectionActionButton(title: "Merge Next", symbolName: "arrow.right.to.line") {
+                    edits.mergeCameraClip(id: clip.id, direction: .next)
                 }
             }
         }
@@ -172,6 +229,9 @@ struct TimelineSelectionSidebar: View {
         if let clip = edits.selectedClip(duration: playback.duration) {
             return "Selected Clip \(clip.index + 1)"
         }
+        if let clip = edits.selectedCameraClip(duration: playback.duration, fallback: defaultCameraSettings) {
+            return clip.settings.clamped.enabled ? "Selected Camera" : "Hidden Camera"
+        }
         if let kind = edits.selectedKind {
             return "Selected \(kind.title)"
         }
@@ -181,6 +241,9 @@ struct TimelineSelectionSidebar: View {
     private var selectionSubtitle: String {
         if let clip = edits.selectedClip(duration: playback.duration) {
             return "\(formatPlaybackTime(clip.start)) - \(formatPlaybackTime(clip.end)) @ \(TimelineClipSpeed.label(clip.speed))"
+        }
+        if let clip = edits.selectedCameraClip(duration: playback.duration, fallback: defaultCameraSettings) {
+            return "\(formatPlaybackTime(clip.span.start)) - \(formatPlaybackTime(clip.span.end))"
         }
         if let kind = edits.selectedKind, let id = edits.selectedID, let span = selectedRegionSpan(kind: kind, id: id) {
             return "\(formatPlaybackTime(span.start)) - \(formatPlaybackTime(span.end))"
@@ -192,12 +255,19 @@ struct TimelineSelectionSidebar: View {
         if edits.selectedClipIndex != nil {
             return Theme.timelineHandle
         }
+        if edits.selectedCameraClipID != nil {
+            return Theme.timelineCamera
+        }
         return edits.selectedKind?.accent ?? Theme.accent
     }
 
     private var selectionSymbolName: String {
         if edits.selectedClipIndex != nil {
             return "rectangle.on.rectangle"
+        }
+
+        if edits.selectedCameraClipID != nil {
+            return "camera.fill"
         }
 
         switch edits.selectedKind {
@@ -248,6 +318,40 @@ struct TimelineSelectionSidebar: View {
         Binding(
             get: { edits.clipSpeed(index: index) },
             set: { edits.updateClipSpeed(index: index, speed: $0) }
+        )
+    }
+
+    private func cameraEnabledBinding(id: TimelineRegionID) -> Binding<Bool> {
+        cameraBinding(id: id, keyPath: \.enabled, default: true)
+    }
+
+    private func cameraSizeBinding(id: TimelineRegionID) -> Binding<Double> {
+        cameraBinding(id: id, keyPath: \.size, default: defaultFacecamSettings(enabled: true).size)
+    }
+
+    private func cameraBorderWidthBinding(id: TimelineRegionID) -> Binding<Double> {
+        cameraBinding(id: id, keyPath: \.borderWidth, default: defaultFacecamSettings(enabled: true).borderWidth)
+    }
+
+    private func cameraAnchorBinding(id: TimelineRegionID) -> Binding<String> {
+        cameraBinding(id: id, keyPath: \.anchor, default: FacecamAnchor.bottomRight.rawValue)
+    }
+
+    private func cameraBinding<Value: Equatable>(
+        id: TimelineRegionID,
+        keyPath: WritableKeyPath<FacecamSettings, Value>,
+        default defaultValue: Value
+    ) -> Binding<Value> {
+        Binding(
+            get: {
+                edits.cameraClips.first(where: { $0.id == id })?.settings[keyPath: keyPath] ?? defaultValue
+            },
+            set: { value in
+                guard var settings = edits.cameraClips.first(where: { $0.id == id })?.settings else { return }
+                guard settings[keyPath: keyPath] != value else { return }
+                settings[keyPath: keyPath] = value
+                edits.updateCameraClipSettings(id: id, settings: settings)
+            }
         )
     }
 

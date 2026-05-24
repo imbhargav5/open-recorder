@@ -114,40 +114,54 @@ final class VideoBackgroundCompositionInstruction: NSObject, AVVideoCompositionI
     let requiredSourceTrackIDs: [NSValue]?
     let passthroughTrackID: CMPersistentTrackID = kCMPersistentTrackID_Invalid
 
+    let sourceTrackID: CMPersistentTrackID
+    let facecamTrackID: CMPersistentTrackID?
     let styling: VideoBackgroundStyling
     let preferredTransform: CGAffineTransform
     let normalizedSize: CGSize
+    let facecamPreferredTransform: CGAffineTransform
+    let facecamNormalizedSize: CGSize
     let cropRect: CGRect
     let renderSize: CGSize
     let edits: TimelineEditSnapshot
     let editPlan: TimelineExportEditPlan
     let cursorTrack: CursorTelemetryTrack?
     let cursorSettings: CursorOverlaySettings
+    let facecamFallbackSettings: FacecamSettings?
 
     init(
         timeRange: CMTimeRange,
         trackID: CMPersistentTrackID,
+        facecamTrackID: CMPersistentTrackID? = nil,
         styling: VideoBackgroundStyling,
         preferredTransform: CGAffineTransform,
         normalizedSize: CGSize,
+        facecamPreferredTransform: CGAffineTransform = .identity,
+        facecamNormalizedSize: CGSize = .zero,
         cropRect: CGRect,
         renderSize: CGSize,
         edits: TimelineEditSnapshot = .empty,
         editPlan: TimelineExportEditPlan = TimelineExportEditPlan(segments: [], outputDuration: 0),
         cursorTrack: CursorTelemetryTrack? = nil,
-        cursorSettings: CursorOverlaySettings = .hidden
+        cursorSettings: CursorOverlaySettings = .hidden,
+        facecamFallbackSettings: FacecamSettings? = nil
     ) {
         self.timeRange = timeRange
-        self.requiredSourceTrackIDs = [NSNumber(value: trackID)]
+        self.sourceTrackID = trackID
+        self.facecamTrackID = facecamTrackID
+        self.requiredSourceTrackIDs = ([trackID] + (facecamTrackID.map { [$0] } ?? [])).map { NSNumber(value: $0) }
         self.styling = styling
         self.preferredTransform = preferredTransform
         self.normalizedSize = normalizedSize
+        self.facecamPreferredTransform = facecamPreferredTransform
+        self.facecamNormalizedSize = facecamNormalizedSize
         self.cropRect = cropRect
         self.renderSize = renderSize
         self.edits = edits
         self.editPlan = editPlan
         self.cursorTrack = cursorTrack
         self.cursorSettings = cursorSettings.clamped
+        self.facecamFallbackSettings = facecamFallbackSettings?.clamped
         super.init()
     }
 }
@@ -174,8 +188,7 @@ private struct CursorGlyphImage {
 }
 
 private struct CursorGlyphCacheKey: Hashable {
-    var style: CursorStyle
-    var variant: CursorVariant
+    var styleID: CursorStyleID
     var sizeKey: Int
 }
 
@@ -240,11 +253,7 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
             throw VideoCompositorError.missingInstruction
         }
 
-        guard let trackIDValue = instruction.requiredSourceTrackIDs?.first as? NSNumber else {
-            throw VideoCompositorError.missingSourceFrame
-        }
-        let trackID = CMPersistentTrackID(trackIDValue.int32Value)
-        guard let sourceBuffer = request.sourceFrame(byTrackID: trackID) else {
+        guard let sourceBuffer = request.sourceFrame(byTrackID: instruction.sourceTrackID) else {
             throw VideoCompositorError.missingSourceFrame
         }
 
@@ -254,6 +263,7 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
 
         let composedImage = try makeComposedImage(
             source: sourceBuffer,
+            facecam: instruction.facecamTrackID.flatMap { request.sourceFrame(byTrackID: $0) },
             instruction: instruction,
             compositionTime: request.compositionTime.seconds
         )
@@ -270,6 +280,7 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
 
     private func makeComposedImage(
         source: CVPixelBuffer,
+        facecam: CVPixelBuffer?,
         instruction: VideoBackgroundCompositionInstruction,
         compositionTime: Double
     ) throws -> CIImage {
@@ -368,8 +379,90 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
         if let cursor = makeCursorLayer(for: instruction, compositionTime: compositionTime, contentRect: contentRect) {
             composed = cursor.composited(over: composed)
         }
+        if let facecam = makeFacecamLayer(
+            facecam,
+            for: instruction,
+            compositionTime: compositionTime
+        ) {
+            composed = facecam.composited(over: composed)
+        }
 
         return composed.cropped(to: renderRect)
+    }
+
+    private func makeFacecamLayer(
+        _ facecam: CVPixelBuffer?,
+        for instruction: VideoBackgroundCompositionInstruction,
+        compositionTime: Double
+    ) -> CIImage? {
+        guard let facecam,
+              instruction.facecamTrackID != nil else {
+            return nil
+        }
+
+        let sourceTime = instruction.editPlan.sourceTime(forOutputTime: compositionTime) ?? compositionTime
+        guard let settings = instruction.edits.activeCameraSettings(
+            at: sourceTime,
+            duration: max(instruction.editPlan.segments.last?.sourceEnd ?? instruction.timeRange.duration.seconds, 0),
+            fallback: instruction.facecamFallbackSettings
+        ) else {
+            return nil
+        }
+
+        let renderSize = instruction.renderSize
+        let topLeftFrame = FacecamOverlayLayout.frame(in: renderSize, settings: settings)
+        guard !topLeftFrame.isEmpty else { return nil }
+
+        let frame = CGRect(
+            x: topLeftFrame.minX,
+            y: renderSize.height - topLeftFrame.maxY,
+            width: topLeftFrame.width,
+            height: topLeftFrame.height
+        )
+        let radius = facecamCornerRadius(for: frame, settings: settings)
+
+        var image = CIImage(cvPixelBuffer: facecam)
+        image = image.transformed(by: instruction.facecamPreferredTransform)
+        let normalizedRect = image.extent
+        let normalizedSize = instruction.facecamNormalizedSize == .zero
+            ? CGSize(width: max(normalizedRect.width, 1), height: max(normalizedRect.height, 1))
+            : instruction.facecamNormalizedSize
+        image = image
+            .cropped(to: CGRect(origin: normalizedRect.origin, size: normalizedSize))
+            .transformed(by: CGAffineTransform(translationX: -normalizedRect.minX, y: -normalizedRect.minY))
+
+        let scale = max(frame.width / max(normalizedSize.width, 1), frame.height / max(normalizedSize.height, 1))
+        image = image.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+        let dx = frame.midX - image.extent.midX
+        let dy = frame.midY - image.extent.midY
+        image = image.transformed(by: CGAffineTransform(translationX: dx, y: dy))
+        let clipped = applyRoundedMask(image.cropped(to: frame), cornerRadius: radius, in: frame)
+
+        guard settings.clamped.borderWidth > 0 else {
+            return clipped
+        }
+
+        let borderColor = SerializableColor(hex: settings.clamped.borderColor)
+        let border = makeRoundedStroke(
+            color: CIColor(
+                red: CGFloat(borderColor.red),
+                green: CGFloat(borderColor.green),
+                blue: CGFloat(borderColor.blue),
+                alpha: CGFloat(borderColor.alpha)
+            ),
+            lineWidth: CGFloat(settings.clamped.borderWidth),
+            in: frame,
+            cornerRadius: radius
+        )
+        return border.composited(over: clipped)
+    }
+
+    private func facecamCornerRadius(for frame: CGRect, settings: FacecamSettings) -> CGFloat {
+        if settings.clamped.isCircle {
+            return min(frame.width, frame.height) / 2
+        }
+
+        return min(CGFloat(settings.clamped.cornerRadius), min(frame.width, frame.height) / 2)
     }
 
     private func sourceLayout(frameRect: CGRect, styling: VideoBackgroundStyling) -> VideoInsetLayout {
@@ -420,8 +513,7 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
         )
         guard let glyph = cursorGlyphImage(
             size: cursorSize,
-            style: settings.style,
-            variant: settings.variant
+            styleID: settings.styleID
         ) else {
             return nil
         }
@@ -470,22 +562,17 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
         return point
     }
 
-    private func cursorGlyphImage(size: CGFloat, style: CursorStyle, variant: CursorVariant) -> CursorGlyphImage? {
-        let resolvedVariant = style.resolvedVariant(variant)
+    private func cursorGlyphImage(size: CGFloat, styleID: CursorStyleID) -> CursorGlyphImage? {
+        let resolvedStyleID = CursorStyleRegistry.resolvedStyleID(styleID)
         let cacheKey = CursorGlyphCacheKey(
-            style: style,
-            variant: resolvedVariant,
+            styleID: resolvedStyleID,
             sizeKey: Int((size * 10).rounded())
         )
         if let cached = cursorGlyphCache[cacheKey] {
             return cached
         }
 
-        guard let rendered = CursorPresetRenderer.renderedGlyph(
-            style: style,
-            variant: resolvedVariant,
-            size: size
-        ) else {
+        guard let rendered = CursorStyleRenderer.renderedGlyph(styleID: resolvedStyleID, size: size) else {
             return nil
         }
 
@@ -511,6 +598,56 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
     private func makeRoundedFill(color: CIColor, in rect: CGRect, cornerRadius: CGFloat) -> CIImage {
         let fill = CIImage(color: color).cropped(to: rect)
         return applyRoundedMask(fill, cornerRadius: cornerRadius, in: rect)
+    }
+
+    private func makeRoundedStroke(color: CIColor, lineWidth: CGFloat, in rect: CGRect, cornerRadius: CGFloat) -> CIImage {
+        let width = max(Int(ceil(rect.width + lineWidth * 2)), 1)
+        let height = max(Int(ceil(rect.height + lineWidth * 2)), 1)
+        let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+        guard let context = CGContext(
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else {
+            return CIImage(color: color).cropped(to: .zero)
+        }
+
+        context.setStrokeColor(CGColor(
+            srgbRed: color.red,
+            green: color.green,
+            blue: color.blue,
+            alpha: color.alpha
+        ))
+        context.setLineWidth(lineWidth)
+        let inset = lineWidth / 2
+        let drawRect = CGRect(
+            x: lineWidth,
+            y: lineWidth,
+            width: max(1, rect.width - lineWidth),
+            height: max(1, rect.height - lineWidth)
+        ).insetBy(dx: inset, dy: inset)
+        context.addPath(CGPath(
+            roundedRect: drawRect,
+            cornerWidth: max(0, cornerRadius - inset),
+            cornerHeight: max(0, cornerRadius - inset),
+            transform: nil
+        ))
+        context.strokePath()
+
+        guard let cgImage = context.makeImage() else {
+            return CIImage(color: color).cropped(to: .zero)
+        }
+
+        return CIImage(cgImage: cgImage).transformed(
+            by: CGAffineTransform(
+                translationX: rect.minX - lineWidth,
+                y: rect.minY - lineWidth
+            )
+        )
     }
 
     private static func coreImageCropRect(fromTopLeftRect rect: CGRect, sourceSize: CGSize) -> CGRect {

@@ -185,6 +185,7 @@ struct VideoEditorStudioView: View {
                 cursorSettings: editor.state.cursorOverlaySettings,
                 cropSelection: editor.state.video.cropSelection,
                 facecamSettings: editor.state.currentFacecamSettings,
+                cameraTimelineFallback: editor.state.currentFacecamSettings,
                 previewAspectPreset: editor.previewAspectPresetBinding,
                 onCropVideo: {
                     guard let videoURL else { return }
@@ -196,7 +197,13 @@ struct VideoEditorStudioView: View {
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } secondary: {
-            TimelinePanel(videoURL: videoURL, playback: playback, edits: timelineEdits)
+            TimelinePanel(
+                videoURL: videoURL,
+                playback: playback,
+                edits: timelineEdits,
+                hasRecordedCamera: editor.state.hasRecordedCamera,
+                defaultCameraSettings: editor.state.currentFacecamSettings
+            )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
@@ -204,7 +211,11 @@ struct VideoEditorStudioView: View {
     @ViewBuilder
     private var sidebarContent: some View {
         if timelineEdits.hasSelection {
-            TimelineSelectionSidebar(edits: timelineEdits, playback: playback)
+            TimelineSelectionSidebar(
+                edits: timelineEdits,
+                playback: playback,
+                defaultCameraSettings: editor.state.currentFacecamSettings
+            )
         } else {
             SettingsInspector(
                 borderRadius: editor.binding(\.borderRadius),
@@ -220,12 +231,7 @@ struct VideoEditorStudioView: View {
                 loopCursor: editor.binding(\.cursorOverlay.loops),
                 cursorSize: editor.binding(\.cursorOverlay.size),
                 cursorSmoothing: editor.binding(\.cursorOverlay.smoothing),
-                cursorStyle: editor.binding(\.cursorOverlay.style),
-                cursorVariant: editor.binding(\.cursorOverlay.variant),
-                facecamEnabled: editor.facecamBinding(\.enabled, default: false),
-                facecamSize: editor.facecamBinding(\.size, default: 22),
-                facecamBorderWidth: editor.facecamBinding(\.borderWidth, default: 4),
-                facecamAnchor: editor.facecamBinding(\.anchor, default: FacecamAnchor.bottomRight.rawValue),
+                cursorStyleID: editor.binding(\.cursorOverlay.styleID),
                 recordingSession: recordingSession
             )
         }
@@ -282,7 +288,10 @@ struct VideoEditorStudioView: View {
                     recordingURL: exportRequest?.url ?? videoURL,
                     edits: timelineEdits.snapshot,
                     snapshot: autosaveSnapshot,
-                    cursorTelemetryURL: cursorTelemetryURL
+                    cursorTelemetryURL: cursorTelemetryURL,
+                    facecamVideoURL: facecamVideoURL,
+                    facecamOffsetMs: recordingSession?.facecamOffsetMs,
+                    cameraFallback: editor.state.currentFacecamSettings
                 ))
             },
             onRetrySave: {
@@ -348,6 +357,14 @@ struct VideoEditorStudioView: View {
         guard let videoURL else { return nil }
         let derivedURL = CursorTelemetryRecorder.telemetryURL(for: videoURL)
         return FileManager.default.fileExists(atPath: derivedURL.path) ? derivedURL : nil
+    }
+
+    private var facecamVideoURL: URL? {
+        guard let path = recordingSession?.facecamVideoPath?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !path.isEmpty else {
+            return nil
+        }
+        return URL(fileURLWithPath: path)
     }
 
     private var isVideoExportRequestTarget: Bool {

@@ -3,7 +3,7 @@ import XCTest
 @testable import OpenRecorderMac
 
 final class CursorOverlaySettingsTests: XCTestCase {
-    func testLegacyCursorSettingsDecodeDefaultStyleAndVariant() throws {
+    func testLegacyCursorSettingsDecodeDefaultStyleID() throws {
         let data = """
         {
           "isVisible": true,
@@ -15,19 +15,20 @@ final class CursorOverlaySettingsTests: XCTestCase {
 
         let settings = try JSONDecoder().decode(CursorOverlaySettings.self, from: data)
 
-        XCTAssertEqual(settings.style, .arrow)
-        XCTAssertEqual(settings.variant, .standard)
+        XCTAssertEqual(settings.styleID, CursorStyleRegistry.defaultStyleID)
         XCTAssertEqual(settings.size, 1.5)
     }
 
-    func testCursorSettingsRoundTripStyleAndVariant() throws {
+    func testCursorSettingsRoundTripStyleIDAndEffects() throws {
         let settings = CursorOverlaySettings(
             isVisible: true,
             loops: true,
             size: 8,
             smoothing: 0.8,
-            style: .outlineArrow,
-            variant: .bold
+            styleID: "touch.dot",
+            clickEffect: .ripple,
+            idleBehavior: .fadeWhenIdle,
+            motionEffect: .subtleLean
         )
 
         let data = try JSONEncoder().encode(settings)
@@ -36,22 +37,37 @@ final class CursorOverlaySettingsTests: XCTestCase {
         XCTAssertEqual(decoded, settings)
     }
 
-    func testLegacyColorVariantNamesMapToShapeVariants() throws {
+    func testLegacyStyleAndVariantNamesFallBackToDefaultStyleID() throws {
         let data = """
         {
           "isVisible": true,
           "loops": false,
           "size": 1,
           "smoothing": 0.4,
-          "style": "handPointer",
-          "variant": "highContrast"
+          "style": "dotPointer",
+          "variant": "soft"
         }
         """.data(using: .utf8)!
 
         let settings = try JSONDecoder().decode(CursorOverlaySettings.self, from: data)
 
-        XCTAssertEqual(settings.style, .handPointer)
-        XCTAssertEqual(settings.variant, .bold)
+        XCTAssertEqual(settings.styleID, CursorStyleRegistry.defaultStyleID)
+    }
+
+    func testUnknownStyleIDFallsBackToDefaultStyleID() throws {
+        let data = """
+        {
+          "isVisible": true,
+          "loops": false,
+          "size": 1,
+          "smoothing": 0.4,
+          "styleID": "future.missing"
+        }
+        """.data(using: .utf8)!
+
+        let settings = try JSONDecoder().decode(CursorOverlaySettings.self, from: data)
+
+        XCTAssertEqual(settings.styleID, CursorStyleRegistry.defaultStyleID)
     }
 
     func testCursorSizeClampsWhenCreatedAndDecoded() throws {
@@ -64,15 +80,14 @@ final class CursorOverlaySettingsTests: XCTestCase {
           "loops": false,
           "size": 12,
           "smoothing": 0.4,
-          "style": "arrow",
-          "variant": "dark"
+          "styleID": "system.black"
         }
         """.data(using: .utf8)!
 
         let decoded = try JSONDecoder().decode(CursorOverlaySettings.self, from: data)
 
         XCTAssertEqual(decoded.size, 8)
-        XCTAssertEqual(decoded.variant, .slim)
+        XCTAssertEqual(decoded.styleID, "system.black")
     }
 
     func testCursorOverlayGeometryUsesSourceSizedDefaultAtFullScale() {
@@ -126,60 +141,39 @@ final class CursorOverlaySettingsTests: XCTestCase {
 
         let state = try JSONDecoder().decode(ProjectVideoEditorState.self, from: data)
 
-        XCTAssertEqual(state.cursorOverlay.style, .arrow)
-        XCTAssertEqual(state.cursorOverlay.variant, .standard)
+        XCTAssertEqual(state.cursorOverlay.styleID, CursorStyleRegistry.defaultStyleID)
         XCTAssertEqual(state.cursorOverlay.size, 2)
     }
 
     func testCursorRendererHotspotsMatchStyleRules() {
         let size: CGFloat = 24
-        let arrow = CursorPresetRenderer.drawing(style: .arrow, size: size)
-        let macOSBlack = CursorPresetRenderer.drawing(style: .macOSBlackArrow, size: size)
-        let outline = CursorPresetRenderer.drawing(style: .outlineArrow, size: size)
-        let hand = CursorPresetRenderer.drawing(style: .handPointer, size: size)
-        let iBeam = CursorPresetRenderer.drawing(style: .iBeam, size: size)
-        let dot = CursorPresetRenderer.drawing(style: .dotPointer, size: size)
+        let arrow = CursorStyleRenderer.drawing(styleID: "system.white", size: size)
+        let blackArrow = CursorStyleRenderer.drawing(styleID: "system.black", size: size)
+        let hand = CursorStyleRenderer.drawing(styleID: "system.hand", size: size)
+        let iBeam = CursorStyleRenderer.drawing(styleID: "system.ibeam", size: size)
+        let dot = CursorStyleRenderer.drawing(styleID: "touch.dot", size: size)
 
         XCTAssertEqual(arrow.hotspot.x, 0, accuracy: 0.001)
         XCTAssertEqual(arrow.hotspot.y, 0, accuracy: 0.001)
-        XCTAssertEqual(macOSBlack.hotspot.x, 0, accuracy: 0.001)
-        XCTAssertEqual(macOSBlack.hotspot.y, 0, accuracy: 0.001)
-        XCTAssertEqual(outline.hotspot.x, 0, accuracy: 0.001)
-        XCTAssertEqual(outline.hotspot.y, 0, accuracy: 0.001)
+        XCTAssertEqual(blackArrow.hotspot.x, 0, accuracy: 0.001)
+        XCTAssertEqual(blackArrow.hotspot.y, 0, accuracy: 0.001)
         XCTAssertEqual(hand.hotspot.x, size * 0.54, accuracy: 0.001)
         XCTAssertEqual(hand.hotspot.y, size * 0.02, accuracy: 0.001)
         XCTAssertEqual(iBeam.hotspot.x, size * 0.50, accuracy: 0.001)
         XCTAssertEqual(iBeam.hotspot.y, size * 0.60, accuracy: 0.001)
-        XCTAssertEqual(dot.hotspot.x, size * 0.45, accuracy: 0.001)
-        XCTAssertEqual(dot.hotspot.y, size * 0.45, accuracy: 0.001)
+        XCTAssertEqual(dot.hotspot.x, size * 1.08 * 0.45, accuracy: 0.001)
+        XCTAssertEqual(dot.hotspot.y, size * 1.08 * 0.45, accuracy: 0.001)
     }
 
-    func testCursorVariantsChangeShapeGeometryWithoutChangingPalette() {
-        let size: CGFloat = 24
-        let standardArrow = CursorPresetRenderer.drawing(style: .arrow, size: size, variant: .standard)
-        let slimArrow = CursorPresetRenderer.drawing(style: .arrow, size: size, variant: .slim)
-        let boldArrow = CursorPresetRenderer.drawing(style: .arrow, size: size, variant: .bold)
-        let softDot = CursorPresetRenderer.drawing(style: .dotPointer, size: size, variant: .soft)
+    func testCursorRegistryHasUniqueRenderableStyles() {
+        let ids = CursorStyleRegistry.styles.map(\.id)
+        XCTAssertEqual(Set(ids).count, ids.count)
 
-        XCTAssertLessThan(slimArrow.canvasSize.width, standardArrow.canvasSize.width)
-        XCTAssertGreaterThan(boldArrow.canvasSize.width, standardArrow.canvasSize.width)
-        XCTAssertEqual(CursorPresetRenderer.palette.fill.hexString, "#FFFFFF")
-        XCTAssertFalse(softDot.fillsShape)
-    }
-
-    func testMacOSBlackCursorStyleUsesArrowGeometryWithOwnPalette() {
-        let size: CGFloat = 24
-        let arrow = CursorPresetRenderer.drawing(style: .arrow, size: size, variant: .standard)
-        let macOSBlack = CursorPresetRenderer.drawing(style: .macOSBlackArrow, size: size, variant: .standard)
-        let slimMacOSBlack = CursorPresetRenderer.drawing(style: .macOSBlackArrow, size: size, variant: .slim)
-        let standardPalette = CursorPresetRenderer.palette(for: .macOSBlackArrow)
-
-        XCTAssertEqual(macOSBlack.canvasSize.width, arrow.canvasSize.width, accuracy: 0.001)
-        XCTAssertEqual(macOSBlack.canvasSize.height, arrow.canvasSize.height, accuracy: 0.001)
-        XCTAssertEqual(macOSBlack.hotspot.x, 0, accuracy: 0.001)
-        XCTAssertEqual(macOSBlack.hotspot.y, 0, accuracy: 0.001)
-        XCTAssertLessThan(slimMacOSBlack.canvasSize.width, macOSBlack.canvasSize.width)
-        XCTAssertEqual(standardPalette.fill.hexString, "#1F2023")
-        XCTAssertNotEqual(standardPalette.fill.hexString, CursorPresetRenderer.palette.fill.hexString)
+        for style in CursorStyleRegistry.styles {
+            let glyph = CursorStyleRenderer.renderedGlyph(styleID: style.id, size: 24)
+            XCTAssertNotNil(glyph, "Expected \(style.id) to render")
+            XCTAssertGreaterThan(glyph?.canvasSize.width ?? 0, 0)
+            XCTAssertGreaterThan(glyph?.canvasSize.height ?? 0, 0)
+        }
     }
 }
