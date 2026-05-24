@@ -966,12 +966,12 @@ struct TimelineRegionItem: View {
             .overlay { regionLabel(width: itemWidth) }
             .overlay(alignment: .leading) {
                 if showsLeadingHandle && shouldShowResizeHandles {
-                    TimelineResizeHandle(style: kind).offset(x: kind == .zoom ? 8 : -9).gesture(resizeGesture(edge: .leading))
+                    TimelineResizeHandle(style: kind).offset(x: kind == .zoom ? 0 : -9).gesture(resizeGesture(edge: .leading))
                 }
             }
             .overlay(alignment: .trailing) {
                 if showsTrailingHandle && shouldShowResizeHandles {
-                    TimelineResizeHandle(style: kind).offset(x: kind == .zoom ? -8 : 9).gesture(resizeGesture(edge: .trailing))
+                    TimelineResizeHandle(style: kind).offset(x: kind == .zoom ? 0 : 9).gesture(resizeGesture(edge: .trailing))
                 }
             }
             .frame(width: itemWidth, height: TimelineMetrics.regionItemHeight)
