@@ -245,25 +245,31 @@ struct StudioTitleBar: View {
     var workspace: EditorWorkspaceDriver
 
     var body: some View {
-        HStack(spacing: 12) {
-            StudioNavBar(
-                selectedSection: workspace.state.selectedSection,
-                isScreenshotEditor: editorMediaKind == .screenshot,
-                onSelectSection: { section in
-                    workspace.send(.sectionSelected(section))
-                },
-                onToggleHelp: {
-                    workspace.send(.shortcutsHelpToggled)
+        ZStack {
+            HStack(spacing: 12) {
+                StudioNavBar(
+                    selectedSection: workspace.state.selectedSection,
+                    isScreenshotEditor: editorMediaKind == .screenshot,
+                    onSelectSection: { section in
+                        workspace.send(.sectionSelected(section))
+                    },
+                    onToggleHelp: {
+                        workspace.send(.shortcutsHelpToggled)
+                    }
+                )
+
+                Spacer(minLength: 0)
+
+                HStack(spacing: 8) {
+                    editorHistoryControls
+                    exportButton
                 }
-            )
+            }
 
             titleLabel
-                .frame(minWidth: 0, maxWidth: .infinity)
-
-            HStack(spacing: 8) {
-                editorHistoryControls
-                exportButton
-            }
+                .frame(maxWidth: 520)
+                .padding(.horizontal, 190)
+                .allowsHitTesting(false)
         }
         .frame(height: 52)
         .padding(.horizontal, 12)
@@ -371,8 +377,8 @@ struct StudioTitleBar: View {
                 .font(.system(size: 14, weight: .semibold))
                 .lineLimit(1)
                 .truncationMode(.middle)
-                .frame(maxWidth: 520, alignment: .leading)
         }
+        .frame(maxWidth: .infinity, alignment: .center)
     }
 
     private var title: String {
@@ -385,15 +391,19 @@ struct StudioTitleBar: View {
             "Settings"
         case .editor:
             if let editorSession {
-                editorSession.displayTitle
+                editorTitleWithProjectExtension(editorSession.displayTitle)
             } else if let currentVideoURL = model.currentVideoURL {
-                EditorMediaKind.video.displayTitle(for: currentVideoURL)
+                editorTitleWithProjectExtension(EditorMediaKind.video.displayTitle(for: currentVideoURL))
             } else if let currentScreenshotURL = model.currentScreenshotURL {
-                EditorMediaKind.screenshot.displayTitle(for: currentScreenshotURL)
+                editorTitleWithProjectExtension(EditorMediaKind.screenshot.displayTitle(for: currentScreenshotURL))
             } else {
                 "Open Recorder Editor"
             }
         }
+    }
+
+    private func editorTitleWithProjectExtension(_ title: String) -> String {
+        title.hasSuffix(".openrecorder") ? title : "\(title).openrecorder"
     }
 
     private var editorMediaKind: EditorMediaKind? {

@@ -64,9 +64,9 @@ extension View {
         contentShape(Circle())
     }
 
-    func studioEditorPaneChrome() -> some View {
-        clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .background {
+    @ViewBuilder
+    func studioEditorPaneChrome(clipContent: Bool = true) -> some View {
+        let chrome = background {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .fill(Theme.surface.opacity(0.88))
                     .overlay {
@@ -85,6 +85,12 @@ extension View {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .stroke(Theme.borderStrong.opacity(0.72), lineWidth: 1)
             }
+
+        if clipContent {
+            chrome.clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        } else {
+            chrome
+        }
     }
 
     @ViewBuilder
@@ -201,6 +207,103 @@ struct StudioSplitPane<Primary: View, Secondary: View>: View {
         let fallbackUpperBound = max(0, availablePaneSize - visiblePaneSize)
         let fallbackLowerBound = min(visiblePaneSize, fallbackUpperBound)
         return min(max(requestedSize, fallbackLowerBound), fallbackUpperBound)
+    }
+}
+
+struct ResizableStudioSplitPane<Primary: View, Secondary: View>: View {
+    @Binding var secondarySize: CGFloat
+    var minPrimarySize: CGFloat
+    var minSecondarySize: CGFloat
+    var maxSecondarySize: CGFloat
+    var spacing: CGFloat
+    private let primary: Primary
+    private let secondary: Secondary
+
+    init(
+        secondarySize: Binding<CGFloat>,
+        minPrimarySize: CGFloat,
+        minSecondarySize: CGFloat,
+        maxSecondarySize: CGFloat,
+        spacing: CGFloat = 12,
+        @ViewBuilder primary: () -> Primary,
+        @ViewBuilder secondary: () -> Secondary
+    ) {
+        self._secondarySize = secondarySize
+        self.minPrimarySize = minPrimarySize
+        self.minSecondarySize = minSecondarySize
+        self.maxSecondarySize = maxSecondarySize
+        self.spacing = spacing
+        self.primary = primary()
+        self.secondary = secondary()
+    }
+
+    var body: some View {
+        GeometryReader { proxy in
+            let resolvedSecondarySize = clampedSecondarySize(secondarySize, totalSize: proxy.size.width)
+            let resolvedPrimarySize = max(0, proxy.size.width - resolvedSecondarySize - spacing)
+
+            HStack(spacing: 0) {
+                primary
+                    .frame(width: resolvedPrimarySize, height: proxy.size.height)
+                    .clipped()
+
+                SidebarResizeHandle()
+                    .frame(width: spacing, height: proxy.size.height)
+                    .gesture(
+                        DragGesture(minimumDistance: 0)
+                            .onChanged { value in
+                                secondarySize = clampedSecondarySize(
+                                    resolvedSecondarySize - value.translation.width,
+                                    totalSize: proxy.size.width
+                                )
+                            }
+                    )
+
+                secondary
+                    .frame(width: resolvedSecondarySize, height: proxy.size.height)
+                    .zIndex(1)
+            }
+        }
+        .onChange(of: secondarySize) { _, newValue in
+            secondarySize = min(max(newValue, minSecondarySize), maxSecondarySize)
+        }
+    }
+
+    private func clampedSecondarySize(_ requestedSize: CGFloat, totalSize: CGFloat) -> CGFloat {
+        let maxAllowedByPrimary = max(0, totalSize - minPrimarySize - spacing)
+        let upperBound = min(maxSecondarySize, maxAllowedByPrimary)
+        guard upperBound >= minSecondarySize else {
+            return max(0, upperBound)
+        }
+        return min(max(requestedSize, minSecondarySize), upperBound)
+    }
+}
+
+struct SidebarResizeHandle: View {
+    @State private var isHovering = false
+
+    var body: some View {
+        ZStack {
+            Rectangle()
+                .fill(Color.clear)
+            Capsule()
+                .fill(isHovering ? Theme.borderStrong.opacity(0.72) : Color.clear)
+                .frame(width: 3, height: 42)
+        }
+        .rectangularHitTarget()
+        .onHover { hovering in
+            isHovering = hovering
+            if hovering {
+                NSCursor.resizeLeftRight.push()
+            } else {
+                NSCursor.pop()
+            }
+        }
+        .onDisappear {
+            if isHovering {
+                NSCursor.pop()
+            }
+        }
     }
 }
 
