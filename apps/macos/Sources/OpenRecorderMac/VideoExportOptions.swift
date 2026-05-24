@@ -192,6 +192,9 @@ struct VideoExportOptions: Equatable {
     var customOutputSize: CGSize?
     var cursorOverlay: CursorOverlaySettings = .hidden
     var cursorTelemetryURL: URL? = nil
+    var facecamVideoURL: URL? = nil
+    var facecamOffsetMs: Int? = nil
+    var facecamFallbackSettings: FacecamSettings? = nil
 
     static let `default` = VideoExportOptions(
         resolution: VideoExportResolution.defaultExportOption,
@@ -202,7 +205,10 @@ struct VideoExportOptions: Equatable {
         cropSelection: nil,
         customOutputSize: nil,
         cursorOverlay: .hidden,
-        cursorTelemetryURL: nil
+        cursorTelemetryURL: nil,
+        facecamVideoURL: nil,
+        facecamOffsetMs: nil,
+        facecamFallbackSettings: nil
     )
 
     func with(
@@ -259,6 +265,14 @@ struct VideoExportOptions: Equatable {
         var copy = self
         copy.cursorOverlay = settings.clamped
         copy.cursorTelemetryURL = telemetryURL
+        return copy
+    }
+
+    func withFacecam(url: URL?, offsetMs: Int?, fallbackSettings: FacecamSettings?) -> VideoExportOptions {
+        var copy = self
+        copy.facecamVideoURL = url
+        copy.facecamOffsetMs = offsetMs
+        copy.facecamFallbackSettings = fallbackSettings?.clamped
         return copy
     }
 }
@@ -353,7 +367,13 @@ enum VideoExportRenderer {
             .flatMap { try? CursorTelemetryPayload.load(from: $0) }
             .map(CursorTelemetryTrack.init(payload:))
 
-        let exportAsset = try await makeEditedAsset(from: asset, duration: duration, edits: edits)
+        let exportAsset = try await makeEditedAsset(
+            from: asset,
+            duration: duration,
+            edits: edits,
+            facecamURL: options.facecamVideoURL,
+            facecamOffsetMs: options.facecamOffsetMs
+        )
 
         guard let exportSession = AVAssetExportSession(asset: exportAsset.asset, presetName: AVAssetExportPresetHighestQuality) else {
             throw VideoExportRendererError.exportSessionUnavailable
@@ -374,7 +394,11 @@ enum VideoExportRenderer {
             edits: edits,
             editPlan: exportAsset.plan,
             cursorTrack: cursorTrack,
-            cursorSettings: options.cursorOverlay
+            cursorSettings: options.cursorOverlay,
+            facecamTrack: exportAsset.facecamVideoTrack,
+            facecamPreferredTransform: exportAsset.facecamPreferredTransform,
+            facecamNormalizedSize: exportAsset.facecamNormalizedSize,
+            facecamFallbackSettings: options.facecamFallbackSettings
         )
 
         if Task.isCancelled {
@@ -428,14 +452,26 @@ enum VideoExportRenderer {
     private struct EditedAsset {
         var asset: AVAsset
         var videoTrack: AVAssetTrack?
+        var facecamVideoTrack: AVAssetTrack?
+        var facecamPreferredTransform: CGAffineTransform = .identity
+        var facecamNormalizedSize: CGSize = .zero
         var duration: Double
         var plan: TimelineExportEditPlan
     }
 
-    private static func makeEditedAsset(from asset: AVAsset, duration: CMTime, edits: TimelineEditSnapshot) async throws -> EditedAsset {
+    private static func makeEditedAsset(
+        from asset: AVAsset,
+        duration: CMTime,
+        edits: TimelineEditSnapshot,
+        facecamURL: URL?,
+        facecamOffsetMs: Int?
+    ) async throws -> EditedAsset {
         let sourceDuration = max(0, duration.seconds)
         let plan = TimelineExportEditPlan.build(duration: sourceDuration, edits: edits)
-        guard edits.trimRegions.isEmpty == false || edits.hasClipSpeedEdits else {
+        let facecamAsset = facecamURL.map { AVURLAsset(url: $0) }
+        let facecamTracks = try await facecamAsset?.loadTracks(withMediaType: .video) ?? []
+        let facecamSourceTrack = facecamTracks.first
+        guard edits.trimRegions.isEmpty == false || edits.hasClipSpeedEdits || facecamSourceTrack != nil else {
             return EditedAsset(asset: asset, videoTrack: nil, duration: sourceDuration, plan: plan)
         }
         guard plan.segments.isEmpty == false else {
@@ -471,9 +507,49 @@ enum VideoExportRenderer {
             }
         }
 
+        var compositionFacecamTrack: AVMutableCompositionTrack?
+        var facecamPreferredTransform = CGAffineTransform.identity
+        var facecamNormalizedSize = CGSize.zero
+        if let facecamAsset,
+           let facecamSourceTrack {
+            let facecamDuration = max(0, (try? await facecamAsset.load(.duration).seconds) ?? 0)
+            facecamPreferredTransform = (try? await facecamSourceTrack.load(.preferredTransform)) ?? .identity
+            let facecamNaturalSize = (try? await facecamSourceTrack.load(.naturalSize)) ?? .zero
+            facecamNormalizedSize = normalizedSize(for: facecamNaturalSize, preferredTransform: facecamPreferredTransform)
+            let offsetSeconds = Double(facecamOffsetMs ?? 0) / 1000
+            let facecamTrack = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)
+            compositionFacecamTrack = facecamTrack
+            facecamTrack?.preferredTransform = facecamPreferredTransform
+
+            for segment in plan.segments {
+                let sourceFaceStart = segment.sourceStart - offsetSeconds
+                let sourceFaceEnd = segment.sourceEnd - offsetSeconds
+                let clippedStart = max(0, sourceFaceStart)
+                let clippedEnd = min(facecamDuration, sourceFaceEnd)
+                guard clippedEnd - clippedStart > 0.001 else { continue }
+
+                let speed = max(0.05, segment.speed)
+                let outputStartSeconds = segment.outputStart + (clippedStart - sourceFaceStart) / speed
+                let sourceRange = CMTimeRange(
+                    start: CMTime(seconds: clippedStart, preferredTimescale: 600),
+                    end: CMTime(seconds: clippedEnd, preferredTimescale: 600)
+                )
+                let outputStart = CMTime(seconds: outputStartSeconds, preferredTimescale: 600)
+                try facecamTrack?.insertTimeRange(sourceRange, of: facecamSourceTrack, at: outputStart)
+                let outputRange = CMTimeRange(start: outputStart, duration: sourceRange.duration)
+                facecamTrack?.scaleTimeRange(
+                    outputRange,
+                    toDuration: CMTime(seconds: (clippedEnd - clippedStart) / speed, preferredTimescale: 600)
+                )
+            }
+        }
+
         return EditedAsset(
             asset: composition,
             videoTrack: compositionVideoTrack,
+            facecamVideoTrack: compositionFacecamTrack,
+            facecamPreferredTransform: facecamPreferredTransform,
+            facecamNormalizedSize: facecamNormalizedSize,
             duration: plan.outputDuration,
             plan: plan
         )
@@ -560,7 +636,11 @@ enum VideoExportRenderer {
         edits: TimelineEditSnapshot = .empty,
         editPlan: TimelineExportEditPlan = TimelineExportEditPlan(segments: [], outputDuration: 0),
         cursorTrack: CursorTelemetryTrack? = nil,
-        cursorSettings: CursorOverlaySettings = .hidden
+        cursorSettings: CursorOverlaySettings = .hidden,
+        facecamTrack: AVAssetTrack? = nil,
+        facecamPreferredTransform: CGAffineTransform = .identity,
+        facecamNormalizedSize: CGSize = .zero,
+        facecamFallbackSettings: FacecamSettings? = nil
     ) -> AVMutableVideoComposition {
         let naturalRect = CGRect(origin: .zero, size: sourceSize).applying(preferredTransform)
         let normalizedTransform = preferredTransform.translatedBy(x: -naturalRect.origin.x, y: -naturalRect.origin.y)
@@ -579,7 +659,7 @@ enum VideoExportRenderer {
             .concatenating(CGAffineTransform(scaleX: scale, y: scale))
             .concatenating(translation)
 
-        if styling.isPassthrough {
+        if styling.isPassthrough, facecamTrack == nil {
             let instruction = AVMutableVideoCompositionInstruction()
             instruction.timeRange = CMTimeRange(start: .zero, duration: duration)
 
@@ -614,15 +694,19 @@ enum VideoExportRenderer {
         let instruction = VideoBackgroundCompositionInstruction(
             timeRange: CMTimeRange(start: .zero, duration: duration),
             trackID: videoTrack.trackID,
+            facecamTrackID: facecamTrack?.trackID,
             styling: styling,
             preferredTransform: normalizedTransform,
             normalizedSize: normalizedSize,
+            facecamPreferredTransform: facecamPreferredTransform,
+            facecamNormalizedSize: facecamNormalizedSize,
             cropRect: clampedCropRect,
             renderSize: outputSize,
             edits: edits,
             editPlan: editPlan,
             cursorTrack: cursorTrack,
-            cursorSettings: cursorSettings
+            cursorSettings: cursorSettings,
+            facecamFallbackSettings: facecamFallbackSettings
         )
 
         let composition = AVMutableVideoComposition()
@@ -653,6 +737,7 @@ enum VideoExportRenderer {
     nonisolated static func needsFinalCanvasOverlayTool(edits: TimelineEditSnapshot, cursorTrack: CursorTelemetryTrack?, cursorSettings: CursorOverlaySettings) -> Bool {
         edits.zoomRegions.isEmpty == false ||
             edits.annotationRegions.isEmpty == false ||
+            edits.cameraClips.isEmpty == false ||
             (cursorSettings.clamped.isVisible && cursorTrack?.samples.isEmpty == false)
     }
 
@@ -786,11 +871,7 @@ enum VideoExportRenderer {
             settings: resolvedSettings
         )
         let cursorLayer = CALayer()
-        guard let glyph = CursorPresetRenderer.renderedGlyph(
-            style: resolvedSettings.style,
-            variant: resolvedSettings.variant,
-            size: cursorSize
-        ) else {
+        guard let glyph = CursorStyleRenderer.renderedGlyph(styleID: resolvedSettings.styleID, size: cursorSize) else {
             return cursorLayer
         }
         cursorLayer.bounds = CGRect(origin: .zero, size: glyph.canvasSize)

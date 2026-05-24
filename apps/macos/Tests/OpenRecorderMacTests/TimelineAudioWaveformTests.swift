@@ -258,6 +258,19 @@ final class TimelineEditingPlanTests: XCTestCase {
         XCTAssertEqual(plan.outputDuration, 4, accuracy: 0.001)
     }
 
+    func testExportPlanOmitsDeletedClipSpan() {
+        let edits = TimelineEditSnapshot(
+            trimRegions: [TimelineTrimRegion(span: TimelineSpan(start: 2, end: 5))],
+            clipSplitTimes: [2, 5]
+        )
+
+        let plan = TimelineExportEditPlan.build(duration: 8, edits: edits)
+
+        XCTAssertEqual(plan.outputDuration, 5, accuracy: 0.001)
+        XCTAssertEqual(plan.segments.map(\.sourceStart), [0, 5])
+        XCTAssertEqual(plan.segments.map(\.sourceEnd), [2, 8])
+    }
+
     @MainActor
     func testClipSplitUsesPlayheadAndDeduplicatesNearbySplits() {
         let edits = TimelineEditDriver()
@@ -304,6 +317,60 @@ final class TimelineEditingPlanTests: XCTestCase {
         XCTAssertEqual(edits.clipSplitTimes, [4])
         XCTAssertNil(edits.selectedClipIndex)
         XCTAssertFalse(edits.hasSelection)
+    }
+
+    @MainActor
+    func testDeletingSelectedClipAddsTrimRegion() {
+        let edits = TimelineEditDriver()
+        edits.clipSplitTimes = [2, 5]
+        edits.selectClip(index: 1)
+
+        edits.deleteSelection(duration: 8)
+
+        XCTAssertEqual(edits.trimRegions.map(\.span), [TimelineSpan(start: 2, end: 5)])
+        XCTAssertNil(edits.selectedClipIndex)
+        XCTAssertEqual(edits.statusMessage, "Deleted clip 2.")
+    }
+
+    @MainActor
+    func testDeletingSelectedClipIsUndoableAndRedoable() {
+        let edits = TimelineEditDriver()
+        edits.clipSplitTimes = [2, 5]
+        edits.selectClip(index: 1)
+
+        edits.deleteSelection(duration: 8)
+        XCTAssertEqual(edits.trimRegions.map(\.span), [TimelineSpan(start: 2, end: 5)])
+
+        edits.undo()
+        XCTAssertTrue(edits.trimRegions.isEmpty)
+
+        edits.redo()
+        XCTAssertEqual(edits.trimRegions.map(\.span), [TimelineSpan(start: 2, end: 5)])
+    }
+
+    @MainActor
+    func testDeletingOnlyPlayableClipIsBlocked() {
+        let edits = TimelineEditDriver()
+        edits.selectClip(index: 0)
+
+        edits.deleteSelection(duration: 8)
+
+        XCTAssertTrue(edits.trimRegions.isEmpty)
+        XCTAssertEqual(edits.selectedClipIndex, 0)
+        XCTAssertEqual(edits.statusMessage, "Cannot delete the only playable clip.")
+        XCTAssertFalse(edits.canUndo)
+    }
+
+    @MainActor
+    func testDeletingSelectedClipMergesAdjacentTrimRegions() {
+        let edits = TimelineEditDriver()
+        edits.clipSplitTimes = [2, 4, 6]
+        edits.trimRegions = [TimelineTrimRegion(span: TimelineSpan(start: 2, end: 4))]
+        edits.selectClip(index: 2)
+
+        edits.deleteSelection(duration: 8)
+
+        XCTAssertEqual(edits.trimRegions.map(\.span), [TimelineSpan(start: 2, end: 6)])
     }
 
     @MainActor

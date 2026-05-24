@@ -433,76 +433,183 @@ struct RecordingSession: Codable, Hashable {
     }
 }
 
-enum CursorStyle: String, CaseIterable, Codable, Hashable, Identifiable {
-    case arrow
-    case macOSBlackArrow
-    case outlineArrow
-    case handPointer
-    case iBeam
-    case dotPointer
+typealias CursorStyleID = String
+
+enum CursorStyleCategory: String, CaseIterable, Hashable, Identifiable {
+    case system
+    case touch
+    case emphasis
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .arrow: "Arrow"
-        case .macOSBlackArrow: "macOS Black"
-        case .outlineArrow: "Outline"
-        case .handPointer: "Hand"
-        case .iBeam: "I-Beam"
-        case .dotPointer: "Dot"
+        case .system: "System"
+        case .touch: "Touch"
+        case .emphasis: "Emphasis"
         }
-    }
-
-    var defaultVariant: CursorVariant {
-        .standard
-    }
-
-    var supportedVariants: [CursorVariant] {
-        CursorVariant.allCases
-    }
-
-    func resolvedVariant(_ variant: CursorVariant) -> CursorVariant {
-        supportedVariants.contains(variant) ? variant : defaultVariant
     }
 }
 
-enum CursorVariant: String, CaseIterable, Codable, Hashable, Identifiable {
-    case standard
-    case slim
-    case soft
-    case bold
+enum CursorHotspotRule: Hashable {
+    case topLeft
+    case center
+    case proportional(x: Double, y: Double)
+}
+
+enum CursorRenderKind: Hashable {
+    case arrow(fill: SerializableColor, stroke: SerializableColor, shadow: SerializableColor)
+    case hand(fill: SerializableColor, stroke: SerializableColor, shadow: SerializableColor)
+    case iBeam(fill: SerializableColor, stroke: SerializableColor, shadow: SerializableColor)
+    case dot(fill: SerializableColor, stroke: SerializableColor, shadow: SerializableColor, fillsShape: Bool)
+    case ring(stroke: SerializableColor, shadow: SerializableColor)
+    case spotlight(fill: SerializableColor, stroke: SerializableColor, shadow: SerializableColor)
+    case rasterAsset(name: String, hotspot: CursorHotspotRule)
+}
+
+struct CursorStyleDefinition: Identifiable, Hashable {
+    var id: CursorStyleID
+    var title: String
+    var category: CursorStyleCategory
+    var renderKind: CursorRenderKind
+    var hotspot: CursorHotspotRule
+    var defaultScale: Double
+    var supportsRecordedTypeOverride: Bool
+}
+
+enum CursorStyleRegistry {
+    static let defaultStyleID: CursorStyleID = "system.white"
+
+    static let styles: [CursorStyleDefinition] = [
+        CursorStyleDefinition(
+            id: "system.white",
+            title: "System White",
+            category: .system,
+            renderKind: .arrow(
+                fill: SerializableColor(hex: "#FFFFFF"),
+                stroke: SerializableColor(red: 0, green: 0, blue: 0, alpha: 0.62),
+                shadow: SerializableColor(red: 0, green: 0, blue: 0, alpha: 0.16)
+            ),
+            hotspot: .topLeft,
+            defaultScale: 1,
+            supportsRecordedTypeOverride: true
+        ),
+        CursorStyleDefinition(
+            id: "system.black",
+            title: "System Black",
+            category: .system,
+            renderKind: .arrow(
+                fill: SerializableColor(hex: "#1F2023"),
+                stroke: SerializableColor(red: 1, green: 1, blue: 1, alpha: 0.68),
+                shadow: SerializableColor(red: 0, green: 0, blue: 0, alpha: 0.14)
+            ),
+            hotspot: .topLeft,
+            defaultScale: 1,
+            supportsRecordedTypeOverride: true
+        ),
+        CursorStyleDefinition(
+            id: "system.hand",
+            title: "Hand",
+            category: .system,
+            renderKind: .hand(
+                fill: SerializableColor(hex: "#FFFFFF"),
+                stroke: SerializableColor(red: 0, green: 0, blue: 0, alpha: 0.62),
+                shadow: SerializableColor(red: 0, green: 0, blue: 0, alpha: 0.16)
+            ),
+            hotspot: .proportional(x: 0.54, y: 0.02),
+            defaultScale: 1,
+            supportsRecordedTypeOverride: false
+        ),
+        CursorStyleDefinition(
+            id: "system.ibeam",
+            title: "I-Beam",
+            category: .system,
+            renderKind: .iBeam(
+                fill: SerializableColor(hex: "#FFFFFF"),
+                stroke: SerializableColor(red: 0, green: 0, blue: 0, alpha: 0.56),
+                shadow: SerializableColor(red: 0, green: 0, blue: 0, alpha: 0.12)
+            ),
+            hotspot: .center,
+            defaultScale: 1,
+            supportsRecordedTypeOverride: false
+        ),
+        CursorStyleDefinition(
+            id: "touch.dot",
+            title: "Touch Dot",
+            category: .touch,
+            renderKind: .dot(
+                fill: SerializableColor(hex: "#FFFFFF"),
+                stroke: SerializableColor(red: 0, green: 0, blue: 0, alpha: 0.54),
+                shadow: SerializableColor(red: 0, green: 0, blue: 0, alpha: 0.14),
+                fillsShape: true
+            ),
+            hotspot: .center,
+            defaultScale: 1.08,
+            supportsRecordedTypeOverride: false
+        ),
+        CursorStyleDefinition(
+            id: "highlight.ring",
+            title: "Highlight Ring",
+            category: .emphasis,
+            renderKind: .ring(
+                stroke: SerializableColor(hex: "#FFFFFF", alpha: 0.92),
+                shadow: SerializableColor(red: 0, green: 0, blue: 0, alpha: 0.34)
+            ),
+            hotspot: .center,
+            defaultScale: 1.55,
+            supportsRecordedTypeOverride: false
+        ),
+        CursorStyleDefinition(
+            id: "spotlight",
+            title: "Spotlight",
+            category: .emphasis,
+            renderKind: .spotlight(
+                fill: SerializableColor(hex: "#FFFFFF", alpha: 0.20),
+                stroke: SerializableColor(hex: "#FFFFFF", alpha: 0.84),
+                shadow: SerializableColor(red: 0, green: 0, blue: 0, alpha: 0.38)
+            ),
+            hotspot: .center,
+            defaultScale: 1.85,
+            supportsRecordedTypeOverride: false
+        )
+    ]
+
+    static func definition(for id: CursorStyleID) -> CursorStyleDefinition? {
+        styles.first { $0.id == id }
+    }
+
+    static func resolvedStyleID(_ id: CursorStyleID?) -> CursorStyleID {
+        guard let id, definition(for: id) != nil else {
+            return defaultStyleID
+        }
+        return id
+    }
+
+    static func definitions(in category: CursorStyleCategory) -> [CursorStyleDefinition] {
+        styles.filter { $0.category == category }
+    }
+}
+
+enum CursorClickEffect: String, CaseIterable, Codable, Hashable, Identifiable {
+    case none
+    case subtleRing
+    case ripple
 
     var id: String { rawValue }
+}
 
-    var title: String {
-        switch self {
-        case .standard: "Standard"
-        case .slim: "Slim"
-        case .soft: "Soft"
-        case .bold: "Bold"
-        }
-    }
+enum CursorIdleBehavior: String, CaseIterable, Codable, Hashable, Identifiable {
+    case alwaysVisible
+    case fadeWhenIdle
 
-    static func resolve(_ rawValue: String?) -> CursorVariant? {
-        guard let rawValue else { return nil }
-        if let variant = CursorVariant(rawValue: rawValue) {
-            return variant
-        }
+    var id: String { rawValue }
+}
 
-        switch rawValue {
-        case "light":
-            return .standard
-        case "dark":
-            return .slim
-        case "accent":
-            return .soft
-        case "highContrast":
-            return .bold
-        default:
-            return nil
-        }
-    }
+enum CursorMotionEffect: String, CaseIterable, Codable, Hashable, Identifiable {
+    case none
+    case subtleLean
+
+    var id: String { rawValue }
 }
 
 struct CursorOverlaySettings: Codable, Hashable {
@@ -510,25 +617,23 @@ struct CursorOverlaySettings: Codable, Hashable {
     var loops: Bool
     var size: Double
     var smoothing: Double
-    var style: CursorStyle
-    var variant: CursorVariant
+    var styleID: CursorStyleID
+    var clickEffect: CursorClickEffect
+    var idleBehavior: CursorIdleBehavior
+    var motionEffect: CursorMotionEffect
 
     static let `default` = CursorOverlaySettings(
         isVisible: true,
         loops: false,
         size: 1,
-        smoothing: 0.4,
-        style: .arrow,
-        variant: .standard
+        smoothing: 0.4
     )
 
     static let hidden = CursorOverlaySettings(
         isVisible: false,
         loops: false,
         size: 1,
-        smoothing: 0.4,
-        style: .arrow,
-        variant: .standard
+        smoothing: 0.4
     )
 
     init(
@@ -536,15 +641,19 @@ struct CursorOverlaySettings: Codable, Hashable {
         loops: Bool,
         size: Double,
         smoothing: Double,
-        style: CursorStyle = .arrow,
-        variant: CursorVariant = .standard
+        styleID: CursorStyleID = CursorStyleRegistry.defaultStyleID,
+        clickEffect: CursorClickEffect = .subtleRing,
+        idleBehavior: CursorIdleBehavior = .alwaysVisible,
+        motionEffect: CursorMotionEffect = .none
     ) {
         self.isVisible = isVisible
         self.loops = loops
         self.size = max(1, min(size, 8))
         self.smoothing = max(0, min(smoothing, 2))
-        self.style = style
-        self.variant = style.resolvedVariant(variant)
+        self.styleID = CursorStyleRegistry.resolvedStyleID(styleID)
+        self.clickEffect = clickEffect
+        self.idleBehavior = idleBehavior
+        self.motionEffect = motionEffect
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -552,25 +661,30 @@ struct CursorOverlaySettings: Codable, Hashable {
         case loops
         case size
         case smoothing
+        case styleID
         case style
         case variant
+        case clickEffect
+        case idleBehavior
+        case motionEffect
     }
 
     init(from decoder: Decoder) throws {
         let defaults = Self.default
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        let decodedStyle = try container.decodeIfPresent(String.self, forKey: .style)
-            .flatMap(CursorStyle.init(rawValue:)) ?? defaults.style
-        let decodedVariant = CursorVariant.resolve(try container.decodeIfPresent(String.self, forKey: .variant))
-            ?? decodedStyle.defaultVariant
+        let decodedStyleID = CursorStyleRegistry.resolvedStyleID(
+            try container.decodeIfPresent(String.self, forKey: .styleID)
+        )
 
         self.init(
             isVisible: try container.decodeIfPresent(Bool.self, forKey: .isVisible) ?? defaults.isVisible,
             loops: try container.decodeIfPresent(Bool.self, forKey: .loops) ?? defaults.loops,
             size: try container.decodeIfPresent(Double.self, forKey: .size) ?? defaults.size,
             smoothing: try container.decodeIfPresent(Double.self, forKey: .smoothing) ?? defaults.smoothing,
-            style: decodedStyle,
-            variant: decodedVariant
+            styleID: decodedStyleID,
+            clickEffect: (try? container.decodeIfPresent(CursorClickEffect.self, forKey: .clickEffect)) ?? defaults.clickEffect,
+            idleBehavior: (try? container.decodeIfPresent(CursorIdleBehavior.self, forKey: .idleBehavior)) ?? defaults.idleBehavior,
+            motionEffect: (try? container.decodeIfPresent(CursorMotionEffect.self, forKey: .motionEffect)) ?? defaults.motionEffect
         )
     }
 
@@ -580,8 +694,10 @@ struct CursorOverlaySettings: Codable, Hashable {
         try container.encode(loops, forKey: .loops)
         try container.encode(size, forKey: .size)
         try container.encode(smoothing, forKey: .smoothing)
-        try container.encode(style.rawValue, forKey: .style)
-        try container.encode(variant.rawValue, forKey: .variant)
+        try container.encode(styleID, forKey: .styleID)
+        try container.encode(clickEffect, forKey: .clickEffect)
+        try container.encode(idleBehavior, forKey: .idleBehavior)
+        try container.encode(motionEffect, forKey: .motionEffect)
     }
 
     var clamped: CursorOverlaySettings {
@@ -590,8 +706,10 @@ struct CursorOverlaySettings: Codable, Hashable {
             loops: loops,
             size: size,
             smoothing: smoothing,
-            style: style,
-            variant: variant
+            styleID: styleID,
+            clickEffect: clickEffect,
+            idleBehavior: idleBehavior,
+            motionEffect: motionEffect
         )
     }
 }

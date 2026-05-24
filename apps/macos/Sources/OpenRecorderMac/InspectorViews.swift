@@ -18,12 +18,7 @@ struct SettingsInspector: View {
     @Binding var loopCursor: Bool
     @Binding var cursorSize: Double
     @Binding var cursorSmoothing: Double
-    @Binding var cursorStyle: CursorStyle
-    @Binding var cursorVariant: CursorVariant
-    @Binding var facecamEnabled: Bool
-    @Binding var facecamSize: Double
-    @Binding var facecamBorderWidth: Double
-    @Binding var facecamAnchor: String
+    @Binding var cursorStyleID: CursorStyleID
     var recordingSession: RecordingSession?
 
     @State private var activeTab: InspectorTab = .appearance
@@ -121,8 +116,8 @@ struct SettingsInspector: View {
                     .padding(.bottom, 18)
                     .animation(.snappy(duration: 0.34), value: activeTab.id)
                     .animation(.snappy(duration: 0.34), value: background.presetKind)
-                    .animation(.snappy(duration: 0.34), value: facecamEnabled)
-                    .animation(.snappy(duration: 0.34), value: cursorStyle)
+                    .animation(.snappy(duration: 0.34), value: hasRecordedCamera)
+                    .animation(.snappy(duration: 0.34), value: cursorStyleID)
                     .animation(.smooth(duration: 0.30), value: showsInsetControls)
                     .onChange(of: isInsetBalanceExpanded) { _, isExpanded in
                         guard isExpanded else { return }
@@ -187,8 +182,7 @@ struct SettingsInspector: View {
         case .cursor:
             InspectorGroup(title: "Cursor", symbolName: "cursorarrow", showsTopDivider: false) {
                 InspectorSwitch(title: "Show Cursor", isOn: $showCursor)
-                CursorStylePicker(selection: $cursorStyle, variant: $cursorVariant)
-                CursorVariantPicker(style: cursorStyle, selection: $cursorVariant)
+                CursorStylePicker(selection: $cursorStyleID)
             }
             InspectorGroup(title: "Motion", symbolName: "point.3.connected.trianglepath.dotted") {
                 InspectorSwitch(title: "Loop Cursor", isOn: $loopCursor)
@@ -197,16 +191,10 @@ struct SettingsInspector: View {
             }
         case .camera:
             InspectorGroup(title: "Facecam", symbolName: "camera", showsTopDivider: false) {
-                InspectorSwitch(title: "Facecam", isOn: $facecamEnabled, isInteractive: hasRecordedCamera)
-                    .disabled(!hasRecordedCamera)
-                    .opacity(hasRecordedCamera ? 1 : 0.45)
-                VStack(alignment: .leading, spacing: 15) {
-                    InspectorSlider(title: "Facecam Size", valueText: "\(Int(facecamSize.rounded()))%", value: $facecamSize, range: 12...40, step: 1, defaultValue: 20, leadingSymbolName: "camera", trailingSymbolName: "camera.fill")
-                    InspectorSlider(title: "Border Width", valueText: "\(Int(facecamBorderWidth.rounded()))px", value: $facecamBorderWidth, range: 0...16, step: 1, defaultValue: 2, leadingSymbolName: "square", trailingSymbolName: "square.inset.filled")
-                    PositionGrid(selection: $facecamAnchor)
-                }
-                .disabled(!hasRecordedCamera || !facecamEnabled)
-                .opacity(hasRecordedCamera && facecamEnabled ? 1 : 0.45)
+                Text(hasRecordedCamera ? "Timeline camera layer" : "No facecam recorded")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             if let path = recordingSession?.facecamVideoPath {
                 SessionAssetRow(title: "Facecam File", path: path)
@@ -872,8 +860,7 @@ struct InsetBalancePicker: View {
 }
 
 struct CursorStylePicker: View {
-    @Binding var selection: CursorStyle
-    @Binding var variant: CursorVariant
+    @Binding var selection: CursorStyleID
 
     private let columns = Array(repeating: GridItem(.flexible(minimum: 0), spacing: 6), count: 2)
 
@@ -883,74 +870,22 @@ struct CursorStylePicker: View {
                 .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(.secondary)
 
-            LazyVGrid(columns: columns, spacing: 6) {
-                ForEach(CursorStyle.allCases) { style in
-                    StudioButton(hitTarget: .rounded(7), help: style.title) {
-                        selection = style
-                        variant = style.resolvedVariant(variant)
-                    } label: {
-                        VStack(spacing: 5) {
-                            CursorGlyphView(style: style, variant: style.resolvedVariant(variant), scale: 0.56)
-                                .frame(width: 38, height: 34)
-                            Text(style.title)
-                                .font(.system(size: 10, weight: .semibold))
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.8)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 58)
-                        .foregroundStyle(selection == style ? Color.white : Color.primary.opacity(0.86))
-                        .background(selection == style ? Theme.accent.opacity(0.82) : Theme.overlay, in: RoundedRectangle(cornerRadius: 7))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 7)
-                                .stroke(selection == style ? Theme.accent.opacity(0.95) : Theme.overlay)
-                        }
-                    }
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, 3)
-    }
-}
+            ForEach(CursorStyleCategory.allCases) { category in
+                let styles = CursorStyleRegistry.definitions(in: category)
+                if !styles.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(category.title)
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(.tertiary)
 
-struct CursorVariantPicker: View {
-    var style: CursorStyle
-    @Binding var selection: CursorVariant
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Variant")
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(.secondary)
-
-            HStack(spacing: 6) {
-                ForEach(style.supportedVariants) { variant in
-                    StudioButton(hitTarget: .rounded(7), help: variant.title) {
-                        selection = variant
-                    } label: {
-                        VStack(spacing: 4) {
-                            CursorGlyphView(style: style, variant: variant, scale: 0.42)
-                                .frame(width: 28, height: 24)
-                            Text(variant.title)
-                                .font(.system(size: 9, weight: .semibold))
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.7)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 44)
-                        .foregroundStyle(selection == variant ? Color.white : Color.primary.opacity(0.82))
-                        .background(selection == variant ? Theme.accent.opacity(0.82) : Theme.overlay, in: RoundedRectangle(cornerRadius: 7))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 7)
-                                .stroke(selection == variant ? Theme.accent.opacity(0.95) : Theme.border, lineWidth: selection == variant ? 2 : 1)
-                        }
-                        .overlay(alignment: .topTrailing) {
-                            if selection == variant {
-                                Image(systemName: "checkmark")
-                                    .font(.system(size: 8, weight: .bold))
-                                    .foregroundStyle(Color.white)
-                                    .padding(4)
+                        LazyVGrid(columns: columns, spacing: 6) {
+                            ForEach(styles) { style in
+                                CursorStyleButton(
+                                    style: style,
+                                    isSelected: normalizedSelection == style.id
+                                ) {
+                                    selection = style.id
+                                }
                             }
                         }
                     }
@@ -960,13 +895,44 @@ struct CursorVariantPicker: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 3)
         .onAppear(perform: normalizeSelection)
-        .onChange(of: style) { _, _ in
+        .onChange(of: selection) { _, _ in
             normalizeSelection()
         }
     }
 
+    private var normalizedSelection: CursorStyleID {
+        CursorStyleRegistry.resolvedStyleID(selection)
+    }
+
     private func normalizeSelection() {
-        selection = style.resolvedVariant(selection)
+        selection = normalizedSelection
+    }
+}
+
+struct CursorStyleButton: View {
+    var style: CursorStyleDefinition
+    var isSelected: Bool
+    var action: () -> Void
+
+    var body: some View {
+        StudioButton(hitTarget: .rounded(7), help: style.title, action: action) {
+            VStack(spacing: 5) {
+                CursorGlyphView(styleID: style.id, scale: 0.56)
+                    .frame(width: 38, height: 34)
+                Text(style.title)
+                    .font(.system(size: 10, weight: .semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 58)
+            .foregroundStyle(isSelected ? Color.white : Color.primary.opacity(0.86))
+            .background(isSelected ? Theme.accent.opacity(0.82) : Theme.overlay, in: RoundedRectangle(cornerRadius: 7))
+            .overlay {
+                RoundedRectangle(cornerRadius: 7)
+                    .stroke(isSelected ? Theme.accent.opacity(0.95) : Theme.overlay)
+            }
+        }
     }
 }
 

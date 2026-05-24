@@ -106,6 +106,7 @@ struct VideoPreviewPanel: View {
     var cursorSettings: CursorOverlaySettings = .hidden
     var cropSelection: VideoCropSelection = .fullFrame
     var facecamSettings: FacecamSettings?
+    var cameraTimelineFallback: FacecamSettings?
     @Binding var previewAspectPreset: VideoPreviewAspectPreset
     var onCropVideo: () -> Void = {}
     var onRequestClearSelection: () -> Void = {}
@@ -241,7 +242,7 @@ struct VideoPreviewPanel: View {
                         cropSelection: cropSelection,
                         facecamURL: facecamVideoURL,
                         facecamOffsetMs: recordingSession?.facecamOffsetMs,
-                        facecamSettings: resolvedFacecamSettings,
+                        cameraFallbackSettings: resolvedFacecamSettings,
                         sourceSize: playback.naturalVideoSize,
                         letterboxFill: previewLetterboxFill
                     )
@@ -284,14 +285,22 @@ struct VideoPreviewPanel: View {
         guard facecamVideoURL != nil else {
             return nil
         }
-        return (facecamSettings ?? recordingSession?.facecamSettings ?? defaultFacecamSettings(enabled: true)).clamped
+        return (cameraTimelineFallback ?? facecamSettings ?? recordingSession?.facecamSettings ?? defaultFacecamSettings(enabled: true)).clamped
+    }
+
+    private var activeFacecamSettings: FacecamSettings? {
+        timelineEdits.snapshot.activeCameraSettings(
+            at: playback.currentTime,
+            duration: playback.duration,
+            fallback: resolvedFacecamSettings
+        )
     }
 
     @ViewBuilder
     private var recordingSessionBadges: some View {
         if let recordingSession,
            recordingSession.hasRecordedCamera,
-           resolvedFacecamSettings?.enabled != true {
+           activeFacecamSettings?.enabled != true {
             Label("Facecam captured", systemImage: "video.fill")
                 .font(.system(size: 11, weight: .semibold))
                 .padding(.horizontal, 10)
@@ -594,7 +603,7 @@ struct PlaybackPreview: View {
     var cropSelection: VideoCropSelection = .fullFrame
     var facecamURL: URL?
     var facecamOffsetMs: Int?
-    var facecamSettings: FacecamSettings?
+    var cameraFallbackSettings: FacecamSettings?
     var sourceSize: CGSize = .zero
     var letterboxFill: VideoPreviewLetterboxFill = .black
 
@@ -641,8 +650,7 @@ struct PlaybackPreview: View {
                     .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
 
                 if let facecamURL,
-                   let facecamSettings,
-                   facecamSettings.clamped.enabled {
+                   let facecamSettings = activeFacecamSettings {
                     FacecamPlaybackOverlay(
                         facecamURL: facecamURL,
                         screenPlayback: playback,
@@ -687,6 +695,14 @@ struct PlaybackPreview: View {
                     .shadow(color: .black.opacity(0.45), radius: 8, y: 4)
             }
         }
+    }
+
+    private var activeFacecamSettings: FacecamSettings? {
+        edits.activeCameraSettings(
+            at: playback.currentTime,
+            duration: playback.duration,
+            fallback: cameraFallbackSettings
+        )
     }
 }
 
@@ -950,8 +966,7 @@ private struct CursorOverlayView: View {
             if let point = currentPoint(in: proxy.size) {
                 let resolvedSettings = settings.clamped
                 CursorGlyphView(
-                    style: resolvedSettings.style,
-                    variant: resolvedSettings.variant,
+                    styleID: resolvedSettings.styleID,
                     scale: resolvedSettings.size,
                     glyphSize: cursorGlyphSize(in: proxy.size, settings: resolvedSettings),
                     alignsHotspot: true

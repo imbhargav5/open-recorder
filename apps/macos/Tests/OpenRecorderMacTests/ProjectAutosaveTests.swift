@@ -93,6 +93,12 @@ final class ProjectEditorStateCodableTests: XCTestCase {
     func testProjectEditorStateRoundTripsVideoState() throws {
         var timeline = TimelineEditSnapshot.empty
         timeline.clipSplitTimes = [2.25]
+        timeline.cameraClips = [
+            TimelineCameraClip(
+                span: TimelineSpan(start: 0, end: 2.25),
+                settings: defaultFacecamSettings(enabled: false)
+            )
+        ]
         let video = ProjectVideoEditorState(
             background: .solid(SerializableColor(hex: "#112233")),
             padding: 24,
@@ -112,8 +118,10 @@ final class ProjectEditorStateCodableTests: XCTestCase {
                 loops: true,
                 size: 1.5,
                 smoothing: 0.8,
-                style: .dotPointer,
-                variant: .soft
+                styleID: "touch.dot",
+                clickEffect: .ripple,
+                idleBehavior: .fadeWhenIdle,
+                motionEffect: .subtleLean
             ),
             facecamSettings: defaultFacecamSettings(enabled: true)
         )
@@ -123,8 +131,9 @@ final class ProjectEditorStateCodableTests: XCTestCase {
         let decoded = try JSONDecoder().decode(ProjectEditorState.self, from: data)
 
         XCTAssertEqual(decoded, state)
-        XCTAssertEqual(decoded.video?.cursorOverlay.style, .dotPointer)
-        XCTAssertEqual(decoded.video?.cursorOverlay.variant, .soft)
+        XCTAssertEqual(decoded.timelineEdits.cameraClips, timeline.cameraClips)
+        XCTAssertEqual(decoded.video?.cursorOverlay.styleID, "touch.dot")
+        XCTAssertEqual(decoded.video?.cursorOverlay.clickEffect, .ripple)
     }
 
     func testProjectEditorStateRoundTripsScreenshotState() throws {

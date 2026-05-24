@@ -155,6 +155,8 @@ final class VideoEditorStateMachineTests: XCTestCase {
         state.previewAspectPreset = .wide
         let recordingURL = URL(fileURLWithPath: "/tmp/export.mp4")
         let telemetryURL = URL(fileURLWithPath: "/tmp/export.cursor.json")
+        let facecamURL = URL(fileURLWithPath: "/tmp/export.facecam.mov")
+        let facecamSettings = defaultFacecamSettings(enabled: true)
         let edits = TimelineEditSnapshot(clipSplitTimes: [1.25])
         let snapshot = ProjectAutosaveSnapshot(
             projectPath: "/tmp/export.openrecorder",
@@ -170,7 +172,10 @@ final class VideoEditorStateMachineTests: XCTestCase {
             recordingURL: recordingURL,
             edits: edits,
             snapshot: snapshot,
-            cursorTelemetryURL: telemetryURL
+            cursorTelemetryURL: telemetryURL,
+            facecamVideoURL: facecamURL,
+            facecamOffsetMs: 120,
+            cameraFallback: facecamSettings
         ))
 
         guard case .startVideoExport(let effectURL, let options, let effectEdits, let effectSnapshot) = effects.first else {
@@ -183,6 +188,9 @@ final class VideoEditorStateMachineTests: XCTestCase {
         XCTAssertEqual(options.resolution, .p720)
         XCTAssertEqual(options.cropSelection, state.video.cropSelection)
         XCTAssertEqual(options.cursorTelemetryURL, telemetryURL)
+        XCTAssertEqual(options.facecamVideoURL, facecamURL)
+        XCTAssertEqual(options.facecamOffsetMs, 120)
+        XCTAssertEqual(options.facecamFallbackSettings, facecamSettings.clamped)
         XCTAssertNotEqual(options.styling, .none)
     }
 
@@ -219,7 +227,10 @@ final class VideoEditorStateMachineTests: XCTestCase {
             recordingURL: recordingURL,
             edits: .empty,
             snapshot: nil,
-            cursorTelemetryURL: nil
+            cursorTelemetryURL: nil,
+            facecamVideoURL: nil,
+            facecamOffsetMs: nil,
+            cameraFallback: nil
         ))
 
         guard case .startVideoExport(_, let options, _, _) = effects.first else {
@@ -610,6 +621,43 @@ final class TimelineEditStateMachineTests: XCTestCase {
         XCTAssertEqual(state.snapshot.clipSplitTimes, [3])
         XCTAssertEqual(state.snapshot.clipSegments(duration: 8).map(\.speed), [1.5, 1.5])
         XCTAssertNil(state.selectedClipIndex)
+    }
+
+    func testTimelineReducerSynthesizesAndSplitsCameraClips() {
+        var state = TimelineEditState()
+        let fallback = defaultFacecamSettings(enabled: true)
+
+        _ = state.applying(.ensureCameraClips(duration: 8, fallback: fallback))
+        XCTAssertEqual(state.snapshot.cameraClips.count, 1)
+        XCTAssertEqual(state.snapshot.cameraClips[0].span, TimelineSpan(start: 0, end: 8))
+
+        _ = state.applying(.splitCameraClip(currentTime: 3, duration: 8, fallback: fallback))
+
+        XCTAssertEqual(state.snapshot.cameraClips.count, 2)
+        XCTAssertEqual(state.snapshot.cameraClips.map(\.span), [
+            TimelineSpan(start: 0, end: 3),
+            TimelineSpan(start: 3, end: 8)
+        ])
+        XCTAssertEqual(state.snapshot.cameraClips.map(\.settings), [fallback.clamped, fallback.clamped])
+        XCTAssertEqual(state.selectedCameraClipID, state.snapshot.cameraClips[1].id)
+    }
+
+    func testTimelineReducerUpdatesCameraVisibilityAndMergesWithSelectedSettings() {
+        var state = TimelineEditState()
+        let fallback = defaultFacecamSettings(enabled: true)
+
+        _ = state.applying(.ensureCameraClips(duration: 8, fallback: fallback))
+        _ = state.applying(.splitCameraClip(currentTime: 3, duration: 8, fallback: fallback))
+        let selectedID = state.snapshot.cameraClips[1].id
+        var hidden = fallback
+        hidden.enabled = false
+        _ = state.applying(.updateCameraClipSettings(id: selectedID, settings: hidden))
+        _ = state.applying(.mergeCameraClip(id: selectedID, direction: .previous))
+
+        XCTAssertEqual(state.snapshot.cameraClips.count, 1)
+        XCTAssertEqual(state.snapshot.cameraClips[0].span, TimelineSpan(start: 0, end: 8))
+        XCTAssertFalse(state.snapshot.cameraClips[0].settings.enabled)
+        XCTAssertEqual(state.selectedCameraClipID, selectedID)
     }
 }
 

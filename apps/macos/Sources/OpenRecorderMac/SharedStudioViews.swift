@@ -955,4 +955,5 @@ enum Theme {
     static let timelineClipForeground = Color.white.opacity(0.94)
     static let timelineClipBorder     = Color(red: 0.28, green: 0.62, blue: 1.0).opacity(0.88)
     static let timelineHandle         = Color(red: 0.34, green: 0.68, blue: 1.0)
+    static let timelineCamera         = Color(red: 0.02, green: 0.66, blue: 0.58)
 }

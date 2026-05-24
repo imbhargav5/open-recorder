@@ -138,7 +138,10 @@ enum VideoEditorEvent: Equatable {
         recordingURL: URL?,
         edits: TimelineEditSnapshot,
         snapshot: ProjectAutosaveSnapshot?,
-        cursorTelemetryURL: URL?
+        cursorTelemetryURL: URL?,
+        facecamVideoURL: URL?,
+        facecamOffsetMs: Int?,
+        cameraFallback: FacecamSettings?
     )
     case sheetDismissed(exportIsBusy: Bool)
     case autosaveSnapshotChanged(ProjectAutosaveSnapshot?)
@@ -208,8 +211,9 @@ extension VideoEditorState {
             exportDraft.frameRate = frameRate
             return []
 
-        case .exportConfirmed(let recordingURL, let edits, let snapshot, let cursorTelemetryURL):
+        case .exportConfirmed(let recordingURL, let edits, let snapshot, let cursorTelemetryURL, let facecamVideoURL, let facecamOffsetMs, let cameraFallback):
             let styledOptions = styledExportOptions(from: exportDraft.currentOptions, cursorTelemetryURL: cursorTelemetryURL)
+                .withFacecam(url: facecamVideoURL, offsetMs: facecamOffsetMs, fallbackSettings: cameraFallback)
             return [.startVideoExport(recordingURL: recordingURL, options: styledOptions, edits: edits, snapshot: snapshot)]
 
         case .sheetDismissed(let exportIsBusy):
@@ -271,8 +275,10 @@ extension VideoEditorState {
                 loops: defaults.cursorOverlay.loops,
                 size: defaults.cursorOverlay.size,
                 smoothing: defaults.cursorOverlay.smoothing,
-                style: defaults.cursorOverlay.style,
-                variant: defaults.cursorOverlay.variant
+                styleID: defaults.cursorOverlay.styleID,
+                clickEffect: defaults.cursorOverlay.clickEffect,
+                idleBehavior: defaults.cursorOverlay.idleBehavior,
+                motionEffect: defaults.cursorOverlay.motionEffect
             )
         }
 

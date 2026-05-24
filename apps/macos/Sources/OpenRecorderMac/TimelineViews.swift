@@ -20,14 +20,18 @@ enum TimelineMetrics {
         + rulerHeight
         + clipHeight
         + layerHeight
+        + layerHeight
 }
 
 struct TimelinePanel: View {
     var videoURL: URL?
     var playback: VideoPlaybackController
     var edits: TimelineEditDriver
+    var hasRecordedCamera: Bool
+    var defaultCameraSettings: FacecamSettings?
     @State private var timelineViewport = TimelineViewport(duration: 0)
     @State private var isDraggingTimelineZoom = false
+    @FocusState private var isTimelineFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
@@ -40,19 +44,28 @@ struct TimelinePanel: View {
                     .rectangularHitTarget()
                     .onTapGesture {
                         edits.clearSelection()
+                        isTimelineFocused = true
                     }
 
-                TimelineTrackContent(videoURL: videoURL, playback: playback, edits: edits, viewport: $timelineViewport)
+                TimelineTrackContent(
+                    videoURL: videoURL,
+                    playback: playback,
+                    edits: edits,
+                    hasRecordedCamera: hasRecordedCamera,
+                    defaultCameraSettings: defaultCameraSettings,
+                    viewport: $timelineViewport
+                )
                     .padding(.horizontal, TimelineMetrics.panelPadding)
                     .padding(.top, TimelineMetrics.trackTopPadding)
             }
         }
         .studioEditorPaneChrome()
         .focusable()
+        .focused($isTimelineFocused)
         .focusEffectDisabled()
         .onKeyPress { press in
             if press.key == .delete || press.key == .deleteForward {
-                edits.deleteSelection()
+                deleteTimelineSelection()
                 return .handled
             }
 
@@ -63,11 +76,22 @@ struct TimelinePanel: View {
             default: return .ignored
             }
         }
+        .onDeleteCommand {
+            deleteTimelineSelection()
+        }
         .onAppear {
             syncTimelineViewportDuration(playback.duration)
+            ensureCameraLayer()
         }
         .onChange(of: playback.duration) { _, newDuration in
             syncTimelineViewportDuration(newDuration)
+            ensureCameraLayer()
+        }
+        .onChange(of: hasRecordedCamera) { _, _ in
+            ensureCameraLayer()
+        }
+        .onChange(of: defaultCameraSettings) { _, _ in
+            ensureCameraLayer()
         }
         .onChange(of: playback.currentTime) { _, newTime in
             updateTimelineViewport(for: newTime)
@@ -75,6 +99,10 @@ struct TimelinePanel: View {
         .onChange(of: playback.isPlaying) { _, isPlaying in
             guard isPlaying else { return }
             timelineViewport = timelineViewport.following(time: playback.currentTime)
+        }
+        .onChange(of: edits.state.hasSelection) { _, hasSelection in
+            guard hasSelection else { return }
+            isTimelineFocused = true
         }
     }
 
@@ -129,12 +157,23 @@ struct TimelinePanel: View {
             timelineViewport = timelineViewport.keepingVisible(time: currentTime)
         }
     }
+
+    private func ensureCameraLayer() {
+        guard hasRecordedCamera else { return }
+        edits.ensureCameraClips(duration: playback.duration, fallback: defaultCameraSettings)
+    }
+
+    private func deleteTimelineSelection() {
+        edits.deleteSelection(duration: playback.duration)
+    }
 }
 
 struct TimelineTrackContent: View {
     var videoURL: URL?
     var playback: VideoPlaybackController
     var edits: TimelineEditDriver
+    var hasRecordedCamera: Bool
+    var defaultCameraSettings: FacecamSettings?
     @Binding var viewport: TimelineViewport
     @State private var timelineSize = CGSize.zero
 
@@ -145,8 +184,16 @@ struct TimelineTrackContent: View {
                 .onTapGesture {
                     edits.clearSelection()
                 }
-            TimelineClipRow(videoURL: videoURL, duration: playback.duration, viewport: viewport, splitTimes: edits.clipSplitTimes, clipSpeeds: edits.clipSpeeds, selectedClipIndex: edits.selectedClipIndex, seek: playback.seek(to:), edits: edits)
+            TimelineClipRow(videoURL: videoURL, duration: playback.duration, viewport: viewport, splitTimes: edits.clipSplitTimes, trimRegions: edits.trimRegions, clipSpeeds: edits.clipSpeeds, selectedClipIndex: edits.selectedClipIndex, seek: playback.seek(to:), edits: edits)
             TimelineLayerRow(kind: .zoom, duration: playback.duration, viewport: viewport, regions: edits.zoomRegions.map(TimelineRegionRenderData.zoom), selectedID: edits.selectedKind == .zoom ? edits.selectedID : nil, edits: edits)
+            TimelineCameraLayerRow(
+                duration: playback.duration,
+                viewport: viewport,
+                hasRecordedCamera: hasRecordedCamera,
+                cameraClips: edits.resolvedCameraClips(duration: playback.duration, fallback: defaultCameraSettings),
+                selectedID: edits.selectedCameraClipID,
+                edits: edits
+            )
         }
         .overlay(alignment: .topLeading) { TimelinePlayhead(viewport: viewport, currentTime: playback.currentTime) }
         .readSize { timelineSize = $0 }
@@ -617,6 +664,7 @@ struct TimelineClipRow: View {
     var duration: Double
     var viewport: TimelineViewport
     var splitTimes: [Double]
+    var trimRegions: [TimelineTrimRegion]
     var clipSpeeds: [Int: Double]
     var selectedClipIndex: Int?
     var seek: (Double) -> Void
@@ -663,19 +711,20 @@ struct TimelineClipRow: View {
                 let startX = x(for: segment.start, width: width)
                 let endX = x(for: segment.end, width: width)
                 let segmentWidth = max(1, endX - startX - (segments.count > 1 ? 3 : 0))
-                clipBody(segment: segment, width: segmentWidth, isSelected: selectedClipIndex == segment.index)
+                clipBody(segment: segment, width: segmentWidth, isSelected: selectedClipIndex == segment.index, isDeleted: isDeleted(segment))
                     .frame(width: segmentWidth, height: TimelineMetrics.clipHeight)
                     .position(x: startX + (endX - startX) / 2, y: TimelineMetrics.clipHeight / 2)
             }
         }
     }
 
-    private func clipBody(segment: TimelineClipSegment, width: CGFloat, isSelected: Bool) -> some View {
-        RoundedRectangle(cornerRadius: 8, style: .continuous)
-            .fill(Theme.timelineClip.opacity(isSelected ? 0.95 : 1))
-            .overlay { RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(isSelected ? Theme.timelineHandle.opacity(0.95) : Theme.timelineClipBorder, lineWidth: isSelected ? 2 : 1) }
+    private func clipBody(segment: TimelineClipSegment, width: CGFloat, isSelected: Bool, isDeleted: Bool) -> some View {
+        let foreground = isDeleted ? Color.white.opacity(0.48) : Theme.timelineClipForeground
+        return RoundedRectangle(cornerRadius: 8, style: .continuous)
+            .fill(isDeleted ? Color.secondary.opacity(isSelected ? 0.30 : 0.20) : Theme.timelineClip.opacity(isSelected ? 0.95 : 1))
+            .overlay { RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(isSelected ? Theme.timelineHandle.opacity(0.95) : (isDeleted ? Color.secondary.opacity(0.42) : Theme.timelineClipBorder), lineWidth: isSelected ? 2 : 1) }
             .overlay(alignment: .bottom) {
-                if let waveformSamples, !waveformSamples.isEmpty {
+                if let waveformSamples, !waveformSamples.isEmpty, !isDeleted {
                     TimelineWaveformPreview(samples: waveformSamples)
                         .frame(height: 24)
                         .padding(.horizontal, 14)
@@ -686,20 +735,26 @@ struct TimelineClipRow: View {
             .overlay(alignment: .center) {
                 if width > 82 {
                     VStack(spacing: 2) {
-                        Label("Clip \(segment.index + 1)", systemImage: "rectangle.on.rectangle")
+                        Label(isDeleted ? "Deleted" : "Clip \(segment.index + 1)", systemImage: isDeleted ? "trash" : "rectangle.on.rectangle")
                             .font(.system(size: 10, weight: .semibold))
                         Text("\(formatClipDuration(segment.end - segment.start)) @ \(TimelineClipSpeed.label(segment.speed))")
                             .font(.system(size: 10, weight: .semibold, design: .monospaced))
                     }
-                    .foregroundStyle(Theme.timelineClipForeground)
+                    .foregroundStyle(foreground)
                     .shadow(color: Theme.borderStrong, radius: 3, y: 1)
                     .allowsHitTesting(false)
                 }
             }
-            .overlay(alignment: .bottomLeading) { Text(formatPlaybackTime(segment.start)).font(.system(size: 8, weight: .medium, design: .monospaced)).foregroundStyle(Theme.timelineClipForeground.opacity(0.52)).padding(.leading, 9).padding(.bottom, 4) }
-            .overlay(alignment: .bottomTrailing) { Text(formatPlaybackTime(segment.end)).font(.system(size: 8, weight: .medium, design: .monospaced)).foregroundStyle(Theme.timelineClipForeground.opacity(0.52)).padding(.trailing, 9).padding(.bottom, 4) }
+            .overlay(alignment: .bottomLeading) { Text(formatPlaybackTime(segment.start)).font(.system(size: 8, weight: .medium, design: .monospaced)).foregroundStyle(foreground.opacity(0.52)).padding(.leading, 9).padding(.bottom, 4) }
+            .overlay(alignment: .bottomTrailing) { Text(formatPlaybackTime(segment.end)).font(.system(size: 8, weight: .medium, design: .monospaced)).foregroundStyle(foreground.opacity(0.52)).padding(.trailing, 9).padding(.bottom, 4) }
             .padding(.vertical, 5)
             .padding(.horizontal, 2)
+    }
+
+    private func isDeleted(_ segment: TimelineClipSegment) -> Bool {
+        trimRegions.contains { region in
+            region.span.start <= segment.start + 0.001 && region.span.end >= segment.end - 0.001
+        }
     }
 
     private func seek(to x: CGFloat, width: CGFloat) {
@@ -894,6 +949,122 @@ struct TimelineLayerRow: View {
         }
 
         edits.add(.zoom, at: time, duration: duration)
+    }
+}
+
+struct TimelineCameraLayerRow: View {
+    var duration: Double
+    var viewport: TimelineViewport
+    var hasRecordedCamera: Bool
+    var cameraClips: [TimelineCameraClip]
+    var selectedID: TimelineRegionID?
+    var edits: TimelineEditDriver
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack(alignment: .leading) {
+                Rectangle()
+                    .fill(Color(red: 0.095, green: 0.095, blue: 0.11))
+                    .rectangularHitTarget()
+                    .gesture(
+                        SpatialTapGesture()
+                            .onEnded { value in
+                                handleBackgroundTap(at: value.location, width: proxy.size.width)
+                            }
+                    )
+
+                if cameraClips.isEmpty {
+                    Text(emptyMessage)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Color.secondary.opacity(0.64))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                        .allowsHitTesting(false)
+                }
+
+                ForEach(cameraClips.filter { viewport.intersects($0.span) }) { clip in
+                    TimelineCameraClipItem(
+                        clip: clip,
+                        duration: duration,
+                        viewport: viewport,
+                        width: proxy.size.width,
+                        isSelected: clip.id == selectedID,
+                        edits: edits
+                    )
+                }
+            }
+            .rectangularHitTarget()
+            .clipped()
+        }
+        .frame(height: TimelineMetrics.layerHeight)
+        .overlay(alignment: .bottom) { Rectangle().fill(Theme.border).frame(height: 1) }
+    }
+
+    private var emptyMessage: String {
+        hasRecordedCamera ? "Camera settings unavailable" : "No camera recorded"
+    }
+
+    private func handleBackgroundTap(at location: CGPoint, width: CGFloat) {
+        guard hasRecordedCamera,
+              duration.isFinite,
+              duration > 0,
+              let time = TimelineSeekMapper.time(forX: location.x, viewport: viewport, width: width) else {
+            edits.clearSelection()
+            return
+        }
+
+        guard let clip = cameraClips.first(where: { time >= $0.span.start && (time < $0.span.end || $0.id == cameraClips.last?.id) }) else {
+            edits.clearSelection()
+            return
+        }
+        edits.selectCameraClip(id: clip.id)
+    }
+}
+
+private struct TimelineCameraClipItem: View {
+    var clip: TimelineCameraClip
+    var duration: Double
+    var viewport: TimelineViewport
+    var width: CGFloat
+    var isSelected: Bool
+    var edits: TimelineEditDriver
+
+    private var accent: Color {
+        clip.settings.clamped.enabled ? Theme.timelineCamera : Color.secondary.opacity(0.52)
+    }
+
+    var body: some View {
+        let startX = x(for: clip.span.start)
+        let itemWidth = max(1, x(for: clip.span.end) - startX)
+
+        RoundedRectangle(cornerRadius: 7, style: .continuous)
+            .fill(accent.opacity(clip.settings.clamped.enabled ? (isSelected ? 0.55 : 0.34) : 0.18))
+            .overlay {
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .stroke(accent.opacity(isSelected ? 0.95 : 0.65), lineWidth: isSelected ? 2 : 1)
+            }
+            .overlay { label(width: itemWidth) }
+            .frame(width: itemWidth, height: TimelineMetrics.regionItemHeight)
+            .position(x: startX + itemWidth / 2, y: TimelineMetrics.layerHeight / 2)
+            .onTapGesture { edits.selectCameraClip(id: clip.id) }
+    }
+
+    private func label(width: CGFloat) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: clip.settings.clamped.enabled ? "camera.fill" : "camera.slash.fill")
+                .font(.system(size: 9, weight: .semibold))
+            Text(clip.settings.clamped.enabled ? "Camera" : "Hidden")
+                .font(.system(size: 10, weight: .bold))
+                .lineLimit(1)
+        }
+        .foregroundStyle(.white.opacity(clip.settings.clamped.enabled ? 0.94 : 0.66))
+        .minimumScaleFactor(0.72)
+        .padding(.horizontal, 8)
+        .frame(maxWidth: max(1, width))
+        .allowsHitTesting(false)
+    }
+
+    private func x(for time: Double) -> CGFloat {
+        viewport.x(for: time, width: width, clamped: true) ?? 0
     }
 }
 

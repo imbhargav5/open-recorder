@@ -291,6 +291,28 @@ final class VideoPreviewLayoutTests: XCTestCase {
         XCTAssertEqual(settings.resolvedAnchor, .bottomRight)
     }
 
+    func testTimelineCameraSettingsResolveByActiveClipAndVisibility() {
+        var visible = defaultFacecamSettings(enabled: true)
+        visible.anchor = FacecamAnchor.topLeft.rawValue
+        var hidden = visible
+        hidden.enabled = false
+        let edits = TimelineEditSnapshot(cameraClips: [
+            TimelineCameraClip(span: TimelineSpan(start: 0, end: 2), settings: visible),
+            TimelineCameraClip(span: TimelineSpan(start: 2, end: 5), settings: hidden)
+        ])
+
+        XCTAssertEqual(edits.activeCameraSettings(at: 1, duration: 5, fallback: nil)?.anchor, FacecamAnchor.topLeft.rawValue)
+        XCTAssertNil(edits.activeCameraSettings(at: 3, duration: 5, fallback: nil))
+    }
+
+    func testTimelineCameraSettingsFallbackCoversFullClip() {
+        let fallback = defaultFacecamSettings(enabled: true)
+        let edits = TimelineEditSnapshot.empty
+
+        XCTAssertEqual(edits.resolvedCameraClips(duration: 5, fallback: fallback).count, 1)
+        XCTAssertEqual(edits.activeCameraSettings(at: 4.99, duration: 5, fallback: fallback), fallback.clamped)
+    }
+
     func testFinalCanvasZoomTransformIsIdentityAtOneX() {
         let transform = TimelineZoomCanvasTransform.transform(
             for: TimelineZoomEffect(depth: 1, focusX: 0.25, focusY: 0.75),
@@ -331,6 +353,21 @@ final class VideoPreviewLayoutTests: XCTestCase {
     func testZoomOnlyExportRequiresFinalCanvasOverlayTool() {
         let edits = TimelineEditSnapshot(zoomRegions: [
             TimelineZoomRegion(span: TimelineSpan(start: 1, end: 2), depth: 2)
+        ])
+
+        XCTAssertTrue(VideoExportRenderer.needsFinalCanvasOverlayTool(
+            edits: edits,
+            cursorTrack: nil,
+            cursorSettings: .hidden
+        ))
+    }
+
+    func testCameraClipExportRequiresFinalCanvasOverlayTool() {
+        let edits = TimelineEditSnapshot(cameraClips: [
+            TimelineCameraClip(
+                span: TimelineSpan(start: 0, end: 3),
+                settings: defaultFacecamSettings(enabled: true)
+            )
         ])
 
         XCTAssertTrue(VideoExportRenderer.needsFinalCanvasOverlayTool(
