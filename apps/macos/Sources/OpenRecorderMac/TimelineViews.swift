@@ -776,15 +776,17 @@ struct TimelineResizeHandle: View {
 
     var body: some View {
         if style == .zoom {
-            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                .fill(Color.white.opacity(0.92))
-                .frame(width: 3, height: 28)
+            Circle()
+                .fill(Color.white.opacity(0.94))
+                .frame(width: 20, height: 20)
                 .overlay {
-                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .stroke(Color.white.opacity(0.95), lineWidth: 1)
+                    Image(systemName: "arrow.left.and.right")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(Color.black.opacity(0.82))
                 }
-                .shadow(color: Color.white.opacity(0.34), radius: 6)
-                .shadow(color: Color.black.opacity(0.34), radius: 8, y: 3)
+                .overlay { Circle().stroke(Color.white.opacity(0.96), lineWidth: 1) }
+                .shadow(color: Color.cyan.opacity(0.32), radius: 7)
+                .shadow(color: Color.black.opacity(0.30), radius: 8, y: 3)
         } else {
             Circle()
                 .fill(Theme.timelineHandle)
