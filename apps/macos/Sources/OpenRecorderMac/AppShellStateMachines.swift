@@ -51,6 +51,7 @@ enum AppShellEvent: Equatable {
     case editorSessionShown(EditorSession)
     case editorMediaOpened(EditorMediaKind, URL)
     case projectSummaryUpserted(ProjectSummary)
+    case projectSummaryRemoved(path: String)
     case projectsReplaced([ProjectSummary])
 }
 
@@ -129,6 +130,10 @@ extension AppShellState {
         case .projectSummaryUpserted(let summary):
             projects.removeAll { $0.path == summary.path }
             projects.insert(summary, at: 0)
+            return []
+
+        case .projectSummaryRemoved(let path):
+            projects.removeAll { $0.path == path }
             return []
 
         case .projectsReplaced(let projects):
