@@ -71,7 +71,25 @@ struct TimelineSelectionSidebar: View {
                 edits.clearSelection()
             }
 
-            if edits.selectedKind != nil || edits.selectedClipIndex != nil {
+            if let cameraID = edits.selectedCameraClipID {
+                TimelineSelectionActionButton(
+                    title: "Delete",
+                    symbolName: "trash",
+                    isDestructive: true,
+                    isEnabled: edits.canDeleteCameraClip(id: cameraID, duration: playback.duration, fallback: defaultCameraSettings)
+                ) {
+                    edits.deleteCameraClip(id: cameraID, duration: playback.duration, fallback: defaultCameraSettings)
+                }
+            } else if let clipIndex = edits.selectedClipIndex {
+                TimelineSelectionActionButton(
+                    title: "Delete",
+                    symbolName: "trash",
+                    isDestructive: true,
+                    isEnabled: edits.canDeleteRecordingClip(index: clipIndex, duration: playback.duration)
+                ) {
+                    edits.deleteSelection(duration: playback.duration)
+                }
+            } else if edits.selectedKind != nil {
                 TimelineSelectionActionButton(title: "Delete", symbolName: "trash", isDestructive: true) {
                     edits.deleteSelection(duration: playback.duration)
                 }
@@ -402,6 +420,7 @@ private struct TimelineSelectionActionButton: View {
     var title: String
     var symbolName: String
     var isDestructive = false
+    var isEnabled = true
     var action: () -> Void
 
     var body: some View {
@@ -410,13 +429,14 @@ private struct TimelineSelectionActionButton: View {
                 .font(.system(size: 11, weight: .semibold))
                 .frame(maxWidth: .infinity)
                 .frame(height: 34)
-                .foregroundStyle(isDestructive ? Color.red.opacity(0.92) : Color.secondary)
+                .foregroundStyle(isDestructive ? Color.red.opacity(isEnabled ? 0.92 : 0.36) : Color.secondary.opacity(isEnabled ? 1 : 0.45))
                 .background(Theme.overlay, in: RoundedRectangle(cornerRadius: 8))
                 .overlay {
                     RoundedRectangle(cornerRadius: 8)
-                        .stroke(isDestructive ? Color.red.opacity(0.18) : Theme.overlay)
+                        .stroke(isDestructive ? Color.red.opacity(isEnabled ? 0.18 : 0.08) : Theme.overlay)
                 }
         }
+        .disabled(!isEnabled)
     }
 }
 

@@ -333,6 +333,34 @@ final class TimelineEditingPlanTests: XCTestCase {
     }
 
     @MainActor
+    func testContextDeletingRecordingClipAddsExactTrimRegion() {
+        let edits = TimelineEditDriver()
+        edits.clipSplitTimes = [2, 5]
+
+        XCTAssertTrue(edits.canDeleteRecordingClip(index: 1, duration: 8))
+
+        edits.deleteRecordingClip(index: 1, duration: 8)
+
+        XCTAssertEqual(edits.trimRegions.map(\.span), [TimelineSpan(start: 2, end: 5)])
+        XCTAssertEqual(edits.statusMessage, "Deleted clip 2.")
+        XCTAssertFalse(edits.canDeleteRecordingClip(index: 1, duration: 8))
+    }
+
+    @MainActor
+    func testContextDeletingOnlyPlayableRecordingClipIsBlocked() {
+        let edits = TimelineEditDriver()
+        edits.clipSplitTimes = [2]
+        edits.trimRegions = [TimelineTrimRegion(span: TimelineSpan(start: 2, end: 8))]
+
+        XCTAssertFalse(edits.canDeleteRecordingClip(index: 0, duration: 8))
+
+        edits.deleteRecordingClip(index: 0, duration: 8)
+
+        XCTAssertEqual(edits.trimRegions.map(\.span), [TimelineSpan(start: 2, end: 8)])
+        XCTAssertEqual(edits.statusMessage, "Cannot delete the only playable clip.")
+    }
+
+    @MainActor
     func testDeletingSelectedClipIsUndoableAndRedoable() {
         let edits = TimelineEditDriver()
         edits.clipSplitTimes = [2, 5]

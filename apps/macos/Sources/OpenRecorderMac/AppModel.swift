@@ -60,6 +60,7 @@ final class AppModel: ObservableObject {
     private var activeScreenStartedAt: Date?
     private var activeFacecamStartedAt: Date?
     private var activeFacecamURL: URL?
+    private var facecamPrewarmTask: Task<Void, Never>?
     private var displayFlashWindows: [NSWindow] = []
     private let countdownOverlayController = RecordingCountdownOverlayController()
     private let captureUIHideDelayNanoseconds: UInt64
@@ -781,10 +782,21 @@ final class AppModel: ObservableObject {
     private func runRecordingStartFlow(source selectedSource: CaptureSource, outputURL: URL) async {
         do {
             refreshCaptureDevices()
-            let options = currentCaptureOptions
+            var options = currentCaptureOptions
             guard await preparePermissions(for: options) else {
                 restoreRecordingSetup(source: selectedSource)
                 return
+            }
+
+            if options.includeCamera {
+                do {
+                    try await prepareFacecam(cameraDeviceID: options.cameraDeviceID)
+                } catch {
+                    captureOptions.send(.cameraDisabled)
+                    syncCaptureOptionsMirror()
+                    options = currentCaptureOptions
+                    statusMessage = "Recording without facecam: \(error.localizedDescription)"
+                }
             }
 
             try await countdownOverlayController.run(for: selectedSource)
@@ -792,30 +804,41 @@ final class AppModel: ObservableObject {
 
             dispatch(.recordingStarting(selectedSource))
 
+            activeFacecamURL = nil
+            activeFacecamStartedAt = nil
+            var facecamURL: URL?
+            var facecamStartTask: Task<Date, Error>?
+            if options.includeCamera {
+                let url = facecamOutputURL(for: outputURL)
+                if FileManager.default.fileExists(atPath: url.path) {
+                    try FileManager.default.removeItem(at: url)
+                }
+                facecamURL = url
+                let cameraDeviceID = options.cameraDeviceID
+                facecamStartTask = Task { @MainActor in
+                    try await self.facecamRecorder.start(outputURL: url, cameraDeviceID: cameraDeviceID)
+                }
+            }
+
             cursorTelemetryRecorder.start(for: selectedSource)
+            let screenStartedAt = Date()
             try await capture.startRecording(
                 source: selectedSource,
                 outputURL: outputURL,
                 options: options
             )
-            activeScreenStartedAt = Date()
-            activeFacecamURL = nil
-            activeFacecamStartedAt = nil
+            activeScreenStartedAt = screenStartedAt
 
-            if options.includeCamera {
+            if let facecamStartTask {
                 do {
-                    let facecamURL = facecamOutputURL(for: outputURL)
-                    if FileManager.default.fileExists(atPath: facecamURL.path) {
-                        try FileManager.default.removeItem(at: facecamURL)
-                    }
-                    activeFacecamStartedAt = try await facecamRecorder.start(
-                        outputURL: facecamURL,
-                        cameraDeviceID: options.cameraDeviceID
-                    )
+                    activeFacecamStartedAt = try await facecamStartTask.value
                     activeFacecamURL = facecamURL
                 } catch {
                     captureOptions.send(.cameraDisabled)
                     syncCaptureOptionsMirror()
+                    if let facecamURL {
+                        try? FileManager.default.removeItem(at: facecamURL)
+                    }
                     activeFacecamURL = nil
                     activeFacecamStartedAt = nil
                     statusMessage = "Recording without facecam: \(error.localizedDescription)"
@@ -845,6 +868,11 @@ final class AppModel: ObservableObject {
             }
         } catch {
             facecamRecorder.cancel()
+            if let partialURL = activeFacecamURL {
+                try? FileManager.default.removeItem(at: partialURL)
+            } else {
+                try? FileManager.default.removeItem(at: facecamOutputURL(for: outputURL))
+            }
             _ = cursorTelemetryRecorder.stop(videoURL: nil)
             activeScreenStartedAt = nil
             activeFacecamStartedAt = nil
@@ -1353,6 +1381,7 @@ final class AppModel: ObservableObject {
         syncCaptureOptionsDriverFromMirror()
         captureOptions.send(.cameraSelected(deviceID))
         syncCaptureOptionsMirror()
+        prewarmSelectedFacecamIfNeeded()
     }
 
     func selectNoMicrophoneInput() {
@@ -1382,6 +1411,7 @@ final class AppModel: ObservableObject {
         syncCaptureOptionsDriverFromMirror()
         captureOptions.send(.cameraDisabled)
         syncCaptureOptionsMirror()
+        cancelFacecamPrewarm()
     }
 
     var selectedMicrophoneDeviceName: String {
@@ -1439,21 +1469,61 @@ final class AppModel: ObservableObject {
         }
 
         if options.includeCamera {
-            let status = AVCaptureDevice.authorizationStatus(for: .video)
-            if status == .notDetermined {
-                let granted = await AVCaptureDevice.requestAccess(for: .video)
-                if !granted {
-                    statusMessage = "Camera permission is required for facecam."
-                    return false
-                }
-            } else if status == .denied || status == .restricted {
-                statusMessage = "Camera permission is denied."
-                openCameraSettings()
-                return false
-            }
+            guard await prepareCameraPermissionForFacecam() else { return false }
         }
 
         return true
+    }
+
+    private func prepareCameraPermissionForFacecam() async -> Bool {
+        let status = AVCaptureDevice.authorizationStatus(for: .video)
+        if status == .notDetermined {
+            let granted = await AVCaptureDevice.requestAccess(for: .video)
+            if !granted {
+                statusMessage = "Camera permission is required for facecam."
+                return false
+            }
+        } else if status == .denied || status == .restricted {
+            statusMessage = "Camera permission is denied."
+            openCameraSettings()
+            return false
+        }
+        return true
+    }
+
+    private func prewarmSelectedFacecamIfNeeded() {
+        let options = currentCaptureOptions
+        guard options.includeCamera else {
+            cancelFacecamPrewarm()
+            return
+        }
+
+        facecamPrewarmTask?.cancel()
+        facecamPrewarmTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            guard await self.prepareCameraPermissionForFacecam() else { return }
+            do {
+                try await self.facecamRecorder.prepare(cameraDeviceID: options.cameraDeviceID)
+                if !Task.isCancelled {
+                    self.facecamPrewarmTask = nil
+                }
+            } catch {
+                guard !Task.isCancelled else { return }
+                self.statusMessage = "Camera warmup failed: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    private func prepareFacecam(cameraDeviceID: String?) async throws {
+        facecamPrewarmTask?.cancel()
+        facecamPrewarmTask = nil
+        try await facecamRecorder.prepare(cameraDeviceID: cameraDeviceID)
+    }
+
+    private func cancelFacecamPrewarm() {
+        facecamPrewarmTask?.cancel()
+        facecamPrewarmTask = nil
+        facecamRecorder.cancel()
     }
 
     private func facecamOutputURL(for screenURL: URL) -> URL {

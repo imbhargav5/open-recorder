@@ -449,7 +449,7 @@ struct TimelineEditState: Equatable {
     var selectedID: TimelineRegionID?
     var selectedClipIndex: Int?
     var selectedCameraClipID: TimelineRegionID?
-    var statusMessage = "Use shortcuts to edit. Space plays, Z zooms, S cycles clip speed, T splits clips."
+    var statusMessage = "Use shortcuts to edit. Space plays, Z zooms, S cycles clip speed, T splits clips, C splits camera."
 
     static let empty = TimelineEditState()
 
@@ -467,9 +467,11 @@ enum TimelineEditEvent: Equatable {
     case addClipSplit(currentTime: Double, duration: Double)
     case ensureCameraClips(duration: Double, fallback: FacecamSettings?)
     case splitCameraClip(currentTime: Double, duration: Double, fallback: FacecamSettings?)
+    case deleteRecordingClip(index: Int, duration: Double)
     case selectCameraClip(TimelineRegionID)
     case updateCameraClipSettings(id: TimelineRegionID, settings: FacecamSettings)
     case mergeCameraClip(id: TimelineRegionID, direction: TimelineCameraMergeDirection)
+    case deleteCameraClip(id: TimelineRegionID, duration: Double, fallback: FacecamSettings?)
     case select(TimelineRegionKind?, TimelineRegionID?)
     case selectClip(index: Int)
     case clearSelection
@@ -531,6 +533,10 @@ extension TimelineEditState {
             splitCameraClip(at: currentTime, duration: duration, fallback: fallback)
             return []
 
+        case .deleteRecordingClip(let index, let duration):
+            deleteRecordingClip(index: index, duration: duration)
+            return []
+
         case .selectCameraClip(let id):
             selectCameraClip(id: id)
             return []
@@ -541,6 +547,10 @@ extension TimelineEditState {
 
         case .mergeCameraClip(let id, let direction):
             mergeCameraClip(id: id, direction: direction)
+            return []
+
+        case .deleteCameraClip(let id, let duration, let fallback):
+            deleteCameraClip(id: id, duration: duration, fallback: fallback)
             return []
 
         case .select(let kind, let id):
@@ -607,6 +617,24 @@ extension TimelineEditState {
     func selectedCameraClip(duration: Double, fallback: FacecamSettings?) -> TimelineCameraClip? {
         guard let selectedCameraClipID else { return nil }
         return snapshot.resolvedCameraClips(duration: duration, fallback: fallback).first { $0.id == selectedCameraClipID }
+    }
+
+    func canDeleteRecordingClip(index: Int, duration: Double) -> Bool {
+        guard let candidate = recordingClipDeletionCandidate(index: index, duration: duration),
+              !isClipOmitted(candidate.segment, trimRegions: snapshot.trimRegions) else {
+            return false
+        }
+        return !TimelineExportEditPlan.build(duration: duration, edits: candidate.snapshot).segments.isEmpty
+    }
+
+    func canDeleteCameraClip(id: TimelineRegionID, duration: Double, fallback: FacecamSettings?) -> Bool {
+        guard duration.isFinite, duration > 0 else { return false }
+        let clips = snapshot.resolvedCameraClips(duration: duration, fallback: fallback)
+        guard clips.count > 1,
+              let clip = clips.first(where: { $0.id == id }) else {
+            return false
+        }
+        return clip.settings.clamped.enabled
     }
 
     func clipSpeed(index: Int) -> Double {
@@ -781,6 +809,11 @@ extension TimelineEditState {
             return
         }
 
+        if let selectedCameraClipID, let duration {
+            deleteCameraClip(id: selectedCameraClipID, duration: duration, fallback: nil)
+            return
+        }
+
         guard let selectedKind, let selectedID else { return }
         switch selectedKind {
         case .zoom: snapshot.zoomRegions.removeAll { $0.id == selectedID }
@@ -799,6 +832,15 @@ extension TimelineEditState {
             return
         }
 
+        deleteRecordingClip(index: selectedClipIndex, duration: duration)
+    }
+
+    private mutating func deleteRecordingClip(index selectedClipIndex: Int, duration: Double) {
+        guard duration.isFinite, duration > 0 else {
+            statusMessage = "Open a video before deleting a clip."
+            return
+        }
+
         let segments = snapshot.clipSegments(duration: duration)
         guard segments.indices.contains(selectedClipIndex) else {
             clearSelection()
@@ -807,11 +849,16 @@ extension TimelineEditState {
         }
 
         let segment = segments[selectedClipIndex]
-        let deleteRegion = TimelineTrimRegion(span: segment.span.normalized(duration: duration))
-        var candidate = snapshot
-        candidate.trimRegions.append(deleteRegion)
-        candidate.trimRegions = mergedTrimRegions(candidate.trimRegions, duration: duration)
+        guard !isClipOmitted(segment, trimRegions: snapshot.trimRegions) else {
+            statusMessage = "Clip \(segment.index + 1) is already deleted."
+            return
+        }
 
+        guard let candidate = recordingClipDeletionCandidate(index: selectedClipIndex, duration: duration)?.snapshot else {
+            clearSelection()
+            statusMessage = "Selected clip is no longer available."
+            return
+        }
         guard !TimelineExportEditPlan.build(duration: duration, edits: candidate).segments.isEmpty else {
             statusMessage = "Cannot delete the only playable clip."
             return
@@ -820,6 +867,25 @@ extension TimelineEditState {
         snapshot = candidate
         clearSelection()
         statusMessage = "Deleted clip \(segment.index + 1)."
+    }
+
+    private func recordingClipDeletionCandidate(index selectedClipIndex: Int, duration: Double) -> (segment: TimelineClipSegment, snapshot: TimelineEditSnapshot)? {
+        guard duration.isFinite, duration > 0 else { return nil }
+        let segments = snapshot.clipSegments(duration: duration)
+        guard segments.indices.contains(selectedClipIndex) else { return nil }
+
+        let segment = segments[selectedClipIndex]
+        let deleteRegion = TimelineTrimRegion(span: segment.span.normalized(duration: duration))
+        var candidate = snapshot
+        candidate.trimRegions.append(deleteRegion)
+        candidate.trimRegions = mergedTrimRegions(candidate.trimRegions, duration: duration)
+        return (segment, candidate)
+    }
+
+    private func isClipOmitted(_ segment: TimelineClipSegment, trimRegions: [TimelineTrimRegion]) -> Bool {
+        trimRegions.contains { region in
+            region.span.start <= segment.start + 0.001 && region.span.end >= segment.end - 0.001
+        }
     }
 
     private mutating func updateSpan(kind: TimelineRegionKind, id: TimelineRegionID, span: TimelineSpan, duration: Double) {
@@ -946,6 +1012,37 @@ extension TimelineEditState {
         snapshot.cameraClips = next.sorted { $0.span.start < $1.span.start }
         selectCameraClip(id: selected.id)
         statusMessage = "Merged camera clips."
+    }
+
+    private mutating func deleteCameraClip(id: TimelineRegionID, duration: Double, fallback: FacecamSettings?) {
+        guard duration.isFinite, duration > 0 else {
+            statusMessage = "Open a video before deleting a camera clip."
+            return
+        }
+
+        var clips = snapshot.resolvedCameraClips(duration: duration, fallback: fallback)
+        guard clips.count > 1 else {
+            statusMessage = "Cannot delete the only camera clip."
+            return
+        }
+
+        guard let index = clips.firstIndex(where: { $0.id == id }) else {
+            clearSelection()
+            statusMessage = "Selected camera clip is no longer available."
+            return
+        }
+
+        guard clips[index].settings.clamped.enabled else {
+            statusMessage = "Camera clip is already deleted."
+            return
+        }
+
+        var settings = clips[index].settings.clamped
+        settings.enabled = false
+        clips[index].settings = settings
+        snapshot.cameraClips = clips
+        selectCameraClip(id: id)
+        statusMessage = "Deleted camera clip."
     }
 
     private mutating func removeClipSplit(at splitTime: Double, duration: Double) {
@@ -1159,6 +1256,14 @@ final class TimelineEditDriver {
         send(.splitCameraClip(currentTime: currentTime, duration: duration, fallback: fallback))
     }
 
+    func deleteRecordingClip(index: Int, duration: Double) {
+        send(.deleteRecordingClip(index: index, duration: duration))
+    }
+
+    func canDeleteRecordingClip(index: Int, duration: Double) -> Bool {
+        state.canDeleteRecordingClip(index: index, duration: duration)
+    }
+
     func selectCameraClip(id: TimelineRegionID) {
         send(.selectCameraClip(id), recordsUndo: false)
     }
@@ -1237,6 +1342,14 @@ final class TimelineEditDriver {
 
     func mergeCameraClip(id: TimelineRegionID, direction: TimelineCameraMergeDirection) {
         send(.mergeCameraClip(id: id, direction: direction))
+    }
+
+    func deleteCameraClip(id: TimelineRegionID, duration: Double, fallback: FacecamSettings?) {
+        send(.deleteCameraClip(id: id, duration: duration, fallback: fallback))
+    }
+
+    func canDeleteCameraClip(id: TimelineRegionID, duration: Double, fallback: FacecamSettings?) -> Bool {
+        state.canDeleteCameraClip(id: id, duration: duration, fallback: fallback)
     }
 
     func removeClipSplit(at splitTime: Double, duration: Double) {

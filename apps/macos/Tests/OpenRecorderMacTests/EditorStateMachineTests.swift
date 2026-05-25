@@ -659,6 +659,45 @@ final class TimelineEditStateMachineTests: XCTestCase {
         XCTAssertFalse(state.snapshot.cameraClips[0].settings.enabled)
         XCTAssertEqual(state.selectedCameraClipID, selectedID)
     }
+
+    func testTimelineReducerDeletesNonFinalCameraClipByHidingIt() {
+        var state = TimelineEditState()
+        let fallback = defaultFacecamSettings(enabled: true)
+
+        _ = state.applying(.ensureCameraClips(duration: 8, fallback: fallback))
+        _ = state.applying(.splitCameraClip(currentTime: 3, duration: 8, fallback: fallback))
+        let firstID = state.snapshot.cameraClips[0].id
+
+        XCTAssertTrue(state.canDeleteCameraClip(id: firstID, duration: 8, fallback: fallback))
+
+        _ = state.applying(.deleteCameraClip(id: firstID, duration: 8, fallback: fallback))
+
+        XCTAssertEqual(state.snapshot.cameraClips.count, 2)
+        XCTAssertEqual(state.snapshot.cameraClips.map(\.span), [
+            TimelineSpan(start: 0, end: 3),
+            TimelineSpan(start: 3, end: 8)
+        ])
+        XCTAssertFalse(state.snapshot.cameraClips[0].settings.enabled)
+        XCTAssertTrue(state.snapshot.cameraClips[1].settings.enabled)
+        XCTAssertEqual(state.selectedCameraClipID, firstID)
+        XCTAssertEqual(state.statusMessage, "Deleted camera clip.")
+    }
+
+    func testTimelineReducerBlocksDeletingOnlyCameraClip() {
+        var state = TimelineEditState()
+        let fallback = defaultFacecamSettings(enabled: true)
+
+        _ = state.applying(.ensureCameraClips(duration: 8, fallback: fallback))
+        let onlyID = state.snapshot.cameraClips[0].id
+
+        XCTAssertFalse(state.canDeleteCameraClip(id: onlyID, duration: 8, fallback: fallback))
+
+        _ = state.applying(.deleteCameraClip(id: onlyID, duration: 8, fallback: fallback))
+
+        XCTAssertEqual(state.snapshot.cameraClips.count, 1)
+        XCTAssertTrue(state.snapshot.cameraClips[0].settings.enabled)
+        XCTAssertEqual(state.statusMessage, "Cannot delete the only camera clip.")
+    }
 }
 
 final class EditorWorkspaceStateMachineTests: XCTestCase {

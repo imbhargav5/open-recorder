@@ -73,6 +73,7 @@ struct TimelinePanel: View {
             case "z": edits.add(.zoom, at: playback.currentTime, duration: playback.duration); return .handled
             case "s": edits.cycleClipSpeed(at: playback.currentTime, duration: playback.duration); return .handled
             case "t": edits.addClipSplit(at: playback.currentTime, duration: playback.duration); return .handled
+            case "c": edits.splitCameraClip(at: playback.currentTime, duration: playback.duration, fallback: defaultCameraSettings); return .handled
             default: return .ignored
             }
         }
@@ -184,12 +185,14 @@ struct TimelineTrackContent: View {
                 .onTapGesture {
                     edits.clearSelection()
                 }
-            TimelineClipRow(videoURL: videoURL, duration: playback.duration, viewport: viewport, splitTimes: edits.clipSplitTimes, trimRegions: edits.trimRegions, clipSpeeds: edits.clipSpeeds, selectedClipIndex: edits.selectedClipIndex, seek: playback.seek(to:), edits: edits)
+            TimelineClipRow(videoURL: videoURL, duration: playback.duration, currentTime: playback.currentTime, viewport: viewport, splitTimes: edits.clipSplitTimes, trimRegions: edits.trimRegions, clipSpeeds: edits.clipSpeeds, selectedClipIndex: edits.selectedClipIndex, seek: playback.seek(to:), edits: edits)
             TimelineLayerRow(kind: .zoom, duration: playback.duration, viewport: viewport, regions: edits.zoomRegions.map(TimelineRegionRenderData.zoom), selectedID: edits.selectedKind == .zoom ? edits.selectedID : nil, edits: edits)
             TimelineCameraLayerRow(
                 duration: playback.duration,
+                currentTime: playback.currentTime,
                 viewport: viewport,
                 hasRecordedCamera: hasRecordedCamera,
+                fallbackSettings: defaultCameraSettings,
                 cameraClips: edits.resolvedCameraClips(duration: playback.duration, fallback: defaultCameraSettings),
                 selectedID: edits.selectedCameraClipID,
                 edits: edits
@@ -662,6 +665,7 @@ enum TimelineSeekMapper {
 struct TimelineClipRow: View {
     var videoURL: URL?
     var duration: Double
+    var currentTime: Double
     var viewport: TimelineViewport
     var splitTimes: [Double]
     var trimRegions: [TimelineTrimRegion]
@@ -712,6 +716,21 @@ struct TimelineClipRow: View {
                 let endX = x(for: segment.end, width: width)
                 let segmentWidth = max(1, endX - startX - (segments.count > 1 ? 3 : 0))
                 clipBody(segment: segment, width: segmentWidth, isSelected: selectedClipIndex == segment.index, isDeleted: isDeleted(segment))
+                    .contextMenu {
+                        Button {
+                            edits.addClipSplit(at: currentTime, duration: duration)
+                        } label: {
+                            Label("Split at Playhead", systemImage: "scissors")
+                        }
+                        .disabled(!canSplitAtPlayhead(segment: segment, isDeleted: isDeleted(segment)))
+
+                        Button(role: .destructive) {
+                            edits.deleteRecordingClip(index: segment.index, duration: duration)
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                        .disabled(isDeleted(segment) || !edits.canDeleteRecordingClip(index: segment.index, duration: duration))
+                    }
                     .frame(width: segmentWidth, height: TimelineMetrics.clipHeight)
                     .position(x: startX + (endX - startX) / 2, y: TimelineMetrics.clipHeight / 2)
             }
@@ -755,6 +774,12 @@ struct TimelineClipRow: View {
         trimRegions.contains { region in
             region.span.start <= segment.start + 0.001 && region.span.end >= segment.end - 0.001
         }
+    }
+
+    private func canSplitAtPlayhead(segment: TimelineClipSegment, isDeleted: Bool) -> Bool {
+        guard !isDeleted, duration.isFinite, duration > 0 else { return false }
+        let minimumDistance = min(0.05, duration / 4)
+        return currentTime > segment.start + minimumDistance && currentTime < segment.end - minimumDistance
     }
 
     private func seek(to x: CGFloat, width: CGFloat) {
@@ -954,8 +979,10 @@ struct TimelineLayerRow: View {
 
 struct TimelineCameraLayerRow: View {
     var duration: Double
+    var currentTime: Double
     var viewport: TimelineViewport
     var hasRecordedCamera: Bool
+    var fallbackSettings: FacecamSettings?
     var cameraClips: [TimelineCameraClip]
     var selectedID: TimelineRegionID?
     var edits: TimelineEditDriver
@@ -985,9 +1012,11 @@ struct TimelineCameraLayerRow: View {
                     TimelineCameraClipItem(
                         clip: clip,
                         duration: duration,
+                        currentTime: currentTime,
                         viewport: viewport,
                         width: proxy.size.width,
                         isSelected: clip.id == selectedID,
+                        fallbackSettings: fallbackSettings,
                         edits: edits
                     )
                 }
@@ -1023,9 +1052,11 @@ struct TimelineCameraLayerRow: View {
 private struct TimelineCameraClipItem: View {
     var clip: TimelineCameraClip
     var duration: Double
+    var currentTime: Double
     var viewport: TimelineViewport
     var width: CGFloat
     var isSelected: Bool
+    var fallbackSettings: FacecamSettings?
     var edits: TimelineEditDriver
 
     private var accent: Color {
@@ -1046,6 +1077,21 @@ private struct TimelineCameraClipItem: View {
             .frame(width: itemWidth, height: TimelineMetrics.regionItemHeight)
             .position(x: startX + itemWidth / 2, y: TimelineMetrics.layerHeight / 2)
             .onTapGesture { edits.selectCameraClip(id: clip.id) }
+            .contextMenu {
+                Button {
+                    edits.splitCameraClip(at: currentTime, duration: duration, fallback: fallbackSettings)
+                } label: {
+                    Label("Split at Playhead", systemImage: "scissors")
+                }
+                .disabled(!canSplitAtPlayhead)
+
+                Button(role: .destructive) {
+                    edits.deleteCameraClip(id: clip.id, duration: duration, fallback: fallbackSettings)
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+                .disabled(!edits.canDeleteCameraClip(id: clip.id, duration: duration, fallback: fallbackSettings))
+            }
     }
 
     private func label(width: CGFloat) -> some View {
@@ -1065,6 +1111,12 @@ private struct TimelineCameraClipItem: View {
 
     private func x(for time: Double) -> CGFloat {
         viewport.x(for: time, width: width, clamped: true) ?? 0
+    }
+
+    private var canSplitAtPlayhead: Bool {
+        guard duration.isFinite, duration > 0 else { return false }
+        let minimumDistance = min(0.05, duration / 4)
+        return currentTime > clip.span.start + minimumDistance && currentTime < clip.span.end - minimumDistance
     }
 }
 

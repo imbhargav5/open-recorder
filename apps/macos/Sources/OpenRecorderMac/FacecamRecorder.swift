@@ -25,6 +25,7 @@ enum FacecamRecorderError: LocalizedError {
 final class FacecamRecorder: NSObject, AVCaptureFileOutputRecordingDelegate {
     private var session: AVCaptureSession?
     private var movieOutput: AVCaptureMovieFileOutput?
+    private var preparedCameraDeviceID: String?
     private var outputURL: URL?
     private var startedAt: Date?
     private var startContinuation: CheckedContinuation<Date, Error>?
@@ -35,9 +36,59 @@ final class FacecamRecorder: NSObject, AVCaptureFileOutputRecordingDelegate {
         movieOutput?.isRecording == true
     }
 
-    func start(outputURL: URL, cameraDeviceID: String?) async throws -> Date {
-        cleanup()
+    var isPrepared: Bool {
+        session?.isRunning == true && movieOutput != nil
+    }
 
+    func prepare(cameraDeviceID: String?) async throws {
+        if preparedCameraDeviceID == cameraDeviceID,
+           let session,
+           let movieOutput,
+           session.isRunning,
+           !movieOutput.isRecording {
+            return
+        }
+
+        cleanup()
+        let (session, output) = try buildSession(cameraDeviceID: cameraDeviceID)
+        self.session = session
+        self.movieOutput = output
+        self.preparedCameraDeviceID = cameraDeviceID
+        self.finishResult = nil
+
+        session.startRunning()
+    }
+
+    func start(outputURL: URL, cameraDeviceID: String?) async throws -> Date {
+        if preparedCameraDeviceID != cameraDeviceID || session == nil || movieOutput == nil {
+            try await prepare(cameraDeviceID: cameraDeviceID)
+        } else if session?.isRunning != true {
+            session?.startRunning()
+        }
+
+        guard let output = movieOutput else {
+            throw FacecamRecorderError.cannotAddMovieOutput
+        }
+
+        if output.isRecording, let startedAt {
+            return startedAt
+        }
+
+        try FileManager.default.createDirectory(
+            at: outputURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+
+        self.outputURL = outputURL
+        self.finishResult = nil
+
+        return try await withCheckedThrowingContinuation { continuation in
+            startContinuation = continuation
+            output.startRecording(to: outputURL, recordingDelegate: self)
+        }
+    }
+
+    private func buildSession(cameraDeviceID: String?) throws -> (AVCaptureSession, AVCaptureMovieFileOutput) {
         let device = try cameraDevice(cameraDeviceID)
         let input = try AVCaptureDeviceInput(device: device)
         let session = AVCaptureSession()
@@ -54,22 +105,7 @@ final class FacecamRecorder: NSObject, AVCaptureFileOutputRecordingDelegate {
         }
         session.addOutput(output)
 
-        try FileManager.default.createDirectory(
-            at: outputURL.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
-
-        self.session = session
-        self.movieOutput = output
-        self.outputURL = outputURL
-        self.finishResult = nil
-
-        session.startRunning()
-
-        return try await withCheckedThrowingContinuation { continuation in
-            startContinuation = continuation
-            output.startRecording(to: outputURL, recordingDelegate: self)
-        }
+        return (session, output)
     }
 
     func stop() async throws -> URL? {
@@ -89,6 +125,10 @@ final class FacecamRecorder: NSObject, AVCaptureFileOutputRecordingDelegate {
         if movieOutput?.isRecording == true {
             movieOutput?.stopRecording()
         }
+        startContinuation?.resume(throwing: CancellationError())
+        startContinuation = nil
+        finishContinuation?.resume(throwing: CancellationError())
+        finishContinuation = nil
         cleanup()
     }
 
@@ -161,6 +201,7 @@ final class FacecamRecorder: NSObject, AVCaptureFileOutputRecordingDelegate {
         }
         session = nil
         movieOutput = nil
+        preparedCameraDeviceID = nil
         startedAt = nil
         if !keepOutputURL {
             outputURL = nil
