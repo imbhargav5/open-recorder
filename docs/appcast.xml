@@ -219,5 +219,26 @@
 ]]></description>
             <enclosure url="https://github.com/imbhargav5/open-recorder/releases/download/v0.2.27/open-recorder-macos.zip" sparkle:edSignature="Q9ePZ+Ns8azIc/51KpgwSxOA2BtzSfN2YQ5qo6qjrhgUDgR/mgrx0voZ2jRBhhaYnGD7G+6cDBHOl2CDcQ3xCg==" length="40458907" type="application/octet-stream"/>
         </item>
+        <item>
+            <title>Version 0.2.28</title>
+            <pubDate>Mon, 25 May 2026 18:33:47 GMT</pubDate>
+            <sparkle:version>0.2.28</sparkle:version>
+            <sparkle:shortVersionString>0.2.28</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+## Commits since v0.2.27
+
+- 8b1f6bd Merge pull request #330 from imbhargav5/codex/update-open-recorder-icons
+- 2c5bff8 Update Open Recorder icon assets
+- 40bb264 Merge pull request #328 from imbhargav5/docs/editor-capabilities-readme
+- c1e950a Document editor capabilities in README
+- 673a267 Merge pull request #326 from imbhargav5/codex/delete-project-documents
+- 0a7b1dc Add project delete actions
+- 1418a75 Merge pull request #324 from imbhargav5/codex/extensible-cursor-registry
+- 1b43fe5 Add timeline context menus and facecam prewarm
+- 5f9fe8c Update appcast for v0.2.27
+]]></description>
+            <enclosure url="https://github.com/imbhargav5/open-recorder/releases/download/v0.2.28/open-recorder-macos.zip" sparkle:edSignature="smw5I7p/+FwjRWOmImOyAMgi+7T5LIjlhz1jF4qPXLQ3ojj6Q/wbCG1XWBc3DLcDeNnwzCAq8FXOoDx+eI8YCA==" length="40834996" type="application/octet-stream"/>
+        </item>
     </channel>
 </rss>
