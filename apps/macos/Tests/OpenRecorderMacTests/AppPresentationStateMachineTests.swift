@@ -46,6 +46,18 @@ final class AppShellStateMachineTests: XCTestCase {
         XCTAssertEqual(effects, [.setStatusMessage("Rust service ready")])
     }
 
+    func testShellRemovesProjectSummaryByPath() {
+        var state = AppShellState()
+        let first = makeProjectSummary(path: "/p/first.openrecorder")
+        let second = makeProjectSummary(path: "/p/second.openrecorder")
+        state.projects = [first, second]
+
+        let effects = state.applying(.projectSummaryRemoved(path: first.path))
+
+        XCTAssertEqual(effects, [])
+        XCTAssertEqual(state.projects, [second])
+    }
+
     func testShellDriverOwnsLongLivedChildDrivers() {
         let shell = AppShellDriver()
 

@@ -283,12 +283,7 @@ fn handle_method(method: &str, params: Value) -> Result<Value, String> {
             let projects = read_index(&paths)?
                 .into_iter()
                 .map(|mut item| {
-                    item.missing = item
-                        .recording_path
-                        .as_ref()
-                        .or(item.screenshot_path.as_ref())
-                        .map(|path| !Path::new(path).exists())
-                        .unwrap_or(false);
+                    item.missing = project_is_missing(&item);
                     item
                 })
                 .collect::<Vec<_>>();
@@ -526,6 +521,17 @@ fn write_index(paths: &InternalPaths, projects: &[ProjectSummary]) -> Result<(),
         &paths.project_index,
         &serde_json::to_value(projects).map_err(|err| err.to_string())?,
     )
+}
+
+fn project_is_missing(project: &ProjectSummary) -> bool {
+    let project_file_missing = !Path::new(&project.path).exists();
+    let media_file_missing = project
+        .recording_path
+        .as_ref()
+        .or(project.screenshot_path.as_ref())
+        .map(|path| !Path::new(path).exists())
+        .unwrap_or(false);
+    project_file_missing || media_file_missing
 }
 
 fn screenshot_index_path(paths: &InternalPaths) -> PathBuf {
@@ -795,6 +801,30 @@ mod tests {
             .count();
         assert_eq!(matching, 1);
         assert_eq!(projects[0].title, "Demo 1");
+    }
+
+    #[test]
+    fn project_is_missing_when_project_document_is_missing() {
+        let paths = test_paths("missing-project-document");
+        paths.ensure().unwrap();
+        let project_path = paths.projects_dir.join("demo.openrecorder");
+        let recording_path = paths.recordings_dir.join("demo.mp4");
+        fs::write(&recording_path, b"recording").unwrap();
+
+        let summary = ProjectSummary {
+            id: "project-existing".to_string(),
+            title: "Demo".to_string(),
+            path: project_path.to_string_lossy().to_string(),
+            recording_path: Some(recording_path.to_string_lossy().to_string()),
+            screenshot_path: None,
+            source_name: Some("Display 1".to_string()),
+            created_at: "100".to_string(),
+            updated_at: "100".to_string(),
+            last_opened_at: "150".to_string(),
+            missing: false,
+        };
+
+        assert!(project_is_missing(&summary));
     }
 
     #[test]

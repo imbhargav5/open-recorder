@@ -78,6 +78,8 @@ final class AppModel: ObservableObject {
     private let screenshotCapture: @MainActor (CaptureSource, URL) throws -> Void
     private let stopRecordingCapture: @MainActor () async throws -> URL
     private let rememberScreenshot: @Sendable (URL) throws -> Void
+    private let trashProjectFile: @MainActor (URL) throws -> Void
+    private let forgetProject: @Sendable (String) throws -> Void
     private let facecamRecorder = FacecamRecorder()
     private let cursorTelemetryRecorder = CursorTelemetryRecorder()
     private let captureDeviceProvider = CaptureDeviceProvider()
@@ -92,7 +94,9 @@ final class AppModel: ObservableObject {
         captureUIHideDelayNanoseconds: UInt64 = 180_000_000,
         screenshotCapture: (@MainActor (CaptureSource, URL) throws -> Void)? = nil,
         stopRecording: (@MainActor () async throws -> URL)? = nil,
-        rememberScreenshot: (@Sendable (URL) throws -> Void)? = nil
+        rememberScreenshot: (@Sendable (URL) throws -> Void)? = nil,
+        trashProjectFile: (@MainActor (URL) throws -> Void)? = nil,
+        forgetProject: (@Sendable (String) throws -> Void)? = nil
     ) {
         let service = RustServiceClient()
         let capture = CaptureController(screenRecordingPermission: screenRecordingPermission)
@@ -115,6 +119,17 @@ final class AppModel: ObservableObject {
                 "rememberScreenshot",
                 params: ["path": outputURL.path],
                 as: PreparedFile.self
+            )
+        }
+        self.trashProjectFile = trashProjectFile ?? { projectURL in
+            var trashedURL: NSURL?
+            try FileManager.default.trashItem(at: projectURL, resultingItemURL: &trashedURL)
+        }
+        self.forgetProject = forgetProject ?? { path in
+            let _: ForgetProjectResult = try service.call(
+                "forgetProject",
+                params: ["path": path],
+                as: ForgetProjectResult.self
             )
         }
         self.screenRecordingPermissionState = screenRecordingPermission.currentState()
@@ -1081,6 +1096,20 @@ final class AppModel: ObservableObject {
 
     func openProject(_ project: ProjectSummary) {
         openProjectFile(at: URL(fileURLWithPath: project.path))
+    }
+
+    func deleteProject(_ project: ProjectSummary) {
+        let projectURL = URL(fileURLWithPath: project.path)
+        do {
+            if FileManager.default.fileExists(atPath: project.path) {
+                try trashProjectFile(projectURL)
+            }
+            try forgetProject(project.path)
+            sendAppShell(.projectSummaryRemoved(path: project.path))
+            statusMessage = "Deleted \(project.title)"
+        } catch {
+            statusMessage = "Could not delete \(project.title): \(error.localizedDescription)"
+        }
     }
 
     func openProjectFile() {

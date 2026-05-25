@@ -7,6 +7,7 @@ import UniformTypeIdentifiers
 struct ProjectsStudioView: View {
     @EnvironmentObject private var model: AppModel
     @State private var selectedTab: ProjectLibraryTab = .screenRecordings
+    @State private var projectPendingDeletion: ProjectSummary?
 
     var body: some View {
         ScrollView {
@@ -112,7 +113,9 @@ struct ProjectsStudioView: View {
                     } else {
                         VStack(spacing: 0) {
                             ForEach(selectedProjects) { project in
-                                ProjectListRow(project: project)
+                                ProjectListRow(project: project) { project in
+                                    projectPendingDeletion = project
+                                }
                                 if project.id != selectedProjects.last?.id {
                                     Rectangle()
                                         .fill(Theme.border)
@@ -133,6 +136,23 @@ struct ProjectsStudioView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.appBgMuted)
+        .confirmationDialog(
+            "Delete Project?",
+            isPresented: deleteConfirmationPresented,
+            titleVisibility: .visible
+        ) {
+            if let projectPendingDeletion {
+                Button("Move to Trash", role: .destructive) {
+                    model.deleteProject(projectPendingDeletion)
+                    self.projectPendingDeletion = nil
+                }
+            }
+            Button("Cancel", role: .cancel) {
+                projectPendingDeletion = nil
+            }
+        } message: {
+            Text("This moves the .openrecorder project file to Trash. The recording or screenshot media file will not be deleted.")
+        }
     }
 
     private var recordingProjects: [ProjectSummary] {
@@ -150,6 +170,17 @@ struct ProjectsStudioView: View {
         case .screenshots:
             screenshotProjects
         }
+    }
+
+    private var deleteConfirmationPresented: Binding<Bool> {
+        Binding(
+            get: { projectPendingDeletion != nil },
+            set: { isPresented in
+                if !isPresented {
+                    projectPendingDeletion = nil
+                }
+            }
+        )
     }
 }
 
@@ -277,6 +308,7 @@ struct ProjectActionCard: View {
 struct ProjectListRow: View {
     @EnvironmentObject private var model: AppModel
     var project: ProjectSummary
+    var requestDelete: (ProjectSummary) -> Void
 
     var body: some View {
         StudioButton(hitTarget: .rectangle) {
@@ -332,6 +364,20 @@ struct ProjectListRow: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
+        }
+        .contextMenu {
+            Button {
+                model.openProject(project)
+            } label: {
+                Label("Open", systemImage: "folder")
+            }
+            .disabled(project.missing)
+
+            Button(role: .destructive) {
+                requestDelete(project)
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
         }
         .opacity(project.missing ? 0.55 : 1)
     }

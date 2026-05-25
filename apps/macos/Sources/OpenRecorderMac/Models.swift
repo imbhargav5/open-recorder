@@ -108,6 +108,10 @@ struct PreparedFile: Codable {
     var path: String
 }
 
+struct ForgetProjectResult: Codable {
+    var removed: Bool
+}
+
 struct ProjectSummary: Codable, Identifiable, Hashable, Sendable {
     var id: String
     var title: String

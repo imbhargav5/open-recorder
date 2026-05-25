@@ -643,6 +643,140 @@ final class AppModelStateTests: XCTestCase {
         XCTAssertEqual(session.recordingSession?.cursorTelemetryPath, "/tmp/example-recording.cursor.json")
     }
 
+    func testDeletingRecordingProjectTrashesProjectFileAndRemovesProject() throws {
+        let tempDir = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let projectURL = tempDir.appendingPathComponent("recording.openrecorder")
+        try Data("project".utf8).write(to: projectURL)
+        let project = makeDeleteProjectSummary(
+            title: "Recording",
+            projectPath: projectURL.path,
+            recordingPath: "/tmp/recording.mp4",
+            screenshotPath: nil
+        )
+        let other = makeDeleteProjectSummary(
+            title: "Other",
+            projectPath: tempDir.appendingPathComponent("other.openrecorder").path,
+            recordingPath: "/tmp/other.mp4",
+            screenshotPath: nil
+        )
+        let spy = ProjectDeleteSpy()
+        let model = AppModel(
+            trashProjectFile: { try spy.trash($0) },
+            forgetProject: { try spy.forget($0) }
+        )
+        model.projects = [project, other]
+
+        model.deleteProject(project)
+
+        XCTAssertEqual(spy.trashedURLs, [projectURL])
+        XCTAssertEqual(spy.forgottenPaths, [project.path])
+        XCTAssertEqual(model.projects, [other])
+        XCTAssertEqual(model.statusMessage, "Deleted Recording")
+    }
+
+    func testDeletingScreenshotProjectTrashesProjectFileAndRemovesProject() throws {
+        let tempDir = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let projectURL = tempDir.appendingPathComponent("screenshot.openrecorder")
+        try Data("project".utf8).write(to: projectURL)
+        let project = makeDeleteProjectSummary(
+            title: "Screenshot",
+            projectPath: projectURL.path,
+            recordingPath: nil,
+            screenshotPath: "/tmp/screenshot.png"
+        )
+        let spy = ProjectDeleteSpy()
+        let model = AppModel(
+            trashProjectFile: { try spy.trash($0) },
+            forgetProject: { try spy.forget($0) }
+        )
+        model.projects = [project]
+
+        model.deleteProject(project)
+
+        XCTAssertEqual(spy.trashedURLs, [projectURL])
+        XCTAssertEqual(spy.forgottenPaths, [project.path])
+        XCTAssertTrue(model.projects.isEmpty)
+        XCTAssertEqual(model.statusMessage, "Deleted Screenshot")
+    }
+
+    func testDeletingMissingProjectSkipsTrashAndForgetsProject() throws {
+        let tempDir = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let project = makeDeleteProjectSummary(
+            title: "Missing",
+            projectPath: tempDir.appendingPathComponent("missing.openrecorder").path,
+            recordingPath: "/tmp/missing.mp4",
+            screenshotPath: nil,
+            missing: true
+        )
+        let spy = ProjectDeleteSpy()
+        let model = AppModel(
+            trashProjectFile: { try spy.trash($0) },
+            forgetProject: { try spy.forget($0) }
+        )
+        model.projects = [project]
+
+        model.deleteProject(project)
+
+        XCTAssertTrue(spy.trashedURLs.isEmpty)
+        XCTAssertEqual(spy.forgottenPaths, [project.path])
+        XCTAssertTrue(model.projects.isEmpty)
+        XCTAssertEqual(model.statusMessage, "Deleted Missing")
+    }
+
+    func testDeletingProjectFailureLeavesProjectInList() throws {
+        let tempDir = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let projectURL = tempDir.appendingPathComponent("blocked.openrecorder")
+        try Data("project".utf8).write(to: projectURL)
+        let project = makeDeleteProjectSummary(
+            title: "Blocked",
+            projectPath: projectURL.path,
+            recordingPath: "/tmp/blocked.mp4",
+            screenshotPath: nil
+        )
+        let spy = ProjectDeleteSpy(trashError: TestProjectDeleteError.trashFailed)
+        let model = AppModel(
+            trashProjectFile: { try spy.trash($0) },
+            forgetProject: { try spy.forget($0) }
+        )
+        model.projects = [project]
+
+        model.deleteProject(project)
+
+        XCTAssertEqual(spy.trashedURLs, [projectURL])
+        XCTAssertTrue(spy.forgottenPaths.isEmpty)
+        XCTAssertEqual(model.projects, [project])
+        XCTAssertEqual(model.statusMessage, "Could not delete Blocked: Trash failed")
+    }
+
+    func testForgettingProjectFailureLeavesProjectInList() throws {
+        let tempDir = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let project = makeDeleteProjectSummary(
+            title: "Forget Blocked",
+            projectPath: tempDir.appendingPathComponent("forget-blocked.openrecorder").path,
+            recordingPath: "/tmp/forget-blocked.mp4",
+            screenshotPath: nil,
+            missing: true
+        )
+        let spy = ProjectDeleteSpy(forgetError: TestProjectDeleteError.forgetFailed)
+        let model = AppModel(
+            trashProjectFile: { try spy.trash($0) },
+            forgetProject: { try spy.forget($0) }
+        )
+        model.projects = [project]
+
+        model.deleteProject(project)
+
+        XCTAssertTrue(spy.trashedURLs.isEmpty)
+        XCTAssertEqual(spy.forgottenPaths, [project.path])
+        XCTAssertEqual(model.projects, [project])
+        XCTAssertEqual(model.statusMessage, "Could not delete Forget Blocked: Forget failed")
+    }
+
     func testAreaSelectionUsesInteractiveAreaSource() {
         let model = AppModel()
 
@@ -1204,6 +1338,74 @@ private final class ScreenSelectionPresenterSpy: ScreenSelectionPresenting {
 
     func cancel() {
         onCancel?()
+    }
+}
+
+private final class ProjectDeleteSpy: @unchecked Sendable {
+    private let trashError: Error?
+    private let forgetError: Error?
+    private(set) var trashedURLs: [URL] = []
+    private(set) var forgottenPaths: [String] = []
+
+    init(trashError: Error? = nil, forgetError: Error? = nil) {
+        self.trashError = trashError
+        self.forgetError = forgetError
+    }
+
+    func trash(_ url: URL) throws {
+        trashedURLs.append(url)
+        if let trashError {
+            throw trashError
+        }
+    }
+
+    func forget(_ path: String) throws {
+        forgottenPaths.append(path)
+        if let forgetError {
+            throw forgetError
+        }
+    }
+}
+
+private func makeTemporaryDirectory() throws -> URL {
+    let url = FileManager.default.temporaryDirectory
+        .appendingPathComponent("open-recorder-tests-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+    return url
+}
+
+private func makeDeleteProjectSummary(
+    title: String,
+    projectPath: String,
+    recordingPath: String?,
+    screenshotPath: String?,
+    missing: Bool = false
+) -> ProjectSummary {
+    ProjectSummary(
+        id: projectPath,
+        title: title,
+        path: projectPath,
+        recordingPath: recordingPath,
+        screenshotPath: screenshotPath,
+        sourceName: nil,
+        createdAt: "2026-05-25T00:00:00Z",
+        updatedAt: "2026-05-25T00:00:00Z",
+        lastOpenedAt: "2026-05-25T00:00:00Z",
+        missing: missing
+    )
+}
+
+private enum TestProjectDeleteError: LocalizedError {
+    case trashFailed
+    case forgetFailed
+
+    var errorDescription: String? {
+        switch self {
+        case .trashFailed:
+            "Trash failed"
+        case .forgetFailed:
+            "Forget failed"
+        }
     }
 }
 
