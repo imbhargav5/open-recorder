@@ -18,6 +18,7 @@ The product uses a small native stack: Swift owns the macOS experience, capture 
 
 - Record a display, window, or interactive selected area on macOS
 - Capture screenshots from displays, windows, or selected areas
+- Choose microphone input, system audio, camera capture, cursor visibility, and click recording before capture
 - Save recordings under `~/Movies/Open Recorder`
 - Save screenshots under `~/Pictures/Open Recorder`
 - Automatically create `.openrecorder` project metadata
@@ -25,6 +26,37 @@ The product uses a small native stack: Swift owns the macOS experience, capture 
 - Preview recordings with the native AVKit player
 - Export recordings through the Rust service
 - Open Screen Recording privacy settings from inside the app
+
+## Editor Capabilities
+
+Open Recorder includes a native editor for turning raw captures into shareable videos and screenshots without leaving the app.
+
+### Video Editor
+
+- **Backgrounds** - place recordings on transparent, solid color, gradient, or bundled wallpaper backgrounds.
+- **Framing** - adjust stage padding, background blur, shadow strength, and recording corner roundness.
+- **Inset styling** - add an inset treatment around the recording with configurable amount, color, opacity, and balance.
+- **Crop and aspect controls** - crop recordings visually and preview/export them in automatic or fixed aspect layouts.
+- **Cursor overlays** - show or hide the captured cursor path, loop cursor motion, tune cursor size and smoothing, and choose from system, touch, and emphasis cursor styles.
+- **Timeline playback** - use transport controls, frame stepping, hover scrubbing, preview speed controls, and timeline zooming while editing.
+- **Zoom sections** - add manual zoom regions from the timeline, set zoom depth, and adjust X/Y focus. The app can also generate automatic zooms from recorded click telemetry.
+- **Clip splitting and speed changes** - split the recording at the playhead, select clips, set clip speeds from 1x to 2x, merge adjacent split points, and delete selected clips while preserving at least one playable segment.
+- **Camera clips** - when a camera track was recorded, split the camera layer independently, show or hide camera segments, place the facecam in a 3x3 position grid, and adjust camera size and border width per segment.
+- **Autosaved edits** - video styling, crop selection, cursor settings, facecam settings, and timeline edits are saved into the `.openrecorder` project metadata.
+
+### Screenshot Editor
+
+- **Composed screenshots** - place screenshots on the same background system used by the video editor.
+- **Layer styling** - adjust background padding, background roundness, background shadow, image roundness, and image shadow separately.
+- **PNG output** - export the composed screenshot to a file or copy it directly to the clipboard.
+- **Project persistence** - screenshot styling is autosaved with the project so the composition can be reopened later.
+
+### Export
+
+- Export styled video projects as MOV files.
+- Choose 480p, 720p, 1080p, or 4K output presets.
+- Choose 15 FPS, 24 FPS, 30 FPS, or 60 FPS output presets.
+- Exported videos include the selected crop, background styling, inset styling, cursor overlay, timeline speed/deletion edits, zoom effects, and camera clip settings.
 
 ## Repository Layout
 
