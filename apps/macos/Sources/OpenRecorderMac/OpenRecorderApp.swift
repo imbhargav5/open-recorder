@@ -416,9 +416,7 @@ private final class OpenRecorderStatusItemController: NSObject {
         guard let button = statusItem?.button else { return }
 
         if isDirectStopState {
-            let image = NSImage(systemSymbolName: "stop.circle.fill", accessibilityDescription: "Stop Recording")
-            image?.isTemplate = true
-            button.image = image
+            button.image = OpenRecorderMenuBarIcon.image
             button.contentTintColor = .systemRed
             button.toolTip = "Stop Recording (⌘R)"
             button.setAccessibilityLabel("Stop Recording")
