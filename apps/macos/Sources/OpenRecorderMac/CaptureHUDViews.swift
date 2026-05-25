@@ -47,7 +47,7 @@ struct CaptureHUD: View {
                     title: model.capture.isRecording ? "Stop" : startStopTitle,
                     symbolName: model.capture.isRecording ? "stop.fill" : "record.circle",
                     isDestructive: model.capture.isRecording,
-                    shortcutText: "⌘R"
+                    shortcutText: recordingShortcutText
                 ) {
                     toggleRecording()
                 }
@@ -71,7 +71,7 @@ struct CaptureHUD: View {
                     title: model.capture.isRecording ? "Stop" : startStopTitle,
                     symbolName: model.capture.isRecording ? "stop.fill" : "record.circle",
                     isDestructive: model.capture.isRecording,
-                    shortcutText: "⌘R"
+                    shortcutText: recordingShortcutText
                 ) {
                     toggleRecording()
                 }
@@ -404,7 +404,13 @@ struct CaptureHUD: View {
     }
 
     private var recordingShortcutHelpTitle: String {
-        "\(model.capture.isRecording ? "Stop" : startStopTitle) (⌘R)"
+        let title = model.capture.isRecording ? "Stop" : startStopTitle
+        guard recordingShortcutText != nil else { return title }
+        return "\(title) (⌘R)"
+    }
+
+    private var recordingShortcutText: String? {
+        model.captureState.shouldRegisterRecordingHotKey(runtimeIsRecording: model.capture.isRecording) ? "⌘R" : nil
     }
 
     private func toggleRecording() {

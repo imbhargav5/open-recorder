@@ -22,6 +22,44 @@ final class CaptureStateReducerTests: XCTestCase {
         XCTAssertEqual(transition.statusMessage, "Finish or cancel the current capture before starting another.")
     }
 
+    func testRecordingHotKeyRegistersOnlyForRecordingReadyAndActiveStates() {
+        let source = makeSource()
+
+        let enabledStates = [
+            CaptureState.ready(.recording, source),
+            .countingDownRecording(source),
+            .startingRecording(source),
+            .recording(source)
+        ]
+
+        for state in enabledStates {
+            XCTAssertTrue(state.shouldRegisterRecordingHotKey(runtimeIsRecording: false), "\(state.phase) should register Cmd-R")
+        }
+
+        let disabledStates = [
+            CaptureState.idle,
+            .choosingMode,
+            .choosingSourceType(.recording),
+            .screenSelecting(.recording),
+            .selectingSource(.recording),
+            .ready(.screenshot, source),
+            .areaSelecting(.recording),
+            .stoppingRecording(source),
+            .capturingScreenshot(source)
+        ]
+
+        for state in disabledStates {
+            XCTAssertFalse(state.shouldRegisterRecordingHotKey(runtimeIsRecording: false), "\(state.phase) should not register Cmd-R")
+        }
+    }
+
+    func testRecordingHotKeyStaysRegisteredWhenRuntimeIsRecording() {
+        let source = makeSource()
+
+        XCTAssertTrue(CaptureState.choosingMode.shouldRegisterRecordingHotKey(runtimeIsRecording: true))
+        XCTAssertTrue(CaptureState.stoppingRecording(source).shouldRegisterRecordingHotKey(runtimeIsRecording: true))
+    }
+
     func testChoosingSourceTypesMovesToDeclarativeSelectionStates() {
         let screen = CaptureState.choosingSourceType(.screenshot).applying(.chooseSourceType(.screen))
         XCTAssertEqual(screen.state.phase, .screenSelecting(.screenshot))
