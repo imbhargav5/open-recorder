@@ -177,7 +177,6 @@ struct OpenRecorderApp: App {
                 Button("Toggle Recording") {
                     model.toggleRecordingShortcut()
                 }
-                .keyboardShortcut("r", modifiers: [.command])
 
                 Button("Open Project...") {
                     model.openProjectFile()
@@ -547,35 +546,47 @@ private final class GlobalRecordingHotKeyController {
     private weak var model: AppModel?
     private var hotKeyRef: EventHotKeyRef?
     private var eventHandlerRef: EventHandlerRef?
+    private var cancellables: Set<AnyCancellable> = []
 
     func attach(model: AppModel) {
+        if self.model === model {
+            syncRegistration(captureState: model.captureState, runtimeIsRecording: model.capture.isRecording)
+            return
+        }
+
+        unregister()
+        cancellables.removeAll()
         self.model = model
-        registerIfNeeded()
+
+        model.$captureState
+            .sink { [weak self, weak model] state in
+                guard let model else { return }
+                self?.syncRegistration(captureState: state, runtimeIsRecording: model.capture.isRecording)
+            }
+            .store(in: &cancellables)
+
+        model.capture.$isRecording
+            .sink { [weak self, weak model] isRecording in
+                guard let model else { return }
+                self?.syncRegistration(captureState: model.captureState, runtimeIsRecording: isRecording)
+            }
+            .store(in: &cancellables)
+
+        syncRegistration(captureState: model.captureState, runtimeIsRecording: model.capture.isRecording)
+    }
+
+    private func syncRegistration(captureState: CaptureState, runtimeIsRecording: Bool) {
+        if captureState.shouldRegisterRecordingHotKey(runtimeIsRecording: runtimeIsRecording) {
+            registerIfNeeded()
+        } else {
+            unregister()
+        }
     }
 
     private func registerIfNeeded() {
-        guard hotKeyRef == nil, eventHandlerRef == nil else { return }
+        guard hotKeyRef == nil else { return }
 
-        var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
-        let callback: EventHandlerUPP = { _, _, userData in
-            guard let userData else { return noErr }
-            let controller = Unmanaged<GlobalRecordingHotKeyController>
-                .fromOpaque(userData)
-                .takeUnretainedValue()
-            Task { @MainActor in
-                controller.model?.toggleRecordingShortcut()
-            }
-            return noErr
-        }
-
-        InstallEventHandler(
-            GetApplicationEventTarget(),
-            callback,
-            1,
-            &eventType,
-            UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque()),
-            &eventHandlerRef
-        )
+        guard installEventHandlerIfNeeded() else { return }
 
         let hotKeyID = EventHotKeyID(signature: fourCharCode("ORcd"), id: 1)
         let status = RegisterEventHotKey(
@@ -589,6 +600,50 @@ private final class GlobalRecordingHotKeyController {
 
         if status != noErr {
             hotKeyRef = nil
+            unregister()
+        }
+    }
+
+    private func installEventHandlerIfNeeded() -> Bool {
+        guard eventHandlerRef == nil else { return true }
+
+        var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
+        let callback: EventHandlerUPP = { _, _, userData in
+            guard let userData else { return noErr }
+            let controller = Unmanaged<GlobalRecordingHotKeyController>
+                .fromOpaque(userData)
+                .takeUnretainedValue()
+            Task { @MainActor in
+                controller.model?.toggleRecordingShortcut()
+            }
+            return noErr
+        }
+
+        let status = InstallEventHandler(
+            GetApplicationEventTarget(),
+            callback,
+            1,
+            &eventType,
+            UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque()),
+            &eventHandlerRef
+        )
+
+        if status != noErr {
+            eventHandlerRef = nil
+        }
+
+        return status == noErr
+    }
+
+    private func unregister() {
+        if let hotKeyRef {
+            UnregisterEventHotKey(hotKeyRef)
+            self.hotKeyRef = nil
+        }
+
+        if let eventHandlerRef {
+            RemoveEventHandler(eventHandlerRef)
+            self.eventHandlerRef = nil
         }
     }
 

@@ -344,6 +344,28 @@ struct CaptureState: Hashable {
         }
     }
 
+    func shouldRegisterRecordingHotKey(runtimeIsRecording: Bool) -> Bool {
+        guard !runtimeIsRecording else { return true }
+
+        switch phase {
+        case .ready(.recording, _),
+             .countingDownRecording,
+             .startingRecording,
+             .recording:
+            return true
+        case .idle,
+             .choosingMode,
+             .choosingSourceType,
+             .screenSelecting,
+             .selectingSource,
+             .ready,
+             .areaSelecting,
+             .stoppingRecording,
+             .capturingScreenshot:
+            return false
+        }
+    }
+
     func applying(_ event: CaptureEvent) -> CaptureTransition {
         var next = self
         var effects: [CaptureEffect] = []
