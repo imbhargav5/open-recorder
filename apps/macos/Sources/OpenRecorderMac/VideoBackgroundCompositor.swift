@@ -193,19 +193,25 @@ private struct CursorGlyphCacheKey: Hashable {
 }
 
 final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
+    private let renderingQueueKey = DispatchSpecificKey<Bool>()
     private let renderingQueue = DispatchQueue(label: "com.openrecorder.video.compositor", qos: .userInitiated)
     private let ciContext: CIContext
     private var renderContext: AVVideoCompositionRenderContext?
     private let renderContextLock = NSLock()
     private var cursorGlyphCache: [CursorGlyphCacheKey: CursorGlyphImage] = [:]
 
+    nonisolated static func ciContextOptions() -> [CIContextOption: Any] {
+        [.cacheIntermediates: false]
+    }
+
     override init() {
         if let device = MTLCreateSystemDefaultDevice() {
-            ciContext = CIContext(mtlDevice: device, options: [.cacheIntermediates: true])
+            ciContext = CIContext(mtlDevice: device, options: Self.ciContextOptions())
         } else {
-            ciContext = CIContext(options: [.cacheIntermediates: true])
+            ciContext = CIContext(options: Self.ciContextOptions())
         }
         super.init()
+        renderingQueue.setSpecific(key: renderingQueueKey, value: true)
     }
 
     var sourcePixelBufferAttributes: [String: any Sendable]? {
@@ -229,23 +235,35 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
     }
 
     func startRequest(_ request: AVAsynchronousVideoCompositionRequest) {
-        renderingQueue.async { [weak self] in
-            guard let self else {
-                request.finish(with: VideoCompositorError.renderFailed)
-                return
+        let renderRequest = {
+            autoreleasepool {
+                // Backpressure is intentional: queued requests retain decoded pixel buffers.
+                // Finish each frame before AVFoundation can hand us an unbounded backlog.
+                self.finishRequest(request)
             }
+        }
 
-            do {
-                let composedBuffer = try self.composeFrame(for: request)
-                request.finish(withComposedVideoFrame: composedBuffer)
-            } catch {
-                request.finish(with: error)
-            }
+        if DispatchQueue.getSpecific(key: renderingQueueKey) == true {
+            renderRequest()
+        } else {
+            renderingQueue.sync(execute: renderRequest)
+        }
+    }
+
+    private func finishRequest(_ request: AVAsynchronousVideoCompositionRequest) {
+        do {
+            let composedBuffer = try self.composeFrame(for: request)
+            request.finish(withComposedVideoFrame: composedBuffer)
+        } catch {
+            request.finish(with: error)
         }
     }
 
     func cancelAllPendingVideoCompositionRequests() {
-        renderingQueue.sync(flags: .barrier) {}
+        if DispatchQueue.getSpecific(key: renderingQueueKey) == true {
+            return
+        }
+        renderingQueue.sync {}
     }
 
     private func composeFrame(for request: AVAsynchronousVideoCompositionRequest) throws -> CVPixelBuffer {
