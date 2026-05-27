@@ -1,6 +1,6 @@
 {
-  "tagName": "v0.2.28",
-  "releaseName": "Open Recorder v0.2.28",
-  "releaseNotes": "## Commits since v0.2.27\n\n- 8b1f6bd Merge pull request #330 from imbhargav5/codex/update-open-recorder-icons\n- 2c5bff8 Update Open Recorder icon assets\n- 40bb264 Merge pull request #328 from imbhargav5/docs/editor-capabilities-readme\n- c1e950a Document editor capabilities in README\n- 673a267 Merge pull request #326 from imbhargav5/codex/delete-project-documents\n- 0a7b1dc Add project delete actions\n- 1418a75 Merge pull request #324 from imbhargav5/codex/extensible-cursor-registry\n- 1b43fe5 Add timeline context menus and facecam prewarm\n- 5f9fe8c Update appcast for v0.2.27",
+  "tagName": "v0.2.29",
+  "releaseName": "Open Recorder v0.2.29",
+  "releaseNotes": "## Commits since v0.2.28\n\n- e4007b1 Fix video compositor memory growth (#336)\n- 93d4c7e Merge pull request #334 from imbhargav5/codex/scope-recording-hotkey\n- f8a1085 Scope recording hotkey registration\n- acba52f Update appcast for v0.2.28",
   "makeLatest": true
 }
