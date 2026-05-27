@@ -1,9 +1,16 @@
 import CoreGraphics
+import CoreImage
 import SwiftUI
 import XCTest
 @testable import OpenRecorderMac
 
 final class VideoPreviewLayoutTests: XCTestCase {
+    func testVideoCompositorDoesNotCacheStreamingIntermediates() {
+        let options = VideoBackgroundCompositor.ciContextOptions()
+
+        XCTAssertEqual(options[.cacheIntermediates] as? Bool, false)
+    }
+
     func testAutoPreviewAspectUsesCropSelectionAspect() {
         let selection = VideoCropSelection(
             normalizedRect: CGRect(x: 0, y: 0, width: 0.5, height: 1),
