@@ -493,8 +493,6 @@ struct HUDSurface<Content: View>: View {
                         )
                 }
             }
-            .shadow(color: Color.black.opacity(0.40), radius: 26, y: 18)
-            .shadow(color: Color.black.opacity(0.20), radius: 5, y: 1)
     }
 }
 
