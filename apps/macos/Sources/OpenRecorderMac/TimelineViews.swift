@@ -745,13 +745,13 @@ struct TimelineClipRow: View {
             .overlay(alignment: .bottom) {
                 if let waveformSamples, !waveformSamples.isEmpty, !isDeleted {
                     TimelineWaveformPreview(samples: waveformSamples)
-                        .frame(height: 24)
-                        .padding(.horizontal, 14)
-                        .padding(.bottom, 4)
+                        .frame(height: 27)
+                        .padding(.horizontal, 13)
+                        .padding(.bottom, 11)
                         .allowsHitTesting(false)
                 }
             }
-            .overlay(alignment: .center) {
+            .overlay(alignment: .top) {
                 if width > 82 {
                     VStack(spacing: 2) {
                         Label(isDeleted ? "Deleted" : "Clip \(segment.index + 1)", systemImage: isDeleted ? "trash" : "rectangle.on.rectangle")
@@ -761,6 +761,7 @@ struct TimelineClipRow: View {
                     }
                     .foregroundStyle(foreground)
                     .shadow(color: Theme.borderStrong, radius: 3, y: 1)
+                    .padding(.top, 11)
                     .allowsHitTesting(false)
                 }
             }
@@ -838,33 +839,55 @@ struct TimelineWaveformPreview: View {
             let levels = TimelineWaveformBarRenderer.resampledLevels(from: samples, width: size.width)
             guard !levels.isEmpty, size.width > 0, size.height > 0 else { return }
 
-            let spacing: CGFloat = size.width < 140 ? 1.6 : 2
-            let barWidth = max(1.5, (size.width - spacing * CGFloat(levels.count - 1)) / CGFloat(levels.count))
-            let maxBarHeight = max(1, size.height - 1)
+            let spacing: CGFloat = size.width < 140 ? 1.1 : 1.25
+            let barWidth = max(1.15, min(2.6, (size.width - spacing * CGFloat(levels.count - 1)) / CGFloat(levels.count)))
+            let step = barWidth + spacing
+            let waveformWidth = CGFloat(levels.count) * barWidth + CGFloat(max(levels.count - 1, 0)) * spacing
+            let leadingInset = max(0, (size.width - waveformWidth) / 2)
+            let centerY = size.height / 2
+            let baselineRect = CGRect(x: 0, y: centerY - 0.5, width: size.width, height: 1)
+
+            context.fill(
+                Path(roundedRect: baselineRect, cornerRadius: 0.5),
+                with: .linearGradient(
+                    Gradient(colors: [
+                        Color.white.opacity(0.02),
+                        Color.white.opacity(0.16),
+                        Color.white.opacity(0.02)
+                    ]),
+                    startPoint: CGPoint(x: 0, y: centerY),
+                    endPoint: CGPoint(x: size.width, y: centerY)
+                )
+            )
+
+            let maxBarHeight = max(1, size.height - 4)
 
             for (index, sample) in levels.enumerated() {
-                let level = CGFloat(sqrt(max(0, min(sample, 1))))
-                let barHeight = max(3, level * maxBarHeight)
-                let x = CGFloat(index) * (barWidth + spacing)
-                let y = size.height - barHeight
+                let clampedSample = max(0, min(sample, 1))
+                let level = CGFloat(pow(clampedSample, 0.42))
+                let barHeight = max(4, level * maxBarHeight)
+                let x = leadingInset + CGFloat(index) * step
+                let y = centerY - barHeight / 2
                 let rect = CGRect(x: x, y: y, width: barWidth, height: barHeight)
                 let barPath = RoundedRectangle(cornerRadius: barWidth / 2, style: .continuous).path(in: rect)
-                let sheenRect = CGRect(x: x, y: y, width: max(1, barWidth * 0.38), height: barHeight)
-                let sheenPath = RoundedRectangle(cornerRadius: barWidth / 2, style: .continuous).path(in: sheenRect)
+                let glowRect = rect.insetBy(dx: -0.6, dy: -1.6)
+                let glowPath = RoundedRectangle(cornerRadius: max(1, glowRect.width / 2), style: .continuous).path(in: glowRect)
+
+                context.fill(glowPath, with: .color(Theme.timelineHandle.opacity(0.10)))
 
                 context.fill(
                     barPath,
                     with: .linearGradient(
                         Gradient(colors: [
-                            Color.white.opacity(0.86),
-                            Theme.timelineHandle.opacity(0.70),
-                            Theme.timelineClipBorder.opacity(0.50)
+                            Color.white.opacity(0.92),
+                            Color.white.opacity(0.72),
+                            Theme.timelineHandle.opacity(0.66),
+                            Theme.timelineClipBorder.opacity(0.46)
                         ]),
                         startPoint: CGPoint(x: rect.midX, y: rect.minY),
                         endPoint: CGPoint(x: rect.midX, y: rect.maxY)
                     )
                 )
-                context.fill(sheenPath, with: .color(Color.white.opacity(0.16)))
             }
         }
     }
@@ -874,7 +897,7 @@ enum TimelineWaveformBarRenderer {
     static func resampledLevels(from samples: [Double], width: CGFloat) -> [Double] {
         guard width > 0, !samples.isEmpty else { return [] }
 
-        let targetCount = max(1, min(samples.count, Int(width / 4.5)))
+        let targetCount = max(1, min(samples.count, Int(width / 2.4)))
         guard targetCount < samples.count else {
             return samples.map { min(max($0, 0), 1) }
         }

@@ -202,7 +202,7 @@ struct TimelineAudioWaveform: Equatable {
 }
 
 enum TimelineAudioWaveformLoader {
-    static let defaultSampleCount = 180
+    static let defaultSampleCount = 720
 
     static func quietSamples(targetCount: Int = defaultSampleCount) -> [Double] {
         TimelineWaveformDownsampler.quietSamples(targetCount: targetCount)
