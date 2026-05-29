@@ -253,7 +253,37 @@ final class VideoPreviewLayoutTests: XCTestCase {
         XCTAssertEqual(rect.height, 40, accuracy: 0.001)
     }
 
-    func testFacecamOverlayLayoutAnchorsInVisiblePreviewFrame() {
+    func testPreviewFullStageZoomTransformKeepsMappedSourceFocusFixed() {
+        let stageSize = CGSize(width: 1000, height: 500)
+        let recordingFrame = CGRect(x: 100, y: 50, width: 800, height: 400)
+        let effect = TimelineZoomEffect(depth: 2, focusX: 0.25, focusY: 0.75)
+        let anchor = PreviewStageLayout.fullStageZoomAnchor(
+            effect: effect,
+            stageSize: stageSize,
+            recordingFrame: recordingFrame,
+            sourceSize: CGSize(width: 1600, height: 800),
+            cropSelection: .fullFrame,
+            inset: 50,
+            insetBalance: .centered
+        )
+        let focus = CGPoint(x: anchor.x * stageSize.width, y: anchor.y * stageSize.height)
+
+        let transform = PreviewStageLayout.previewFullStageZoomTransform(
+            effect: effect,
+            stageSize: stageSize,
+            recordingFrame: recordingFrame,
+            sourceSize: CGSize(width: 1600, height: 800),
+            cropSelection: .fullFrame,
+            inset: 50,
+            insetBalance: .centered
+        )
+        let transformedFocus = focus.applying(transform)
+
+        XCTAssertEqual(transformedFocus.x, focus.x, accuracy: 0.001)
+        XCTAssertEqual(transformedFocus.y, focus.y, accuracy: 0.001)
+    }
+
+    func testFacecamOverlayLayoutAnchorsInFullVideoCanvas() {
         let settings = FacecamSettings(
             enabled: true,
             shape: "circle",
@@ -274,6 +304,32 @@ final class VideoPreviewLayoutTests: XCTestCase {
         XCTAssertEqual(rect.height, 100, accuracy: 0.001)
         XCTAssertEqual(rect.minX, 875, accuracy: 0.001)
         XCTAssertEqual(rect.minY, 375, accuracy: 0.001)
+    }
+
+    func testFacecamOverlayLayoutCanOccupyBackgroundPadding() {
+        let stageSize = CGSize(width: 1000, height: 600)
+        let recordingFrame = PreviewStageLayout.recordingFrameRect(
+            forAspectRatio: PreviewStageLayout.videoAspectRatio,
+            in: stageSize,
+            paddingValue: 50
+        )
+        let settings = FacecamSettings(
+            enabled: true,
+            shape: "circle",
+            size: 20,
+            cornerRadius: 24,
+            borderWidth: 4,
+            borderColor: "#FFFFFF",
+            margin: 5,
+            anchor: FacecamAnchor.bottomRight.rawValue
+        )
+
+        let rect = FacecamOverlayLayout.frame(in: stageSize, settings: settings)
+
+        XCTAssertEqual(rect.width, 120, accuracy: 0.001)
+        XCTAssertEqual(rect.height, 120, accuracy: 0.001)
+        XCTAssertGreaterThan(rect.maxX, recordingFrame.maxX)
+        XCTAssertGreaterThan(rect.maxY, recordingFrame.maxY)
     }
 
     func testFacecamSettingsClampAndResolveAnchor() {

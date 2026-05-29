@@ -221,6 +221,16 @@ struct VideoPreviewPanel: View {
                 in: proxy.size,
                 paddingValue: padding
             )
+            let zoomEffect = timelineEdits.snapshot.activeZoomEffect(at: playback.currentTime)
+            let facecamZoomTransform = PreviewStageLayout.previewFullStageZoomTransform(
+                effect: zoomEffect,
+                stageSize: proxy.size,
+                recordingFrame: recordingFrame,
+                sourceSize: playback.naturalVideoSize,
+                cropSelection: cropSelection,
+                inset: inset,
+                insetBalance: insetBalance
+            )
             ZStack(alignment: .topLeading) {
                 BackgroundFillView(style: background)
                     .frame(width: proxy.size.width, height: proxy.size.height)
@@ -240,9 +250,6 @@ struct VideoPreviewPanel: View {
                         cursorTelemetryURL: cursorTelemetryURL,
                         cursorSettings: cursorSettings,
                         cropSelection: cropSelection,
-                        facecamURL: facecamVideoURL,
-                        facecamOffsetMs: recordingSession?.facecamOffsetMs,
-                        cameraFallbackSettings: resolvedFacecamSettings,
                         sourceSize: playback.naturalVideoSize,
                         letterboxFill: previewLetterboxFill
                     )
@@ -254,6 +261,18 @@ struct VideoPreviewPanel: View {
                     y: 18 * CGFloat(shadow)
                 )
                 .offset(x: recordingFrame.minX, y: recordingFrame.minY)
+
+                if let facecamVideoURL,
+                   let facecamSettings = activeFacecamSettings {
+                    FacecamPlaybackOverlay(
+                        facecamURL: facecamVideoURL,
+                        screenPlayback: playback,
+                        offsetMs: recordingSession?.facecamOffsetMs,
+                        settings: facecamSettings
+                    )
+                    .frame(width: proxy.size.width, height: proxy.size.height)
+                    .transformEffect(facecamZoomTransform)
+                }
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
         }
@@ -491,6 +510,36 @@ enum PreviewStageLayout {
         )
     }
 
+    static func previewFullStageZoomTransform(
+        effect: TimelineZoomEffect?,
+        stageSize: CGSize,
+        recordingFrame: CGRect,
+        sourceSize: CGSize,
+        cropSelection: VideoCropSelection,
+        inset: Double,
+        insetBalance: VideoInsetBalance
+    ) -> CGAffineTransform {
+        guard let effect else { return .identity }
+        let anchor = fullStageZoomAnchor(
+            effect: effect,
+            stageSize: stageSize,
+            recordingFrame: recordingFrame,
+            sourceSize: sourceSize,
+            cropSelection: cropSelection,
+            inset: inset,
+            insetBalance: insetBalance
+        )
+        let normalizedEffect = TimelineZoomEffect(
+            depth: effect.depth,
+            focusX: Double(anchor.x),
+            focusY: Double(anchor.y)
+        )
+        return TimelineZoomCanvasTransform.transform(
+            for: normalizedEffect,
+            in: CGRect(origin: .zero, size: stageSize)
+        )
+    }
+
     static func previewViewportZoomTransform(
         effect: TimelineZoomEffect?,
         viewportSize: CGSize,
@@ -601,9 +650,6 @@ struct PlaybackPreview: View {
     var cursorTelemetryURL: URL?
     var cursorSettings: CursorOverlaySettings = .hidden
     var cropSelection: VideoCropSelection = .fullFrame
-    var facecamURL: URL?
-    var facecamOffsetMs: Int?
-    var cameraFallbackSettings: FacecamSettings?
     var sourceSize: CGSize = .zero
     var letterboxFill: VideoPreviewLetterboxFill = .black
 
@@ -629,12 +675,6 @@ struct PlaybackPreview: View {
                 effect: zoomEffect,
                 sourceDisplaySize: sourceDisplaySize
             )
-            let viewportZoomTransform = PreviewStageLayout.previewViewportZoomTransform(
-                effect: zoomEffect,
-                viewportSize: proxy.size,
-                sourceSize: sourceSize,
-                cropSelection: cropSelection
-            )
 
             ZStack(alignment: .topLeading) {
                 ZStack(alignment: .topLeading) {
@@ -648,17 +688,6 @@ struct PlaybackPreview: View {
                     .frame(width: sourceDisplaySize.width, height: sourceDisplaySize.height)
                     .offset(contentOffset)
                     .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
-
-                if let facecamURL,
-                   let facecamSettings = activeFacecamSettings {
-                    FacecamPlaybackOverlay(
-                        facecamURL: facecamURL,
-                        screenPlayback: playback,
-                        offsetMs: facecamOffsetMs,
-                        settings: facecamSettings
-                    )
-                    .transformEffect(viewportZoomTransform)
-                }
             }
             .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
             .clipped()
@@ -695,14 +724,6 @@ struct PlaybackPreview: View {
                     .shadow(color: .black.opacity(0.45), radius: 8, y: 4)
             }
         }
-    }
-
-    private var activeFacecamSettings: FacecamSettings? {
-        edits.activeCameraSettings(
-            at: playback.currentTime,
-            duration: playback.duration,
-            fallback: cameraFallbackSettings
-        )
     }
 }
 
