@@ -410,18 +410,17 @@ enum TimelineZoomCanvasTransform {
         cursorTrack: CursorTelemetryTrack? = nil
     ) -> TimelineZoomEffect? {
         guard outputTime.isFinite else { return nil }
-        let activeZoom = edits.zoomRegions
+        let active = edits.zoomRegions
             .sorted { $0.span.start < $1.span.start }
-            .last { zoom in
-                let start = editPlan.outputTime(forSourceTime: zoom.span.start) ?? zoom.span.start
-                let end = editPlan.outputTime(forSourceTime: zoom.span.end) ?? zoom.span.end
-                return outputTime >= start && outputTime < end
+            .compactMap { zoom -> (TimelineZoomRegion, TimelineSpan)? in
+                guard let outputSpan = editPlan.outputSpans(forSourceSpan: zoom.span).last(where: { $0.contains(outputTime) }) else {
+                    return nil
+                }
+                return (zoom, outputSpan)
             }
-        guard let zoom = activeZoom else { return nil }
+            .last
+        guard let (zoom, outputSpan) = active else { return nil }
 
-        let start = editPlan.outputTime(forSourceTime: zoom.span.start) ?? zoom.span.start
-        let end = editPlan.outputTime(forSourceTime: zoom.span.end) ?? zoom.span.end
-        let outputSpan = TimelineSpan(start: start, end: end)
         let progress = TimelineZoomAnimator.animationProgress(for: outputSpan, preset: zoom.animationPreset, at: outputTime)
         let depth = 1 + (max(1, zoom.depth) - 1) * progress
         let sourceTime = editPlan.sourceTime(forOutputTime: outputTime) ?? outputTime
@@ -1532,6 +1531,21 @@ struct TimelineExportEditPlan: Equatable {
             return segment.outputStart + (sourceTime - segment.sourceStart) / max(0.05, segment.speed)
         }
         return nil
+    }
+
+    func outputSpans(forSourceSpan sourceSpan: TimelineSpan) -> [TimelineSpan] {
+        guard sourceSpan.duration > 0 else { return [] }
+        return segments.compactMap { segment in
+            let clippedStart = max(sourceSpan.start, segment.sourceStart)
+            let clippedEnd = min(sourceSpan.end, segment.sourceEnd)
+            guard clippedEnd - clippedStart > 0.001 else { return nil }
+
+            let speed = max(0.05, segment.speed)
+            let outputStart = segment.outputStart + (clippedStart - segment.sourceStart) / speed
+            let outputEnd = segment.outputStart + (clippedEnd - segment.sourceStart) / speed
+            guard outputEnd - outputStart > 0.001 else { return nil }
+            return TimelineSpan(start: outputStart, end: outputEnd)
+        }
     }
 
     func sourceTime(forOutputTime outputTime: Double) -> Double? {

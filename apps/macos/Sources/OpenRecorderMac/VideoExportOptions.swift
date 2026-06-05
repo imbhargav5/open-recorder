@@ -358,7 +358,9 @@ enum VideoExportRenderer {
 
         let naturalSize = try await videoTrack.load(.naturalSize)
         let preferredTransform = try await videoTrack.load(.preferredTransform)
-        let duration = try await asset.load(.duration)
+        let assetDuration = try await asset.load(.duration)
+        let videoTrackTimeRange = try await videoTrack.load(.timeRange)
+        let sourceDuration = exportSourceDuration(assetDuration: assetDuration, videoTrackTimeRange: videoTrackTimeRange)
         let frameDuration = try await options.frameRate.frameDuration(for: videoTrack)
         let normalizedSourceSize = normalizedSize(for: naturalSize, preferredTransform: preferredTransform)
         let cropRect = normalizedCropRect(for: options.cropSelection, sourceSize: normalizedSourceSize)
@@ -369,7 +371,7 @@ enum VideoExportRenderer {
 
         let exportAsset = try await makeEditedAsset(
             from: asset,
-            duration: duration,
+            sourceDuration: sourceDuration,
             edits: edits,
             facecamURL: options.facecamVideoURL,
             facecamOffsetMs: options.facecamOffsetMs
@@ -382,6 +384,10 @@ enum VideoExportRenderer {
         exportSession.outputURL = targetURL
         exportSession.outputFileType = options.format.avFileType
         exportSession.shouldOptimizeForNetworkUse = true
+        exportSession.timeRange = CMTimeRange(
+            start: .zero,
+            duration: CMTime(seconds: max(0.001, exportAsset.duration), preferredTimescale: 600)
+        )
         exportSession.videoComposition = makeVideoComposition(
             for: exportAsset.videoTrack ?? videoTrack,
             sourceSize: naturalSize,
@@ -459,14 +465,53 @@ enum VideoExportRenderer {
         var plan: TimelineExportEditPlan
     }
 
+    struct MediaTrackInsertion: Equatable {
+        var sourceRange: CMTimeRange
+        var outputStart: CMTime
+        var scaledDuration: CMTime
+    }
+
+    nonisolated static func mediaInsertion(
+        for segment: TimelineExportEditPlan.Segment,
+        availableSourceRange: CMTimeRange,
+        sourceOffsetSeconds: Double = 0,
+        preferredTimescale: CMTimeScale = 600
+    ) -> MediaTrackInsertion? {
+        let segmentSourceStart = segment.sourceStart - sourceOffsetSeconds
+        let segmentSourceEnd = segment.sourceEnd - sourceOffsetSeconds
+        let availableStart = availableSourceRange.start.seconds
+        let availableEnd = availableSourceRange.end.seconds
+        guard segmentSourceStart.isFinite,
+              segmentSourceEnd.isFinite,
+              availableStart.isFinite,
+              availableEnd.isFinite else {
+            return nil
+        }
+
+        let clippedStart = max(availableStart, segmentSourceStart)
+        let clippedEnd = min(availableEnd, segmentSourceEnd)
+        guard clippedEnd - clippedStart > 0.001 else { return nil }
+
+        let speed = max(0.05, segment.speed)
+        let outputStartSeconds = segment.outputStart + (clippedStart - segmentSourceStart) / speed
+        let outputDurationSeconds = (clippedEnd - clippedStart) / speed
+        return MediaTrackInsertion(
+            sourceRange: CMTimeRange(
+                start: CMTime(seconds: clippedStart, preferredTimescale: preferredTimescale),
+                end: CMTime(seconds: clippedEnd, preferredTimescale: preferredTimescale)
+            ),
+            outputStart: CMTime(seconds: outputStartSeconds, preferredTimescale: preferredTimescale),
+            scaledDuration: CMTime(seconds: outputDurationSeconds, preferredTimescale: preferredTimescale)
+        )
+    }
+
     private static func makeEditedAsset(
         from asset: AVAsset,
-        duration: CMTime,
+        sourceDuration: Double,
         edits: TimelineEditSnapshot,
         facecamURL: URL?,
         facecamOffsetMs: Int?
     ) async throws -> EditedAsset {
-        let sourceDuration = max(0, duration.seconds)
         let plan = TimelineExportEditPlan.build(duration: sourceDuration, edits: edits)
         let facecamAsset = facecamURL.map { AVURLAsset(url: $0) }
         let facecamTracks = try await facecamAsset?.loadTracks(withMediaType: .video) ?? []
@@ -490,17 +535,20 @@ enum VideoExportRenderer {
                 if mediaType == .video, compositionVideoTrack == nil {
                     compositionVideoTrack = compositionTrack
                 }
+                let sourceTrackTimeRange = try await sourceTrack.load(.timeRange)
                 for segment in plan.segments {
-                    let sourceRange = CMTimeRange(
-                        start: CMTime(seconds: segment.sourceStart, preferredTimescale: 600),
-                        end: CMTime(seconds: segment.sourceEnd, preferredTimescale: 600)
-                    )
-                    let outputStart = CMTime(seconds: segment.outputStart, preferredTimescale: 600)
-                    try compositionTrack.insertTimeRange(sourceRange, of: sourceTrack, at: outputStart)
-                    let outputRange = CMTimeRange(start: outputStart, duration: sourceRange.duration)
+                    guard let insertion = mediaInsertion(
+                        for: segment,
+                        availableSourceRange: sourceTrackTimeRange
+                    ) else {
+                        continue
+                    }
+
+                    try compositionTrack.insertTimeRange(insertion.sourceRange, of: sourceTrack, at: insertion.outputStart)
+                    let outputRange = CMTimeRange(start: insertion.outputStart, duration: insertion.sourceRange.duration)
                     compositionTrack.scaleTimeRange(
                         outputRange,
-                        toDuration: CMTime(seconds: segment.outputEnd - segment.outputStart, preferredTimescale: 600)
+                        toDuration: insertion.scaledDuration
                     )
                     compositionTrack.preferredTransform = try await sourceTrack.load(.preferredTransform)
                 }
@@ -510,9 +558,8 @@ enum VideoExportRenderer {
         var compositionFacecamTrack: AVMutableCompositionTrack?
         var facecamPreferredTransform = CGAffineTransform.identity
         var facecamNormalizedSize = CGSize.zero
-        if let facecamAsset,
-           let facecamSourceTrack {
-            let facecamDuration = max(0, (try? await facecamAsset.load(.duration).seconds) ?? 0)
+        if let facecamSourceTrack {
+            let facecamTrackTimeRange = try await facecamSourceTrack.load(.timeRange)
             facecamPreferredTransform = (try? await facecamSourceTrack.load(.preferredTransform)) ?? .identity
             let facecamNaturalSize = (try? await facecamSourceTrack.load(.naturalSize)) ?? .zero
             facecamNormalizedSize = normalizedSize(for: facecamNaturalSize, preferredTransform: facecamPreferredTransform)
@@ -522,24 +569,19 @@ enum VideoExportRenderer {
             facecamTrack?.preferredTransform = facecamPreferredTransform
 
             for segment in plan.segments {
-                let sourceFaceStart = segment.sourceStart - offsetSeconds
-                let sourceFaceEnd = segment.sourceEnd - offsetSeconds
-                let clippedStart = max(0, sourceFaceStart)
-                let clippedEnd = min(facecamDuration, sourceFaceEnd)
-                guard clippedEnd - clippedStart > 0.001 else { continue }
+                guard let insertion = mediaInsertion(
+                    for: segment,
+                    availableSourceRange: facecamTrackTimeRange,
+                    sourceOffsetSeconds: offsetSeconds
+                ) else {
+                    continue
+                }
 
-                let speed = max(0.05, segment.speed)
-                let outputStartSeconds = segment.outputStart + (clippedStart - sourceFaceStart) / speed
-                let sourceRange = CMTimeRange(
-                    start: CMTime(seconds: clippedStart, preferredTimescale: 600),
-                    end: CMTime(seconds: clippedEnd, preferredTimescale: 600)
-                )
-                let outputStart = CMTime(seconds: outputStartSeconds, preferredTimescale: 600)
-                try facecamTrack?.insertTimeRange(sourceRange, of: facecamSourceTrack, at: outputStart)
-                let outputRange = CMTimeRange(start: outputStart, duration: sourceRange.duration)
+                try facecamTrack?.insertTimeRange(insertion.sourceRange, of: facecamSourceTrack, at: insertion.outputStart)
+                let outputRange = CMTimeRange(start: insertion.outputStart, duration: insertion.sourceRange.duration)
                 facecamTrack?.scaleTimeRange(
                     outputRange,
-                    toDuration: CMTime(seconds: (clippedEnd - clippedStart) / speed, preferredTimescale: 600)
+                    toDuration: insertion.scaledDuration
                 )
             }
         }
@@ -577,6 +619,14 @@ enum VideoExportRenderer {
             height: sourceHeight,
             aspectRatio: aspectRatio
         )
+    }
+
+    nonisolated static func exportSourceDuration(assetDuration: CMTime, videoTrackTimeRange: CMTimeRange) -> Double {
+        let assetSeconds = assetDuration.seconds
+        let videoEndSeconds = videoTrackTimeRange.end.seconds
+        let candidates = [assetSeconds, videoEndSeconds].filter { $0.isFinite && $0 > 0 }
+        guard let shortest = candidates.min() else { return 0 }
+        return shortest
     }
 
     private static func outputSize(forAspectRatio aspectRatio: CGFloat, targetShortEdge: CGFloat) -> CGSize {
@@ -764,30 +814,30 @@ enum VideoExportRenderer {
         contentLayer.addSublayer(videoLayer)
 
         for annotation in edits.annotationRegions {
-            let textLayer = CATextLayer()
-            textLayer.string = annotation.text
-            textLayer.fontSize = annotation.fontSize
-            textLayer.alignmentMode = .center
-            textLayer.foregroundColor = NSColor.white.cgColor
-            textLayer.backgroundColor = NSColor.black.withAlphaComponent(0.62).cgColor
-            textLayer.cornerRadius = 10
-            textLayer.masksToBounds = true
-            let width = min(outputSize.width * 0.72, max(180, CGFloat(annotation.text.count * 18)))
-            let height = annotation.fontSize + 24
-            textLayer.frame = CGRect(x: outputSize.width * annotation.x - width / 2, y: outputSize.height * (1 - annotation.y) - height / 2, width: width, height: height)
-            textLayer.opacity = 0
+            for outputSpan in editPlan.outputSpans(forSourceSpan: annotation.span) {
+                let textLayer = CATextLayer()
+                textLayer.string = annotation.text
+                textLayer.fontSize = annotation.fontSize
+                textLayer.alignmentMode = .center
+                textLayer.foregroundColor = NSColor.white.cgColor
+                textLayer.backgroundColor = NSColor.black.withAlphaComponent(0.62).cgColor
+                textLayer.cornerRadius = 10
+                textLayer.masksToBounds = true
+                let width = min(outputSize.width * 0.72, max(180, CGFloat(annotation.text.count * 18)))
+                let height = annotation.fontSize + 24
+                textLayer.frame = CGRect(x: outputSize.width * annotation.x - width / 2, y: outputSize.height * (1 - annotation.y) - height / 2, width: width, height: height)
+                textLayer.opacity = 0
 
-            let start = editPlan.outputTime(forSourceTime: annotation.span.start) ?? annotation.span.start
-            let end = editPlan.outputTime(forSourceTime: annotation.span.end) ?? annotation.span.end
-            let animation = CAKeyframeAnimation(keyPath: "opacity")
-            animation.values = [0, 1, 1, 0]
-            animation.keyTimes = [0, 0.08, 0.92, 1]
-            animation.beginTime = AVCoreAnimationBeginTimeAtZero + start
-            animation.duration = max(0.05, end - start)
-            animation.isRemovedOnCompletion = false
-            animation.fillMode = .both
-            textLayer.add(animation, forKey: "visible")
-            contentLayer.addSublayer(textLayer)
+                let animation = CAKeyframeAnimation(keyPath: "opacity")
+                animation.values = [0, 1, 1, 0]
+                animation.keyTimes = [0, 0.08, 0.92, 1]
+                animation.beginTime = AVCoreAnimationBeginTimeAtZero + outputSpan.start
+                animation.duration = max(0.05, outputSpan.duration)
+                animation.isRemovedOnCompletion = false
+                animation.fillMode = .both
+                textLayer.add(animation, forKey: "visible")
+                contentLayer.addSublayer(textLayer)
+            }
         }
 
         if let cursorTrack, cursorSettings.clamped.isVisible {

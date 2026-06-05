@@ -7,6 +7,7 @@ struct ProjectAutosaveSnapshot: Equatable {
     var screenshotPath: String?
     var sourceName: String?
     var editorState: ProjectEditorState
+    var recordingSession: RecordingSession?
 }
 
 enum ProjectAutosaveStatus: Equatable {
@@ -22,6 +23,7 @@ struct ProjectUpdateRequest: Encodable {
     var screenshotPath: String?
     var sourceName: String?
     var editorState: ProjectEditorState
+    var recordingSession: RecordingSession?
 
     init(snapshot: ProjectAutosaveSnapshot) {
         path = snapshot.projectPath
@@ -30,6 +32,7 @@ struct ProjectUpdateRequest: Encodable {
         screenshotPath = snapshot.screenshotPath
         sourceName = snapshot.sourceName
         editorState = snapshot.editorState
+        recordingSession = snapshot.recordingSession
     }
 }
 

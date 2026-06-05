@@ -41,6 +41,30 @@ struct CursorTelemetryPayload: Codable, Equatable {
         self.clicks = clicks
     }
 
+    func offsetTimestamps(byMilliseconds offset: Int) -> CursorTelemetryPayload {
+        CursorTelemetryPayload(
+            width: width,
+            height: height,
+            samples: samples.map {
+                CursorTelemetrySample(
+                    x: $0.x,
+                    y: $0.y,
+                    timestamp: $0.timestamp + offset,
+                    cursorType: $0.cursorType
+                )
+            },
+            clicks: clicks.map {
+                CursorTelemetryClick(
+                    x: $0.x,
+                    y: $0.y,
+                    timestamp: $0.timestamp + offset,
+                    button: $0.button,
+                    clickCount: $0.clickCount
+                )
+            }
+        )
+    }
+
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         width = try container.decode(Int.self, forKey: .width)
@@ -214,6 +238,29 @@ final class CursorTelemetryRecorder {
                 self?.sample()
             }
         }
+    }
+
+    func alignStart(to mediaStartedAt: Date) {
+        guard let previousStartedAt = startedAt else { return }
+        let offset = Int(previousStartedAt.timeIntervalSince(mediaStartedAt) * 1000)
+        samples = samples.map {
+            CursorTelemetrySample(
+                x: $0.x,
+                y: $0.y,
+                timestamp: $0.timestamp + offset,
+                cursorType: $0.cursorType
+            )
+        }
+        clicks = clicks.map {
+            CursorTelemetryClick(
+                x: $0.x,
+                y: $0.y,
+                timestamp: $0.timestamp + offset,
+                button: $0.button,
+                clickCount: $0.clickCount
+            )
+        }
+        startedAt = mediaStartedAt
     }
 
     @discardableResult

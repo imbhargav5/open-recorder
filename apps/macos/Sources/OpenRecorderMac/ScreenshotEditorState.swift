@@ -67,7 +67,8 @@ struct ScreenshotEditorMachineState: Equatable {
             recordingPath: nil,
             screenshotPath: screenshotURL.path,
             sourceName: nil,
-            editorState: ProjectEditorState(screenshot: screenshot)
+            editorState: ProjectEditorState(screenshot: screenshot),
+            recordingSession: nil
         )
     }
 }

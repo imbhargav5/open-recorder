@@ -142,6 +142,7 @@ struct ProjectDocument: Codable {
     var createdAt: String
     var updatedAt: String
     var editorState: ProjectEditorState?
+    var recordingSession: RecordingSession?
 
     var mediaKind: EditorMediaKind? {
         if screenshotPath != nil {

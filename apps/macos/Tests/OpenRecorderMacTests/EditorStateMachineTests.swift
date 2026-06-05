@@ -50,7 +50,8 @@ final class VideoEditorStateMachineTests: XCTestCase {
                 recordingPath: videoURL.path,
                 screenshotPath: nil,
                 sourceName: "Display 1",
-                editorState: ProjectEditorState(timelineEdits: timeline, video: initialVideo)
+                editorState: ProjectEditorState(timelineEdits: timeline, video: initialVideo),
+                recordingSession: context.recordingSession
             ))
         ])
 
@@ -164,7 +165,8 @@ final class VideoEditorStateMachineTests: XCTestCase {
             recordingPath: recordingURL.path,
             screenshotPath: nil,
             sourceName: nil,
-            editorState: ProjectEditorState(timelineEdits: edits, video: state.video)
+            editorState: ProjectEditorState(timelineEdits: edits, video: state.video),
+            recordingSession: nil
         )
         _ = state.applying(.exportRequested)
 
@@ -202,7 +204,8 @@ final class VideoEditorStateMachineTests: XCTestCase {
             recordingPath: "/tmp/autosave.mp4",
             screenshotPath: nil,
             sourceName: nil,
-            editorState: ProjectEditorState(video: .default)
+            editorState: ProjectEditorState(video: .default),
+            recordingSession: nil
         )
 
         XCTAssertEqual(state.applying(.autosaveSnapshotChanged(snapshot)), [.scheduleAutosave(snapshot)])
@@ -448,7 +451,8 @@ final class ScreenshotEditorStateMachineTests: XCTestCase {
                 recordingPath: nil,
                 screenshotPath: screenshotURL.path,
                 sourceName: nil,
-                editorState: ProjectEditorState(screenshot: initialState)
+                editorState: ProjectEditorState(screenshot: initialState),
+                recordingSession: nil
             ))
         ])
         XCTAssertTrue(state.applying(.sessionChanged(context)).isEmpty)
@@ -495,7 +499,8 @@ final class ScreenshotEditorStateMachineTests: XCTestCase {
             recordingPath: nil,
             screenshotPath: "/tmp/shot.png",
             sourceName: nil,
-            editorState: ProjectEditorState(screenshot: .default)
+            editorState: ProjectEditorState(screenshot: .default),
+            recordingSession: nil
         )
         let exportURL = URL(fileURLWithPath: "/tmp/exported-shot.png")
 
