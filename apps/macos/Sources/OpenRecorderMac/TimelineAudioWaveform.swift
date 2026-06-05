@@ -270,10 +270,15 @@ enum TimelineAudioWaveformLoader {
             }
 
             let frameCount = CMSampleBufferGetNumSamples(sampleBuffer)
+            let bufferFrameOffset = frameOffsetForSampleBuffer(
+                sampleBuffer,
+                sampleRate: sampleRate,
+                fallback: frameOffset
+            )
             try addSampleBuffer(
                 sampleBuffer,
                 channelCount: channelCount,
-                frameOffset: frameOffset,
+                frameOffset: bufferFrameOffset,
                 totalFrames: totalFrames,
                 to: &accumulator
             )
@@ -297,6 +302,26 @@ enum TimelineAudioWaveformLoader {
         return AudioTrackFormat(
             channelCount: streamDescription.pointee.mChannelsPerFrame,
             sampleRate: streamDescription.pointee.mSampleRate
+        )
+    }
+
+    static func frameOffsetForPresentationTime(_ time: CMTime, sampleRate: Double, fallback: Int64) -> Int64 {
+        let seconds = time.seconds
+        guard seconds.isFinite, sampleRate.isFinite, sampleRate > 0 else {
+            return fallback
+        }
+        return max(0, Int64((seconds * sampleRate).rounded()))
+    }
+
+    private static func frameOffsetForSampleBuffer(
+        _ sampleBuffer: CMSampleBuffer,
+        sampleRate: Double,
+        fallback: Int64
+    ) -> Int64 {
+        frameOffsetForPresentationTime(
+            CMSampleBufferGetPresentationTimeStamp(sampleBuffer),
+            sampleRate: sampleRate,
+            fallback: fallback
         )
     }
 

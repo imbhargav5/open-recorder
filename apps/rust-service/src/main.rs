@@ -69,6 +69,8 @@ struct ProjectDocument {
     updated_at: String,
     #[serde(default)]
     editor_state: Value,
+    #[serde(default)]
+    recording_session: Option<Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -203,6 +205,7 @@ fn handle_method(method: &str, params: Value) -> Result<Value, String> {
                 .get("editorState")
                 .cloned()
                 .unwrap_or_else(|| json!({ "timelineEdits": { "zoomRegions": [], "trimRegions": [], "annotationRegions": [], "clipSplitTimes": [], "clipSpeeds": {} } }));
+            let recording_session = params.get("recordingSession").cloned();
             let summary = save_project_document(
                 &paths,
                 &title,
@@ -210,6 +213,7 @@ fn handle_method(method: &str, params: Value) -> Result<Value, String> {
                 None,
                 source_name,
                 editor_state,
+                recording_session,
             )?;
             Ok(serde_json::to_value(summary).map_err(|err| err.to_string())?)
         }
@@ -238,6 +242,7 @@ fn handle_method(method: &str, params: Value) -> Result<Value, String> {
                 Some(screenshot_path.clone()),
                 source_name,
                 editor_state,
+                None,
             )?;
             remember_screenshot(&paths, &screenshot_path)?;
             Ok(serde_json::to_value(summary).map_err(|err| err.to_string())?)
@@ -252,6 +257,7 @@ fn handle_method(method: &str, params: Value) -> Result<Value, String> {
                 .get("editorState")
                 .cloned()
                 .unwrap_or_else(|| json!({ "timeline": [], "annotations": [] }));
+            let recording_session = params.get("recordingSession").cloned();
             let summary = save_project_document(
                 &paths,
                 &title,
@@ -259,6 +265,7 @@ fn handle_method(method: &str, params: Value) -> Result<Value, String> {
                 screenshot_path,
                 source_name,
                 editor_state,
+                recording_session,
             )?;
             Ok(serde_json::to_value(summary).map_err(|err| err.to_string())?)
         }
@@ -267,6 +274,7 @@ fn handle_method(method: &str, params: Value) -> Result<Value, String> {
             let path = string_param(&params, "path")
                 .ok_or_else(|| "updateProject requires path".to_string())?;
             let editor_state = params.get("editorState").cloned();
+            let recording_session = params.get("recordingSession").cloned();
             let summary = update_project_document(
                 &paths,
                 Path::new(&path),
@@ -275,6 +283,7 @@ fn handle_method(method: &str, params: Value) -> Result<Value, String> {
                 string_param(&params, "screenshotPath"),
                 string_param(&params, "sourceName"),
                 editor_state,
+                recording_session,
             )?;
             Ok(serde_json::to_value(summary).map_err(|err| err.to_string())?)
         }
@@ -384,6 +393,7 @@ fn save_project_document(
     screenshot_path: Option<String>,
     source_name: Option<String>,
     editor_state: Value,
+    recording_session: Option<Value>,
 ) -> Result<ProjectSummary, String> {
     let now = timestamp_string();
     let id = format!("project-{}", unix_timestamp_millis());
@@ -402,6 +412,7 @@ fn save_project_document(
         created_at: now.clone(),
         updated_at: now.clone(),
         editor_state,
+        recording_session,
     };
 
     write_json_pretty(
@@ -438,6 +449,7 @@ fn update_project_document(
     screenshot_path: Option<String>,
     source_name: Option<String>,
     editor_state: Option<Value>,
+    recording_session: Option<Value>,
 ) -> Result<ProjectSummary, String> {
     let data = fs::read_to_string(project_path).map_err(|err| err.to_string())?;
     let existing_document: ProjectDocument =
@@ -450,6 +462,7 @@ fn update_project_document(
     let screenshot_path = screenshot_path.or_else(|| existing_document.screenshot_path.clone());
     let source_name = source_name.or_else(|| existing_document.source_name.clone());
     let editor_state = editor_state.unwrap_or_else(|| existing_document.editor_state.clone());
+    let recording_session = recording_session.or(existing_document.recording_session);
 
     let document = ProjectDocument {
         schema_version: existing_document.schema_version.max(2),
@@ -460,6 +473,7 @@ fn update_project_document(
         created_at: existing_document.created_at.clone(),
         updated_at: now.clone(),
         editor_state,
+        recording_session,
     };
 
     write_json_pretty(
@@ -739,6 +753,7 @@ mod tests {
             None,
             Some("Display 1".to_string()),
             Some(json!({ "timelineEdits": { "clipSplitTimes": [1.25] } })),
+            None,
         )
         .unwrap();
 
@@ -790,6 +805,7 @@ mod tests {
                 None,
                 Some("Display 1".to_string()),
                 Some(json!({ "timelineEdits": { "clipSplitTimes": [index] } })),
+                None,
             )
             .unwrap();
         }
@@ -844,6 +860,7 @@ mod tests {
             Some(screenshot_path.clone()),
             Some("Display 1".to_string()),
             json!({ "screenshot": { "padding": 72 } }),
+            None,
         )
         .unwrap();
         remember_screenshot(&paths, &screenshot_path).unwrap();
@@ -856,6 +873,56 @@ mod tests {
         assert_eq!(saved.screenshot_path, Some(screenshot_path.clone()));
         assert_eq!(saved.editor_state["screenshot"]["padding"], 72);
         assert_eq!(recent[0].path, screenshot_path);
+    }
+
+    #[test]
+    fn saves_and_preserves_recording_session_metadata() {
+        let paths = test_paths("recording-session");
+        paths.ensure().unwrap();
+        let recording_path = paths
+            .recordings_dir
+            .join("demo.mp4")
+            .to_string_lossy()
+            .to_string();
+        let session = json!({
+            "screenVideoPath": recording_path,
+            "facecamVideoPath": "/tmp/demo.facecam.mov",
+            "facecamOffsetMs": -375,
+            "sourceName": "Display 1",
+            "showCursorOverlay": true,
+            "cursorTelemetryPath": "/tmp/demo.cursor.json"
+        });
+
+        let summary = save_project_document(
+            &paths,
+            "Demo",
+            Some(recording_path.clone()),
+            None,
+            Some("Display 1".to_string()),
+            json!({ "timelineEdits": { "clipSplitTimes": [] } }),
+            Some(session.clone()),
+        )
+        .unwrap();
+
+        let updated = update_project_document(
+            &paths,
+            Path::new(&summary.path),
+            Some("Demo Edited".to_string()),
+            Some(recording_path),
+            None,
+            Some("Display 1".to_string()),
+            Some(json!({ "timelineEdits": { "clipSplitTimes": [1.5] } })),
+            None,
+        )
+        .unwrap();
+
+        let saved: ProjectDocument =
+            serde_json::from_str(&fs::read_to_string(&updated.path).unwrap()).unwrap();
+        assert_eq!(saved.recording_session, Some(session));
+        assert_eq!(
+            saved.editor_state["timelineEdits"]["clipSplitTimes"][0],
+            1.5
+        );
     }
 
     #[test]
@@ -890,6 +957,7 @@ mod tests {
             Some(screenshot_path.clone()),
             Some("Display 1".to_string()),
             Some(json!({ "screenshot": { "padding": 96 } })),
+            None,
         )
         .unwrap();
 

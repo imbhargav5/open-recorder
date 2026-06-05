@@ -119,7 +119,8 @@ struct VideoEditorState: Equatable {
             recordingPath: videoURL.path,
             screenshotPath: nil,
             sourceName: recordingSession?.sourceName,
-            editorState: ProjectEditorState(timelineEdits: timelineEdits, video: video)
+            editorState: ProjectEditorState(timelineEdits: timelineEdits, video: video),
+            recordingSession: recordingSession
         )
     }
 }

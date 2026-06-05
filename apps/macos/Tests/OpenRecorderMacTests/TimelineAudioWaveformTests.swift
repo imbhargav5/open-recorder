@@ -1,3 +1,4 @@
+import AVFoundation
 import XCTest
 @testable import OpenRecorderMac
 
@@ -81,6 +82,26 @@ final class TimelineAudioWaveformTests: XCTestCase {
         )
 
         XCTAssertEqual(samples.count, 12)
+    }
+
+    func testWaveformFrameOffsetUsesPresentationTimestamp() {
+        let offset = TimelineAudioWaveformLoader.frameOffsetForPresentationTime(
+            CMTime(seconds: 2.5, preferredTimescale: 600),
+            sampleRate: 48_000,
+            fallback: 12
+        )
+
+        XCTAssertEqual(offset, 120_000)
+    }
+
+    func testWaveformFrameOffsetFallsBackForInvalidPresentationTimestamp() {
+        let offset = TimelineAudioWaveformLoader.frameOffsetForPresentationTime(
+            CMTime.invalid,
+            sampleRate: 48_000,
+            fallback: 12
+        )
+
+        XCTAssertEqual(offset, 12)
     }
 
     func testShortTimelineTicksUseSecondLabels() {
@@ -269,6 +290,45 @@ final class TimelineEditingPlanTests: XCTestCase {
         XCTAssertEqual(plan.outputDuration, 5, accuracy: 0.001)
         XCTAssertEqual(plan.segments.map(\.sourceStart), [0, 5])
         XCTAssertEqual(plan.segments.map(\.sourceEnd), [2, 8])
+    }
+
+    func testExportPlanMapsSourceSpanToEditedOutputSpans() {
+        let edits = TimelineEditSnapshot(
+            trimRegions: [TimelineTrimRegion(span: TimelineSpan(start: 2, end: 3))],
+            clipSplitTimes: [4, 6],
+            clipSpeeds: [1: 2]
+        )
+        let plan = TimelineExportEditPlan.build(duration: 8, edits: edits)
+
+        let spans = plan.outputSpans(forSourceSpan: TimelineSpan(start: 1, end: 6))
+
+        XCTAssertEqual(spans.count, 3)
+        XCTAssertEqual(spans[0].start, 1, accuracy: 0.001)
+        XCTAssertEqual(spans[0].end, 2, accuracy: 0.001)
+        XCTAssertEqual(spans[1].start, 2, accuracy: 0.001)
+        XCTAssertEqual(spans[1].end, 3, accuracy: 0.001)
+        XCTAssertEqual(spans[2].start, 3, accuracy: 0.001)
+        XCTAssertEqual(spans[2].end, 4, accuracy: 0.001)
+    }
+
+    func testExportPlanDropsFullyTrimmedSourceSpan() {
+        let edits = TimelineEditSnapshot(
+            trimRegions: [TimelineTrimRegion(span: TimelineSpan(start: 2, end: 5))]
+        )
+        let plan = TimelineExportEditPlan.build(duration: 8, edits: edits)
+
+        XCTAssertTrue(plan.outputSpans(forSourceSpan: TimelineSpan(start: 3, end: 4)).isEmpty)
+    }
+
+    func testExportZoomEffectIgnoresFullyTrimmedRegion() {
+        let zoom = TimelineZoomRegion(span: TimelineSpan(start: 3, end: 4), depth: 2)
+        let edits = TimelineEditSnapshot(
+            zoomRegions: [zoom],
+            trimRegions: [TimelineTrimRegion(span: TimelineSpan(start: 2, end: 5))]
+        )
+        let plan = TimelineExportEditPlan.build(duration: 8, edits: edits)
+
+        XCTAssertNil(TimelineZoomCanvasTransform.activeEffect(edits: edits, editPlan: plan, outputTime: 2.5))
     }
 
     @MainActor

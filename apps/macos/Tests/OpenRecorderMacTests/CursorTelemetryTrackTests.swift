@@ -3,6 +3,26 @@ import XCTest
 @testable import OpenRecorderMac
 
 final class CursorTelemetryTrackTests: XCTestCase {
+    func testPayloadOffsetTimestampsShiftsSamplesAndClicks() {
+        let payload = CursorTelemetryPayload(
+            width: 100,
+            height: 80,
+            samples: [
+                CursorTelemetrySample(x: 10, y: 20, timestamp: 100, cursorType: "arrow"),
+                CursorTelemetrySample(x: 20, y: 30, timestamp: 300, cursorType: "beam")
+            ],
+            clicks: [
+                CursorTelemetryClick(x: 10, y: 20, timestamp: 150, button: "left", clickCount: 1)
+            ]
+        )
+
+        let shifted = payload.offsetTimestamps(byMilliseconds: 250)
+
+        XCTAssertEqual(shifted.samples.map(\.timestamp), [350, 550])
+        XCTAssertEqual(shifted.samples.map(\.cursorType), ["arrow", "beam"])
+        XCTAssertEqual(shifted.clicks.map(\.timestamp), [400])
+    }
+
     func testCursorTrackInterpolatesBetweenSamples() {
         let track = CursorTelemetryTrack(payload: CursorTelemetryPayload(
             width: 100,

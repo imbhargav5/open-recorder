@@ -881,6 +881,7 @@ final class AppModel: ObservableObject {
 
             cursorTelemetryRecorder.start(for: selectedSource)
             let screenStartedAt = try await startRecordingCapture(selectedSource, outputURL, options)
+            cursorTelemetryRecorder.alignStart(to: screenStartedAt)
             activeScreenStartedAt = screenStartedAt
 
             currentVideoURL = outputURL
@@ -1296,6 +1297,10 @@ final class AppModel: ObservableObject {
     }
 
     private func recordingSession(for document: ProjectDocument, recordingURL: URL) -> RecordingSession {
+        if let recordingSession = document.recordingSession {
+            return recordingSession
+        }
+
         let facecamURL = facecamOutputURL(for: recordingURL)
         let existingFacecamURL = FileManager.default.fileExists(atPath: facecamURL.path) ? facecamURL : nil
         let telemetryURL = CursorTelemetryRecorder.telemetryURL(for: recordingURL)

@@ -88,6 +88,41 @@ final class ProjectEditorStateCodableTests: XCTestCase {
 
         XCTAssertEqual(document.editorState?.timelineEdits.clipSplitTimes, [1.5])
         XCTAssertNil(document.editorState?.video)
+        XCTAssertNil(document.recordingSession)
+    }
+
+    func testProjectDocumentRoundTripsRecordingSessionTimingMetadata() throws {
+        let session = makeProjectRecordingSession()
+        let document = ProjectDocument(
+            schemaVersion: 2,
+            title: "Demo",
+            recordingPath: session.screenVideoPath,
+            screenshotPath: nil,
+            sourceName: "Display 1",
+            createdAt: "100",
+            updatedAt: "200",
+            editorState: ProjectEditorState(timelineEdits: .empty, video: .default),
+            recordingSession: session
+        )
+
+        let data = try JSONEncoder().encode(document)
+        let decoded = try JSONDecoder().decode(ProjectDocument.self, from: data)
+
+        XCTAssertEqual(decoded.recordingSession, session)
+        XCTAssertEqual(decoded.recordingSession?.facecamOffsetMs, -375)
+        XCTAssertEqual(decoded.recordingSession?.cursorTelemetryPath, "/tmp/demo.cursor.json")
+    }
+
+    func testProjectUpdateRequestEncodesRecordingSession() throws {
+        let session = makeProjectRecordingSession()
+        let snapshot = makeAutosaveSnapshot(title: "Demo", splitTime: 1.5, recordingSession: session)
+
+        let data = try JSONEncoder().encode(ProjectUpdateRequest(snapshot: snapshot))
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let encodedSession = try XCTUnwrap(json["recordingSession"] as? [String: Any])
+
+        XCTAssertEqual(encodedSession["facecamOffsetMs"] as? Int, -375)
+        XCTAssertEqual(encodedSession["cursorTelemetryPath"] as? String, "/tmp/demo.cursor.json")
     }
 
     func testProjectEditorStateRoundTripsVideoState() throws {
@@ -155,7 +190,11 @@ final class ProjectEditorStateCodableTests: XCTestCase {
     }
 }
 
-private func makeAutosaveSnapshot(title: String, splitTime: Double) -> ProjectAutosaveSnapshot {
+private func makeAutosaveSnapshot(
+    title: String,
+    splitTime: Double,
+    recordingSession: RecordingSession? = nil
+) -> ProjectAutosaveSnapshot {
     var timeline = TimelineEditSnapshot.empty
     timeline.clipSplitTimes = [splitTime]
     return ProjectAutosaveSnapshot(
@@ -164,7 +203,20 @@ private func makeAutosaveSnapshot(title: String, splitTime: Double) -> ProjectAu
         recordingPath: "/tmp/\(title).mp4",
         screenshotPath: nil,
         sourceName: "Display 1",
-        editorState: ProjectEditorState(timelineEdits: timeline, video: .default)
+        editorState: ProjectEditorState(timelineEdits: timeline, video: .default),
+        recordingSession: recordingSession
+    )
+}
+
+private func makeProjectRecordingSession() -> RecordingSession {
+    RecordingSession(
+        screenVideoPath: "/tmp/demo.mp4",
+        facecamVideoPath: "/tmp/demo.facecam.mov",
+        facecamOffsetMs: -375,
+        facecamSettings: defaultFacecamSettings(enabled: true),
+        sourceName: "Display 1",
+        showCursorOverlay: true,
+        cursorTelemetryPath: "/tmp/demo.cursor.json"
     )
 }
 
