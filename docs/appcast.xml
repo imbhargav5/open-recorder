@@ -256,5 +256,28 @@
 ]]></description>
             <enclosure url="https://github.com/imbhargav5/open-recorder/releases/download/v0.2.29/open-recorder-macos.zip" sparkle:edSignature="0V30QMGT8skevw83FTGokJhoC4eVX2MHlEBA8eoNlNJ7GITAmu7/9VQWohn2Ca+LOezJB8rkRtYX1ceCTCobCg==" length="40845012" type="application/octet-stream"/>
         </item>
+        <item>
+            <title>Version 0.2.30</title>
+            <pubDate>Sat, 06 Jun 2026 06:45:27 GMT</pubDate>
+            <sparkle:version>0.2.30</sparkle:version>
+            <sparkle:shortVersionString>0.2.30</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+## Commits since v0.2.29
+
+- 1e1a8ac Merge pull request #345 from imbhargav5/codex/fix-export-timing-sync
+- ba89c47 Fix export timing sync
+- 06a2b10 Merge pull request #342 from imbhargav5/codex/update-dependencies-20260603
+- 1374141 Update landing dependencies
+- 1b08b63 Improve auto zoom presets
+- a1dafc0 Add camera margin control
+- 1f5b4a4 Position facecam relative to full video canvas
+- 106774f Improve timeline waveform rendering
+- 4b0f966 Merge pull request #340 from imbhargav5/codex/remove-hud-shadow
+- 413c6cb Remove HUD surface shadow
+- 702de1c Update appcast for v0.2.29
+]]></description>
+            <enclosure url="https://github.com/imbhargav5/open-recorder/releases/download/v0.2.30/open-recorder-macos.zip" sparkle:edSignature="D9QTmJ+8f67K0+Jki3U2aUt+/HugF5y1dj3pew5vaIArZ/CaAEqHM4HL3Be6n9fFgy7lHJBOXOXV1ADvqs86Dw==" length="41103026" type="application/octet-stream"/>
+        </item>
     </channel>
 </rss>
