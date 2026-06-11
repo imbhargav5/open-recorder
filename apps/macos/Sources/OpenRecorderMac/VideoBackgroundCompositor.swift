@@ -405,7 +405,45 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
             composed = facecam.composited(over: composed)
         }
 
+        // Apply zoom transform for the non-passthrough compositor path.
+        // AVVideoCompositionCoreAnimationTool (animationTool) cannot be combined
+        // with a customVideoCompositorClass, so zoom must be applied here directly.
+        composed = applyZoomTransform(
+            to: composed,
+            renderRect: renderRect,
+            instruction: instruction,
+            compositionTime: compositionTime
+        )
+
         return composed.cropped(to: renderRect)
+    }
+
+    private func applyZoomTransform(
+        to image: CIImage,
+        renderRect: CGRect,
+        instruction: VideoBackgroundCompositionInstruction,
+        compositionTime: Double
+    ) -> CIImage {
+        guard instruction.edits.zoomRegions.isEmpty == false else { return image }
+        let effect = TimelineZoomCanvasTransform.activeEffect(
+            edits: instruction.edits,
+            editPlan: instruction.editPlan,
+            outputTime: compositionTime,
+            cursorTrack: instruction.cursorTrack
+        )
+        guard let effect else { return image }
+        let depth = CGFloat(max(1, effect.depth))
+        guard depth > 1 else { return image }
+
+        // Compute focus point in CIImage coordinate space (Y-up, origin at bottom-left)
+        let focusX = renderRect.minX + renderRect.width * CGFloat(effect.focusX)
+        let focusY = renderRect.minY + renderRect.height * CGFloat(1 - effect.focusY)
+
+        let zoomTransform = CGAffineTransform(translationX: -focusX, y: -focusY)
+            .concatenating(CGAffineTransform(scaleX: depth, y: depth))
+            .concatenating(CGAffineTransform(translationX: focusX, y: focusY))
+
+        return image.transformed(by: zoomTransform)
     }
 
     private func makeFacecamLayer(
