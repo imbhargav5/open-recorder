@@ -1,6 +1,6 @@
 {
-  "tagName": "v0.2.30",
-  "releaseName": "Open Recorder v0.2.30",
-  "releaseNotes": "## Commits since v0.2.29\n\n- 1e1a8ac Merge pull request #345 from imbhargav5/codex/fix-export-timing-sync\n- ba89c47 Fix export timing sync\n- 06a2b10 Merge pull request #342 from imbhargav5/codex/update-dependencies-20260603\n- 1374141 Update landing dependencies\n- 1b08b63 Improve auto zoom presets\n- a1dafc0 Add camera margin control\n- 1f5b4a4 Position facecam relative to full video canvas\n- 106774f Improve timeline waveform rendering\n- 4b0f966 Merge pull request #340 from imbhargav5/codex/remove-hud-shadow\n- 413c6cb Remove HUD surface shadow\n- 702de1c Update appcast for v0.2.29",
+  "tagName": "v0.2.31",
+  "releaseName": "Open Recorder v0.2.31",
+  "releaseNotes": "## Commits since v0.2.30\n\n- febe53d Merge pull request #350 from iDankest/main\n- 6b43ec3 fix: zoom effects lost on export and abrupt zoom transitions\n- 272215e Update appcast for v0.2.30",
   "makeLatest": true
 }
