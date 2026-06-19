@@ -1365,15 +1365,8 @@ final class AppModel: ObservableObject {
 
     private func suggestedVideoExportFileName(for sourceURL: URL, options: VideoExportOptions) -> String {
         let baseName = sourceURL.deletingPathExtension().lastPathComponent
-        let resolutionSuffix: String
-        if options.resolution == .custom, let customOutputSize = options.customOutputSize {
-            resolutionSuffix = "\(Int(customOutputSize.width.rounded()))x\(Int(customOutputSize.height.rounded()))"
-        } else {
-            resolutionSuffix = options.resolution.fileSuffix
-        }
         let cropSuffix = options.cropSelection == nil ? "" : "-crop"
-        let suffix = "\(resolutionSuffix)\(cropSuffix)-\(options.frameRate.fileSuffix)"
-        return "\(baseName)-\(suffix).\(options.format.fileExtension)"
+        return "\(baseName)-\(options.fileNameSuffix)\(cropSuffix).\(options.format.fileExtension)"
     }
 
     func openPrivacySettings() {

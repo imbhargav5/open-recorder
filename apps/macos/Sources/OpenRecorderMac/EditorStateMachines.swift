@@ -35,6 +35,9 @@ struct VideoExportDraftState: Equatable {
     var resolution: VideoExportResolution = VideoExportResolution.defaultExportOption
     var format: VideoExportFormat = .mov
     var frameRate: VideoExportFrameRate = VideoExportFrameRate.defaultExportOption
+    var quality: VideoExportQuality = VideoExportQuality.defaultExportOption
+    var gifSize: VideoExportGIFSize = VideoExportGIFSize.defaultExportOption
+    var gifLoops = true
     var baseOptions: VideoExportOptions = .default
 
     init(options: VideoExportOptions = .default) {
@@ -46,6 +49,9 @@ struct VideoExportDraftState: Equatable {
             resolution: resolution,
             format: format,
             frameRate: frameRate,
+            quality: quality,
+            gifSize: gifSize,
+            gifLoops: gifLoops,
             aspectPreset: baseOptions.aspectPreset,
             styling: .none,
             cropSelection: baseOptions.cropSelection,
@@ -61,9 +67,21 @@ struct VideoExportDraftState: Equatable {
             ? options.resolution
             : VideoExportResolution.defaultExportOption
         format = options.format
-        frameRate = VideoExportFrameRate.exportOptions.contains(options.frameRate)
+        frameRate = VideoExportFrameRate.exportOptions(for: options.format).contains(options.frameRate)
             ? options.frameRate
-            : VideoExportFrameRate.defaultExportOption
+            : VideoExportFrameRate.defaultExportOption(for: options.format)
+        quality = options.quality
+        gifSize = options.gifSize
+        gifLoops = options.gifLoops
+    }
+
+    mutating func setFormat(_ nextFormat: VideoExportFormat) {
+        guard format != nextFormat else { return }
+        format = nextFormat
+        let validFrameRates = VideoExportFrameRate.exportOptions(for: nextFormat)
+        if !validFrameRates.contains(frameRate) {
+            frameRate = VideoExportFrameRate.defaultExportOption(for: nextFormat)
+        }
     }
 }
 
@@ -133,8 +151,12 @@ enum VideoEditorEvent: Equatable {
     case cropConfirmed(VideoCropSelection)
     case cropCanceled
     case exportRequested
+    case exportFormatChanged(VideoExportFormat)
     case exportResolutionChanged(VideoExportResolution)
     case exportFrameRateChanged(VideoExportFrameRate)
+    case exportQualityChanged(VideoExportQuality)
+    case exportGIFSizeChanged(VideoExportGIFSize)
+    case exportGIFLoopChanged(Bool)
     case exportConfirmed(
         recordingURL: URL?,
         edits: TimelineEditSnapshot,
@@ -202,6 +224,11 @@ extension VideoEditorState {
             presentedSheet = .export
             return []
 
+        case .exportFormatChanged(let format):
+            guard exportDraft.format != format else { return [] }
+            exportDraft.setFormat(format)
+            return []
+
         case .exportResolutionChanged(let resolution):
             guard exportDraft.resolution != resolution else { return [] }
             exportDraft.resolution = resolution
@@ -210,6 +237,21 @@ extension VideoEditorState {
         case .exportFrameRateChanged(let frameRate):
             guard exportDraft.frameRate != frameRate else { return [] }
             exportDraft.frameRate = frameRate
+            return []
+
+        case .exportQualityChanged(let quality):
+            guard exportDraft.quality != quality else { return [] }
+            exportDraft.quality = quality
+            return []
+
+        case .exportGIFSizeChanged(let gifSize):
+            guard exportDraft.gifSize != gifSize else { return [] }
+            exportDraft.gifSize = gifSize
+            return []
+
+        case .exportGIFLoopChanged(let gifLoops):
+            guard exportDraft.gifLoops != gifLoops else { return [] }
+            exportDraft.gifLoops = gifLoops
             return []
 
         case .exportConfirmed(let recordingURL, let edits, let snapshot, let cursorTelemetryURL, let facecamVideoURL, let facecamOffsetMs, let cameraFallback):
@@ -366,10 +408,38 @@ final class VideoEditorDriver {
         )
     }
 
+    var exportFormatBinding: Binding<VideoExportFormat> {
+        Binding(
+            get: { self.state.exportDraft.format },
+            set: { self.send(.exportFormatChanged($0)) }
+        )
+    }
+
     var exportFrameRateBinding: Binding<VideoExportFrameRate> {
         Binding(
             get: { self.state.exportDraft.frameRate },
             set: { self.send(.exportFrameRateChanged($0)) }
+        )
+    }
+
+    var exportQualityBinding: Binding<VideoExportQuality> {
+        Binding(
+            get: { self.state.exportDraft.quality },
+            set: { self.send(.exportQualityChanged($0)) }
+        )
+    }
+
+    var exportGIFSizeBinding: Binding<VideoExportGIFSize> {
+        Binding(
+            get: { self.state.exportDraft.gifSize },
+            set: { self.send(.exportGIFSizeChanged($0)) }
+        )
+    }
+
+    var exportGIFLoopsBinding: Binding<Bool> {
+        Binding(
+            get: { self.state.exportDraft.gifLoops },
+            set: { self.send(.exportGIFLoopChanged($0)) }
         )
     }
 

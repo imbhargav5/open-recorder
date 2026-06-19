@@ -53,10 +53,11 @@ Open Recorder includes a native editor for turning raw captures into shareable v
 
 ### Export
 
-- Export styled video projects as MOV files.
-- Choose 480p, 720p, 1080p, or 4K output presets.
-- Choose 15 FPS, 24 FPS, 30 FPS, or 60 FPS output presets.
-- Exported videos include the selected crop, background styling, inset styling, cursor overlay, timeline speed/deletion edits, zoom effects, and camera clip settings.
+- Export styled video projects as MOV or MP4 files, or as animated GIFs.
+- Choose 480p, 720p, 1080p, or 4K output presets for movie exports.
+- Choose Low, Medium, or High MP4 quality presets.
+- Choose Medium, Large, or Original GIF sizing, 15/20/25/30 FPS, and looping behavior.
+- Exported videos and GIFs include the selected crop, background styling, inset styling, cursor overlay, timeline speed/deletion edits, zoom effects, and camera clip settings.
 
 ## Repository Layout
 

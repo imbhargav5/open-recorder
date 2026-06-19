@@ -65,7 +65,7 @@ extension VideoExportState {
             errorMessage = nil
             progress = 0
             phase = .exporting
-            effects.append(.setStatusMessage("Exporting \(options.resolution.title) \(options.format.title) at \(options.frameRate.title)..."))
+            effects.append(.setStatusMessage("Exporting \(options.summaryTitle)..."))
             effects.append(.render(sourceURL: sourceURL, targetURL: targetURL, options: options, edits: edits))
             return effects
 
@@ -86,7 +86,7 @@ extension VideoExportState {
             phase = .saving
             errorMessage = nil
             return [
-                .setStatusMessage("Choose where to save \(options.resolution.title) \(options.format.title) at \(options.frameRate.title)."),
+                .setStatusMessage("Choose where to save \(options.summaryTitle)."),
                 .presentSavePanel(sourceURL: sourceURL, tempURL: tempURL, options: options)
             ]
 

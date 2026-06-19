@@ -280,8 +280,11 @@ struct VideoEditorStudioView: View {
             exportedFileName: videoExport.state.exportedFileName,
             isExporting: videoExport.state.isExporting,
             resolution: editor.exportResolutionBinding,
-            format: editor.state.exportDraft.format,
+            format: editor.exportFormatBinding,
             frameRate: editor.exportFrameRateBinding,
+            quality: editor.exportQualityBinding,
+            gifSize: editor.exportGIFSizeBinding,
+            gifLoops: editor.exportGIFLoopsBinding,
             onExport: {
                 editor.send(.exportConfirmed(
                     recordingURL: exportRequest?.url ?? videoURL,
