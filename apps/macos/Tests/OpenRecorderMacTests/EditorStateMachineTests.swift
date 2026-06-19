@@ -243,6 +243,65 @@ final class VideoEditorStateMachineTests: XCTestCase {
         XCTAssertEqual(options.frameRate, .fps60)
         XCTAssertEqual(options.cropSelection, state.video.cropSelection)
     }
+
+    func testExportDraftNormalizesFormatSpecificOptions() {
+        var state = VideoEditorState()
+
+        _ = state.applying(.exportRequested)
+        XCTAssertEqual(state.exportDraft.format, .mov)
+        XCTAssertEqual(state.exportDraft.frameRate, .fps30)
+
+        XCTAssertTrue(state.applying(.exportFrameRateChanged(.fps60)).isEmpty)
+        XCTAssertTrue(state.applying(.exportFormatChanged(.gif)).isEmpty)
+        XCTAssertEqual(state.exportDraft.format, .gif)
+        XCTAssertEqual(state.exportDraft.frameRate, .fps15)
+
+        XCTAssertTrue(state.applying(.exportFrameRateChanged(.fps25)).isEmpty)
+        XCTAssertTrue(state.applying(.exportGIFSizeChanged(.large)).isEmpty)
+        XCTAssertTrue(state.applying(.exportGIFLoopChanged(false)).isEmpty)
+
+        let effects = state.applying(.exportConfirmed(
+            recordingURL: URL(fileURLWithPath: "/tmp/export.mov"),
+            edits: .empty,
+            snapshot: nil,
+            cursorTelemetryURL: nil,
+            facecamVideoURL: nil,
+            facecamOffsetMs: nil,
+            cameraFallback: nil
+        ))
+
+        guard case .startVideoExport(_, let options, _, _) = effects.first else {
+            return XCTFail("Expected export effect.")
+        }
+        XCTAssertEqual(options.format, .gif)
+        XCTAssertEqual(options.frameRate, .fps25)
+        XCTAssertEqual(options.gifSize, .large)
+        XCTAssertFalse(options.gifLoops)
+    }
+
+    func testExportDraftCarriesMP4Quality() {
+        var state = VideoEditorState()
+
+        _ = state.applying(.exportRequested)
+        XCTAssertTrue(state.applying(.exportFormatChanged(.mp4)).isEmpty)
+        XCTAssertTrue(state.applying(.exportQualityChanged(.medium)).isEmpty)
+
+        let effects = state.applying(.exportConfirmed(
+            recordingURL: URL(fileURLWithPath: "/tmp/export.mov"),
+            edits: .empty,
+            snapshot: nil,
+            cursorTelemetryURL: nil,
+            facecamVideoURL: nil,
+            facecamOffsetMs: nil,
+            cameraFallback: nil
+        ))
+
+        guard case .startVideoExport(_, let options, _, _) = effects.first else {
+            return XCTFail("Expected export effect.")
+        }
+        XCTAssertEqual(options.format, .mp4)
+        XCTAssertEqual(options.quality, .medium)
+    }
 }
 
 @MainActor

@@ -7,8 +7,11 @@ struct VideoExportDialog: View {
     var exportedFileName: String?
     var isExporting: Bool
     @Binding var resolution: VideoExportResolution
-    var format: VideoExportFormat
+    @Binding var format: VideoExportFormat
     @Binding var frameRate: VideoExportFrameRate
+    @Binding var quality: VideoExportQuality
+    @Binding var gifSize: VideoExportGIFSize
+    @Binding var gifLoops: Bool
     var onExport: () -> Void
     var onRetrySave: () -> Void
     var onShowInFinder: () -> Void
@@ -81,10 +84,10 @@ struct VideoExportDialog: View {
                 .background(Theme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
 
             VStack(alignment: .leading, spacing: 3) {
-                Text("Movie export")
+                Text(format == .gif ? "GIF export" : "Movie export")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.primary)
-                Text("Optimized for screen recordings")
+                Text(format == .gif ? "Animated for quick sharing" : "Optimized for screen recordings")
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
             }
@@ -92,7 +95,7 @@ struct VideoExportDialog: View {
             Spacer(minLength: 0)
 
             HStack(spacing: 6) {
-                ExportSummaryMetric(title: "Size", value: resolution.title)
+                ExportSummaryMetric(title: "Size", value: selectedSizeTitle)
                 ExportSummaryMetric(title: "Rate", value: frameRate.title)
                 ExportSummaryMetric(title: "Type", value: format.title)
             }
@@ -216,6 +219,31 @@ struct VideoExportDialog: View {
     private var settingsPanel: some View {
         VStack(spacing: 0) {
             ExportPickerSettingRow(
+                symbolName: "doc.badge.gearshape",
+                title: "Format",
+                detail: format.detail,
+                selection: $format,
+                options: VideoExportFormat.allCases,
+                optionTitle: \.title,
+                isDisabled: !canEditOptions
+            )
+            ExportDivider()
+            if format == .gif {
+                gifSettings
+            } else {
+                movieSettings
+            }
+        }
+        .background(Theme.surfaceRaised.opacity(0.82), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .stroke(Theme.borderStrong.opacity(0.56))
+        }
+    }
+
+    private var movieSettings: some View {
+        VStack(spacing: 0) {
+            ExportPickerSettingRow(
                 symbolName: "rectangle.arrowtriangle.2.inward",
                 title: "Resolution",
                 detail: resolution.detail,
@@ -230,22 +258,54 @@ struct VideoExportDialog: View {
                 title: "Frame Rate",
                 detail: frameRate.detail,
                 selection: $frameRate,
-                options: VideoExportFrameRate.exportOptions,
+                options: frameRateOptions,
+                optionTitle: \.title,
+                isDisabled: !canEditOptions
+            )
+            if format == .mp4 {
+                ExportDivider()
+                ExportPickerSettingRow(
+                    symbolName: "slider.horizontal.3",
+                    title: "Quality",
+                    detail: quality.detail,
+                    selection: $quality,
+                    options: VideoExportQuality.allCases,
+                    optionTitle: \.title,
+                    isDisabled: !canEditOptions
+                )
+            }
+        }
+    }
+
+    private var gifSettings: some View {
+        VStack(spacing: 0) {
+            ExportPickerSettingRow(
+                symbolName: "rectangle.resize",
+                title: "Size",
+                detail: gifSize.detail,
+                selection: $gifSize,
+                options: VideoExportGIFSize.allCases,
                 optionTitle: \.title,
                 isDisabled: !canEditOptions
             )
             ExportDivider()
-            ExportStaticSettingRow(
-                symbolName: "doc.badge.gearshape",
-                title: "Format",
-                detail: "QuickTime movie (.mov)",
-                value: format.title
+            ExportPickerSettingRow(
+                symbolName: "speedometer",
+                title: "Frame Rate",
+                detail: frameRate.detail,
+                selection: $frameRate,
+                options: frameRateOptions,
+                optionTitle: \.title,
+                isDisabled: !canEditOptions
             )
-        }
-        .background(Theme.surfaceRaised.opacity(0.82), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 13, style: .continuous)
-                .stroke(Theme.borderStrong.opacity(0.56))
+            ExportDivider()
+            ExportToggleSettingRow(
+                symbolName: "repeat",
+                title: "Loop",
+                detail: gifLoops ? "Repeat continuously." : "Play once.",
+                isOn: $gifLoops,
+                isDisabled: !canEditOptions
+            )
         }
     }
 
@@ -274,7 +334,18 @@ struct VideoExportDialog: View {
     }
 
     private var selectedExportSummary: String {
-        "\(resolution.title) \(format.title) · \(frameRate.title)"
+        switch format {
+        case .gif:
+            "\(gifSize.title) \(format.title) · \(frameRate.title)"
+        case .mp4:
+            "\(resolution.title) \(format.title) · \(frameRate.title) · \(quality.title)"
+        case .mov:
+            "\(resolution.title) \(format.title) · \(frameRate.title)"
+        }
+    }
+
+    private var selectedSizeTitle: String {
+        format == .gif ? gifSize.title : resolution.title
     }
 
     private var displayedProgress: Double {
@@ -313,6 +384,10 @@ struct VideoExportDialog: View {
         VideoExportResolution.exportOptions
     }
 
+    private var frameRateOptions: [VideoExportFrameRate] {
+        VideoExportFrameRate.exportOptions(for: format)
+    }
+
     private var headerTitle: String {
         switch phase {
         case .exporting: "Exporting Video"
@@ -327,9 +402,9 @@ struct VideoExportDialog: View {
     private var headerSubtitle: String {
         switch phase {
         case .exporting: "\(VideoExportProgressPresentation.percentText(for: displayedProgress)) · \(selectedExportSummary)"
-        case .saving: "Choose where to save the completed MOV."
+        case .saving: "Choose where to save the completed \(format.title)."
         case .savePending: "Save without rendering again."
-        case .success: "Your MOV export is ready."
+        case .success: "Your \(format.title) export is ready."
         case .failed: "Adjust settings and try again."
         case .idle: selectedExportSummary
         }
@@ -452,6 +527,41 @@ private struct ExportStaticSettingRow: View {
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
                         .stroke(Theme.borderSubtle)
                 }
+        }
+        .padding(.horizontal, 13)
+        .padding(.vertical, 12)
+    }
+}
+
+private struct ExportToggleSettingRow: View {
+    var symbolName: String
+    var title: String
+    var detail: String
+    @Binding var isOn: Bool
+    var isDisabled = false
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 14) {
+            Image(systemName: symbolName)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Theme.accent)
+                .frame(width: 30, height: 30)
+                .background(Theme.accent.opacity(0.10), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.system(size: 12, weight: .semibold))
+                Text(detail)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer(minLength: 12)
+
+            Toggle(title, isOn: $isOn)
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .disabled(isDisabled)
         }
         .padding(.horizontal, 13)
         .padding(.vertical, 12)

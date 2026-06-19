@@ -165,8 +165,49 @@ final class VideoCropSelectionTests: XCTestCase {
     func testExportOptionModelsExposeRequestedPresets() {
         XCTAssertEqual(VideoExportResolution.exportOptions.map(\.title), ["480p", "720p", "1080p", "4K"])
         XCTAssertEqual(VideoExportFrameRate.exportOptions.map(\.title), ["15 FPS", "24 FPS", "30 FPS", "60 FPS"])
+        XCTAssertEqual(VideoExportFrameRate.gifExportOptions.map(\.title), ["15 FPS", "20 FPS", "25 FPS", "30 FPS"])
+        XCTAssertEqual(VideoExportFormat.allCases.map(\.title), ["MOV", "MP4", "GIF"])
+        XCTAssertEqual(VideoExportQuality.allCases.map(\.title), ["Low", "Medium", "High"])
+        XCTAssertEqual(VideoExportGIFSize.allCases.map(\.title), ["Medium", "Large", "Original"])
         XCTAssertFalse(VideoExportResolution.exportOptions.contains(.source))
         XCTAssertFalse(VideoExportFrameRate.exportOptions.contains(.source))
+    }
+
+    func testGIFSizeControlsRenderedOutputSize() {
+        let sourceSize = CGSize(width: 1920, height: 1080)
+        var options = VideoExportOptions.default
+        options.format = .gif
+
+        options.gifSize = .medium
+        var outputSize = VideoExportRenderer.resolvedOutputSize(for: sourceSize, options: options)
+        XCTAssertEqual(outputSize.width, 852, accuracy: 0.001)
+        XCTAssertEqual(outputSize.height, 480, accuracy: 0.001)
+
+        options.gifSize = .large
+        outputSize = VideoExportRenderer.resolvedOutputSize(for: sourceSize, options: options)
+        XCTAssertEqual(outputSize.width, 1280, accuracy: 0.001)
+        XCTAssertEqual(outputSize.height, 720, accuracy: 0.001)
+
+        options.gifSize = .original
+        outputSize = VideoExportRenderer.resolvedOutputSize(for: sourceSize, options: options)
+        XCTAssertEqual(outputSize.width, 1920, accuracy: 0.001)
+        XCTAssertEqual(outputSize.height, 1080, accuracy: 0.001)
+    }
+
+    func testExportOptionsDescribeFormatSpecificSummariesAndFileSuffixes() {
+        var mp4Options = VideoExportOptions.default
+        mp4Options.format = .mp4
+        mp4Options.quality = .medium
+        XCTAssertEqual(mp4Options.summaryTitle, "1080p Medium MP4 at 30 FPS")
+        XCTAssertEqual(mp4Options.fileNameSuffix, "1080p-medium-30fps")
+
+        var gifOptions = VideoExportOptions.default
+        gifOptions.format = .gif
+        gifOptions.gifSize = .large
+        gifOptions.frameRate = .fps20
+        gifOptions.gifLoops = false
+        XCTAssertEqual(gifOptions.summaryTitle, "Large GIF at 20 FPS")
+        XCTAssertEqual(gifOptions.fileNameSuffix, "large-20fps")
     }
 
     func testRendererUsesNormalizedCropRectInSourcePixels() {

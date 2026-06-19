@@ -2,6 +2,7 @@ import AVFoundation
 import AppKit
 import CoreGraphics
 import Foundation
+import ImageIO
 import UniformTypeIdentifiers
 
 enum VideoExportResolution: String, CaseIterable, Identifiable, Codable, Hashable {
@@ -82,30 +83,136 @@ enum VideoExportResolution: String, CaseIterable, Identifiable, Codable, Hashabl
 
 enum VideoExportFormat: String, CaseIterable, Identifiable {
     case mov
+    case mp4
+    case gif
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .mov: "MOV"
+        case .mp4: "MP4"
+        case .gif: "GIF"
         }
     }
 
     var fileExtension: String {
         switch self {
         case .mov: "mov"
+        case .mp4: "mp4"
+        case .gif: "gif"
         }
     }
 
     var contentType: UTType {
         switch self {
         case .mov: .quickTimeMovie
+        case .mp4: .mpeg4Movie
+        case .gif: .gif
         }
     }
 
-    var avFileType: AVFileType {
+    var avFileType: AVFileType? {
         switch self {
         case .mov: .mov
+        case .mp4: .mp4
+        case .gif: nil
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .mov: "QuickTime movie (.mov)"
+        case .mp4: "MPEG-4 movie (.mp4)"
+        case .gif: "Animated GIF (.gif)"
+        }
+    }
+
+    var isAnimatedImage: Bool {
+        self == .gif
+    }
+}
+
+enum VideoExportQuality: String, CaseIterable, Identifiable, Codable, Hashable {
+    case low
+    case medium
+    case highSource
+
+    var id: String { rawValue }
+
+    static let defaultExportOption: VideoExportQuality = .highSource
+
+    var title: String {
+        switch self {
+        case .low: "Low"
+        case .medium: "Medium"
+        case .highSource: "High"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .low: "Smallest MP4 file."
+        case .medium: "Balanced MP4 size and clarity."
+        case .highSource: "Best MP4 quality from the source."
+        }
+    }
+
+    var fileSuffix: String {
+        switch self {
+        case .low: "low"
+        case .medium: "medium"
+        case .highSource: "high"
+        }
+    }
+
+    var exportPresetName: String {
+        switch self {
+        case .low: AVAssetExportPresetLowQuality
+        case .medium: AVAssetExportPresetMediumQuality
+        case .highSource: AVAssetExportPresetHighestQuality
+        }
+    }
+}
+
+enum VideoExportGIFSize: String, CaseIterable, Identifiable, Codable, Hashable {
+    case medium
+    case large
+    case original
+
+    var id: String { rawValue }
+
+    static let defaultExportOption: VideoExportGIFSize = .medium
+
+    var title: String {
+        switch self {
+        case .medium: "Medium"
+        case .large: "Large"
+        case .original: "Original"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .medium: "Scale the short edge to 480 px."
+        case .large: "Scale the short edge to 720 px."
+        case .original: "Keep the source dimensions."
+        }
+    }
+
+    var fileSuffix: String {
+        switch self {
+        case .medium: "medium"
+        case .large: "large"
+        case .original: "original"
+        }
+    }
+
+    var resolution: VideoExportResolution {
+        switch self {
+        case .medium: .p480
+        case .large: .p720
+        case .original: .source
         }
     }
 }
@@ -113,21 +220,35 @@ enum VideoExportFormat: String, CaseIterable, Identifiable {
 enum VideoExportFrameRate: String, CaseIterable, Identifiable {
     case source
     case fps15
+    case fps20
     case fps24
+    case fps25
     case fps30
     case fps60
 
     var id: String { rawValue }
 
     static let exportOptions: [VideoExportFrameRate] = [.fps15, .fps24, .fps30, .fps60]
+    static let gifExportOptions: [VideoExportFrameRate] = [.fps15, .fps20, .fps25, .fps30]
 
     static let defaultExportOption: VideoExportFrameRate = .fps30
+    static let defaultGIFExportOption: VideoExportFrameRate = .fps15
+
+    static func exportOptions(for format: VideoExportFormat) -> [VideoExportFrameRate] {
+        format == .gif ? gifExportOptions : exportOptions
+    }
+
+    static func defaultExportOption(for format: VideoExportFormat) -> VideoExportFrameRate {
+        format == .gif ? defaultGIFExportOption : defaultExportOption
+    }
 
     var title: String {
         switch self {
         case .source: "Source"
         case .fps15: "15 FPS"
+        case .fps20: "20 FPS"
         case .fps24: "24 FPS"
+        case .fps25: "25 FPS"
         case .fps30: "30 FPS"
         case .fps60: "60 FPS"
         }
@@ -137,7 +258,9 @@ enum VideoExportFrameRate: String, CaseIterable, Identifiable {
         switch self {
         case .source: "Keep the recording frame rate."
         case .fps15: "Smallest file size."
+        case .fps20: "Compact GIF motion."
         case .fps24: "Cinematic motion."
+        case .fps25: "Smooth GIF playback."
         case .fps30: "Smaller file, smooth playback."
         case .fps60: "Best for fast cursor movement."
         }
@@ -147,17 +270,21 @@ enum VideoExportFrameRate: String, CaseIterable, Identifiable {
         switch self {
         case .source: "source-fps"
         case .fps15: "15fps"
+        case .fps20: "20fps"
         case .fps24: "24fps"
+        case .fps25: "25fps"
         case .fps30: "30fps"
         case .fps60: "60fps"
         }
     }
 
-    private var fixedFramesPerSecond: Double? {
+    var fixedFramesPerSecond: Double? {
         switch self {
         case .source: nil
         case .fps15: 15
+        case .fps20: 20
         case .fps24: 24
+        case .fps25: 25
         case .fps30: 30
         case .fps60: 60
         }
@@ -186,6 +313,9 @@ struct VideoExportOptions: Equatable {
     var resolution: VideoExportResolution
     var format: VideoExportFormat
     var frameRate: VideoExportFrameRate
+    var quality: VideoExportQuality = .defaultExportOption
+    var gifSize: VideoExportGIFSize = .defaultExportOption
+    var gifLoops = true
     var aspectPreset: VideoPreviewAspectPreset = .auto
     var styling: VideoBackgroundStyling
     var cropSelection: VideoCropSelection?
@@ -200,6 +330,9 @@ struct VideoExportOptions: Equatable {
         resolution: VideoExportResolution.defaultExportOption,
         format: .mov,
         frameRate: VideoExportFrameRate.defaultExportOption,
+        quality: .defaultExportOption,
+        gifSize: .defaultExportOption,
+        gifLoops: true,
         aspectPreset: .auto,
         styling: .none,
         cropSelection: nil,
@@ -275,6 +408,35 @@ struct VideoExportOptions: Equatable {
         copy.facecamFallbackSettings = fallbackSettings?.clamped
         return copy
     }
+
+    var summaryTitle: String {
+        switch format {
+        case .gif:
+            "\(gifSize.title) \(format.title) at \(frameRate.title)"
+        case .mp4:
+            "\(resolution.title) \(quality.title) \(format.title) at \(frameRate.title)"
+        case .mov:
+            "\(resolution.title) \(format.title) at \(frameRate.title)"
+        }
+    }
+
+    var fileNameSuffix: String {
+        let sizeSuffix: String
+        switch format {
+        case .gif:
+            sizeSuffix = gifSize.fileSuffix
+        case .mov, .mp4:
+            if resolution == .custom, let customOutputSize {
+                sizeSuffix = "\(Int(customOutputSize.width.rounded()))x\(Int(customOutputSize.height.rounded()))"
+            } else {
+                sizeSuffix = resolution.fileSuffix
+            }
+        }
+
+        let qualitySuffix = format == .mp4 ? "-\(quality.fileSuffix)" : ""
+        let loopSuffix = format == .gif && gifLoops ? "-loop" : ""
+        return "\(sizeSuffix)\(qualitySuffix)-\(frameRate.fileSuffix)\(loopSuffix)"
+    }
 }
 
 enum VideoExportPhase: Equatable {
@@ -297,24 +459,10 @@ enum VideoExportPhase: Equatable {
 
 @MainActor
 final class VideoExportCancellationToken {
-    private var exportSession: AVAssetExportSession?
     private(set) var isCancelled = false
-
-    func attach(_ exportSession: AVAssetExportSession) {
-        if isCancelled {
-            exportSession.cancelExport()
-        } else {
-            self.exportSession = exportSession
-        }
-    }
 
     func cancel() {
         isCancelled = true
-        exportSession?.cancelExport()
-    }
-
-    func detach() {
-        exportSession = nil
     }
 }
 
@@ -323,6 +471,9 @@ enum VideoExportRendererError: LocalizedError {
     case exportSessionUnavailable
     case exportCancelled
     case emptyTimeline
+    case unsupportedFormat
+    case gifDestinationUnavailable
+    case gifFrameGenerationFailed
     case exportFailed
 
     var errorDescription: String? {
@@ -331,6 +482,9 @@ enum VideoExportRendererError: LocalizedError {
         case .exportSessionUnavailable: "This Mac cannot create the requested export session."
         case .exportCancelled: "Export canceled."
         case .emptyTimeline: "Timeline edits remove the entire recording."
+        case .unsupportedFormat: "This export format is not supported."
+        case .gifDestinationUnavailable: "This Mac cannot create the GIF export file."
+        case .gifFrameGenerationFailed: "GIF frame rendering failed."
         case .exportFailed: "Video export failed."
         }
     }
@@ -338,6 +492,14 @@ enum VideoExportRendererError: LocalizedError {
 
 @MainActor
 enum VideoExportRenderer {
+    private struct RenderContext {
+        var asset: AVAsset
+        var videoComposition: AVMutableVideoComposition
+        var duration: Double
+        var outputSize: CGSize
+        var frameDuration: CMTime
+    }
+
     static func export(
         sourceURL: URL,
         targetURL: URL,
@@ -350,6 +512,19 @@ enum VideoExportRenderer {
             try FileManager.default.removeItem(at: targetURL)
         }
 
+        let context = try await makeRenderContext(sourceURL: sourceURL, options: options, edits: edits)
+        if options.format.isAnimatedImage {
+            try await exportGIF(context: context, targetURL: targetURL, options: options, cancellationToken: cancellationToken, progressHandler: progressHandler)
+        } else {
+            try await exportMovie(context: context, targetURL: targetURL, options: options, cancellationToken: cancellationToken, progressHandler: progressHandler)
+        }
+    }
+
+    private static func makeRenderContext(
+        sourceURL: URL,
+        options: VideoExportOptions,
+        edits: TimelineEditSnapshot
+    ) async throws -> RenderContext {
         let asset = AVURLAsset(url: sourceURL)
         let tracks = try await asset.loadTracks(withMediaType: .video)
         guard let videoTrack = tracks.first else {
@@ -377,24 +552,14 @@ enum VideoExportRenderer {
             facecamOffsetMs: options.facecamOffsetMs
         )
 
-        guard let exportSession = AVAssetExportSession(asset: exportAsset.asset, presetName: AVAssetExportPresetHighestQuality) else {
-            throw VideoExportRendererError.exportSessionUnavailable
-        }
-
-        exportSession.outputURL = targetURL
-        exportSession.outputFileType = options.format.avFileType
-        exportSession.shouldOptimizeForNetworkUse = true
-        exportSession.timeRange = CMTimeRange(
-            start: .zero,
-            duration: CMTime(seconds: max(0.001, exportAsset.duration), preferredTimescale: 600)
-        )
-        exportSession.videoComposition = makeVideoComposition(
+        let duration = max(0.001, exportAsset.duration)
+        let videoComposition = makeVideoComposition(
             for: exportAsset.videoTrack ?? videoTrack,
             sourceSize: naturalSize,
             preferredTransform: preferredTransform,
             cropRect: cropRect,
             outputSize: outputSize,
-            duration: CMTime(seconds: max(0.001, exportAsset.duration), preferredTimescale: 600),
+            duration: CMTime(seconds: duration, preferredTimescale: 600),
             frameDuration: frameDuration,
             styling: options.styling,
             edits: edits,
@@ -407,29 +572,54 @@ enum VideoExportRenderer {
             facecamFallbackSettings: options.facecamFallbackSettings
         )
 
+        return RenderContext(
+            asset: exportAsset.asset,
+            videoComposition: videoComposition,
+            duration: duration,
+            outputSize: outputSize,
+            frameDuration: frameDuration
+        )
+    }
+
+    private static func exportMovie(
+        context: RenderContext,
+        targetURL: URL,
+        options: VideoExportOptions,
+        cancellationToken: VideoExportCancellationToken?,
+        progressHandler: @escaping @MainActor (Double) -> Void
+    ) async throws {
+        guard let fileType = options.format.avFileType else {
+            throw VideoExportRendererError.unsupportedFormat
+        }
+        guard let exportSession = AVAssetExportSession(asset: context.asset, presetName: exportPresetName(for: options)) else {
+            throw VideoExportRendererError.exportSessionUnavailable
+        }
+
+        exportSession.shouldOptimizeForNetworkUse = true
+        exportSession.timeRange = CMTimeRange(
+            start: .zero,
+            duration: CMTime(seconds: context.duration, preferredTimescale: 600)
+        )
+        exportSession.videoComposition = context.videoComposition
+
         if Task.isCancelled {
             throw VideoExportRendererError.exportCancelled
         }
 
-        if let cancellationToken {
-            cancellationToken.attach(exportSession)
-        }
-
         progressHandler(0.02)
         let progressTask = Task { @MainActor in
-            while !Task.isCancelled {
+            for await state in exportSession.states(updateInterval: 0.12) {
+                if Task.isCancelled {
+                    return
+                }
                 if cancellationToken?.isCancelled == true {
                     return
                 }
-                let progress = Double(exportSession.progress)
-                if progress.isFinite {
-                    progressHandler(min(max(progress, 0.02), 0.99))
-                }
-
-                do {
-                    try await Task.sleep(nanoseconds: 120_000_000)
-                } catch {
-                    return
+                if case .exporting(let progress) = state {
+                    let fraction = progress.fractionCompleted
+                    if fraction.isFinite {
+                        progressHandler(min(max(fraction, 0.02), 0.99))
+                    }
                 }
             }
         }
@@ -437,21 +627,99 @@ enum VideoExportRenderer {
             progressTask.cancel()
         }
 
-        await exportSession.export()
-        if let cancellationToken {
-            cancellationToken.detach()
+        do {
+            try await exportSession.export(to: targetURL, as: fileType)
+            if cancellationToken?.isCancelled == true || Task.isCancelled {
+                throw VideoExportRendererError.exportCancelled
+            }
+            progressHandler(1)
+        } catch is CancellationError {
+            throw VideoExportRendererError.exportCancelled
+        } catch {
+            if cancellationToken?.isCancelled == true || Task.isCancelled {
+                throw VideoExportRendererError.exportCancelled
+            }
+            throw error
+        }
+    }
+
+    private static func exportGIF(
+        context: RenderContext,
+        targetURL: URL,
+        options: VideoExportOptions,
+        cancellationToken: VideoExportCancellationToken?,
+        progressHandler: @escaping @MainActor (Double) -> Void
+    ) async throws {
+        let framesPerSecond = options.frameRate.fixedFramesPerSecond ?? Double(VideoExportFrameRate.defaultGIFExportOption.fixedFramesPerSecond ?? 15)
+        let frameDelay = 1 / max(framesPerSecond, 1)
+        let frameCount = max(1, Int(ceil(context.duration * framesPerSecond)))
+        guard let destination = CGImageDestinationCreateWithURL(
+            targetURL as CFURL,
+            UTType.gif.identifier as CFString,
+            frameCount,
+            nil
+        ) else {
+            throw VideoExportRendererError.gifDestinationUnavailable
         }
 
-        switch exportSession.status {
-        case .completed:
-            progressHandler(1)
-            return
-        case .cancelled:
-            throw VideoExportRendererError.exportCancelled
-        case .failed:
-            throw exportSession.error ?? VideoExportRendererError.exportFailed
-        default:
-            throw VideoExportRendererError.exportFailed
+        let fileProperties: [CFString: Any] = [
+            kCGImagePropertyGIFDictionary: [
+                kCGImagePropertyGIFLoopCount: options.gifLoops ? 0 : 1
+            ]
+        ]
+        CGImageDestinationSetProperties(destination, fileProperties as CFDictionary)
+
+        let frameProperties: [CFString: Any] = [
+            kCGImagePropertyGIFDictionary: [
+                kCGImagePropertyGIFDelayTime: frameDelay
+            ]
+        ]
+
+        nonisolated(unsafe) let generator = AVAssetImageGenerator(asset: context.asset)
+        generator.videoComposition = context.videoComposition
+        generator.requestedTimeToleranceBefore = .zero
+        generator.requestedTimeToleranceAfter = .zero
+
+        for frameIndex in 0..<frameCount {
+            if Task.isCancelled || cancellationToken?.isCancelled == true {
+                throw VideoExportRendererError.exportCancelled
+            }
+
+            let seconds = min(Double(frameIndex) * frameDelay, max(0, context.duration - 0.001))
+            let time = CMTime(seconds: seconds, preferredTimescale: 600)
+            do {
+                let image = try await generator.image(at: time).image
+                CGImageDestinationAddImage(destination, image, frameProperties as CFDictionary)
+            } catch is CancellationError {
+                throw VideoExportRendererError.exportCancelled
+            } catch {
+                throw VideoExportRendererError.gifFrameGenerationFailed
+            }
+
+            progressHandler(min(max(Double(frameIndex + 1) / Double(frameCount), 0.02), 0.99))
+        }
+
+        guard CGImageDestinationFinalize(destination) else {
+            throw VideoExportRendererError.gifDestinationUnavailable
+        }
+        progressHandler(1)
+    }
+
+    private static func exportPresetName(for options: VideoExportOptions) -> String {
+        switch options.format {
+        case .mp4:
+            options.quality.exportPresetName
+        case .mov, .gif:
+            AVAssetExportPresetHighestQuality
+        }
+    }
+
+    private static func effectiveResolution(for options: VideoExportOptions) -> VideoExportResolution {
+        switch options.format {
+        case .gif:
+            options.gifSize.resolution
+        case .mov, .mp4:
+            options.resolution
         }
     }
 
@@ -598,7 +866,8 @@ enum VideoExportRenderer {
     }
 
     static func resolvedOutputSize(for sourceSize: CGSize, options: VideoExportOptions) -> CGSize {
-        if options.resolution == .custom, let customOutputSize = options.customOutputSize {
+        let resolution = effectiveResolution(for: options)
+        if resolution == .custom, let customOutputSize = options.customOutputSize {
             return evenSize(width: customOutputSize.width, height: customOutputSize.height)
         }
 
@@ -607,10 +876,10 @@ enum VideoExportRenderer {
         let aspectRatio = resolvedAspectRatio(
             options.aspectPreset.aspectRatio(forExportSourceSize: CGSize(width: sourceWidth, height: sourceHeight))
         )
-        if let targetShortEdge = options.resolution.targetShortEdge {
+        if let targetShortEdge = resolution.targetShortEdge {
             return outputSize(forAspectRatio: aspectRatio, targetShortEdge: targetShortEdge)
         }
-        if let targetLongEdge = options.resolution.targetLongEdge {
+        if let targetLongEdge = resolution.targetLongEdge {
             return outputSize(forAspectRatio: aspectRatio, targetLongEdge: targetLongEdge)
         }
 
