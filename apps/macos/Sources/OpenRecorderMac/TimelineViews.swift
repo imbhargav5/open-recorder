@@ -41,12 +41,16 @@ struct TimelinePanel: View {
             Rectangle().fill(Theme.border).frame(height: 1)
 
             ZStack(alignment: .top) {
-                Color.clear
-                    .rectangularHitTarget()
-                    .onTapGesture {
-                        edits.clearSelection()
-                        isTimelineFocused = true
-                    }
+                Button {
+                    edits.clearSelection()
+                    isTimelineFocused = true
+                } label: {
+                    Color.clear
+                        .rectangularHitTarget()
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Clear timeline selection")
+                .accessibilityHint("Clears the selected timeline item.")
 
                 TimelineTrackContent(
                     videoURL: videoURL,
@@ -181,11 +185,15 @@ struct TimelineTrackContent: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            TimelineRuler(viewport: viewport)
-                .rectangularHitTarget()
-                .onTapGesture {
-                    edits.clearSelection()
-                }
+            Button {
+                edits.clearSelection()
+            } label: {
+                TimelineRuler(viewport: viewport)
+                    .rectangularHitTarget()
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Clear timeline selection")
+            .accessibilityHint("Clears the selected timeline item.")
             TimelineClipRow(videoURL: videoURL, duration: playback.duration, currentTime: playback.currentTime, viewport: viewport, splitTimes: edits.clipSplitTimes, trimRegions: edits.trimRegions, clipSpeeds: edits.clipSpeeds, selectedClipIndex: edits.selectedClipIndex, seek: playback.seek(to:), edits: edits)
             TimelineLayerRow(kind: .zoom, duration: playback.duration, viewport: viewport, regions: edits.zoomRegions.map(TimelineRegionRenderData.zoom), selectedID: edits.selectedKind == .zoom ? edits.selectedID : nil, edits: edits)
             TimelineCameraLayerRow(
@@ -1127,31 +1135,39 @@ private struct TimelineCameraClipItem: View {
         let startX = x(for: clip.span.start)
         let itemWidth = max(1, x(for: clip.span.end) - startX)
 
-        RoundedRectangle(cornerRadius: 7, style: .continuous)
-            .fill(accent.opacity(clip.settings.clamped.enabled ? (isSelected ? 0.55 : 0.34) : 0.18))
-            .overlay {
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .stroke(accent.opacity(isSelected ? 0.95 : 0.65), lineWidth: isSelected ? 2 : 1)
-            }
-            .overlay { label(width: itemWidth) }
-            .frame(width: itemWidth, height: TimelineMetrics.regionItemHeight)
-            .position(x: startX + itemWidth / 2, y: TimelineMetrics.layerHeight / 2)
-            .onTapGesture { edits.selectCameraClip(id: clip.id) }
-            .contextMenu {
-                Button {
-                    edits.splitCameraClip(at: currentTime, duration: duration, fallback: fallbackSettings)
-                } label: {
-                    Label("Split at Playhead", systemImage: "scissors")
+        Button {
+            edits.selectCameraClip(id: clip.id)
+        } label: {
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(accent.opacity(clip.settings.clamped.enabled ? (isSelected ? 0.55 : 0.34) : 0.18))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .stroke(accent.opacity(isSelected ? 0.95 : 0.65), lineWidth: isSelected ? 2 : 1)
                 }
-                .disabled(!canSplitAtPlayhead)
+                .overlay { label(width: itemWidth) }
+        }
+        .buttonStyle(.plain)
+        .frame(width: itemWidth, height: TimelineMetrics.regionItemHeight)
+        .position(x: startX + itemWidth / 2, y: TimelineMetrics.layerHeight / 2)
+        .accessibilityLabel(clip.settings.clamped.enabled ? "Camera clip" : "Hidden camera clip")
+        .accessibilityValue(timeRangeDescription)
+        .accessibilityHint("Selects this camera clip.")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .contextMenu {
+            Button {
+                edits.splitCameraClip(at: currentTime, duration: duration, fallback: fallbackSettings)
+            } label: {
+                Label("Split at Playhead", systemImage: "scissors")
+            }
+            .disabled(!canSplitAtPlayhead)
 
-                Button(role: .destructive) {
-                    edits.deleteCameraClip(id: clip.id, duration: duration, fallback: fallbackSettings)
-                } label: {
-                    Label("Delete", systemImage: "trash")
-                }
-                .disabled(!edits.canDeleteCameraClip(id: clip.id, duration: duration, fallback: fallbackSettings))
+            Button(role: .destructive) {
+                edits.deleteCameraClip(id: clip.id, duration: duration, fallback: fallbackSettings)
+            } label: {
+                Label("Delete", systemImage: "trash")
             }
+            .disabled(!edits.canDeleteCameraClip(id: clip.id, duration: duration, fallback: fallbackSettings))
+        }
     }
 
     private func label(width: CGFloat) -> some View {
@@ -1178,6 +1194,10 @@ private struct TimelineCameraClipItem: View {
         let minimumDistance = min(0.05, duration / 4)
         return currentTime > clip.span.start + minimumDistance && currentTime < clip.span.end - minimumDistance
     }
+
+    private var timeRangeDescription: String {
+        "\(clip.span.start.formatted(.number.precision(.fractionLength(1)))) to \(clip.span.end.formatted(.number.precision(.fractionLength(1)))) seconds"
+    }
 }
 
 struct TimelineRegionItem: View {
@@ -1193,10 +1213,28 @@ struct TimelineRegionItem: View {
     var body: some View {
         let startX = x(for: region.span.start)
         let itemWidth = max(1, x(for: region.span.end) - startX)
+
+        Button {
+            edits.select(kind, id: region.id)
+        } label: {
+            regionBody(width: itemWidth)
+        }
+        .buttonStyle(.plain)
+        .frame(width: itemWidth, height: TimelineMetrics.regionItemHeight)
+        .position(x: startX + itemWidth / 2, y: TimelineMetrics.layerHeight / 2)
+        .simultaneousGesture(TapGesture(count: 2).onEnded { performPrimaryEdit() })
+        .gesture(moveGesture())
+        .accessibilityLabel("\(kind.title) region")
+        .accessibilityValue(regionAccessibilityValue)
+        .accessibilityHint(regionAccessibilityHint)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    private func regionBody(width: CGFloat) -> some View {
         RoundedRectangle(cornerRadius: 7, style: .continuous)
             .fill(kind.accent.opacity(isSelected ? 0.55 : 0.34))
             .overlay { RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(kind.accent.opacity(isSelected ? 0.95 : 0.65), lineWidth: isSelected ? 2 : 1) }
-            .overlay { regionLabel(width: itemWidth) }
+            .overlay { regionLabel(width: width) }
             .overlay(alignment: .leading) {
                 if showsLeadingHandle {
                     TimelineResizeHandle().offset(x: -9).gesture(resizeGesture(edge: .leading))
@@ -1207,11 +1245,6 @@ struct TimelineRegionItem: View {
                     TimelineResizeHandle().offset(x: 9).gesture(resizeGesture(edge: .trailing))
                 }
             }
-            .frame(width: itemWidth, height: TimelineMetrics.regionItemHeight)
-            .position(x: startX + itemWidth / 2, y: TimelineMetrics.layerHeight / 2)
-            .onTapGesture(count: 2) { performPrimaryEdit() }
-            .onTapGesture { edits.select(kind, id: region.id) }
-            .gesture(moveGesture())
     }
 
     private func regionLabel(width: CGFloat) -> some View {
@@ -1302,5 +1335,13 @@ struct TimelineRegionItem: View {
     private func time(forDeltaX deltaX: CGFloat) -> Double {
         guard width > 0, viewport.visibleDuration.isFinite else { return 0 }
         return Double(deltaX / width) * viewport.visibleDuration
+    }
+
+    private var regionAccessibilityValue: String {
+        "\(region.label), \(region.span.start.formatted(.number.precision(.fractionLength(1)))) to \(region.span.end.formatted(.number.precision(.fractionLength(1)))) seconds"
+    }
+
+    private var regionAccessibilityHint: String {
+        kind == .zoom ? "Selects this timeline region. Press twice to increase zoom depth." : "Selects this timeline region."
     }
 }

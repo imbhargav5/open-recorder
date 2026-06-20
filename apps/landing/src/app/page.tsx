@@ -5,26 +5,26 @@ const sourceUrl = "https://github.com/imbhargav5/open-recorder";
 
 const proofPoints = [
   ["Native macOS", "Swift capture UI with system privacy flows"],
-  ["Local-first", "Recordings stay under your Movies folder"],
+  ["Local-first", "Recordings and projects stay on your Mac"],
   ["Open source", "Apache 2.0 with a small Swift + Rust stack"],
-  ["Editor included", "Trim, preview, organize, and export"],
+  ["Editor included", "Zooms, camera clips, cursor overlays, and exports"],
 ];
 
 const featureHighlights = [
   {
     title: "Capture exactly what matters",
     eyebrow: "Display, window, or region",
-    copy: "Choose a full display, a single app window, or draw a precise area before recording or taking a screenshot.",
+    copy: "Choose a full display, a single app window, or draw a precise area with microphone, system audio, camera, cursor, and click controls.",
   },
   {
-    title: "Polish without a cloud detour",
-    eyebrow: "Native editing flow",
-    copy: "Preview recordings, keep project metadata organized, and move from rough capture to clean handoff on the same Mac.",
+    title: "Shape the story on the timeline",
+    eyebrow: "Zooms, clips, cursor, camera",
+    copy: "Add manual or automatic zoom sections, split clips, tune playback speed, style cursor motion, and place facecam segments independently.",
   },
   {
-    title: "Export work you can trust",
-    eyebrow: "Rust-backed bookkeeping",
-    copy: "A durable local service handles paths, project registration, screenshot indexing, and export state behind the scenes.",
+    title: "Compose the final handoff",
+    eyebrow: "Crop, aspect, screenshot, export",
+    copy: "Crop and reframe videos for fixed aspect layouts, compose screenshots on styled backgrounds, and export MOV, MP4, GIF, or PNG outputs.",
   },
 ];
 
@@ -41,20 +41,20 @@ const workflow = [
   },
   {
     step: "03",
-    title: "Preview and refine",
-    copy: "Review captures in the native library, trim what is noisy, and keep the useful version close.",
+    title: "Edit the timeline",
+    copy: "Refine clips with trims, speed changes, zoom effects, cursor overlays, and independently controlled camera segments.",
   },
   {
     step: "04",
-    title: "Export the handoff",
-    copy: "Let the Rust service handle export bookkeeping so your final files stay clean and findable.",
+    title: "Export or compose",
+    copy: "Export MOV, MP4, GIF, or PNG assets with crop and aspect controls, styled backgrounds, and screenshot composition.",
   },
 ];
 
 const architectureNotes = [
   {
     label: "Swift app",
-    value: "Capture UI, AVKit playback, Finder integration, privacy prompts",
+    value: "Capture UI, editor timeline, screenshot composition, Finder integration",
   },
   {
     label: "Rust service",
@@ -62,7 +62,7 @@ const architectureNotes = [
   },
   {
     label: "Local paths",
-    value: "~/Movies/Open Recorder and ~/Pictures/Open Recorder",
+    value: "~/Movies/Open Recorder, ~/Pictures/Open Recorder, and local project files",
   },
 ];
 
@@ -113,9 +113,9 @@ export default function Home() {
           <p className="eyebrow">Native macOS capture studio</p>
           <h1>Open Recorder</h1>
           <p className="hero-lede">
-            Record your screen, capture screenshots, trim the useful parts, and
-            export clean handoffs without sending your work through a cloud
-            pipeline.
+            Record your screen, capture screenshots, shape zooms, cursor, and
+            camera on a native timeline, then export polished MOV, MP4, GIF, or
+            PNG handoffs without a cloud pipeline.
           </p>
           <div className="hero-actions">
             <a className="primary-action" href={docsUrl} target="_blank" rel="noreferrer">
@@ -154,7 +154,7 @@ export default function Home() {
         <div className="section-inner">
           <div className="section-heading">
             <p className="eyebrow">Capture, edit, export</p>
-            <h2>A small native toolchain for polished demos and documentation.</h2>
+            <h2>A native capture studio for polished demos, docs, and share-ready clips.</h2>
           </div>
 
           <div className="feature-grid">
