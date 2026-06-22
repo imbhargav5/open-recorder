@@ -48,6 +48,27 @@ final class RecordingSessionBuilderTests: XCTestCase {
         XCTAssertEqual(session.facecamVideoPath, facecamURL.path)
     }
 
+    func testBuildRecordingSessionWithoutFacecamDisablesFacecamDefaults() {
+        let screenURL = URL(fileURLWithPath: "/tmp/screen.mp4")
+
+        let session = RecordingSessionBuilder.build(
+            screenVideoURL: screenURL,
+            facecamURL: nil,
+            sourceName: nil,
+            showCursor: false,
+            cursorTelemetryURL: nil,
+            screenStartedAt: Date(timeIntervalSince1970: 10),
+            facecamStartedAt: nil
+        )
+
+        XCTAssertEqual(session.screenVideoPath, screenURL.path)
+        XCTAssertNil(session.facecamVideoPath)
+        XCTAssertNil(session.facecamOffsetMs)
+        XCTAssertEqual(session.facecamSettings?.enabled, false)
+        XCTAssertFalse(session.showCursorOverlay)
+        XCTAssertFalse(session.hasRecordedCamera)
+    }
+
     func testRecordingSessionHasRecordedCameraRequiresFacecamPath() {
         var session = RecordingSession(
             screenVideoPath: "/tmp/screen.mp4",
