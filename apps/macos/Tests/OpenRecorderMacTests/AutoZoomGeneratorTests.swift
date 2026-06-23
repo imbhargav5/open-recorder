@@ -107,6 +107,10 @@ final class AutoZoomGeneratorTests: XCTestCase {
         XCTAssertNil(zoom.sourceClickTimestamp)
     }
 
+    func testStoredZoomAnimationPresetTrimsWhitespace() {
+        XCTAssertEqual(TimelineZoomAnimationPreset.storedValue(" snappy\n"), .snappy)
+    }
+
     func testPresetChangesGeneratedTimingAndDepth() {
         let payload = CursorTelemetryPayload(
             width: 1000,
