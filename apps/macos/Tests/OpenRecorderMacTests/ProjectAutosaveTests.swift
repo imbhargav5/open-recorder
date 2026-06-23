@@ -63,6 +63,16 @@ final class ProjectAutosaveCoordinatorTests: XCTestCase {
 }
 
 final class ProjectEditorStateCodableTests: XCTestCase {
+    func testFormattedProjectDateUsesStableMonthLabelsForEpochStrings() {
+        let timestamp = "1767225600"
+        let expectedDate = Date(timeIntervalSince1970: 1_767_225_600)
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "MMM d, h:mm a"
+
+        XCTAssertEqual(formattedProjectDate(timestamp), formatter.string(from: expectedDate))
+    }
+
     func testOldProjectDocumentsDecodeWithoutVideoState() throws {
         let data = """
         {
