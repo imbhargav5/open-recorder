@@ -32,14 +32,18 @@ final class PrivacyUsageDescriptionTests: XCTestCase {
     }
 
     private func loadInfoPlist() throws -> [String: Any] {
-        let url = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
+        let url = packageRoot()
             .appendingPathComponent("Resources/Info.plist")
         let data = try Data(contentsOf: url)
         let plist = try PropertyListSerialization.propertyList(from: data, format: nil)
 
         return try XCTUnwrap(plist as? [String: Any], "Resources/Info.plist should be a dictionary")
+    }
+
+    private func packageRoot() -> URL {
+        URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
     }
 }
