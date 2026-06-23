@@ -67,6 +67,17 @@ final class WindowSourceFilterTests: XCTestCase {
         XCTAssertEqual(displayInfo?.subtitle, "Example App")
     }
 
+    func testUsesOwnerNameWhenWindowTitleIsMissing() {
+        let displayInfo = displayInfo(
+            title: nil,
+            ownerName: "Preview",
+            bundleIdentifier: "com.apple.Preview"
+        )
+
+        XCTAssertEqual(displayInfo?.name, "Preview")
+        XCTAssertEqual(displayInfo?.subtitle, "Preview")
+    }
+
     func testTrimsWindowTitleAndOwnerNameForDisplay() {
         let displayInfo = displayInfo(
             title: "  Project Notes  \n",
