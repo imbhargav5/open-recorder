@@ -32,6 +32,19 @@ final class VideoCropSelectionTests: XCTestCase {
         XCTAssertEqual(rect.height, 8, accuracy: 0.001)
     }
 
+    func testClampsNonFiniteCropRectsToFiniteBounds() {
+        let pixelRect = VideoCropSelection.clampedPixelRect(
+            CGRect(x: CGFloat.nan, y: CGFloat.infinity, width: CGFloat.infinity, height: CGFloat.nan),
+            in: CGSize(width: 100, height: 80)
+        )
+        let normalizedRect = VideoCropSelection.clampedNormalizedRect(
+            CGRect(x: CGFloat.nan, y: CGFloat.infinity, width: CGFloat.infinity, height: CGFloat.nan)
+        )
+
+        XCTAssertEqual(pixelRect, CGRect(x: 0, y: 0, width: 100, height: 80))
+        XCTAssertEqual(normalizedRect, CGRect(x: 0, y: 0, width: 1, height: 1))
+    }
+
     func testDisplayAndPixelCropMappingUseFittedVideoFrame() {
         let sourceSize = CGSize(width: 1920, height: 1080)
         let availableSize = CGSize(width: 960, height: 720)
