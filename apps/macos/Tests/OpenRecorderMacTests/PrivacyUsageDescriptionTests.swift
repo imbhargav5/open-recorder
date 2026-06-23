@@ -15,7 +15,10 @@ final class PrivacyUsageDescriptionTests: XCTestCase {
     }
 
     private func loadInfoPlist() throws -> [String: Any] {
-        let url = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
             .appendingPathComponent("Resources/Info.plist")
         let data = try Data(contentsOf: url)
         let plist = try PropertyListSerialization.propertyList(from: data, format: nil)
