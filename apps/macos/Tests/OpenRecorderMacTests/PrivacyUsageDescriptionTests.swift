@@ -17,16 +17,22 @@ final class PrivacyUsageDescriptionTests: XCTestCase {
 
     func testInfoPlistDocumentTypeMatchesExportedProjectType() throws {
         let plist = try loadInfoPlist()
-        let documentTypes = plist["CFBundleDocumentTypes"] as? [[String: Any]]
-        let exportedTypes = plist["UTExportedTypeDeclarations"] as? [[String: Any]]
+        let documentType = try XCTUnwrap(
+            (plist["CFBundleDocumentTypes"] as? [[String: Any]])?.first,
+            "Info.plist should declare a document type"
+        )
+        let exportedType = try XCTUnwrap(
+            (plist["UTExportedTypeDeclarations"] as? [[String: Any]])?.first,
+            "Info.plist should export the Open Recorder project type"
+        )
 
-        XCTAssertEqual(documentTypes?.first?["CFBundleTypeExtensions"] as? [String], ["openrecorder"])
-        XCTAssertEqual(documentTypes?.first?["CFBundleTypeName"] as? String, "Open Recorder Project")
-        XCTAssertEqual(documentTypes?.first?["CFBundleTypeRole"] as? String, "Editor")
-        XCTAssertEqual(documentTypes?.first?["LSItemContentTypes"] as? [String], ["dev.openrecorder.project"])
-        XCTAssertEqual(exportedTypes?.first?["UTTypeIdentifier"] as? String, "dev.openrecorder.project")
+        XCTAssertEqual(documentType["CFBundleTypeExtensions"] as? [String], ["openrecorder"])
+        XCTAssertEqual(documentType["CFBundleTypeName"] as? String, "Open Recorder Project")
+        XCTAssertEqual(documentType["CFBundleTypeRole"] as? String, "Editor")
+        XCTAssertEqual(documentType["LSItemContentTypes"] as? [String], ["dev.openrecorder.project"])
+        XCTAssertEqual(exportedType["UTTypeIdentifier"] as? String, "dev.openrecorder.project")
         XCTAssertEqual(
-            exportedTypes?.first?["UTTypeTagSpecification"] as? [String: [String]],
+            exportedType["UTTypeTagSpecification"] as? [String: [String]],
             ["public.filename-extension": ["openrecorder"]]
         )
     }
