@@ -167,9 +167,7 @@ final class CaptureDriverStateMachineTests: XCTestCase {
         XCTAssertEqual(started, 1)
 
         _ = driver.send(.recordingStopRequested)
-        for _ in 0..<20 where !canceled {
-            await Task.yield()
-        }
+        await waitForCondition { canceled }
 
         XCTAssertTrue(cancelEffectRan)
         XCTAssertTrue(canceled)
@@ -205,12 +203,21 @@ final class CaptureDriverStateMachineTests: XCTestCase {
         XCTAssertEqual(started, 1)
 
         _ = driver.send(.cancelCapture)
-        for _ in 0..<20 where !canceled {
-            await Task.yield()
-        }
+        await waitForCondition { canceled }
 
         XCTAssertTrue(cancelEffectRan)
         XCTAssertTrue(canceled)
+    }
+}
+
+@MainActor
+private func waitForCondition(
+    timeout: TimeInterval = 1,
+    condition: () -> Bool
+) async {
+    let deadline = Date().addingTimeInterval(timeout)
+    while !condition(), Date() < deadline {
+        await Task.yield()
     }
 }
 
