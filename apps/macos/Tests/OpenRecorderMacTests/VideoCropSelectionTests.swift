@@ -278,6 +278,10 @@ final class VideoCropSelectionTests: XCTestCase {
         XCTAssertEqual(fallbackRatio, 8.0 / 9.0, accuracy: 0.001)
     }
 
+    func testCropAspectPresetsExposeMenuTitlesInOrder() {
+        XCTAssertEqual(VideoCropAspect.allCases.map(\.title), ["Any", "16:9", "4:3", "1:1", "Custom"])
+    }
+
     func testCropKeyboardArrowShortcutsMoveByOneOrTenPixels() {
         XCTAssertEqual(VideoCropKeyboardAdjustment.make(keyCode: 123, modifierFlags: []), .move(dx: -1, dy: 0))
         XCTAssertEqual(VideoCropKeyboardAdjustment.make(keyCode: 124, modifierFlags: []), .move(dx: 1, dy: 0))
