@@ -72,7 +72,11 @@ final class ScreenRecordingPermissionTests: XCTestCase {
         ))
         let controller = CaptureController(screenRecordingPermission: permission)
 
-        XCTAssertThrowsError(try controller.ensureScreenRecordingPermissionForTesting())
+        XCTAssertThrowsError(try controller.ensureScreenRecordingPermissionForTesting()) { error in
+            guard case CaptureControllerError.screenRecordingPermissionRequired = error else {
+                return XCTFail("Expected first request to report required permission, got \(error)")
+            }
+        }
         XCTAssertThrowsError(try controller.ensureScreenRecordingPermissionForTesting()) { error in
             guard case CaptureControllerError.screenRecordingPermissionUnavailableAfterRequest = error else {
                 return XCTFail("Expected same-session repeated request to be suppressed, got \(error)")
