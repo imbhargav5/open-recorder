@@ -127,6 +127,17 @@ final class CursorOverlaySettingsTests: XCTestCase {
         )
     }
 
+    func testCursorOverlayGeometryStandardizesReversedCropRect() {
+        let contentRect = CGRect(x: 0, y: 0, width: 960, height: 540)
+        let cropRect = CGRect(x: 1920, y: 1080, width: -1920, height: -1080)
+
+        XCTAssertEqual(
+            CursorOverlayGeometry.displayScale(contentRect: contentRect, cropRect: cropRect),
+            0.5,
+            accuracy: 0.001
+        )
+    }
+
     func testProjectVideoStateDecodesLegacyCursorOverlayDefaults() throws {
         let data = """
         {
