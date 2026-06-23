@@ -28,6 +28,31 @@ final class RecordingSessionBuilderTests: XCTestCase {
         XCTAssertEqual(session.facecamSettings?.enabled, true)
     }
 
+    func testBuildRecordingSessionEnablesFacecamWithoutTimingMetadata() {
+        let screenURL = URL(fileURLWithPath: "/tmp/screen.mp4")
+        let facecamURL = URL(fileURLWithPath: "/tmp/facecam.mov")
+        let screenStartedAt = Date(timeIntervalSince1970: 10)
+
+        let session = RecordingSessionBuilder.build(
+            screenVideoURL: screenURL,
+            facecamURL: facecamURL,
+            sourceName: "Display 1",
+            showCursor: false,
+            cursorTelemetryURL: nil,
+            screenStartedAt: screenStartedAt,
+            facecamStartedAt: nil
+        )
+
+        XCTAssertEqual(session.screenVideoPath, screenURL.path)
+        XCTAssertEqual(session.facecamVideoPath, facecamURL.path)
+        XCTAssertNil(session.facecamOffsetMs)
+        XCTAssertEqual(session.sourceName, "Display 1")
+        XCTAssertFalse(session.showCursorOverlay)
+        XCTAssertNil(session.cursorTelemetryPath)
+        XCTAssertEqual(session.facecamSettings?.enabled, true)
+        XCTAssertTrue(session.hasRecordedCamera)
+    }
+
     func testBuildRecordingSessionPreservesEarlyFacecamOffset() {
         let screenURL = URL(fileURLWithPath: "/tmp/screen.mp4")
         let facecamURL = URL(fileURLWithPath: "/tmp/facecam.mov")
