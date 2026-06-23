@@ -226,6 +226,17 @@ private func waitForCondition(
 }
 
 @MainActor
+private func waitForCondition(
+    timeout: TimeInterval = 1,
+    condition: () -> Bool
+) async {
+    let deadline = Date().addingTimeInterval(timeout)
+    while !condition(), Date() < deadline {
+        await Task.yield()
+    }
+}
+
+@MainActor
 final class CaptureOptionsStateMachineTests: XCTestCase {
     func testDeviceSelectionAndLockedSystemAudioAreReducerDriven() {
         var state = CaptureOptionsState(
