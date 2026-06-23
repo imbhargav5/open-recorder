@@ -67,6 +67,17 @@ final class WindowSourceFilterTests: XCTestCase {
         XCTAssertEqual(displayInfo?.subtitle, "Example App")
     }
 
+    func testTrimsWindowTitleAndOwnerNameForDisplay() {
+        let displayInfo = displayInfo(
+            title: "  Project Notes  \n",
+            ownerName: "\tNotes App  ",
+            bundleIdentifier: "com.example.notes"
+        )
+
+        XCTAssertEqual(displayInfo?.name, "Project Notes")
+        XCTAssertEqual(displayInfo?.subtitle, "Notes App")
+    }
+
     private func displayInfo(
         title: String?,
         ownerName: String?,
