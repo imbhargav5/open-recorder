@@ -219,9 +219,10 @@ private func waitForCondition(
     timeout: TimeInterval = 1,
     condition: @escaping @MainActor () -> Bool
 ) async {
-    let deadline = Date().addingTimeInterval(timeout)
-    while !condition(), Date() < deadline {
-        try? await Task.sleep(nanoseconds: 10_000_000)
+    let clock = ContinuousClock()
+    let deadline = clock.now.advanced(by: .milliseconds(Int(timeout * 1_000)))
+    while !condition(), clock.now < deadline {
+        try? await clock.sleep(for: .milliseconds(10))
     }
 }
 
