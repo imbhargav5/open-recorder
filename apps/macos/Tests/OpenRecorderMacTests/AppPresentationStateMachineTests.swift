@@ -4,7 +4,7 @@ import XCTest
 
 @MainActor
 final class AppShellStateMachineTests: XCTestCase {
-    func testShellRoutesEditorSessionAndWindowCommand() {
+    func testShellRoutesEditorSessionAndWindowCommand() throws {
         var state = AppShellState()
         let session = EditorSession(kind: .video, url: URL(fileURLWithPath: "/tmp/demo.mp4"), title: "Demo")
 
@@ -16,7 +16,8 @@ final class AppShellStateMachineTests: XCTestCase {
         XCTAssertEqual(state.lastEditorSession, session)
         XCTAssertEqual(state.windowCommand?.action, .showStudio)
         XCTAssertEqual(state.windowCommand?.editorSession, session)
-        XCTAssertEqual(effects, [.openEditorSession(session), .emitWindowCommand(state.windowCommand!)])
+        let windowCommand = try XCTUnwrap(state.windowCommand)
+        XCTAssertEqual(effects, [.openEditorSession(session), .emitWindowCommand(windowCommand)])
     }
 
     func testShellConsumesWindowCommandOnce() {
