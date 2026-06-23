@@ -103,6 +103,13 @@ struct VideoCropSelection: Equatable, Hashable, Codable {
 
     static func clampedPixelRect(_ rect: CGRect, in sourceSize: CGSize) -> CGRect {
         let safeSize = safeSourceSize(sourceSize)
+        guard rect.origin.x.isFinite,
+              rect.origin.y.isFinite,
+              rect.size.width.isFinite,
+              rect.size.height.isFinite else {
+            return CGRect(origin: .zero, size: safeSize)
+        }
+
         let standardized = rect.standardized
         let minWidth = min(Self.minimumPixelLength, safeSize.width)
         let minHeight = min(Self.minimumPixelLength, safeSize.height)

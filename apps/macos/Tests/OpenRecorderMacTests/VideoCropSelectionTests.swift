@@ -41,6 +41,15 @@ final class VideoCropSelectionTests: XCTestCase {
         XCTAssertTrue(selection.isFullFrame)
     }
 
+    func testNonFinitePixelCropFallsBackToSafeSourceFrame() {
+        let rect = VideoCropSelection.clampedPixelRect(
+            CGRect(x: CGFloat.nan, y: 20, width: 200, height: 100),
+            in: CGSize(width: 640, height: 360)
+        )
+
+        XCTAssertEqual(rect, CGRect(x: 0, y: 0, width: 640, height: 360))
+    }
+
     func testReversedNormalizedCropStandardizesBeforeClamping() {
         let selection = VideoCropSelection(
             normalizedRect: CGRect(x: 0.75, y: 0.8, width: -0.5, height: -0.4)
