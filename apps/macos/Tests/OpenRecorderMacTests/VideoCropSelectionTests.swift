@@ -255,6 +255,29 @@ final class VideoCropSelectionTests: XCTestCase {
         XCTAssertEqual(rect.height, 270, accuracy: 0.001)
     }
 
+    func testCropAspectRatiosUsePresetsCustomSizeAndSelectionFallback() throws {
+        let sourceSize = CGSize(width: 1920, height: 1080)
+        let widescreenRatio = try XCTUnwrap(VideoCropAspect.widescreen.ratio(for: .init(), sourceSize: sourceSize))
+        let standardRatio = try XCTUnwrap(VideoCropAspect.standard.ratio(for: .init(), sourceSize: sourceSize))
+        let squareRatio = try XCTUnwrap(VideoCropAspect.square.ratio(for: .init(), sourceSize: sourceSize))
+
+        XCTAssertNil(VideoCropAspect.any.ratio(for: .init(), sourceSize: sourceSize))
+        XCTAssertEqual(widescreenRatio, 16.0 / 9.0, accuracy: 0.001)
+        XCTAssertEqual(standardRatio, 4.0 / 3.0, accuracy: 0.001)
+        XCTAssertEqual(squareRatio, 1, accuracy: 0.001)
+
+        let customSelection = VideoCropSelection(sizing: .custom(width: 1000, height: 500))
+        let customRatio = try XCTUnwrap(VideoCropAspect.custom.ratio(for: customSelection, sourceSize: sourceSize))
+        XCTAssertEqual(customRatio, 2, accuracy: 0.001)
+
+        let fallbackSelection = VideoCropSelection(
+            normalizedRect: CGRect(x: 0, y: 0, width: 0.25, height: 0.5),
+            sizing: .custom(width: 0, height: 500)
+        )
+        let fallbackRatio = try XCTUnwrap(VideoCropAspect.custom.ratio(for: fallbackSelection, sourceSize: sourceSize))
+        XCTAssertEqual(fallbackRatio, 8.0 / 9.0, accuracy: 0.001)
+    }
+
     func testCropKeyboardArrowShortcutsMoveByOneOrTenPixels() {
         XCTAssertEqual(VideoCropKeyboardAdjustment.make(keyCode: 123, modifierFlags: []), .move(dx: -1, dy: 0))
         XCTAssertEqual(VideoCropKeyboardAdjustment.make(keyCode: 124, modifierFlags: []), .move(dx: 1, dy: 0))
