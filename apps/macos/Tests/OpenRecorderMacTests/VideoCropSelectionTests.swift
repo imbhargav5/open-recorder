@@ -32,6 +32,15 @@ final class VideoCropSelectionTests: XCTestCase {
         XCTAssertEqual(rect.height, 8, accuracy: 0.001)
     }
 
+    func testNonFiniteNormalizedCropFallsBackToFullFrame() {
+        let selection = VideoCropSelection(
+            normalizedRect: CGRect(x: .nan, y: 0.2, width: 0.5, height: 0.5)
+        )
+
+        XCTAssertEqual(selection.normalizedRect, CGRect(x: 0, y: 0, width: 1, height: 1))
+        XCTAssertTrue(selection.isFullFrame)
+    }
+
     func testDisplayAndPixelCropMappingUseFittedVideoFrame() {
         let sourceSize = CGSize(width: 1920, height: 1080)
         let availableSize = CGSize(width: 960, height: 720)
