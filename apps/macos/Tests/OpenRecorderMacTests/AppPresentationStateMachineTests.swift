@@ -323,6 +323,16 @@ final class VideoRuntimeStateMachineTests: XCTestCase {
         XCTAssertEqual(state.previewPlaybackSpeed, 4)
     }
 
+    func testPlaybackSeekWithoutDurationClampsLowerBoundOnly() {
+        var state = VideoPlaybackState()
+
+        XCTAssertEqual(state.applying(.seekRequested(-2)), [.seek(0)])
+        XCTAssertEqual(state.currentTime, 0)
+
+        XCTAssertEqual(state.applying(.seekRequested(12)), [.seek(12)])
+        XCTAssertEqual(state.currentTime, 12)
+    }
+
     func testCropReducerHandlesKeyboardAspectAndConfirm() {
         var state = VideoCropState(
             draftSelection: VideoCropSelection().withPixelRect(CGRect(x: 100, y: 100, width: 800, height: 600), in: CGSize(width: 1920, height: 1080)),
