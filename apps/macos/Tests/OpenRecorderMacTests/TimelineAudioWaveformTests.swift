@@ -56,6 +56,11 @@ final class TimelineAudioWaveformTests: XCTestCase {
         XCTAssertEqual(samples, TimelineWaveformDownsampler.quietSamples(targetCount: 3))
     }
 
+    func testQuietSamplesRejectsNonPositiveTargetCounts() {
+        XCTAssertTrue(TimelineWaveformDownsampler.quietSamples(targetCount: 0).isEmpty)
+        XCTAssertTrue(TimelineWaveformDownsampler.quietSamples(targetCount: -3).isEmpty)
+    }
+
     func testConstantWaveformKeepsLevel() {
         let samples = TimelineWaveformDownsampler.downsample(
             interleavedSamples: Array(repeating: Float(0.25), count: 20),
