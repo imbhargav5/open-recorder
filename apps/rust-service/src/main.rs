@@ -696,6 +696,10 @@ mod tests {
             sanitize_file_name("Product Demo: Screen/Window.mov"),
             "Product-Demo-Screen-Window.mov"
         );
+        assert_eq!(
+            sanitize_file_name("Clip\tTitle\nFinal.mov"),
+            "Clip-Title-Final.mov"
+        );
         assert_eq!(sanitize_file_name("..."), "open-recorder-file");
     }
 
