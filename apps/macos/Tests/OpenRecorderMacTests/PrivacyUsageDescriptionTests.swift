@@ -15,6 +15,15 @@ final class PrivacyUsageDescriptionTests: XCTestCase {
         )
     }
 
+    func testInfoPlistDocumentTypeMatchesExportedProjectType() throws {
+        let plist = try loadInfoPlist()
+        let documentTypes = plist["CFBundleDocumentTypes"] as? [[String: Any]]
+        let exportedTypes = plist["UTExportedTypeDeclarations"] as? [[String: Any]]
+
+        XCTAssertEqual(documentTypes?.first?["LSItemContentTypes"] as? [String], ["dev.openrecorder.project"])
+        XCTAssertEqual(exportedTypes?.first?["UTTypeIdentifier"] as? String, "dev.openrecorder.project")
+    }
+
     private func loadInfoPlist() throws -> [String: Any] {
         let url = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
