@@ -26,6 +26,7 @@ enum VideoCropSizing: Equatable, Hashable, Codable {
 
 struct VideoCropSelection: Equatable, Hashable, Codable {
     static let minimumPixelLength: CGFloat = 8
+    static let defaultSourceSize = CGSize(width: 1920, height: 1080)
 
     var normalizedRect: CGRect
     var sizing: VideoCropSizing
@@ -130,8 +131,8 @@ struct VideoCropSelection: Equatable, Hashable, Codable {
 
     static func safeSourceSize(_ sourceSize: CGSize) -> CGSize {
         CGSize(
-            width: sourceSize.width.isFinite && sourceSize.width > 0 ? sourceSize.width : 1920,
-            height: sourceSize.height.isFinite && sourceSize.height > 0 ? sourceSize.height : 1080
+            width: sourceSize.width.isFinite && sourceSize.width > 0 ? sourceSize.width : defaultSourceSize.width,
+            height: sourceSize.height.isFinite && sourceSize.height > 0 ? sourceSize.height : defaultSourceSize.height
         )
     }
 }
