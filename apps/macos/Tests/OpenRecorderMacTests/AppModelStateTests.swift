@@ -539,6 +539,9 @@ final class AppModelStateTests: XCTestCase {
     func testStoppingRecordingWithoutWrittenFileReleasesCaptureState() async throws {
         let outputURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("missing-recording-\(UUID().uuidString).mp4")
+        defer {
+            try? FileManager.default.removeItem(at: outputURL)
+        }
         let model = AppModel(
             stopRecording: {
                 outputURL
