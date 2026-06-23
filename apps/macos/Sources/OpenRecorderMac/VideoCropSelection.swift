@@ -102,7 +102,12 @@ struct VideoCropSelection: Equatable, Hashable, Codable {
 
     static func clampedPixelRect(_ rect: CGRect, in sourceSize: CGSize) -> CGRect {
         let safeSize = safeSourceSize(sourceSize)
-        let standardized = rect.standardized
+        let standardized = CGRect(
+            x: rect.origin.x.isFinite ? rect.origin.x : 0,
+            y: rect.origin.y.isFinite ? rect.origin.y : 0,
+            width: rect.size.width.isFinite ? rect.size.width : safeSize.width,
+            height: rect.size.height.isFinite ? rect.size.height : safeSize.height
+        ).standardized
         let minWidth = min(Self.minimumPixelLength, safeSize.width)
         let minHeight = min(Self.minimumPixelLength, safeSize.height)
         let width = min(max(standardized.width, minWidth), safeSize.width)
@@ -113,7 +118,12 @@ struct VideoCropSelection: Equatable, Hashable, Codable {
     }
 
     static func clampedNormalizedRect(_ rect: CGRect) -> CGRect {
-        let standardized = rect.standardized
+        let standardized = CGRect(
+            x: rect.origin.x.isFinite ? rect.origin.x : 0,
+            y: rect.origin.y.isFinite ? rect.origin.y : 0,
+            width: rect.size.width.isFinite ? rect.size.width : 1,
+            height: rect.size.height.isFinite ? rect.size.height : 1
+        ).standardized
         let width = min(max(standardized.width, 0.0001), 1)
         let height = min(max(standardized.height, 0.0001), 1)
         let x = min(max(standardized.minX, 0), 1 - width)
