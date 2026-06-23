@@ -41,6 +41,15 @@ final class VideoCropSelectionTests: XCTestCase {
         XCTAssertTrue(selection.isFullFrame)
     }
 
+    func testInvalidSourceSizeFallsBackToDefaultCaptureDimensions() {
+        let safeSize = VideoCropSelection.safeSourceSize(
+            CGSize(width: CGFloat.nan, height: -20)
+        )
+
+        XCTAssertEqual(safeSize.width, 1920)
+        XCTAssertEqual(safeSize.height, 1080)
+    }
+
     func testDisplayAndPixelCropMappingUseFittedVideoFrame() {
         let sourceSize = CGSize(width: 1920, height: 1080)
         let availableSize = CGSize(width: 960, height: 720)
