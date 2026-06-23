@@ -11,7 +11,7 @@ final class ReleaseVersionTests: XCTestCase {
     }
 
     private func loadInfoPlist() throws -> [String: Any] {
-        let url = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+        let url = packageRoot()
             .appendingPathComponent("Resources/Info.plist")
         let data = try Data(contentsOf: url)
         let plist = try PropertyListSerialization.propertyList(from: data, format: nil)
@@ -25,7 +25,7 @@ final class ReleaseVersionTests: XCTestCase {
     }
 
     private func loadRustServiceVersion() throws -> String {
-        let cargoTomlURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+        let cargoTomlURL = packageRoot()
             .appendingPathComponent("../rust-service/Cargo.toml")
         let cargoToml = try String(contentsOf: cargoTomlURL, encoding: .utf8)
         let regex = try NSRegularExpression(pattern: #"(?m)^version\s*=\s*"(\d+\.\d+\.\d+)""#)
@@ -38,5 +38,12 @@ final class ReleaseVersionTests: XCTestCase {
         }
 
         return String(cargoToml[versionRange])
+    }
+
+    private func packageRoot() -> URL {
+        URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
     }
 }
