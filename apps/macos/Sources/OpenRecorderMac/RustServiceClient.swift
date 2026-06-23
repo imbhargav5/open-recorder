@@ -141,11 +141,11 @@ private final class PipeDataReader: @unchecked Sendable {
     func start() {
         group.enter()
         queue.async { [self] in
+            defer { group.leave() }
             let readData = fileHandle.readDataToEndOfFile()
             lock.lock()
+            defer { lock.unlock() }
             data = readData
-            lock.unlock()
-            group.leave()
         }
     }
 
