@@ -155,11 +155,8 @@ final class CaptureDriverStateMachineTests: XCTestCase {
                 },
                 runRecordingStart: { _, _ in
                     started += 1
-                    do {
-                        try await Task.sleep(nanoseconds: 5_000_000_000)
-                    } catch {
-                        canceled = true
-                    }
+                    for await _ in AsyncStream<Void>(Void.self, { _ in }) {}
+                    canceled = true
                 }
             )
         )
@@ -191,11 +188,8 @@ final class CaptureDriverStateMachineTests: XCTestCase {
                 },
                 runScreenshotCapture: { _ in
                     started += 1
-                    do {
-                        try await Task.sleep(nanoseconds: 5_000_000_000)
-                    } catch {
-                        canceled = true
-                    }
+                    for await _ in AsyncStream<Void>(Void.self, { _ in }) {}
+                    canceled = true
                 }
             )
         )
