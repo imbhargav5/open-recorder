@@ -16,12 +16,7 @@ final class ReleaseVersionTests: XCTestCase {
         let data = try Data(contentsOf: url)
         let plist = try PropertyListSerialization.propertyList(from: data, format: nil)
 
-        guard let dictionary = plist as? [String: Any] else {
-            XCTFail("Resources/Info.plist should be a dictionary")
-            return [:]
-        }
-
-        return dictionary
+        return try XCTUnwrap(plist as? [String: Any], "Resources/Info.plist should be a dictionary")
     }
 
     private func loadRustServiceVersion() throws -> String {
