@@ -94,6 +94,17 @@ final class TimelineAudioWaveformTests: XCTestCase {
         XCTAssertEqual(samples[1], 0.5, accuracy: 0.0001)
     }
 
+    func testDownsamplerIgnoresTrailingPartialFrame() {
+        let samples = TimelineWaveformDownsampler.downsample(
+            interleavedSamples: [0.2, 0.4, 1.0],
+            channelCount: 2,
+            targetCount: 1
+        )
+
+        XCTAssertEqual(samples.count, 1)
+        XCTAssertEqual(samples[0], 0.3, accuracy: 0.0001)
+    }
+
     func testWaveformAlwaysUsesTargetSampleCount() {
         let samples = TimelineWaveformDownsampler.downsample(
             interleavedSamples: Array(repeating: Float(0.4), count: 100),
