@@ -160,6 +160,17 @@ final class TimelineAudioWaveformTests: XCTestCase {
         XCTAssertEqual(ticks.map(\.label), ["", "", ""])
     }
 
+    func testVisibleHalfSecondTicksSanitizeInvalidWindowInputs() {
+        let ticks = TimelineRulerTickBuilder.halfSecondTicks(
+            visibleStart: .nan,
+            visibleDuration: .infinity,
+            totalDuration: 3
+        )
+
+        XCTAssertEqual(ticks.map(\.time), [0.5, 1.5, 2.5])
+        XCTAssertEqual(ticks.map(\.label), ["", "", ""])
+    }
+
     func testLongTimelineTicksUseClockLabels() {
         let ticks = TimelineRulerTickBuilder.ticks(duration: 60, maxTickCount: 8)
 
