@@ -74,7 +74,7 @@ final class ProjectEditorStateCodableTests: XCTestCase {
     }
 
     func testOldProjectDocumentsDecodeWithoutVideoState() throws {
-        let data = """
+        let data = try XCTUnwrap("""
         {
           "schemaVersion": 2,
           "title": "Legacy",
@@ -92,7 +92,7 @@ final class ProjectEditorStateCodableTests: XCTestCase {
             }
           }
         }
-        """.data(using: .utf8)!
+        """.data(using: .utf8))
 
         let document = try JSONDecoder().decode(ProjectDocument.self, from: data)
 
