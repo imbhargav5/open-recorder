@@ -20,8 +20,15 @@ final class PrivacyUsageDescriptionTests: XCTestCase {
         let documentTypes = plist["CFBundleDocumentTypes"] as? [[String: Any]]
         let exportedTypes = plist["UTExportedTypeDeclarations"] as? [[String: Any]]
 
+        XCTAssertEqual(documentTypes?.first?["CFBundleTypeExtensions"] as? [String], ["openrecorder"])
+        XCTAssertEqual(documentTypes?.first?["CFBundleTypeName"] as? String, "Open Recorder Project")
+        XCTAssertEqual(documentTypes?.first?["CFBundleTypeRole"] as? String, "Editor")
         XCTAssertEqual(documentTypes?.first?["LSItemContentTypes"] as? [String], ["dev.openrecorder.project"])
         XCTAssertEqual(exportedTypes?.first?["UTTypeIdentifier"] as? String, "dev.openrecorder.project")
+        XCTAssertEqual(
+            exportedTypes?.first?["UTTypeTagSpecification"] as? [String: [String]],
+            ["public.filename-extension": ["openrecorder"]]
+        )
     }
 
     private func loadInfoPlist() throws -> [String: Any] {
