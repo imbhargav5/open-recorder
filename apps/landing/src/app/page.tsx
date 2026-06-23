@@ -1,6 +1,6 @@
 import Image from "next/image";
 
-const docsUrl = "http://docs.openrecorder.xyz/";
+const docsUrl = "https://docs.openrecorder.xyz/";
 const sourceUrl = "https://github.com/imbhargav5/open-recorder";
 
 const proofPoints = [
