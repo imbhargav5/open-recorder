@@ -22,6 +22,8 @@ final class NativeScreenRecorderConfigurationTests: XCTestCase {
         )
 
         XCTAssertTrue(configuration.capturesAudio)
+        XCTAssertEqual(configuration.width, 1920)
+        XCTAssertEqual(configuration.height, 1080)
         XCTAssertFalse(configuration.captureMicrophone)
         XCTAssertNil(configuration.microphoneCaptureDeviceID)
         XCTAssertEqual(configuration.sampleRate, 48_000)
@@ -68,6 +70,8 @@ final class NativeScreenRecorderConfigurationTests: XCTestCase {
         )
 
         XCTAssertFalse(configuration.capturesAudio)
+        XCTAssertEqual(configuration.width, 1280)
+        XCTAssertEqual(configuration.height, 720)
         XCTAssertFalse(configuration.captureMicrophone)
         XCTAssertNil(configuration.microphoneCaptureDeviceID)
         XCTAssertFalse(configuration.showsCursor)
