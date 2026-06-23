@@ -156,7 +156,7 @@ final class CaptureDriverStateMachineTests: XCTestCase {
                 },
                 runRecordingStart: { _, _ in
                     started += 1
-                    for await _ in AsyncStream<Void>(Void.self, { _ in }) {}
+                    await waitUntilCancelled()
                     canceled = true
                 }
             )
@@ -189,7 +189,7 @@ final class CaptureDriverStateMachineTests: XCTestCase {
                 },
                 runScreenshotCapture: { _ in
                     started += 1
-                    for await _ in AsyncStream<Void>(Void.self, { _ in }) {}
+                    await waitUntilCancelled()
                     canceled = true
                 }
             )
@@ -212,6 +212,10 @@ final class CaptureDriverStateMachineTests: XCTestCase {
         XCTAssertTrue(cancelEffectRan)
         XCTAssertTrue(canceled)
     }
+}
+
+private func waitUntilCancelled() async {
+    for await _ in AsyncStream<Void>(Void.self, { _ in }) {}
 }
 
 @MainActor
