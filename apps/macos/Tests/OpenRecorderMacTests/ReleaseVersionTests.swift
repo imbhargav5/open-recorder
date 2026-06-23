@@ -23,7 +23,7 @@ final class ReleaseVersionTests: XCTestCase {
         let cargoTomlURL = packageRoot()
             .appendingPathComponent("../rust-service/Cargo.toml")
         let cargoToml = try String(contentsOf: cargoTomlURL, encoding: .utf8)
-        let regex = try NSRegularExpression(pattern: #"(?m)^version\s*=\s*"(\d+\.\d+\.\d+)""#)
+        let regex = try NSRegularExpression(pattern: #"(?m)^version\s*=\s*"(\d+\.\d+\.\d+)"\s*$"#)
         let range = NSRange(cargoToml.startIndex..<cargoToml.endIndex, in: cargoToml)
 
         guard let match = regex.firstMatch(in: cargoToml, range: range),
