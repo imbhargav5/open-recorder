@@ -41,6 +41,17 @@ final class VideoCropSelectionTests: XCTestCase {
         XCTAssertTrue(selection.isFullFrame)
     }
 
+    func testReversedNormalizedCropStandardizesBeforeClamping() {
+        let selection = VideoCropSelection(
+            normalizedRect: CGRect(x: 0.75, y: 0.8, width: -0.5, height: -0.4)
+        )
+
+        XCTAssertEqual(selection.normalizedRect.minX, 0.25, accuracy: 0.001)
+        XCTAssertEqual(selection.normalizedRect.minY, 0.4, accuracy: 0.001)
+        XCTAssertEqual(selection.normalizedRect.width, 0.5, accuracy: 0.001)
+        XCTAssertEqual(selection.normalizedRect.height, 0.4, accuracy: 0.001)
+    }
+
     func testInvalidSourceSizeFallsBackToDefaultCaptureDimensions() {
         let safeSize = VideoCropSelection.safeSourceSize(
             CGSize(width: CGFloat.nan, height: -20)
