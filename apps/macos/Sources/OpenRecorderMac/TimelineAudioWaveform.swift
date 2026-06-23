@@ -29,9 +29,10 @@ enum TimelineRulerTickBuilder {
     }
 
     static func ticks(visibleStart: Double, visibleDuration: Double, totalDuration: Double, maxTickCount: Int = 8) -> [TimelineRulerTick] {
-        let safeVisibleStart = visibleStart.isFinite && visibleStart > 0 ? visibleStart : 0
         let safeVisibleDuration = visibleDuration.isFinite && visibleDuration > 0 ? visibleDuration : 6
         let safeTotalDuration = totalDuration.isFinite && totalDuration > 0 ? totalDuration : safeVisibleDuration
+        let unclampedVisibleStart = visibleStart.isFinite && visibleStart > 0 ? visibleStart : 0
+        let safeVisibleStart = min(unclampedVisibleStart, safeTotalDuration)
         let safeTickCount = max(maxTickCount, 2)
         let step = tickStep(for: safeVisibleDuration, maxTickCount: safeTickCount)
         let visibleEnd = min(safeTotalDuration, safeVisibleStart + safeVisibleDuration)
@@ -75,9 +76,10 @@ enum TimelineRulerTickBuilder {
     }
 
     static func halfSecondTicks(visibleStart: Double, visibleDuration: Double, totalDuration: Double) -> [TimelineRulerTick] {
-        let safeVisibleStart = visibleStart.isFinite && visibleStart > 0 ? visibleStart : 0
         let safeVisibleDuration = visibleDuration.isFinite && visibleDuration > 0 ? visibleDuration : 6
         let safeTotalDuration = totalDuration.isFinite && totalDuration > 0 ? totalDuration : safeVisibleDuration
+        let unclampedVisibleStart = visibleStart.isFinite && visibleStart > 0 ? visibleStart : 0
+        let safeVisibleStart = min(unclampedVisibleStart, safeTotalDuration)
         let visibleEnd = min(safeTotalDuration, safeVisibleStart + safeVisibleDuration)
         var ticks: [TimelineRulerTick] = []
         var time = (safeVisibleStart - 0.5).rounded(.up) + 0.5

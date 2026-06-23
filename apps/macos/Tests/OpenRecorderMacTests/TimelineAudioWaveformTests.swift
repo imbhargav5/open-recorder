@@ -189,6 +189,28 @@ final class TimelineAudioWaveformTests: XCTestCase {
         XCTAssertEqual(ticks.map(\.time), [0, 2, 4])
         XCTAssertEqual(ticks.map(\.label), ["", "2s", "4s"])
     }
+
+    func testVisibleTicksClampStartBeyondTotalDuration() {
+        let ticks = TimelineRulerTickBuilder.ticks(
+            visibleStart: 12,
+            visibleDuration: 4,
+            totalDuration: 10,
+            maxTickCount: 4
+        )
+
+        XCTAssertEqual(ticks.map(\.time), [10])
+        XCTAssertEqual(ticks.map(\.label), ["10s"])
+    }
+
+    func testVisibleHalfSecondTicksClampStartBeyondTotalDuration() {
+        let ticks = TimelineRulerTickBuilder.halfSecondTicks(
+            visibleStart: 12,
+            visibleDuration: 4,
+            totalDuration: 10
+        )
+
+        XCTAssertTrue(ticks.isEmpty)
+    }
 }
 
 final class TimelineSeekMapperTests: XCTestCase {
