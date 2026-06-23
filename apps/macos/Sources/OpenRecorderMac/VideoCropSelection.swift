@@ -113,6 +113,13 @@ struct VideoCropSelection: Equatable, Hashable, Codable {
     }
 
     static func clampedNormalizedRect(_ rect: CGRect) -> CGRect {
+        guard rect.origin.x.isFinite,
+              rect.origin.y.isFinite,
+              rect.size.width.isFinite,
+              rect.size.height.isFinite else {
+            return CGRect(x: 0, y: 0, width: 1, height: 1)
+        }
+
         let standardized = rect.standardized
         let width = min(max(standardized.width, 0.0001), 1)
         let height = min(max(standardized.height, 0.0001), 1)
