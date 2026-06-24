@@ -116,7 +116,7 @@ enum TimelineZoomAnimationPreset: String, CaseIterable, Codable, Hashable, Ident
 
     static func storedValue(_ rawValue: String?) -> TimelineZoomAnimationPreset {
         guard let rawValue = rawValue?.trimmingCharacters(in: .whitespacesAndNewlines),
-              let preset = TimelineZoomAnimationPreset(rawValue: rawValue) else {
+              let preset = TimelineZoomAnimationPreset(rawValue: rawValue.lowercased()) else {
             return .balanced
         }
         return preset
