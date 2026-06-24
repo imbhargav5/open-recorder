@@ -202,6 +202,18 @@ final class TimelineAudioWaveformTests: XCTestCase {
         XCTAssertEqual(ticks.map(\.label), ["", "2s", "4s"])
     }
 
+    func testVisibleTicksClampNegativeStartToZero() {
+        let ticks = TimelineRulerTickBuilder.ticks(
+            visibleStart: -2,
+            visibleDuration: 3,
+            totalDuration: 5,
+            maxTickCount: 4
+        )
+
+        XCTAssertEqual(ticks.map(\.time), [0, 1, 2, 3])
+        XCTAssertEqual(ticks.map(\.label), ["", "1s", "2s", "3s"])
+    }
+
     func testDurationTicksUseFallbackForNonPositiveDuration() {
         let ticks = TimelineRulerTickBuilder.ticks(duration: 0, maxTickCount: 8)
 
@@ -214,6 +226,17 @@ final class TimelineAudioWaveformTests: XCTestCase {
 
         XCTAssertEqual(ticks.map(\.time), [0.5, 1.5, 2.5, 3.5, 4.5, 5.5])
         XCTAssertEqual(ticks.map(\.label), ["", "", "", "", "", ""])
+    }
+
+    func testVisibleHalfSecondTicksClampNegativeStartToZero() {
+        let ticks = TimelineRulerTickBuilder.halfSecondTicks(
+            visibleStart: -2,
+            visibleDuration: 3,
+            totalDuration: 5
+        )
+
+        XCTAssertEqual(ticks.map(\.time), [0.5, 1.5, 2.5])
+        XCTAssertEqual(ticks.map(\.label), ["", "", ""])
     }
 
     func testVisibleTicksClampStartBeyondTotalDuration() {
