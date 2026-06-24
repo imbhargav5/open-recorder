@@ -25,6 +25,13 @@ final class TimelineAudioWaveformTests: XCTestCase {
         XCTAssertTrue(bars.contains { $0 >= 0.95 })
     }
 
+    func testWaveformBarRendererClampsSmoothedLevels() {
+        let levels = TimelineWaveformBarRenderer.smoothedDisplayLevels(from: [-0.5, 1.8, 0.4])
+
+        XCTAssertEqual(levels.count, 3)
+        XCTAssertTrue(levels.allSatisfy { $0 >= 0 && $0 <= 1 })
+    }
+
     func testEmptyWaveformReturnsQuietSamples() {
         let samples = TimelineWaveformDownsampler.downsample(
             interleavedSamples: [],
