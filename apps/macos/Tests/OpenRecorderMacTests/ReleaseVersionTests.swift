@@ -2,6 +2,8 @@ import Foundation
 import XCTest
 
 final class ReleaseVersionTests: XCTestCase {
+    private typealias PlistDictionary = [String: Any]
+
     func testInfoPlistVersionsMatchRustServiceVersion() throws {
         let plist = try loadInfoPlist()
         let cargoVersion = try loadRustServiceVersion()
@@ -10,13 +12,13 @@ final class ReleaseVersionTests: XCTestCase {
         XCTAssertEqual(plist["CFBundleVersion"] as? String, cargoVersion)
     }
 
-    private func loadInfoPlist() throws -> [String: Any] {
+    private func loadInfoPlist() throws -> PlistDictionary {
         let url = packageRoot()
             .appendingPathComponent("Resources/Info.plist")
         let data = try Data(contentsOf: url)
         let plist = try PropertyListSerialization.propertyList(from: data, format: nil)
 
-        return try XCTUnwrap(plist as? [String: Any], "Resources/Info.plist should be a dictionary")
+        return try XCTUnwrap(plist as? PlistDictionary, "Resources/Info.plist should be a dictionary")
     }
 
     private func loadRustServiceVersion() throws -> String {
