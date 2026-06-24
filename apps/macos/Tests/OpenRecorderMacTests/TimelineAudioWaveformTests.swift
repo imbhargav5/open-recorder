@@ -306,6 +306,15 @@ final class TimelineSeekMapperTests: XCTestCase {
     }
 }
 
+final class TimelineClipDurationFormattingTests: XCTestCase {
+    func testClipDurationFormattingSanitizesInvalidDurations() {
+        XCTAssertEqual(formatClipDuration(.nan), "0s")
+        XCTAssertEqual(formatClipDuration(.infinity), "0s")
+        XCTAssertEqual(formatClipDuration(-1), "0s")
+        XCTAssertEqual(formatClipDuration(0.2), "1s")
+    }
+}
+
 final class TimelineViewportTests: XCTestCase {
     func testFullDurationViewportTracksDurationShrink() {
         let viewport = TimelineViewport.reconciled(
