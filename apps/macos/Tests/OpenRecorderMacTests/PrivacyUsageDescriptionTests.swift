@@ -2,6 +2,8 @@ import Foundation
 import XCTest
 
 final class PrivacyUsageDescriptionTests: XCTestCase {
+    private typealias PlistDictionary = [String: Any]
+
     func testInfoPlistDeclaresCameraAndMicrophoneUsageDescriptions() throws {
         let plist = try loadInfoPlist()
 
@@ -18,11 +20,11 @@ final class PrivacyUsageDescriptionTests: XCTestCase {
     func testInfoPlistDocumentTypeMatchesExportedProjectType() throws {
         let plist = try loadInfoPlist()
         let documentType = try XCTUnwrap(
-            (plist["CFBundleDocumentTypes"] as? [[String: Any]])?.first,
+            (plist["CFBundleDocumentTypes"] as? [PlistDictionary])?.first,
             "Info.plist should declare a document type"
         )
         let exportedType = try XCTUnwrap(
-            (plist["UTExportedTypeDeclarations"] as? [[String: Any]])?.first,
+            (plist["UTExportedTypeDeclarations"] as? [PlistDictionary])?.first,
             "Info.plist should export the Open Recorder project type"
         )
 
@@ -37,13 +39,13 @@ final class PrivacyUsageDescriptionTests: XCTestCase {
         )
     }
 
-    private func loadInfoPlist() throws -> [String: Any] {
+    private func loadInfoPlist() throws -> PlistDictionary {
         let url = packageRoot()
             .appendingPathComponent("Resources/Info.plist")
         let data = try Data(contentsOf: url)
         let plist = try PropertyListSerialization.propertyList(from: data, format: nil)
 
-        return try XCTUnwrap(plist as? [String: Any], "Resources/Info.plist should be a dictionary")
+        return try XCTUnwrap(plist as? PlistDictionary, "Resources/Info.plist should be a dictionary")
     }
 
     private func packageRoot() -> URL {
