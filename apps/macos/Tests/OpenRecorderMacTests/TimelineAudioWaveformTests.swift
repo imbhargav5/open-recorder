@@ -260,6 +260,13 @@ final class TimelineSeekMapperTests: XCTestCase {
         XCTAssertEqual(TimelineSeekMapper.time(forX: 140, viewport: viewport, width: 100) ?? -1, 30, accuracy: 0.001)
         XCTAssertEqual(TimelineSeekMapper.x(forTime: 30, viewport: viewport, width: 100) ?? -1, 100, accuracy: 0.001)
     }
+
+    func testViewportXMappingRejectsInvalidInputs() {
+        let viewport = TimelineViewport(duration: 100, visibleStart: 20, visibleDuration: 10)
+
+        XCTAssertNil(TimelineSeekMapper.x(forTime: .nan, viewport: viewport, width: 100))
+        XCTAssertNil(TimelineSeekMapper.x(forTime: 25, viewport: viewport, width: 0))
+    }
 }
 
 final class TimelineViewportTests: XCTestCase {
