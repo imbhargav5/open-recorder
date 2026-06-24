@@ -109,6 +109,7 @@ final class AutoZoomGeneratorTests: XCTestCase {
 
     func testStoredZoomAnimationPresetTrimsWhitespace() {
         XCTAssertEqual(TimelineZoomAnimationPreset.storedValue(" snappy\n"), .snappy)
+        XCTAssertEqual(TimelineZoomAnimationPreset.storedValue("CINEMATIC"), .cinematic)
     }
 
     func testStoredZoomAnimationPresetDefaultsInvalidValuesToBalanced() {
