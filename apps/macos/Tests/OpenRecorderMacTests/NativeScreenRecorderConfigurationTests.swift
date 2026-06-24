@@ -30,6 +30,8 @@ final class NativeScreenRecorderConfigurationTests: XCTestCase {
         XCTAssertEqual(configuration.channelCount, 2)
         XCTAssertFalse(configuration.excludesCurrentProcessAudio)
         XCTAssertFalse(configuration.showsCursor)
+        XCTAssertFalse(configuration.showMouseClicks)
+        XCTAssertEqual(configuration.sourceRect, .zero)
     }
 
     func testStreamConfigurationCapturesSelectedMicrophoneWhenEnabled() {
