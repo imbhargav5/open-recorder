@@ -73,6 +73,16 @@ final class ProjectEditorStateCodableTests: XCTestCase {
         XCTAssertEqual(formattedProjectDate(timestamp), formatter.string(from: expectedDate))
     }
 
+    func testFormattedProjectDateUsesStableMonthLabelsForISO8601Strings() throws {
+        let timestamp = "2026-01-01T00:00:00Z"
+        let expectedDate = try XCTUnwrap(ISO8601DateFormatter().date(from: timestamp))
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "MMM d, h:mm a"
+
+        XCTAssertEqual(formattedProjectDate(timestamp), formatter.string(from: expectedDate))
+    }
+
     func testOldProjectDocumentsDecodeWithoutVideoState() throws {
         let data = try XCTUnwrap("""
         {
