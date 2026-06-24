@@ -3,6 +3,19 @@ import XCTest
 @testable import OpenRecorderMac
 
 final class RustServiceClientTests: XCTestCase {
+    func testInvalidParametersFailBeforeLaunchingService() {
+        let client = RustServiceClient(executableURL: nil)
+
+        XCTAssertThrowsError(
+            try client.call("listProjects", params: ["value": Double.nan], as: String.self)
+        ) { error in
+            guard case RustServiceError.invalidParameters = error else {
+                XCTFail("Expected invalidParameters, got \(error).")
+                return
+            }
+        }
+    }
+
     func testLargeServiceResponseDoesNotDeadlockWhenStdoutExceedsPipeBuffer() throws {
         let serviceURL = try makeServiceScript(
             name: "large-response-service",
