@@ -880,6 +880,15 @@ mod tests {
     }
 
     #[test]
+    fn missing_recent_screenshot_index_reads_as_empty() {
+        let paths = test_paths("missing-screenshot-index");
+
+        let recent = read_screenshot_index(&paths).unwrap();
+
+        assert!(recent.is_empty());
+    }
+
+    #[test]
     fn saves_and_preserves_recording_session_metadata() {
         let paths = test_paths("recording-session");
         paths.ensure().unwrap();
