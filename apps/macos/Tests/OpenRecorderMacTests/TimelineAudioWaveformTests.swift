@@ -405,6 +405,20 @@ final class VideoPlaybackControllerPreviewSpeedTests: XCTestCase {
     }
 }
 
+final class TimelineClipSpeedTests: XCTestCase {
+    func testStoredValueOmitsDefaultAndInvalidSpeeds() {
+        XCTAssertNil(TimelineClipSpeed.storedValue(1))
+        XCTAssertNil(TimelineClipSpeed.storedValue(.nan))
+        XCTAssertNil(TimelineClipSpeed.storedValue(.infinity))
+    }
+
+    func testStoredValueNormalizesSupportedSpeeds() {
+        XCTAssertEqual(TimelineClipSpeed.storedValue(1.26), 1.25)
+        XCTAssertEqual(TimelineClipSpeed.storedValue(1.74), 1.75)
+        XCTAssertEqual(TimelineClipSpeed.storedValue(2), 2)
+    }
+}
+
 final class TimelineEditingPlanTests: XCTestCase {
     func testExportPlanDropsTrimmedRangesAndRetimesSpeed() {
         let edits = TimelineEditSnapshot(
