@@ -3,14 +3,33 @@ import Image from "next/image";
 const docsUrl = "https://docs.openrecorder.xyz/";
 const sourceUrl = "https://github.com/imbhargav5/open-recorder";
 
-const proofPoints = [
+type ProofPoint = readonly [value: string, label: string];
+
+type LandingContentBlock = Readonly<{
+  title: string;
+  eyebrow: string;
+  copy: string;
+}>;
+
+type WorkflowStep = Readonly<{
+  step: string;
+  title: string;
+  copy: string;
+}>;
+
+type ArchitectureNote = Readonly<{
+  label: string;
+  value: string;
+}>;
+
+const proofPoints: readonly ProofPoint[] = [
   ["Native macOS", "Swift capture UI with system privacy flows"],
   ["Local-first", "Recordings and projects stay on your Mac"],
   ["Open source", "Apache 2.0 with a small Swift + Rust stack"],
   ["Editor included", "Zooms, camera clips, cursor overlays, and exports"],
 ];
 
-const featureHighlights = [
+const featureHighlights: readonly LandingContentBlock[] = [
   {
     title: "Capture exactly what matters",
     eyebrow: "Display, window, or region",
@@ -28,7 +47,7 @@ const featureHighlights = [
   },
 ];
 
-const workflow = [
+const workflow: readonly WorkflowStep[] = [
   {
     step: "01",
     title: "Choose the source",
@@ -51,7 +70,7 @@ const workflow = [
   },
 ];
 
-const architectureNotes = [
+const architectureNotes: readonly ArchitectureNote[] = [
   {
     label: "Swift app",
     value: "Capture UI, editor timeline, screenshot composition, Finder integration",
