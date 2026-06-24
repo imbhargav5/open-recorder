@@ -258,6 +258,9 @@ final class VideoCropSelectionTests: XCTestCase {
         XCTAssertEqual(VideoExportGIFSize.allCases.map(\.title), ["Medium", "Large", "Original"])
         XCTAssertFalse(VideoExportResolution.exportOptions.contains(.source))
         XCTAssertFalse(VideoExportFrameRate.exportOptions.contains(.source))
+        XCTAssertEqual(VideoExportFrameRate.defaultExportOption(for: .mov), .fps30)
+        XCTAssertEqual(VideoExportFrameRate.defaultExportOption(for: .mp4), .fps30)
+        XCTAssertEqual(VideoExportFrameRate.defaultExportOption(for: .gif), .fps15)
     }
 
     func testGIFSizeControlsRenderedOutputSize() {
