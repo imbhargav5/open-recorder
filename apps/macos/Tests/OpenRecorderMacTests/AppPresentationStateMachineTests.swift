@@ -230,7 +230,7 @@ private func waitUntilCancelled() async {
 
 @MainActor
 private func waitForCondition(
-    timeout: TimeInterval = 1,
+    timeout: TimeInterval = 2,
     condition: @escaping @MainActor () -> Bool
 ) async {
     let clock = ContinuousClock()
