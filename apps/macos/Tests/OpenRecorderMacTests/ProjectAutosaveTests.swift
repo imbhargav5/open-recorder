@@ -68,6 +68,7 @@ final class ProjectEditorStateCodableTests: XCTestCase {
         let expectedDate = Date(timeIntervalSince1970: 1_767_225_600)
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.calendar = Calendar(identifier: .gregorian)
         formatter.dateFormat = "MMM d, h:mm a"
 
         XCTAssertEqual(formattedProjectDate(timestamp), formatter.string(from: expectedDate))
@@ -78,6 +79,7 @@ final class ProjectEditorStateCodableTests: XCTestCase {
         let expectedDate = try XCTUnwrap(ISO8601DateFormatter().date(from: timestamp))
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.calendar = Calendar(identifier: .gregorian)
         formatter.dateFormat = "MMM d, h:mm a"
 
         XCTAssertEqual(formattedProjectDate(timestamp), formatter.string(from: expectedDate))
