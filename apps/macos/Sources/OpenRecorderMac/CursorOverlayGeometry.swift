@@ -14,8 +14,13 @@ enum CursorOverlayGeometry {
         }
 
         let standardizedCrop = cropRect.standardized
-        let widthScale = contentRect.width / max(standardizedCrop.width, 1)
-        let heightScale = contentRect.height / max(standardizedCrop.height, 1)
+        guard standardizedCrop.width > 0,
+              standardizedCrop.height > 0 else {
+            return 0
+        }
+
+        let widthScale = contentRect.width / standardizedCrop.width
+        let heightScale = contentRect.height / standardizedCrop.height
         let scale = min(widthScale, heightScale)
         return scale.isFinite ? max(scale, 0) : 0
     }
