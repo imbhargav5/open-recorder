@@ -4,14 +4,14 @@ import XCTest
 
 final class CursorOverlaySettingsTests: XCTestCase {
     func testLegacyCursorSettingsDecodeDefaultStyleID() throws {
-        let data = """
+        let data = try utf8Data("""
         {
           "isVisible": true,
           "loops": false,
           "size": 1.5,
           "smoothing": 0.4
         }
-        """.data(using: .utf8)!
+        """)
 
         let settings = try JSONDecoder().decode(CursorOverlaySettings.self, from: data)
 
@@ -38,7 +38,7 @@ final class CursorOverlaySettingsTests: XCTestCase {
     }
 
     func testLegacyStyleAndVariantNamesFallBackToDefaultStyleID() throws {
-        let data = """
+        let data = try utf8Data("""
         {
           "isVisible": true,
           "loops": false,
@@ -47,7 +47,7 @@ final class CursorOverlaySettingsTests: XCTestCase {
           "style": "dotPointer",
           "variant": "soft"
         }
-        """.data(using: .utf8)!
+        """)
 
         let settings = try JSONDecoder().decode(CursorOverlaySettings.self, from: data)
 
@@ -55,7 +55,7 @@ final class CursorOverlaySettingsTests: XCTestCase {
     }
 
     func testUnknownStyleIDFallsBackToDefaultStyleID() throws {
-        let data = """
+        let data = try utf8Data("""
         {
           "isVisible": true,
           "loops": false,
@@ -63,7 +63,7 @@ final class CursorOverlaySettingsTests: XCTestCase {
           "smoothing": 0.4,
           "styleID": "future.missing"
         }
-        """.data(using: .utf8)!
+        """)
 
         let settings = try JSONDecoder().decode(CursorOverlaySettings.self, from: data)
 
@@ -74,7 +74,7 @@ final class CursorOverlaySettingsTests: XCTestCase {
         let tooSmall = CursorOverlaySettings(isVisible: true, loops: false, size: 0.2, smoothing: 0.4)
         XCTAssertEqual(tooSmall.size, 1)
 
-        let data = """
+        let data = try utf8Data("""
         {
           "isVisible": true,
           "loops": false,
@@ -82,7 +82,7 @@ final class CursorOverlaySettingsTests: XCTestCase {
           "smoothing": 0.4,
           "styleID": "system.black"
         }
-        """.data(using: .utf8)!
+        """)
 
         let decoded = try JSONDecoder().decode(CursorOverlaySettings.self, from: data)
 
@@ -139,7 +139,7 @@ final class CursorOverlaySettingsTests: XCTestCase {
     }
 
     func testProjectVideoStateDecodesLegacyCursorOverlayDefaults() throws {
-        let data = """
+        let data = try utf8Data("""
         {
           "cursorOverlay": {
             "isVisible": true,
@@ -148,7 +148,7 @@ final class CursorOverlaySettingsTests: XCTestCase {
             "smoothing": 0.7
           }
         }
-        """.data(using: .utf8)!
+        """)
 
         let state = try JSONDecoder().decode(ProjectVideoEditorState.self, from: data)
 
@@ -186,5 +186,9 @@ final class CursorOverlaySettingsTests: XCTestCase {
             XCTAssertGreaterThan(glyph?.canvasSize.width ?? 0, 0)
             XCTAssertGreaterThan(glyph?.canvasSize.height ?? 0, 0)
         }
+    }
+
+    private func utf8Data(_ string: String) throws -> Data {
+        try XCTUnwrap(string.data(using: .utf8))
     }
 }
