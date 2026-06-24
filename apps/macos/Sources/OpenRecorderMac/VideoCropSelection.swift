@@ -146,6 +146,13 @@ struct VideoCropSelection: Equatable, Hashable, Codable {
 
 enum VideoCropGeometry {
     static func fittedVideoFrame(sourceSize: CGSize, in availableSize: CGSize) -> CGRect {
+        guard availableSize.width.isFinite,
+              availableSize.height.isFinite,
+              availableSize.width > 0,
+              availableSize.height > 0 else {
+            return .zero
+        }
+
         let safeSourceSize = VideoCropSelection.safeSourceSize(sourceSize)
         let fittedSize = PreviewStageLayout.fittedSize(
             forAspectRatio: safeSourceSize.width / safeSourceSize.height,
