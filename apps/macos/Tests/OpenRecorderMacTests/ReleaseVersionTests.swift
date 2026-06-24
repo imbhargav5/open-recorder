@@ -28,11 +28,14 @@ final class ReleaseVersionTests: XCTestCase {
         let regex = try NSRegularExpression(pattern: #"(?m)^version\s*=\s*"(\d+\.\d+\.\d+)"\s*$"#)
         let range = NSRange(cargoToml.startIndex..<cargoToml.endIndex, in: cargoToml)
 
-        guard let match = regex.firstMatch(in: cargoToml, range: range),
-              let versionRange = Range(match.range(at: 1), in: cargoToml) else {
-            XCTFail("apps/rust-service/Cargo.toml should declare a semantic version")
-            return ""
-        }
+        let match = try XCTUnwrap(
+            regex.firstMatch(in: cargoToml, range: range),
+            "apps/rust-service/Cargo.toml should declare a semantic version"
+        )
+        let versionRange = try XCTUnwrap(
+            Range(match.range(at: 1), in: cargoToml),
+            "apps/rust-service/Cargo.toml version capture should map to a String range"
+        )
 
         return String(cargoToml[versionRange])
     }
