@@ -539,7 +539,9 @@ final class AppModelStateTests: XCTestCase {
         await waitForCondition {
             didCapture
         }
-        try? await Task.sleep(nanoseconds: 50_000_000)
+        await waitForCondition {
+            model.canStartNewCapture
+        }
 
         XCTAssertEqual(model.hudState, .choosingMode)
         XCTAssertEqual(model.statusMessage, "Ready")
