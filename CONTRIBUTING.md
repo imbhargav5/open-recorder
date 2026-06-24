@@ -6,7 +6,7 @@ Areas where help is especially valuable:
 
 - Native Swift editor controls
 - Rust service persistence and export workflows
-- Webcam overlay bubble
+- Facecam overlay controls
 - Localisation support, especially Chinese
 - UI/UX design improvements
 - Export speed improvements
