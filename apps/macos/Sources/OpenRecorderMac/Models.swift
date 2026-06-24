@@ -817,6 +817,8 @@ struct HealthPayload: Codable {
 
 func timestampedFileName(prefix: String, extension fileExtension: String, date: Date = Date()) -> String {
     let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.calendar = Calendar(identifier: .gregorian)
     formatter.dateFormat = "yyyy-MM-dd-HH-mm-ss"
     return "\(prefix)-\(formatter.string(from: date)).\(fileExtension)"
 }
