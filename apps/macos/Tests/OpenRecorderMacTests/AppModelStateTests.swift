@@ -3,6 +3,17 @@ import XCTest
 
 @MainActor
 final class AppModelStateTests: XCTestCase {
+    func testTimestampedFileNameUsesProvidedDate() {
+        let date = Date(timeIntervalSince1970: 1_767_267_303)
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd-HH-mm-ss"
+
+        XCTAssertEqual(
+            timestampedFileName(prefix: "recording", extension: "mp4", date: date),
+            "recording-\(formatter.string(from: date)).mp4"
+        )
+    }
+
     func testBeginRecordingMovesToSourceTypeChoiceAndRequestsHUD() {
         let model = AppModel()
 
