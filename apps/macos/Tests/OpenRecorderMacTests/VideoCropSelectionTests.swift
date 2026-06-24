@@ -328,6 +328,7 @@ final class VideoCropSelectionTests: XCTestCase {
         XCTAssertNil(VideoCropKeyboardAdjustment.make(keyCode: 0, modifierFlags: []))
         XCTAssertNil(VideoCropKeyboardAdjustment.make(keyCode: 123, modifierFlags: [.option]))
         XCTAssertNil(VideoCropKeyboardAdjustment.make(keyCode: 123, modifierFlags: [.control]))
+        XCTAssertNil(VideoCropKeyboardAdjustment.make(keyCode: 123, modifierFlags: [.command, .control]))
         XCTAssertNil(VideoCropKeyboardAdjustment.make(keyCode: 123, modifierFlags: [.command, .option]))
     }
 }
