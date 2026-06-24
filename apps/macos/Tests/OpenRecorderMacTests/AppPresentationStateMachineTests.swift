@@ -4,6 +4,20 @@ import XCTest
 
 @MainActor
 final class AppShellStateMachineTests: XCTestCase {
+    func testHealthPayloadDecodesServiceResponseFields() throws {
+        let json = """
+        {
+          "service": "open-recorder",
+          "version": "1.2.3",
+          "platform": "macOS"
+        }
+        """
+
+        let health = try JSONDecoder().decode(HealthPayload.self, from: Data(json.utf8))
+
+        XCTAssertEqual(health, HealthPayload(service: "open-recorder", version: "1.2.3", platform: "macOS"))
+    }
+
     func testShellRoutesEditorSessionAndWindowCommand() throws {
         var state = AppShellState()
         let session = EditorSession(kind: .video, url: URL(fileURLWithPath: "/tmp/demo.mp4"), title: "Demo")
