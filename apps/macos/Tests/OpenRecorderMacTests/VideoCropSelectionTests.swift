@@ -81,6 +81,18 @@ final class VideoCropSelectionTests: XCTestCase {
         XCTAssertEqual(safeSize, VideoCropSelection.defaultSourceSize)
     }
 
+    func testPreviewAspectRatioUsesDefaultSourceSizeForInvalidInput() {
+        let selection = VideoCropSelection(
+            normalizedRect: CGRect(x: 0, y: 0, width: 0.5, height: 0.5)
+        )
+
+        XCTAssertEqual(
+            selection.previewAspectRatio(in: CGSize(width: CGFloat.nan, height: -20)),
+            VideoCropSelection.defaultSourceSize.width / VideoCropSelection.defaultSourceSize.height,
+            accuracy: 0.001
+        )
+    }
+
     func testDisplayAndPixelCropMappingUseFittedVideoFrame() {
         let sourceSize = CGSize(width: 1920, height: 1080)
         let availableSize = CGSize(width: 960, height: 720)
