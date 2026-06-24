@@ -116,6 +116,14 @@ final class CursorOverlaySettingsTests: XCTestCase {
         )
     }
 
+    func testCursorOverlayGeometryClampsInvalidDisplayScale() {
+        XCTAssertEqual(
+            CursorOverlayGeometry.glyphSize(displayScale: .infinity, settings: .default),
+            1,
+            accuracy: 0.001
+        )
+    }
+
     func testCursorOverlayGeometryDerivesScaleFromContentAndCrop() {
         let contentRect = CGRect(x: 0, y: 0, width: 864, height: 558)
         let cropRect = CGRect(x: 0, y: 0, width: 1728, height: 1116)
