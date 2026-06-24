@@ -190,6 +190,13 @@ final class TimelineAudioWaveformTests: XCTestCase {
         XCTAssertEqual(ticks.map(\.label), ["0:00", "0:10", "0:20", "0:30", "0:40", "0:50", "1:00"])
     }
 
+    func testTimelineTicksClampTooSmallMaxTickCount() {
+        let ticks = TimelineRulerTickBuilder.ticks(duration: 12, maxTickCount: 1)
+
+        XCTAssertEqual(ticks.map(\.time), [0, 10, 12])
+        XCTAssertEqual(ticks.map(\.label), ["0:00", "0:10", "0:12"])
+    }
+
     func testVisibleTicksSanitizeInvalidWindowInputs() {
         let ticks = TimelineRulerTickBuilder.ticks(
             visibleStart: .nan,
