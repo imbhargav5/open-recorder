@@ -111,6 +111,17 @@ final class VideoCropSelectionTests: XCTestCase {
         XCTAssertEqual(frame, CGRect.zero)
     }
 
+    func testPixelRectFallsBackToFullSourceForNonFiniteVideoFrame() {
+        let sourceSize = CGSize(width: 640, height: 360)
+        let rect = VideoCropGeometry.pixelRect(
+            for: CGRect(x: 10, y: 20, width: 100, height: 80),
+            sourceSize: sourceSize,
+            videoFrame: CGRect(x: 0, y: 0, width: CGFloat.nan, height: 240)
+        )
+
+        XCTAssertEqual(rect, CGRect(origin: .zero, size: sourceSize))
+    }
+
     func testEvenSizeRoundsDownToPositiveEvenDimensions() {
         XCTAssertEqual(VideoCropGeometry.evenSize(CGSize(width: 1001, height: 777)), CGSize(width: 1000, height: 776))
         XCTAssertEqual(VideoCropGeometry.evenSize(CGSize(width: 17.8, height: 12.2)), CGSize(width: 16, height: 12))
