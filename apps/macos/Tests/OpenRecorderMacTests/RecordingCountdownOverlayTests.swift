@@ -27,6 +27,31 @@ final class RecordingCountdownOverlayTests: XCTestCase {
         XCTAssertEqual(frame, CGRect(x: 1000, y: 0, width: 800, height: 600))
     }
 
+    func testDisplaySourceFallsBackToFirstScreenWhenDisplayIDIsUnknown() {
+        let source = CaptureSource(
+            id: "display:missing",
+            kind: .display,
+            name: "Display",
+            subtitle: "",
+            displayIndex: 1,
+            displayID: 99,
+            windowID: nil,
+            area: nil,
+            thumbnailData: nil
+        )
+        let firstScreen = RecordingOverlayScreen(frame: CGRect(x: 0, y: 0, width: 1000, height: 700), displayID: 1)
+
+        let frame = RecordingCountdownTargetResolver.frame(
+            for: source,
+            screens: [
+                firstScreen,
+                RecordingOverlayScreen(frame: CGRect(x: 1000, y: 0, width: 800, height: 600), displayID: 42)
+            ]
+        )
+
+        XCTAssertEqual(frame, firstScreen.frame)
+    }
+
     func testAreaSourceUsesAreaFrame() {
         let source = CaptureSource(
             id: "area:interactive",
