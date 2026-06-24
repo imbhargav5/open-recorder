@@ -5,6 +5,18 @@ import XCTest
 @testable import OpenRecorderMac
 
 final class VideoPreviewLayoutTests: XCTestCase {
+    func testFormatPlaybackTimeHandlesInvalidAndNegativeValues() {
+        XCTAssertEqual(formatPlaybackTime(.nan), "0:00")
+        XCTAssertEqual(formatPlaybackTime(.infinity), "0:00")
+        XCTAssertEqual(formatPlaybackTime(-1), "0:00")
+    }
+
+    func testFormatPlaybackTimeUsesWholeSecondsAndMinutes() {
+        XCTAssertEqual(formatPlaybackTime(9.9), "0:09")
+        XCTAssertEqual(formatPlaybackTime(60), "1:00")
+        XCTAssertEqual(formatPlaybackTime(125.8), "2:05")
+    }
+
     func testVideoCompositorDoesNotCacheStreamingIntermediates() {
         let options = VideoBackgroundCompositor.ciContextOptions()
 
