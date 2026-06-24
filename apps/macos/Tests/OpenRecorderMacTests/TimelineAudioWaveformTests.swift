@@ -312,6 +312,11 @@ final class TimelineViewportTests: XCTestCase {
         XCTAssertEqual(viewport.visibleStart, 80, accuracy: 0.001)
         XCTAssertEqual(viewport.visibleEnd, 100, accuracy: 0.001)
     }
+
+    func testSliderValueClampsInvalidVisibleDuration() {
+        XCTAssertEqual(TimelineViewport.sliderValue(forVisibleDuration: .nan, duration: 10), 0, accuracy: 0.001)
+        XCTAssertEqual(TimelineViewport.sliderValue(forVisibleDuration: -4, duration: 10), 0, accuracy: 0.001)
+    }
 }
 
 final class VideoPlaybackControllerPreviewSpeedTests: XCTestCase {
