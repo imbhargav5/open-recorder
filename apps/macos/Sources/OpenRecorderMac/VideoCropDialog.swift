@@ -93,15 +93,20 @@ private enum VideoCropKeyboardArrow {
     case up
     case down
 
+    private static let leftKeyCode: UInt16 = 123
+    private static let rightKeyCode: UInt16 = 124
+    private static let downKeyCode: UInt16 = 125
+    private static let upKeyCode: UInt16 = 126
+
     init?(keyCode: UInt16) {
         switch keyCode {
-        case 123:
+        case Self.leftKeyCode:
             self = .left
-        case 124:
+        case Self.rightKeyCode:
             self = .right
-        case 125:
+        case Self.downKeyCode:
             self = .down
-        case 126:
+        case Self.upKeyCode:
             self = .up
         default:
             return nil
