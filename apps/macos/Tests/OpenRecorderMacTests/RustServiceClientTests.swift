@@ -61,8 +61,8 @@ private final class LockedBox<Value>: @unchecked Sendable {
 
     func set(_ value: Value) {
         lock.lock()
+        defer { lock.unlock() }
         storage = value
-        lock.unlock()
     }
 
     func get() -> Value? {
