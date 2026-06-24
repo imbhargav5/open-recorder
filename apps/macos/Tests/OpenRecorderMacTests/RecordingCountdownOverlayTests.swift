@@ -93,4 +93,22 @@ final class RecordingCountdownOverlayTests: XCTestCase {
         XCTAssertEqual(resolvedFrame, CGRect(x: 100, y: 120, width: 400, height: 260))
         XCTAssertEqual(fallbackFrame, screen.frame)
     }
+
+    func testDisplaySourceUsesDefaultFrameWhenScreensAreUnavailable() {
+        let source = CaptureSource(
+            id: "display:missing",
+            kind: .display,
+            name: "Display",
+            subtitle: "",
+            displayIndex: nil,
+            displayID: nil,
+            windowID: nil,
+            area: nil,
+            thumbnailData: nil
+        )
+
+        let frame = RecordingCountdownTargetResolver.frame(for: source, screens: [])
+
+        XCTAssertEqual(frame, CGRect(x: 0, y: 0, width: 900, height: 600))
+    }
 }
