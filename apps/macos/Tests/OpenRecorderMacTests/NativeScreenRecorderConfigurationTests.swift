@@ -81,7 +81,7 @@ final class NativeScreenRecorderConfigurationTests: XCTestCase {
         XCTAssertEqual(configuration.sourceRect, CGRect(x: 20, y: 30, width: 640, height: 360))
     }
 
-    func testStreamConfigurationCapturesMicrophoneWhenEnabled() {
+    func testStreamConfigurationCapturesSystemAudioAndMicrophoneTogether() {
         let configuration = NativeScreenRecorder.makeStreamConfiguration(
             width: 1280,
             height: 720,
@@ -89,7 +89,7 @@ final class NativeScreenRecorderConfigurationTests: XCTestCase {
             options: RecordingCaptureOptions(
                 includeMicrophone: true,
                 microphoneDeviceID: "built-in-microphone",
-                includeSystemAudio: false,
+                includeSystemAudio: true,
                 includeCamera: false,
                 cameraDeviceID: nil,
                 showCursor: false,
@@ -97,6 +97,7 @@ final class NativeScreenRecorderConfigurationTests: XCTestCase {
             )
         )
 
+        XCTAssertTrue(configuration.capturesAudio)
         XCTAssertTrue(configuration.captureMicrophone)
         XCTAssertEqual(configuration.microphoneCaptureDeviceID, "built-in-microphone")
     }
