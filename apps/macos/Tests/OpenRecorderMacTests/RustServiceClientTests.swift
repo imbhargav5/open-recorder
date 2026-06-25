@@ -38,7 +38,7 @@ final class RustServiceClientTests: XCTestCase {
         let waitResult = XCTWaiter.wait(for: [completed], timeout: 10)
         guard waitResult == .completed else {
             terminateServiceScript(at: serviceURL)
-            XCTFail("RustServiceClient deadlocked on a response larger than the stdout pipe buffer.")
+            XCTFail("RustServiceClient did not complete a response larger than the stdout pipe buffer: \(waitResult).")
             return
         }
 
