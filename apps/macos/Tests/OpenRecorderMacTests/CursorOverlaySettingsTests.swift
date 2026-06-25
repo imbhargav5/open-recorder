@@ -124,6 +124,22 @@ final class CursorOverlaySettingsTests: XCTestCase {
         )
     }
 
+    func testCursorOverlayGeometryTreatsInvalidContentRectAsZeroScale() {
+        let contentRect = CGRect(x: 0, y: 0, width: CGFloat.nan, height: 540)
+        let cropRect = CGRect(x: 0, y: 0, width: 1920, height: 1080)
+
+        XCTAssertEqual(
+            CursorOverlayGeometry.displayScale(contentRect: contentRect, cropRect: cropRect),
+            0,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            CursorOverlayGeometry.glyphSize(contentRect: contentRect, cropRect: cropRect, settings: .default),
+            1,
+            accuracy: 0.001
+        )
+    }
+
     func testCursorOverlayGeometryDerivesScaleFromContentAndCrop() {
         let contentRect = CGRect(x: 0, y: 0, width: 864, height: 558)
         let cropRect = CGRect(x: 0, y: 0, width: 1728, height: 1116)
