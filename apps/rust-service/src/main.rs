@@ -848,6 +848,35 @@ mod tests {
     }
 
     #[test]
+    fn project_is_missing_when_screenshot_file_is_missing() {
+        let paths = test_paths("missing-screenshot-file");
+        paths.ensure().unwrap();
+        let project_path = paths.projects_dir.join("shot.openrecorder");
+        fs::write(&project_path, b"{}").unwrap();
+
+        let summary = ProjectSummary {
+            id: "project-existing".to_string(),
+            title: "Shot".to_string(),
+            path: project_path.to_string_lossy().to_string(),
+            recording_path: None,
+            screenshot_path: Some(
+                paths
+                    .screenshots_dir
+                    .join("missing.png")
+                    .to_string_lossy()
+                    .to_string(),
+            ),
+            source_name: Some("Display 1".to_string()),
+            created_at: "100".to_string(),
+            updated_at: "100".to_string(),
+            last_opened_at: "150".to_string(),
+            missing: false,
+        };
+
+        assert!(project_is_missing(&summary));
+    }
+
+    #[test]
     fn saves_screenshot_projects_and_recent_screenshot_index() {
         let paths = test_paths("screenshot-project");
         paths.ensure().unwrap();
