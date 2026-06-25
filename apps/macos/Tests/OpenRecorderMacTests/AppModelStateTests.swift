@@ -1392,6 +1392,8 @@ private func makeSource(
 @MainActor
 private func waitForCondition(
     timeout: TimeInterval = 2,
+    file: StaticString = #filePath,
+    line: UInt = #line,
     condition: @escaping @MainActor () -> Bool
 ) async {
     let clock = ContinuousClock()
@@ -1399,7 +1401,7 @@ private func waitForCondition(
     while !condition(), clock.now < deadline {
         try? await clock.sleep(for: .milliseconds(10))
     }
-    XCTAssertTrue(condition(), "Timed out waiting for condition after \(timeout)s")
+    XCTAssertTrue(condition(), "Timed out waiting for condition after \(timeout)s", file: file, line: line)
 }
 
 @MainActor
