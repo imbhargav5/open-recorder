@@ -15,7 +15,7 @@ enum AppWindowRole {
 
 struct ContentView: View {
     @EnvironmentObject private var model: AppModel
-    @State private var measuredHUDSize = HUDWindowMetrics.defaultSize
+    @State private var measuredHUDSize: CGSize = HUDWindowMetrics.defaultSize
     var role: AppWindowRole = .studio
     var editorSession: EditorSession?
 
