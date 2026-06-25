@@ -2,6 +2,8 @@ import AppKit
 import CoreGraphics
 import SwiftUI
 
+private typealias CGWindowInfoDictionary = [String: Any]
+
 struct RecordingOverlayScreen: Equatable {
     var frame: CGRect
     var displayID: UInt32?
@@ -58,9 +60,9 @@ enum RecordingCountdownTargetResolver {
     @MainActor
     private static func currentWindowFrame(windowID: UInt32) -> CGRect? {
         let options = CGWindowListOption.optionIncludingWindow
-        guard let windows = CGWindowListCopyWindowInfo(options, CGWindowID(windowID)) as? [[String: Any]],
+        guard let windows = CGWindowListCopyWindowInfo(options, CGWindowID(windowID)) as? [CGWindowInfoDictionary],
               let window = windows.first,
-              let bounds = window[kCGWindowBounds as String] as? [String: Any] else {
+              let bounds = window[kCGWindowBounds as String] as? CGWindowInfoDictionary else {
             return nil
         }
 
