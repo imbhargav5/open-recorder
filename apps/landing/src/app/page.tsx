@@ -1,4 +1,5 @@
 import Image from "next/image";
+import type { ReactElement } from "react";
 
 const docsUrl = "https://docs.openrecorder.xyz/";
 const sourceUrl = "https://github.com/imbhargav5/open-recorder";
@@ -85,7 +86,7 @@ const architectureNotes: readonly ArchitectureNote[] = [
   },
 ];
 
-function GitHubIcon() {
+function GitHubIcon(): ReactElement {
   return (
     <svg
       aria-hidden="true"
