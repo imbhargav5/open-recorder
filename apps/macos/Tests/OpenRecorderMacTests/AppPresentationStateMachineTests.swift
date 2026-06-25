@@ -75,15 +75,23 @@ final class AppShellStateMachineTests: XCTestCase {
 
     func testShellDriverOwnsLongLivedChildDrivers() {
         let shell = AppShellDriver()
+        let workspace = shell.workspace
+        let capture = shell.capture
+        let captureOptions = shell.captureOptions
+        let inlineSourceSelector = shell.inlineSourceSelector
+        let floatingSourceSelector = shell.floatingSourceSelector
+        let onboarding = shell.onboarding
+        let settings = shell.settings
+        let videoExport = shell.videoExport
 
-        XCTAssertTrue(shell.workspace === shell.workspace)
-        XCTAssertTrue(shell.capture === shell.capture)
-        XCTAssertTrue(shell.captureOptions === shell.captureOptions)
-        XCTAssertTrue(shell.inlineSourceSelector === shell.inlineSourceSelector)
-        XCTAssertTrue(shell.floatingSourceSelector === shell.floatingSourceSelector)
-        XCTAssertTrue(shell.onboarding === shell.onboarding)
-        XCTAssertTrue(shell.settings === shell.settings)
-        XCTAssertTrue(shell.videoExport === shell.videoExport)
+        XCTAssertTrue(shell.workspace === workspace)
+        XCTAssertTrue(shell.capture === capture)
+        XCTAssertTrue(shell.captureOptions === captureOptions)
+        XCTAssertTrue(shell.inlineSourceSelector === inlineSourceSelector)
+        XCTAssertTrue(shell.floatingSourceSelector === floatingSourceSelector)
+        XCTAssertTrue(shell.onboarding === onboarding)
+        XCTAssertTrue(shell.settings === settings)
+        XCTAssertTrue(shell.videoExport === videoExport)
     }
 
     func testShellDriverKeepsEditorWindowWorkspacesIndependentBySession() {
