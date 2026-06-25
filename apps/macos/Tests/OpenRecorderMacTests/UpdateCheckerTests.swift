@@ -31,6 +31,15 @@ final class UpdateCheckerTests: XCTestCase {
         XCTAssertFalse(UpdateChecker.isEnabled(for: bundle))
     }
 
+    func testUpdateCheckerIsDisabledForMalformedFeedURL() throws {
+        let bundle = try makeBundle(
+            identifier: "dev.openrecorder.app",
+            feedURLString: " ht tp://openrecorder.dev/appcast.xml"
+        )
+
+        XCTAssertFalse(UpdateChecker.isEnabled(for: bundle))
+    }
+
     private func makeBundle(identifier: String, feedURLString: String) throws -> Bundle {
         let bundleURL = temporaryDirectory()
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
