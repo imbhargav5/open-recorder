@@ -11,7 +11,7 @@ struct RecordingSessionBuilder {
         facecamStartedAt: Date?
     ) -> RecordingSession {
         let offsetMs: Int?
-        if let screenStartedAt, let facecamStartedAt {
+        if facecamURL != nil, let screenStartedAt, let facecamStartedAt {
             offsetMs = Int(facecamStartedAt.timeIntervalSince(screenStartedAt) * 1000)
         } else {
             offsetMs = nil
