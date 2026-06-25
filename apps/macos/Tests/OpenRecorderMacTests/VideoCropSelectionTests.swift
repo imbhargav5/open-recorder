@@ -282,6 +282,14 @@ final class VideoCropSelectionTests: XCTestCase {
         XCTAssertEqual(VideoExportFrameRate.defaultExportOption(for: .gif), .fps15)
     }
 
+    func testExportFormatAndFrameRateRoundTripThroughCodable() throws {
+        let formatData = try JSONEncoder().encode(VideoExportFormat.mp4)
+        let frameRateData = try JSONEncoder().encode(VideoExportFrameRate.fps60)
+
+        XCTAssertEqual(try JSONDecoder().decode(VideoExportFormat.self, from: formatData), .mp4)
+        XCTAssertEqual(try JSONDecoder().decode(VideoExportFrameRate.self, from: frameRateData), .fps60)
+    }
+
     func testGIFSizeControlsRenderedOutputSize() {
         let sourceSize = CGSize(width: 1920, height: 1080)
         var options = VideoExportOptions.default
