@@ -118,6 +118,12 @@ final class AutoZoomGeneratorTests: XCTestCase {
         XCTAssertEqual(TimelineZoomAnimationPreset.storedValue("unknown"), .balanced)
     }
 
+    func testZoomEasingClampsOutOfRangeInputs() {
+        XCTAssertEqual(TimelineZoomEasing.smoothstep.value(-0.25), 0, accuracy: 0.001)
+        XCTAssertEqual(TimelineZoomEasing.easeOut.value(1.25), 1, accuracy: 0.001)
+        XCTAssertEqual(TimelineZoomEasing.easeInOut.value(0.5), 0.5, accuracy: 0.001)
+    }
+
     func testPresetChangesGeneratedTimingAndDepth() {
         let payload = CursorTelemetryPayload(
             width: 1000,
