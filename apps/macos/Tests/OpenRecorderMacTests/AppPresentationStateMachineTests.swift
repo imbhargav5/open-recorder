@@ -279,6 +279,14 @@ final class SourceSelectorStateMachineTests: XCTestCase {
         XCTAssertEqual(state.applying(.shareRequested), [.share])
         XCTAssertEqual(state.applying(.drawAreaRequested), [.drawArea])
     }
+
+    func testPreferredSourceKindDoesNotSelectHiddenTab() {
+        var state = SourceSelectorState(sourceTab: .windows, visibleTabs: [.windows, .area])
+
+        XCTAssertEqual(state.applying(.preferredSourceKindSynced(.display)), [])
+
+        XCTAssertEqual(state.sourceTab, .windows)
+    }
 }
 
 @MainActor
