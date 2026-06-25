@@ -16,6 +16,15 @@ final class SerializableColorTests: XCTestCase {
         XCTAssertEqual(color.alpha, 0.42)
     }
 
+    func testHexInitializerFallsBackToBlackForInvalidInput() {
+        let color = SerializableColor(hex: "not-a-color", alpha: 0.75)
+
+        XCTAssertEqual(color.red, 0)
+        XCTAssertEqual(color.green, 0)
+        XCTAssertEqual(color.blue, 0)
+        XCTAssertEqual(color.alpha, 0.75)
+    }
+
     func testHexStringClampsOutOfRangeComponents() {
         let color = SerializableColor(red: -0.5, green: 0.5, blue: 1.5)
 
