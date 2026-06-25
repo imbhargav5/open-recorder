@@ -889,6 +889,21 @@ mod tests {
     }
 
     #[test]
+    fn recent_screenshot_index_keeps_the_latest_one_hundred_items() {
+        let paths = test_paths("screenshot-index-limit");
+        paths.ensure().unwrap();
+
+        for index in 0..105 {
+            remember_screenshot(&paths, &format!("/tmp/shot-{index}.png")).unwrap();
+        }
+
+        let recent = read_screenshot_index(&paths).unwrap();
+        assert_eq!(recent.len(), 100);
+        assert_eq!(recent[0].path, "/tmp/shot-104.png");
+        assert_eq!(recent[99].path, "/tmp/shot-5.png");
+    }
+
+    #[test]
     fn saves_and_preserves_recording_session_metadata() {
         let paths = test_paths("recording-session");
         paths.ensure().unwrap();
