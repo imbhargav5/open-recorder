@@ -425,6 +425,23 @@ final class VideoExportStateMachineTests: XCTestCase {
         XCTAssertEqual(state.errorMessage, "Open a recording first.")
     }
 
+    func testExportReducerClampsInvalidProgressValues() {
+        var state = VideoExportState()
+
+        _ = state.applying(.exportRequested(
+            sourceURL: URL(fileURLWithPath: "/tmp/source.mov"),
+            targetURL: URL(fileURLWithPath: "/tmp/export-temp.mov"),
+            options: .default,
+            edits: .empty
+        ))
+
+        XCTAssertTrue(state.applying(.progressChanged(.nan)).isEmpty)
+        XCTAssertEqual(state.progress, 0)
+
+        XCTAssertTrue(state.applying(.progressChanged(1.4)).isEmpty)
+        XCTAssertEqual(state.progress, 1)
+    }
+
     func testExportDriverRunsRenderSaveAndRevealThroughInjectedEffects() async {
         let driver = VideoExportDriver()
         let sourceURL = URL(fileURLWithPath: "/tmp/source.mov")
