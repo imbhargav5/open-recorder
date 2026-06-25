@@ -34,6 +34,7 @@ final class PrivacyUsageDescriptionTests: XCTestCase {
         XCTAssertEqual(documentType["LSHandlerRank"] as? String, "Owner")
         XCTAssertEqual(documentType["LSItemContentTypes"] as? [String], ["dev.openrecorder.project"])
         XCTAssertEqual(exportedType["UTTypeIdentifier"] as? String, "dev.openrecorder.project")
+        XCTAssertEqual(exportedType["UTTypeConformsTo"] as? [String], ["public.json"])
         XCTAssertEqual(
             exportedType["UTTypeTagSpecification"] as? [String: [String]],
             ["public.filename-extension": ["openrecorder"]]
