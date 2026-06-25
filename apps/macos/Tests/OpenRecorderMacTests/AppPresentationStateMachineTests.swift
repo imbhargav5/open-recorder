@@ -238,7 +238,7 @@ private func waitForCondition(
     while !condition(), clock.now < deadline {
         try? await clock.sleep(for: .milliseconds(10))
     }
-    XCTAssertTrue(condition(), "Timed out waiting for condition")
+    XCTAssertTrue(condition(), "Timed out waiting for condition after \(timeout)s")
 }
 
 @MainActor
