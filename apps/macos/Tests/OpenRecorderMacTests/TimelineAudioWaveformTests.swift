@@ -304,6 +304,14 @@ final class TimelineSeekMapperTests: XCTestCase {
         XCTAssertNil(TimelineSeekMapper.x(forTime: .nan, viewport: viewport, width: 100))
         XCTAssertNil(TimelineSeekMapper.x(forTime: 25, viewport: viewport, width: 0))
     }
+
+    func testViewportXMappingCanClampOutsideVisibleWindow() {
+        let viewport = TimelineViewport(duration: 100, visibleStart: 20, visibleDuration: 10)
+
+        XCTAssertEqual(TimelineSeekMapper.x(forTime: 15, viewport: viewport, width: 100) ?? 0, -50, accuracy: 0.001)
+        XCTAssertEqual(TimelineSeekMapper.x(forTime: 15, viewport: viewport, width: 100, clamped: true) ?? -1, 0, accuracy: 0.001)
+        XCTAssertEqual(TimelineSeekMapper.x(forTime: 35, viewport: viewport, width: 100, clamped: true) ?? -1, 100, accuracy: 0.001)
+    }
 }
 
 final class TimelineClipDurationFormattingTests: XCTestCase {
