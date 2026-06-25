@@ -13,6 +13,15 @@ final class UpdateCheckerTests: XCTestCase {
         XCTAssertTrue(UpdateChecker.isEnabled(for: bundle))
     }
 
+    func testUpdateCheckerAcceptsUppercaseHTTPSFeedScheme() throws {
+        let bundle = try makeBundle(
+            identifier: "dev.openrecorder.app",
+            feedURLString: "HTTPS://openrecorder.dev/appcast.xml"
+        )
+
+        XCTAssertTrue(UpdateChecker.isEnabled(for: bundle))
+    }
+
     func testUpdateCheckerIsDisabledForNonProductionBundleIdentifier() throws {
         let bundle = try makeBundle(
             identifier: "dev.openrecorder.debug",
