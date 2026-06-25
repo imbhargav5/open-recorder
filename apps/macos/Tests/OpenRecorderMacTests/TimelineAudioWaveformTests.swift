@@ -419,6 +419,19 @@ final class TimelineClipSpeedTests: XCTestCase {
     }
 }
 
+final class TimelineZoomDepthTests: XCTestCase {
+    func testNormalizedFallsBackForInvalidDepths() {
+        XCTAssertEqual(TimelineZoomDepth.normalized(.nan), TimelineZoomDepth.defaultDepth)
+        XCTAssertEqual(TimelineZoomDepth.normalized(.infinity), TimelineZoomDepth.defaultDepth)
+    }
+
+    func testNormalizedSelectsNearestSupportedDepth() {
+        XCTAssertEqual(TimelineZoomDepth.normalized(1.24), 1.25)
+        XCTAssertEqual(TimelineZoomDepth.normalized(1.76), 1.75)
+        XCTAssertEqual(TimelineZoomDepth.normalized(2), 2)
+    }
+}
+
 final class TimelineEditingPlanTests: XCTestCase {
     func testExportPlanDropsTrimmedRangesAndRetimesSpeed() {
         let edits = TimelineEditSnapshot(
