@@ -16,7 +16,8 @@ final class ReleaseVersionTests: XCTestCase {
         let url = packageRoot()
             .appendingPathComponent("Resources/Info.plist")
         let data = try Data(contentsOf: url)
-        let plist = try PropertyListSerialization.propertyList(from: data, format: nil)
+        let format: UnsafeMutablePointer<PropertyListSerialization.PropertyListFormat>? = nil
+        let plist = try PropertyListSerialization.propertyList(from: data, format: format)
 
         return try XCTUnwrap(plist as? PlistDictionary, "Resources/Info.plist should be a dictionary")
     }
