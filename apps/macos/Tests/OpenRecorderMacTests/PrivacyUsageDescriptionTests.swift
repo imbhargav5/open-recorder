@@ -31,6 +31,7 @@ final class PrivacyUsageDescriptionTests: XCTestCase {
         XCTAssertEqual(documentType["CFBundleTypeExtensions"] as? [String], ["openrecorder"])
         XCTAssertEqual(documentType["CFBundleTypeName"] as? String, "Open Recorder Project")
         XCTAssertEqual(documentType["CFBundleTypeRole"] as? String, "Editor")
+        XCTAssertEqual(documentType["LSHandlerRank"] as? String, "Owner")
         XCTAssertEqual(documentType["LSItemContentTypes"] as? [String], ["dev.openrecorder.project"])
         XCTAssertEqual(exportedType["UTTypeIdentifier"] as? String, "dev.openrecorder.project")
         XCTAssertEqual(
