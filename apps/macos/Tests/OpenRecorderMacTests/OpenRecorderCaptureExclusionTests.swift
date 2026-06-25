@@ -39,6 +39,16 @@ final class OpenRecorderCaptureExclusionTests: XCTestCase {
         ))
     }
 
+    func testExcludesOpenRecorderApplicationsAfterTrimmingMetadata() {
+        XCTAssertTrue(OpenRecorderCaptureExclusion.shouldExcludeApplication(
+            bundleIdentifier: "  dev.openrecorder.app.dev\n",
+            applicationName: "  Open Recorder Dev  ",
+            processID: 100,
+            currentProcessID: 200,
+            currentBundleIdentifier: "dev.openrecorder.app.dev"
+        ))
+    }
+
     func testAllowsUnrelatedApplications() {
         XCTAssertFalse(OpenRecorderCaptureExclusion.shouldExcludeApplication(
             bundleIdentifier: "com.example.editor",
