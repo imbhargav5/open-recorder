@@ -63,6 +63,8 @@ final class ProjectAutosaveCoordinatorTests: XCTestCase {
 }
 
 final class ProjectEditorStateCodableTests: XCTestCase {
+    private typealias JSONDictionary = [String: Any]
+
     func testFormattedProjectDateUsesStableMonthLabelsForEpochStrings() {
         let timestamp = "1767225600"
         let expectedDate = Date(timeIntervalSince1970: 1_767_225_600)
@@ -140,8 +142,8 @@ final class ProjectEditorStateCodableTests: XCTestCase {
         let snapshot = makeAutosaveSnapshot(title: "Demo", splitTime: 1.5, recordingSession: session)
 
         let data = try JSONEncoder().encode(ProjectUpdateRequest(snapshot: snapshot))
-        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
-        let encodedSession = try XCTUnwrap(json["recordingSession"] as? [String: Any])
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? JSONDictionary)
+        let encodedSession = try XCTUnwrap(json["recordingSession"] as? JSONDictionary)
 
         XCTAssertEqual(encodedSession["facecamOffsetMs"] as? Int, -375)
         XCTAssertEqual(encodedSession["cursorTelemetryPath"] as? String, "/tmp/demo.cursor.json")
