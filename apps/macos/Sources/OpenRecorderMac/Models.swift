@@ -804,7 +804,7 @@ enum NativeWindowCommandAction: Equatable {
 }
 
 struct NativeWindowCommand: Identifiable {
-    var id = UUID()
+    var id: UUID = UUID()
     var action: NativeWindowCommandAction
     var editorSession: EditorSession?
 }
