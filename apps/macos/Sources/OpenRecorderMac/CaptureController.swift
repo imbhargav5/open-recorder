@@ -3,6 +3,8 @@ import CoreGraphics
 import Foundation
 @preconcurrency import ScreenCaptureKit
 
+private typealias CGWindowInfoDictionary = [String: Any]
+
 enum CaptureControllerError: LocalizedError {
     case unsupportedSource
     case recordingAlreadyRunning
@@ -623,7 +625,7 @@ final class CaptureController: ObservableObject {
 
     private func legacyWindowSources() -> [CaptureSource] {
         let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
-        guard let rawWindows = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] else {
+        guard let rawWindows = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [CGWindowInfoDictionary] else {
             return []
         }
 
@@ -671,7 +673,7 @@ final class CaptureController: ObservableObject {
         }
     }
 
-    private func legacyWindowFrame(from window: [String: Any]) -> CGRect {
+    private func legacyWindowFrame(from window: CGWindowInfoDictionary) -> CGRect {
         guard let bounds = window[kCGWindowBounds as String] as? [String: Any] else {
             return .zero
         }
