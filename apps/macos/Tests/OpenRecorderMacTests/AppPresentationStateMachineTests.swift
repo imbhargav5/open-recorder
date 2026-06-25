@@ -323,8 +323,10 @@ final class OnboardingAndSettingsStateMachineTests: XCTestCase {
 
         XCTAssertEqual(state.applying(.autoZoomPreferenceChanged(true)), [.persistAutoZoomPreference(true)])
         XCTAssertTrue(state.createZoomsAutomatically)
+        XCTAssertEqual(state.applying(.autoZoomPreferenceChanged(true)), [])
         XCTAssertEqual(state.applying(.autoZoomAnimationPresetChanged(.cinematic)), [.persistAutoZoomAnimationPreset(.cinematic)])
         XCTAssertEqual(state.autoZoomAnimationPreset, .cinematic)
+        XCTAssertEqual(state.applying(.autoZoomAnimationPresetChanged(.cinematic)), [])
         XCTAssertEqual(state.applying(.autoZoomAnimationPresetSynced(.guided)), [])
         XCTAssertEqual(state.autoZoomAnimationPreset, .guided)
         XCTAssertEqual(state.applying(.folderOpenRequested("/tmp")), [.openFolder("/tmp")])
