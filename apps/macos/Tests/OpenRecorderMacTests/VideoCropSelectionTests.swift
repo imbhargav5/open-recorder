@@ -312,6 +312,11 @@ final class VideoCropSelectionTests: XCTestCase {
     }
 
     func testExportOptionsDescribeFormatSpecificSummariesAndFileSuffixes() {
+        var movOptions = VideoExportOptions.default
+        movOptions.format = .mov
+        XCTAssertEqual(movOptions.summaryTitle, "1080p MOV at 30 FPS")
+        XCTAssertEqual(movOptions.fileNameSuffix, "1080p-30fps")
+
         var mp4Options = VideoExportOptions.default
         mp4Options.format = .mp4
         mp4Options.quality = .medium
