@@ -16,6 +16,14 @@ final class SerializableColorTests: XCTestCase {
         XCTAssertEqual(color.alpha, 0.42)
     }
 
+    func testHexInitializerAcceptsLowercaseValueWithoutHash() {
+        let color = SerializableColor(hex: "0f80c0")
+
+        XCTAssertEqual(color.red, 15.0 / 255.0, accuracy: 0.0001)
+        XCTAssertEqual(color.green, 128.0 / 255.0, accuracy: 0.0001)
+        XCTAssertEqual(color.blue, 192.0 / 255.0, accuracy: 0.0001)
+    }
+
     func testHexInitializerFallsBackToBlackForInvalidInput() {
         let color = SerializableColor(hex: "not-a-color", alpha: 0.75)
 
