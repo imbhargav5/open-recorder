@@ -81,7 +81,7 @@ enum VideoExportResolution: String, CaseIterable, Identifiable, Codable, Hashabl
     }
 }
 
-enum VideoExportFormat: String, CaseIterable, Identifiable {
+enum VideoExportFormat: String, CaseIterable, Identifiable, Codable, Hashable {
     case mov
     case mp4
     case gif
@@ -217,7 +217,7 @@ enum VideoExportGIFSize: String, CaseIterable, Identifiable, Codable, Hashable {
     }
 }
 
-enum VideoExportFrameRate: String, CaseIterable, Identifiable {
+enum VideoExportFrameRate: String, CaseIterable, Identifiable, Codable, Hashable {
     case source
     case fps15
     case fps20
