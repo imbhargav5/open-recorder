@@ -41,13 +41,16 @@ final class UpdateCheckerTests: XCTestCase {
     }
 
     private func makeBundle(identifier: String, feedURLString: String) throws -> Bundle {
-        let bundleURL = temporaryDirectory()
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let bundleURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("OpenRecorderMacTests-\(UUID().uuidString)", isDirectory: true)
             .appendingPathExtension("bundle")
         let contentsURL = bundleURL.appendingPathComponent("Contents", isDirectory: true)
         let infoPlistURL = contentsURL.appendingPathComponent("Info.plist")
 
         try FileManager.default.createDirectory(at: contentsURL, withIntermediateDirectories: true)
+        addTeardownBlock {
+            try? FileManager.default.removeItem(at: bundleURL)
+        }
 
         let plist: [String: String] = [
             "CFBundleIdentifier": identifier,
@@ -58,9 +61,5 @@ final class UpdateCheckerTests: XCTestCase {
         try data.write(to: infoPlistURL)
 
         return try XCTUnwrap(Bundle(url: bundleURL))
-    }
-
-    private func temporaryDirectory() -> URL {
-        URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
     }
 }
