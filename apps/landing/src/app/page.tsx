@@ -101,7 +101,7 @@ function GitHubIcon(): ReactElement {
   );
 }
 
-export default function Home() {
+export default function Home(): ReactElement {
   return (
     <main>
       <nav className="top-nav" aria-label="Primary navigation">
