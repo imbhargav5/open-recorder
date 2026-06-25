@@ -46,6 +46,40 @@ final class RustServiceClientTests: XCTestCase {
         XCTAssertEqual(payload.count, 70_000)
     }
 
+    func testLargeServiceFailureDoesNotDeadlockWhenStderrExceedsPipeBuffer() throws {
+        let serviceURL = try makeServiceScript(
+            name: "large-error-service",
+            body: """
+            #!/bin/sh
+            head -c 70000 /dev/zero | tr '\\0' x >&2
+            exit 1
+            """
+        )
+        let client = RustServiceClient(executableURL: serviceURL)
+        let completed = expectation(description: "service call completes")
+        let result = LockedBox<Result<String, Error>>()
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            result.set(Result { try client.call("listProjects", as: String.self) })
+            completed.fulfill()
+        }
+
+        let waitResult = XCTWaiter.wait(for: [completed], timeout: 10)
+        guard waitResult == .completed else {
+            terminateServiceScript(at: serviceURL)
+            XCTFail("RustServiceClient did not complete a failure larger than the stderr pipe buffer: \(waitResult).")
+            return
+        }
+
+        XCTAssertThrowsError(try XCTUnwrap(result.get()).get()) { error in
+            guard case RustServiceError.processFailed(let message) = error else {
+                XCTFail("Expected processFailed, got \(error).")
+                return
+            }
+            XCTAssertEqual(message.count, 70_000)
+        }
+    }
+
     private func makeServiceScript(name: String, body: String) throws -> URL {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("OpenRecorderMacTests-\(UUID().uuidString)", isDirectory: true)
