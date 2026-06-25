@@ -16,6 +16,20 @@ final class RustServiceClientTests: XCTestCase {
         }
     }
 
+    func testMissingExecutableFailsBeforeDecodingRawParameters() {
+        let client = RustServiceClient(executableURL: nil)
+        let invalidUTF8 = Data([0xFF])
+
+        XCTAssertThrowsError(
+            try client.call("listProjects", paramsData: invalidUTF8, as: String.self)
+        ) { error in
+            guard case RustServiceError.missingExecutable = error else {
+                XCTFail("Expected missingExecutable, got \(error).")
+                return
+            }
+        }
+    }
+
     func testLargeServiceResponseDoesNotDeadlockWhenStdoutExceedsPipeBuffer() throws {
         let serviceURL = try makeServiceScript(
             name: "large-response-service",
