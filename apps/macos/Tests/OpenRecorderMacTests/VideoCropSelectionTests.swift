@@ -85,6 +85,11 @@ final class VideoCropSelectionTests: XCTestCase {
         XCTAssertEqual(decoded, selection)
     }
 
+    func testCropSizingCustomSizeOnlyReflectsCustomDimensions() {
+        XCTAssertNil(VideoCropSizing.preset(.p1080).customSize)
+        XCTAssertEqual(VideoCropSizing.custom(width: 1001, height: 777).customSize, CGSize(width: 1001, height: 777))
+    }
+
     func testInvalidSourceSizeFallsBackToDefaultCaptureDimensions() {
         let safeSize = VideoCropSelection.safeSourceSize(
             CGSize(width: CGFloat.nan, height: -20)
