@@ -73,6 +73,18 @@ final class VideoCropSelectionTests: XCTestCase {
         XCTAssertEqual(rect.height, 20, accuracy: 0.001)
     }
 
+    func testCustomCropSelectionRoundTripsThroughCodable() throws {
+        let selection = VideoCropSelection(
+            normalizedRect: CGRect(x: 0.125, y: 0.25, width: 0.5, height: 0.625),
+            sizing: .custom(width: 1001, height: 777)
+        )
+
+        let data = try JSONEncoder().encode(selection)
+        let decoded = try JSONDecoder().decode(VideoCropSelection.self, from: data)
+
+        XCTAssertEqual(decoded, selection)
+    }
+
     func testInvalidSourceSizeFallsBackToDefaultCaptureDimensions() {
         let safeSize = VideoCropSelection.safeSourceSize(
             CGSize(width: CGFloat.nan, height: -20)
