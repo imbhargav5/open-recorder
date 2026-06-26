@@ -119,6 +119,23 @@ final class AutoZoomGeneratorTests: XCTestCase {
         XCTAssertEqual(TimelineZoomAnimationPreset.storedValue("unknown"), .balanced)
     }
 
+    func testZoomAnimationPresetDisplayTitles() {
+        XCTAssertEqual(TimelineZoomAnimationPreset.allCases.map(\.title), [
+            "Balanced",
+            "Subtle",
+            "Snappy",
+            "Cinematic",
+            "Guided"
+        ])
+        XCTAssertEqual(TimelineZoomAnimationPreset.allCases.map(\.shortTitle), [
+            "Bal",
+            "Sub",
+            "Snap",
+            "Cine",
+            "Guide"
+        ])
+    }
+
     func testZoomEasingClampsOutOfRangeInputs() {
         XCTAssertEqual(TimelineZoomEasing.smoothstep.value(-0.25), 0, accuracy: 0.001)
         XCTAssertEqual(TimelineZoomEasing.easeOut.value(1.25), 1, accuracy: 0.001)
