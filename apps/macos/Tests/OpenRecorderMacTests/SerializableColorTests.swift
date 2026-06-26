@@ -48,4 +48,13 @@ final class SerializableColorTests: XCTestCase {
         XCTAssertEqual(decoded, color)
         XCTAssertEqual(decoded.alpha, 0.4)
     }
+
+    func testNSColorInitializerReadsSRGBComponents() {
+        let color = SerializableColor(NSColor(srgbRed: 0.25, green: 0.5, blue: 0.75, alpha: 0.6))
+
+        XCTAssertEqual(color.red, 0.25, accuracy: 0.0001)
+        XCTAssertEqual(color.green, 0.5, accuracy: 0.0001)
+        XCTAssertEqual(color.blue, 0.75, accuracy: 0.0001)
+        XCTAssertEqual(color.alpha, 0.6, accuracy: 0.0001)
+    }
 }
