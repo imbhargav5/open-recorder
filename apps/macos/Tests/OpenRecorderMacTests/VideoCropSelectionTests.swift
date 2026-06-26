@@ -285,6 +285,7 @@ final class VideoCropSelectionTests: XCTestCase {
         XCTAssertEqual(VideoExportFormat.allCases.map(\.title), ["MOV", "MP4", "GIF"])
         XCTAssertEqual(VideoExportQuality.allCases.map(\.title), ["Low", "Medium", "High"])
         XCTAssertEqual(VideoExportGIFSize.allCases.map(\.title), ["Medium", "Large", "Original"])
+        XCTAssertEqual(VideoExportGIFSize.allCases.map(\.resolution), [.p480, .p720, .source])
         XCTAssertFalse(VideoExportResolution.exportOptions.contains(.source))
         XCTAssertFalse(VideoExportFrameRate.exportOptions.contains(.source))
         XCTAssertEqual(VideoExportFrameRate.exportOptions(for: .mov), VideoExportFrameRate.exportOptions)
