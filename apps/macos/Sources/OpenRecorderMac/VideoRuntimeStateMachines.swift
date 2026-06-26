@@ -5,7 +5,7 @@ import Observation
 import SwiftUI
 
 enum VideoPlaybackSpeeds {
-    static let values = [1.0, 2.0, 4.0, 8.0]
+    static let values: [Double] = [1.0, 2.0, 4.0, 8.0]
     static let defaultSpeed = values[0]
 }
 
