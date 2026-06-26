@@ -3,7 +3,7 @@ import XCTest
 @testable import OpenRecorderMac
 
 final class ScreenshotExportRendererTests: XCTestCase {
-    private let orientationProbeRows = ["RGB", "CYM"]
+    private let orientationProbeRows: [String] = ["RGB", "CYM"]
 
     func testSuggestedFileNameUsesScreenshotBaseName() {
         let url = URL(fileURLWithPath: "/tmp/open-recorder/screen-shot.png")
