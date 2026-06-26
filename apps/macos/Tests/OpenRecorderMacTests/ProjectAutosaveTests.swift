@@ -80,7 +80,7 @@ final class ProjectAutosaveCoordinatorTests: XCTestCase {
 
 final class ProjectEditorStateCodableTests: XCTestCase {
     private typealias JSONDictionary = [String: Any]
-    private typealias RecordingSessionJSON = JSONDictionary
+    private typealias RecordingSessionJSON = [String: Any]
 
     func testFormattedProjectDateUsesStableMonthLabelsForEpochStrings() {
         let timestamp = "1767225600"
