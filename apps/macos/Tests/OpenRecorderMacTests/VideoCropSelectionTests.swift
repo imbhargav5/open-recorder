@@ -85,6 +85,18 @@ final class VideoCropSelectionTests: XCTestCase {
         XCTAssertEqual(decoded, selection)
     }
 
+    func testPassthroughRequiresFullFrameSourceSizing() {
+        XCTAssertTrue(VideoCropSelection.fullFrame.isPassthrough)
+        XCTAssertFalse(VideoCropSelection.fullFrame.withSizing(.preset(.p1080)).isPassthrough)
+
+        let croppedSelection = VideoCropSelection(
+            normalizedRect: CGRect(x: 0.1, y: 0.1, width: 0.8, height: 0.8),
+            sizing: .preset(.source)
+        )
+
+        XCTAssertFalse(croppedSelection.isPassthrough)
+    }
+
     func testCropSizingCustomSizeOnlyReflectsCustomDimensions() {
         XCTAssertNil(VideoCropSizing.preset(.p1080).customSize)
         XCTAssertEqual(VideoCropSizing.custom(width: 1001, height: 777).customSize, CGSize(width: 1001, height: 777))
