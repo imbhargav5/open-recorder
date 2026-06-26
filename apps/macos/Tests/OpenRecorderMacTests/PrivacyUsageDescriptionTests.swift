@@ -7,6 +7,8 @@ final class PrivacyUsageDescriptionTests: XCTestCase {
     func testInfoPlistDeclaresCameraAndMicrophoneUsageDescriptions() throws {
         let plist = try loadInfoPlist()
 
+        XCTAssertEqual(plist["CFBundleName"] as? String, "Open Recorder")
+        XCTAssertEqual(plist["LSMinimumSystemVersion"] as? String, "15.0")
         XCTAssertEqual(
             plist["NSCameraUsageDescription"] as? String,
             "Open Recorder uses the camera when you choose to include a facecam in a screen recording."
