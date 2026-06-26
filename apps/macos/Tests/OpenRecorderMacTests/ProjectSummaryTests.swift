@@ -17,6 +17,14 @@ final class ProjectSummaryTests: XCTestCase {
     }
 }
 
+final class ProjectDocumentMediaKindTests: XCTestCase {
+    func testMediaKindPrefersScreenshotWhenBothMediaPathsExist() {
+        let document = makeProjectDocument(recordingPath: "/tmp/recording.mp4", screenshotPath: "/tmp/screenshot.png")
+
+        XCTAssertEqual(document.mediaKind, .screenshot)
+    }
+}
+
 private func makeProjectSummary(recordingPath: String?, screenshotPath: String?) -> ProjectSummary {
     ProjectSummary(
         id: "project-1",
@@ -29,5 +37,19 @@ private func makeProjectSummary(recordingPath: String?, screenshotPath: String?)
         updatedAt: "2026-06-26T00:00:00Z",
         lastOpenedAt: "2026-06-26T00:00:00Z",
         missing: false
+    )
+}
+
+private func makeProjectDocument(recordingPath: String?, screenshotPath: String?) -> ProjectDocument {
+    ProjectDocument(
+        schemaVersion: 1,
+        title: "Project",
+        recordingPath: recordingPath,
+        screenshotPath: screenshotPath,
+        sourceName: "Display 1",
+        createdAt: "2026-06-26T00:00:00Z",
+        updatedAt: "2026-06-26T00:00:00Z",
+        editorState: nil,
+        recordingSession: nil
     )
 }
