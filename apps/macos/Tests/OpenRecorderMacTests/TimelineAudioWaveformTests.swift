@@ -679,7 +679,7 @@ final class TimelineEditingPlanTests: XCTestCase {
     }
 
     @MainActor
-    func testSplittingClipCopiesSpeedToBothSlices() {
+    func testSplittingClipCopiesSpeedToBothSlices() throws {
         let edits = TimelineEditDriver()
         edits.updateClipSpeed(index: 0, speed: 1.5)
 
@@ -687,8 +687,10 @@ final class TimelineEditingPlanTests: XCTestCase {
 
         let segments = edits.snapshot.clipSegments(duration: 8)
         XCTAssertEqual(segments.count, 2)
-        XCTAssertEqual(segments[0].speed, 1.5, accuracy: 0.001)
-        XCTAssertEqual(segments[1].speed, 1.5, accuracy: 0.001)
+        let firstSegment = try XCTUnwrap(segments.first)
+        let secondSegment = try XCTUnwrap(segments.dropFirst().first)
+        XCTAssertEqual(firstSegment.speed, 1.5, accuracy: 0.001)
+        XCTAssertEqual(secondSegment.speed, 1.5, accuracy: 0.001)
     }
 
     @MainActor
