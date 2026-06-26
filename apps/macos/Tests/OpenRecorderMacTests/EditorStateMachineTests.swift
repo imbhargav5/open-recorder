@@ -306,10 +306,15 @@ final class VideoEditorStateMachineTests: XCTestCase {
 
 @MainActor
 final class VideoExportStateMachineTests: XCTestCase {
+    private func makeTemporaryMovieURL(_ name: String = "export-temp") -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(name)-\(UUID().uuidString).mov")
+    }
+
     func testExportReducerStartsRenderAndTracksPendingState() {
         var state = VideoExportState()
         let sourceURL = URL(fileURLWithPath: "/tmp/source.mov")
-        let tempURL = URL(fileURLWithPath: "/tmp/export-temp.mov")
+        let tempURL = makeTemporaryMovieURL()
         let options = VideoExportOptions.default
         let edits = TimelineEditSnapshot(clipSplitTimes: [1.5])
 
@@ -337,7 +342,7 @@ final class VideoExportStateMachineTests: XCTestCase {
     func testExportReducerHandlesSavePendingRetryAndSuccess() {
         var state = VideoExportState()
         let sourceURL = URL(fileURLWithPath: "/tmp/source.mov")
-        let tempURL = URL(fileURLWithPath: "/tmp/export-temp.mov")
+        let tempURL = makeTemporaryMovieURL()
         let savedURL = URL(fileURLWithPath: "/tmp/saved.mov")
         let options = VideoExportOptions.default
 
@@ -377,7 +382,7 @@ final class VideoExportStateMachineTests: XCTestCase {
     func testExportReducerCancelAndClearDeletePendingTempFiles() {
         var state = VideoExportState()
         let sourceURL = URL(fileURLWithPath: "/tmp/source.mov")
-        let tempURL = URL(fileURLWithPath: "/tmp/export-temp.mov")
+        let tempURL = makeTemporaryMovieURL()
         let options = VideoExportOptions.default
 
         _ = state.applying(.exportRequested(
@@ -417,7 +422,7 @@ final class VideoExportStateMachineTests: XCTestCase {
 
         XCTAssertEqual(state.applying(.exportRequested(
             sourceURL: nil,
-            targetURL: URL(fileURLWithPath: "/tmp/export-temp.mov"),
+            targetURL: makeTemporaryMovieURL(),
             options: .default,
             edits: .empty
         )), [.setStatusMessage("Open a recording first.")])
@@ -430,7 +435,7 @@ final class VideoExportStateMachineTests: XCTestCase {
 
         _ = state.applying(.exportRequested(
             sourceURL: URL(fileURLWithPath: "/tmp/source.mov"),
-            targetURL: URL(fileURLWithPath: "/tmp/export-temp.mov"),
+            targetURL: makeTemporaryMovieURL(),
             options: .default,
             edits: .empty
         ))
@@ -445,7 +450,7 @@ final class VideoExportStateMachineTests: XCTestCase {
     func testExportDriverRunsRenderSaveAndRevealThroughInjectedEffects() async {
         let driver = VideoExportDriver()
         let sourceURL = URL(fileURLWithPath: "/tmp/source.mov")
-        let tempURL = URL(fileURLWithPath: "/tmp/export-temp.mov")
+        let tempURL = makeTemporaryMovieURL()
         let savedURL = URL(fileURLWithPath: "/tmp/saved.mov")
         var renderedSourceURL: URL?
         var copiedURLs: [(source: URL, target: URL)] = []
