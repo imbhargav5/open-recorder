@@ -15,6 +15,13 @@ final class ProjectSummaryTests: XCTestCase {
         XCTAssertEqual(summary.mediaKind, .video)
         XCTAssertEqual(summary.mediaPath, "/tmp/recording.mp4")
     }
+
+    func testMediaPathIsNilWhenNoMediaPathExists() {
+        let summary = makeProjectSummary(recordingPath: nil, screenshotPath: nil)
+
+        XCTAssertEqual(summary.mediaKind, .video)
+        XCTAssertNil(summary.mediaPath)
+    }
 }
 
 final class ProjectDocumentMediaKindTests: XCTestCase {
