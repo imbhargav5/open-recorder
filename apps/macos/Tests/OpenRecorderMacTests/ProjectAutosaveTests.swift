@@ -60,6 +60,22 @@ final class ProjectAutosaveCoordinatorTests: XCTestCase {
 
         XCTAssertEqual(savedSnapshots, [snapshot])
     }
+
+    func testSuccessfulSaveEmitsSavingThenSavedStatus() async {
+        var statuses: [ProjectAutosaveStatus] = []
+        let snapshot = makeAutosaveSnapshot(title: "Status", splitTime: 5)
+        let summary = makeProjectSummary(for: snapshot)
+        let coordinator = ProjectAutosaveCoordinator(
+            debounceNanoseconds: 1,
+            saveHandler: { _ in summary },
+            statusHandler: { statuses.append($0) }
+        )
+
+        coordinator.schedule(snapshot)
+        await coordinator.flush()
+
+        XCTAssertEqual(statuses, [.saving, .saved(summary)])
+    }
 }
 
 final class ProjectEditorStateCodableTests: XCTestCase {
