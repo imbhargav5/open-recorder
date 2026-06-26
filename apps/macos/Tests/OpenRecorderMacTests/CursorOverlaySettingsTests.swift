@@ -228,7 +228,35 @@ final class CursorOverlaySettingsTests: XCTestCase {
         }
     }
 
+    func testRenderedGlyphHotspotCoordinateConversions() throws {
+        let glyph = CursorRenderedGlyph(
+            image: try emptyImage(width: 20, height: 10),
+            canvasSize: CGSize(width: 20, height: 10),
+            hotspot: CGPoint(x: 5, y: 3)
+        )
+
+        XCTAssertEqual(glyph.bottomLeftHotspot.x, 5, accuracy: 0.001)
+        XCTAssertEqual(glyph.bottomLeftHotspot.y, 7, accuracy: 0.001)
+        XCTAssertEqual(glyph.coreAnimationAnchorPoint.x, 0.25, accuracy: 0.001)
+        XCTAssertEqual(glyph.coreAnimationAnchorPoint.y, 0.7, accuracy: 0.001)
+    }
+
     private func utf8Data(_ string: String) throws -> Data {
         try XCTUnwrap(string.data(using: .utf8))
+    }
+
+    private func emptyImage(width: Int, height: Int) throws -> CGImage {
+        let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+        let context = CGContext(
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        )
+
+        return try XCTUnwrap(context?.makeImage())
     }
 }
