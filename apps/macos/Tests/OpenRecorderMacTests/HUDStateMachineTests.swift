@@ -4,7 +4,9 @@ import XCTest
 @MainActor
 final class HUDStateMachineTests: XCTestCase {
     func testIdleAndChoosingModeDoNotOccupyCaptureSlot() {
-        for state in [HUDState.idle, .choosingMode] {
+        let states: [HUDState] = [.idle, .choosingMode]
+
+        for state in states {
             XCTAssertNil(state.mode)
             XCTAssertNil(state.source)
             XCTAssertFalse(state.isCaptureOccupied)
