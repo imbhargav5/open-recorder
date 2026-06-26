@@ -49,7 +49,16 @@ final class UpdateCheckerTests: XCTestCase {
         XCTAssertFalse(UpdateChecker.isEnabled(for: bundle))
     }
 
-    private func makeBundle(identifier: String, feedURLString: String) throws -> Bundle {
+    func testUpdateCheckerIsDisabledWithoutFeedURL() throws {
+        let bundle = try makeBundle(
+            identifier: "dev.openrecorder.app",
+            feedURLString: nil
+        )
+
+        XCTAssertFalse(UpdateChecker.isEnabled(for: bundle))
+    }
+
+    private func makeBundle(identifier: String, feedURLString: String?) throws -> Bundle {
         let bundleURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("OpenRecorderMacTests-\(UUID().uuidString)", isDirectory: true)
             .appendingPathExtension("bundle")
@@ -61,11 +70,11 @@ final class UpdateCheckerTests: XCTestCase {
             try? FileManager.default.removeItem(at: bundleURL)
         }
 
-        let plist: [String: String] = [
+        var plist: [String: String] = [
             "CFBundleIdentifier": identifier,
             "CFBundlePackageType": "BNDL",
-            "SUFeedURL": feedURLString,
         ]
+        plist["SUFeedURL"] = feedURLString
         let data = try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
         try data.write(to: infoPlistURL)
 
