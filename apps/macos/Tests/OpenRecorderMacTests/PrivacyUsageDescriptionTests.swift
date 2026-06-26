@@ -39,9 +39,10 @@ final class PrivacyUsageDescriptionTests: XCTestCase {
         XCTAssertEqual(exportedType["UTTypeIdentifier"] as? String, "dev.openrecorder.project")
         XCTAssertEqual(exportedType["UTTypeDescription"] as? String, "Open Recorder Project")
         XCTAssertEqual(exportedType["UTTypeConformsTo"] as? [String], ["public.json"])
+        let expectedTypeTagSpecification: TypeTagSpecification = ["public.filename-extension": ["openrecorder"]]
         XCTAssertEqual(
             exportedType["UTTypeTagSpecification"] as? TypeTagSpecification,
-            ["public.filename-extension": ["openrecorder"]]
+            expectedTypeTagSpecification
         )
     }
 
