@@ -23,6 +23,18 @@ final class ProjectDocumentMediaKindTests: XCTestCase {
 
         XCTAssertEqual(document.mediaKind, .screenshot)
     }
+
+    func testMediaKindFallsBackToVideoWhenOnlyRecordingPathExists() {
+        let document = makeProjectDocument(recordingPath: "/tmp/recording.mp4", screenshotPath: nil)
+
+        XCTAssertEqual(document.mediaKind, .video)
+    }
+
+    func testMediaKindIsNilWhenNoMediaPathExists() {
+        let document = makeProjectDocument(recordingPath: nil, screenshotPath: nil)
+
+        XCTAssertNil(document.mediaKind)
+    }
 }
 
 private func makeProjectSummary(recordingPath: String?, screenshotPath: String?) -> ProjectSummary {
