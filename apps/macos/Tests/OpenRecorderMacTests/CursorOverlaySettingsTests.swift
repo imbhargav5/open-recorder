@@ -178,6 +178,22 @@ final class CursorOverlaySettingsTests: XCTestCase {
         )
     }
 
+    func testCursorOverlayGeometryTreatsInvalidCropRectAsZeroScale() {
+        let contentRect = CGRect(x: 0, y: 0, width: 960, height: 540)
+        let cropRect = CGRect(x: 0, y: 0, width: CGFloat.infinity, height: 1080)
+
+        XCTAssertEqual(
+            CursorOverlayGeometry.displayScale(contentRect: contentRect, cropRect: cropRect),
+            0,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            CursorOverlayGeometry.glyphSize(contentRect: contentRect, cropRect: cropRect, settings: .default),
+            1,
+            accuracy: 0.001
+        )
+    }
+
     func testProjectVideoStateDecodesLegacyCursorOverlayDefaults() throws {
         let data = try utf8Data("""
         {
