@@ -918,6 +918,26 @@ mod tests {
     }
 
     #[test]
+    fn recent_screenshot_index_skips_entries_without_paths() {
+        let paths = test_paths("screenshot-index-malformed-entry");
+        paths.ensure().unwrap();
+        write_json_pretty(
+            &screenshot_index_path(&paths),
+            &json!([
+                { "createdAt": "200" },
+                { "path": "/tmp/shot.png", "createdAt": "100" }
+            ]),
+        )
+        .unwrap();
+
+        let recent = read_screenshot_index(&paths).unwrap();
+
+        assert_eq!(recent.len(), 1);
+        assert_eq!(recent[0].path, "/tmp/shot.png");
+        assert_eq!(recent[0].created_at, "100");
+    }
+
+    #[test]
     fn recent_screenshot_index_keeps_the_latest_one_hundred_items() {
         let paths = test_paths("screenshot-index-limit");
         paths.ensure().unwrap();
