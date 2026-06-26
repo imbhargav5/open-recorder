@@ -426,6 +426,12 @@ final class VideoPlaybackControllerPreviewSpeedTests: XCTestCase {
 }
 
 final class TimelineClipSpeedTests: XCTestCase {
+    func testLabelsUseCompactMultipliers() {
+        XCTAssertEqual(TimelineClipSpeed.label(1), "1x")
+        XCTAssertEqual(TimelineClipSpeed.label(1.5), "1.5x")
+        XCTAssertEqual(TimelineClipSpeed.label(1.25), "1.25x")
+    }
+
     func testStoredValueOmitsDefaultAndInvalidSpeeds() {
         XCTAssertNil(TimelineClipSpeed.storedValue(1))
         XCTAssertNil(TimelineClipSpeed.storedValue(.nan))
