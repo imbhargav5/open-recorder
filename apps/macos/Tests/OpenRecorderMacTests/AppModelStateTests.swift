@@ -1391,13 +1391,13 @@ private func makeSource(
 
 @MainActor
 private func waitForCondition(
-    timeout: TimeInterval = 2,
+    timeout: Duration = .seconds(2),
     file: StaticString = #filePath,
     line: UInt = #line,
     condition: @escaping @MainActor () -> Bool
 ) async {
     let clock = ContinuousClock()
-    let deadline = clock.now.advanced(by: .milliseconds(Int(timeout * 1_000)))
+    let deadline = clock.now.advanced(by: timeout)
     while !condition(), clock.now < deadline {
         try? await clock.sleep(for: .milliseconds(10))
     }
