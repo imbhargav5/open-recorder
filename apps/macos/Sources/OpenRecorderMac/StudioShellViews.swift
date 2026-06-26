@@ -437,7 +437,7 @@ struct StudioTitleBar: View {
 struct EditorShortcutsHelpDialog: View {
     @Binding var isPresented: Bool
 
-    private let shortcuts = [
+    private let shortcuts: [EditorShortcutHelpItem] = [
         EditorShortcutHelpItem(keys: "Space", action: "Play or pause preview"),
         EditorShortcutHelpItem(keys: "Z", action: "Add zoom section at playhead"),
         EditorShortcutHelpItem(keys: "S", action: "Cycle selected clip speed"),
