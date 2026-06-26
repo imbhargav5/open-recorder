@@ -351,6 +351,14 @@ final class VideoCropSelectionTests: XCTestCase {
         XCTAssertEqual(gifOptions.fileNameSuffix, "large-20fps")
     }
 
+    func testCustomExportSizeRoundsFileSuffix() {
+        var options = VideoExportOptions.default
+        options.resolution = .custom
+        options.customOutputSize = CGSize(width: 1000.4, height: 777.6)
+
+        XCTAssertEqual(options.fileNameSuffix, "1000x778-30fps")
+    }
+
     func testRendererUsesNormalizedCropRectInSourcePixels() {
         let selection = VideoCropSelection(
             normalizedRect: CGRect(x: 0.1, y: 0.2, width: 0.5, height: 0.25),
