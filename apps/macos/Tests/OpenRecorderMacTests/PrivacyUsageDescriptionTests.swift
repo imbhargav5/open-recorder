@@ -3,6 +3,7 @@ import XCTest
 
 final class PrivacyUsageDescriptionTests: XCTestCase {
     private typealias PlistDictionary = [String: Any]
+    private typealias TypeTagSpecification = [String: [String]]
 
     func testInfoPlistDeclaresCameraAndMicrophoneUsageDescriptions() throws {
         let plist = try loadInfoPlist()
@@ -39,7 +40,7 @@ final class PrivacyUsageDescriptionTests: XCTestCase {
         XCTAssertEqual(exportedType["UTTypeDescription"] as? String, "Open Recorder Project")
         XCTAssertEqual(exportedType["UTTypeConformsTo"] as? [String], ["public.json"])
         XCTAssertEqual(
-            exportedType["UTTypeTagSpecification"] as? [String: [String]],
+            exportedType["UTTypeTagSpecification"] as? TypeTagSpecification,
             ["public.filename-extension": ["openrecorder"]]
         )
     }
