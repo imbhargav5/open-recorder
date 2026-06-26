@@ -4,6 +4,8 @@ import XCTest
 
 @MainActor
 final class UpdateCheckerTests: XCTestCase {
+    private typealias InfoPlistFixture = [String: String]
+
     func testUpdateCheckerIsEnabledForProductionBundleWithHTTPSFeed() throws {
         let bundle = try makeBundle(
             identifier: "dev.openrecorder.app",
@@ -79,7 +81,7 @@ final class UpdateCheckerTests: XCTestCase {
             try? FileManager.default.removeItem(at: bundleURL)
         }
 
-        var plist: [String: String] = [
+        var plist: InfoPlistFixture = [
             "CFBundlePackageType": "BNDL",
         ]
         plist["CFBundleIdentifier"] = identifier
