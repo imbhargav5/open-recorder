@@ -85,7 +85,7 @@ enum TimelineRulerTickBuilder {
         var time = (safeVisibleStart - 0.5).rounded(.up) + 0.5
 
         while time < visibleEnd - 0.0001 {
-            if time >= safeVisibleStart + 0.0001 {
+            if time >= safeVisibleStart - 0.0001 {
                 ticks.append(TimelineRulerTick(time: time, label: ""))
             }
             time += 1
