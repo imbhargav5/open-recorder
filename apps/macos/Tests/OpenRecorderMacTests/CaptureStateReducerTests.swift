@@ -25,7 +25,7 @@ final class CaptureStateReducerTests: XCTestCase {
     func testRecordingHotKeyRegistersOnlyForRecordingReadyAndActiveStates() {
         let source = makeSource()
 
-        let enabledStates = [
+        let enabledStates: [CaptureState] = [
             CaptureState.ready(.recording, source),
             .countingDownRecording(source),
             .startingRecording(source),
@@ -36,7 +36,7 @@ final class CaptureStateReducerTests: XCTestCase {
             XCTAssertTrue(state.shouldRegisterRecordingHotKey(runtimeIsRecording: false), "\(state.phase) should register Cmd-R")
         }
 
-        let disabledStates = [
+        let disabledStates: [CaptureState] = [
             CaptureState.idle,
             .choosingMode,
             .choosingSourceType(.recording),
