@@ -42,7 +42,7 @@ final class SerializableColorTests: XCTestCase {
     func testCodableRoundTripPreservesAlpha() throws {
         let color = SerializableColor(red: 0.1, green: 0.2, blue: 0.3, alpha: 0.4)
 
-        let data = try JSONEncoder().encode(color)
+        let data: Data = try JSONEncoder().encode(color)
         let decoded = try JSONDecoder().decode(SerializableColor.self, from: data)
 
         XCTAssertEqual(decoded, color)
