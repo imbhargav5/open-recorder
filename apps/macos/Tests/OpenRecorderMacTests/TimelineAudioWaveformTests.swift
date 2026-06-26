@@ -209,6 +209,18 @@ final class TimelineAudioWaveformTests: XCTestCase {
         XCTAssertEqual(ticks.map(\.label), ["", "2s", "4s"])
     }
 
+    func testVisibleTicksUseFallbackForCollapsedWindow() {
+        let ticks = TimelineRulerTickBuilder.ticks(
+            visibleStart: 0,
+            visibleDuration: 0,
+            totalDuration: 4,
+            maxTickCount: 4
+        )
+
+        XCTAssertEqual(ticks.map(\.time), [0, 2, 4])
+        XCTAssertEqual(ticks.map(\.label), ["", "2s", "4s"])
+    }
+
     func testVisibleTicksClampNegativeStartToZero() {
         let ticks = TimelineRulerTickBuilder.ticks(
             visibleStart: -2,
