@@ -15,7 +15,7 @@ enum TimelineZoomMode: String, Codable, Hashable {
 
 enum TimelineZoomDepth {
     static let defaultDepth = 1.75
-    static let values = [1.0, 1.25, 1.5, 1.75, 2.0]
+    static let values: [Double] = [1.0, 1.25, 1.5, 1.75, 2.0]
 
     static func normalized(_ depth: Double) -> Double {
         guard depth.isFinite else { return defaultDepth }
