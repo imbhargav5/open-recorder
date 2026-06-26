@@ -5,7 +5,7 @@ import XCTest
 final class AppModelStateTests: XCTestCase {
     func testTimestampedFileNameUsesProvidedDate() {
         let date = Date(timeIntervalSince1970: 1_767_267_303)
-        let formatter = DateFormatter()
+        let formatter: DateFormatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.calendar = Calendar(identifier: .gregorian)
         formatter.dateFormat = "yyyy-MM-dd-HH-mm-ss"
