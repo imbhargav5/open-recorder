@@ -169,6 +169,13 @@ final class VideoCropSelectionTests: XCTestCase {
         XCTAssertEqual(VideoCropGeometry.evenSize(CGSize(width: 1, height: -4)), CGSize(width: 2, height: 2))
     }
 
+    func testEvenSizeFallsBackForNonFiniteDimensions() {
+        XCTAssertEqual(
+            VideoCropGeometry.evenSize(CGSize(width: CGFloat.nan, height: CGFloat.infinity)),
+            CGSize(width: 2, height: 2)
+        )
+    }
+
     func testSourceExportOutputSizeUsesCropSourceDimensions() {
         let cropSize = CGSize(width: 1725, height: 965)
         let options = VideoExportOptions(
