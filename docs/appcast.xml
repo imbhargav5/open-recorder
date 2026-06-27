@@ -361,5 +361,101 @@
 ]]></description>
             <enclosure url="https://github.com/imbhargav5/open-recorder/releases/download/v0.2.32/open-recorder-macos.zip" sparkle:edSignature="9DQemUeqQaJLQBUr7GFDsnDuhQmIDQiIoUYepy4a88mcDtN5VgnF+8JZiYxKgsoEbioBeEz6lnl5LQJBQb7yCQ==" length="41227565" type="application/octet-stream"/>
         </item>
+        <item>
+            <title>Version 0.2.33</title>
+            <pubDate>Sat, 27 Jun 2026 19:44:09 GMT</pubDate>
+            <sparkle:version>0.2.33</sparkle:version>
+            <sparkle:shortVersionString>0.2.33</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+## Commits since v0.2.32
+
+- f4a6e67 Merge pull request #811 from imbhargav5/codex/open-recorder-maint-20260627-8
+- 3ed707c Clarify ignored microphone fixture
+- c5649ad Merge pull request #809 from imbhargav5/automation/open-recorder-maint-20260627-7
+- d563892 Tighten update checker plist fixture type
+- b7b6fb6 Merge pull request #807 from imbhargav5/automation/open-recorder-maint-20260627-6
+- deb0172 Merge branch 'main' into automation/open-recorder-maint-20260627-6
+- f6172c2 Harden landing page docs links
+- 4e5a785 Merge pull request #805 from imbhargav5/automation/open-recorder-maint-20260627-5
+- 5acb42c Reuse source URL constant
+- 46f5df6 Merge pull request #803 from imbhargav5/automation/open-recorder-maint-20260627-4
+- e411016 Clarify native screen recorder cursor comment
+- 0ae108e Merge pull request #801 from imbhargav5/automation/open-recorder-maint-20260627-1959-alpha-tests
+- 4a234be Stabilize serializable color alpha tests
+- 62c15d4 Merge pull request #799 from imbhargav5/automation/open-recorder-maint-20260627-1909
+- 1925499 Make SerializableColor test imports explicit
+- 4b9dcc3 Merge pull request #797 from imbhargav5/automation/open-recorder-maint-20260627
+- 058e370 Harden update checker test fixture cleanup
+- 3105e49 Merge pull request #795 from imbhargav5/automation/open-recorder-maint-20260627-1720
+- 2bb3cb7 Type project summary JSON fixture
+- 7b16f65 Merge pull request #793 from imbhargav5/automation/open-recorder-maintenance-20260627-3
+- 190cc72 Add crop keyboard numeric pad shortcut coverage
+- 47a7fca Merge pull request #791 from imbhargav5/automation/open-recorder-maintenance-20260627-2
+- bf655b0 Clean up async test timeout messages
+- 46de41f Merge pull request #789 from imbhargav5/automation/open-recorder-maint-20260627-1650
+- d3b49d8 Type project date timestamp fixtures
+- e1d1787 Merge pull request #787 from imbhargav5/automation/open-recorder-maint-20260627-162749
+- da8c3fd Test screenshot index ordering
+- d4cb905 Merge pull request #785 from imbhargav5/automation/open-recorder-maint-20260627-102750
+- 5a8fb9b Harden Rust service pipe tests
+- df52a8b Merge pull request #783 from imbhargav5/mergify/imbhargav5/I0e486b7ca7a67810bcf8f90d1df6581b458e9708
+- e70ae7d Merge pull request #781 from imbhargav5/automation/open-recorder-maint-20260627-automated
+- 700635b Update workflow automation rules
+- 7cd5e5b Use window info alias for legacy bounds
+- 812d58c Merge pull request #779 from imbhargav5/automation/open-recorder-maint-20260627-1600
+- da823ff Type countdown overlay screen fixture
+- 7dd01c9 Merge pull request #777 from imbhargav5/automation/open-recorder-maint-20260627-1430
+- d186d8a Type health payload JSON fixture
+- 8d028d1 Merge pull request #775 from imbhargav5/codex/open-recorder-maintenance-20260627-2
+- 818badc Deduplicate project UTI test fixtures
+- 976b7bd Merge pull request #773 from imbhargav5/automation/open-recorder-maint-20260627-132749
+- 30e86ef Tighten async test polling intervals
+- 2861c05 Merge pull request #771 from imbhargav5/codex/open-recorder-maintenance-20260627
+- 63e9a1a Add project summary legacy decode test
+- 7611b19 Merge pull request #769 from imbhargav5/automation/open-recorder-maint-20260627-122747
+- 643ac35 Guard non-finite export dimensions
+- c7e6525 Merge pull request #767 from imbhargav5/automation/open-recorder-maint-20260627-115753
+- 2a7b232 Type invalid UTF8 test fixture
+- 7680c31 Merge pull request #765 from imbhargav5/codex/maintenance-20260627
+- c305668 Document rust update helper clippy exception
+- 313f19e Merge pull request #763 from imbhargav5/automation/open-recorder-maint-20260627-1015
+- 9fe0b78 Tighten compositor cache option test
+- 49c1414 Merge pull request #761 from imbhargav5/codex/narrow-maintenance-c776130
+- 5499b6f Guard non-finite crop video frames
+- c776130 Merge pull request #759 from imbhargav5/automation/open-recorder-maint-20260627-2
+- 1ea8927 Type Rust service invalid parameter fixture
+- d363338 Merge pull request #757 from imbhargav5/automation/open-recorder-maint-20260627-035744
+- 9ad2799 Type screenshot background fixture
+- d60dedf Merge pull request #755 from imbhargav5/automation/open-recorder-maint-20260627-085740
+- e99f087 Type HUD visible frame fixture
+- 966e2b3 Merge pull request #753 from imbhargav5/codex/open-recorder-maint-20260627-082743
+- adb51de Cover empty update feed URL
+- b7edfdf Merge pull request #751 from imbhargav5/automation/open-recorder-maintenance-20260627-run2
+- a84c7ac Clarify plist type tag assertion
+- 4bd9d81 Merge pull request #749 from imbhargav5/automation/open-recorder-maintenance-20260627
+- 07ac1a5 Clarify cursor overlay recorder configuration
+- 9409d05 Merge pull request #747 from imbhargav5/codex-maintenance-20260627
+- 20c4bbd Type waveform renderer test samples
+- ce5c5cd Merge pull request #745 from imbhargav5/automation/open-recorder-maint-20260627-1127
+- aa62744 Type release version regex fixture
+- ce565d5 Merge pull request #743 from imbhargav5/automation/open-recorder-maint-20260627-055743
+- 0ba2646 Clarify SwiftPM tools version comment
+- 18ddf9b Merge pull request #741 from imbhargav5/automation/open-recorder-maint-20260627-052744
+- 10dfba8 Type screenshot shadow margin test fixtures
+- 3a5c033 Merge pull request #739 from imbhargav5/automation/open-recorder-maint-20260627-045745
+- dcb5d98 Type release version test range
+- bef784a Merge pull request #737 from imbhargav5/automation/open-recorder-maint-20260627-0410
+- 37ecbee Type timeline zoom depth values
+- f15539f Merge pull request #735 from imbhargav5/automation/open-recorder-maint-20260627-0357
+- 6a034dd Type plist tag test fixture
+- 83f67c1 Merge pull request #733 from imbhargav5/automation/open-recorder-maint-20260627-032740
+- 0c8c091 Type timestamp formatter test fixture
+- 6906fe6 Merge pull request #731 from imbhargav5/codex/open-recorder-maint-20260627
+- 391fbcc Type color codable test payload
+- 733e94b Update appcast for v0.2.32
+]]></description>
+            <enclosure url="https://github.com/imbhargav5/open-recorder/releases/download/v0.2.33/open-recorder-macos.zip" sparkle:edSignature="A7GcLSM2TH7JgfNxgLJRhv5nCeYSgCHAJhrQVL+I8naPRppDyJLog/JSw64pPrETwxlAuexB4iupW+VHYh8VAA==" length="41232693" type="application/octet-stream"/>
+        </item>
     </channel>
 </rss>
