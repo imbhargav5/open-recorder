@@ -246,7 +246,7 @@ private func waitForCondition(
     let clock = ContinuousClock()
     let deadline = clock.now.advanced(by: timeout)
     while !condition(), clock.now < deadline {
-        try? await clock.sleep(for: .milliseconds(10))
+        try? await clock.sleep(for: .milliseconds(1))
     }
     XCTAssertTrue(condition(), "Timed out waiting for condition after \(timeout)s", file: file, line: line)
 }
