@@ -4,6 +4,8 @@ import XCTest
 final class PrivacyUsageDescriptionTests: XCTestCase {
     private typealias PlistDictionary = [String: Any]
     private typealias TypeTagSpecification = [String: [String]]
+    private static let projectTypeIdentifier = "dev.openrecorder.project"
+    private static let projectFilenameExtension = "openrecorder"
 
     func testInfoPlistDeclaresCameraAndMicrophoneUsageDescriptions() throws {
         let plist = try loadInfoPlist()
@@ -31,17 +33,17 @@ final class PrivacyUsageDescriptionTests: XCTestCase {
             "Info.plist should export the Open Recorder project type"
         )
 
-        XCTAssertEqual(documentType["CFBundleTypeExtensions"] as? [String], ["openrecorder"])
+        XCTAssertEqual(documentType["CFBundleTypeExtensions"] as? [String], [Self.projectFilenameExtension])
         XCTAssertEqual(documentType["CFBundleTypeName"] as? String, "Open Recorder Project")
         XCTAssertEqual(documentType["CFBundleTypeRole"] as? String, "Editor")
         XCTAssertEqual(documentType["LSHandlerRank"] as? String, "Owner")
-        XCTAssertEqual(documentType["LSItemContentTypes"] as? [String], ["dev.openrecorder.project"])
-        XCTAssertEqual(exportedType["UTTypeIdentifier"] as? String, "dev.openrecorder.project")
+        XCTAssertEqual(documentType["LSItemContentTypes"] as? [String], [Self.projectTypeIdentifier])
+        XCTAssertEqual(exportedType["UTTypeIdentifier"] as? String, Self.projectTypeIdentifier)
         XCTAssertEqual(exportedType["UTTypeDescription"] as? String, "Open Recorder Project")
         XCTAssertEqual(exportedType["UTTypeConformsTo"] as? [String], ["public.json"])
         let actualTypeTagSpecification = exportedType["UTTypeTagSpecification"] as? TypeTagSpecification
         let expectedTypeTagSpecification: TypeTagSpecification = [
-            "public.filename-extension": ["openrecorder"]
+            "public.filename-extension": [Self.projectFilenameExtension]
         ]
         XCTAssertEqual(actualTypeTagSpecification, expectedTypeTagSpecification)
     }
