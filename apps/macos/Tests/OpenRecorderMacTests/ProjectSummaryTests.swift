@@ -22,6 +22,28 @@ final class ProjectSummaryTests: XCTestCase {
         XCTAssertEqual(summary.mediaKind, .video)
         XCTAssertNil(summary.mediaPath)
     }
+
+    func testDecodingSummaryWithoutScreenshotPathKeepsVideoMediaKind() throws {
+        let json = """
+        {
+            "id": "project-1",
+            "title": "Project",
+            "path": "/tmp/project.openrecorder",
+            "recordingPath": "/tmp/recording.mp4",
+            "sourceName": "Display 1",
+            "createdAt": "2026-06-26T00:00:00Z",
+            "updatedAt": "2026-06-26T00:00:00Z",
+            "lastOpenedAt": "2026-06-26T00:00:00Z",
+            "missing": false
+        }
+        """
+
+        let summary = try JSONDecoder().decode(ProjectSummary.self, from: Data(json.utf8))
+
+        XCTAssertNil(summary.screenshotPath)
+        XCTAssertEqual(summary.mediaKind, .video)
+        XCTAssertEqual(summary.mediaPath, "/tmp/recording.mp4")
+    }
 }
 
 final class ProjectDocumentMediaKindTests: XCTestCase {
