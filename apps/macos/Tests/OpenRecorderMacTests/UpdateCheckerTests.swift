@@ -85,10 +85,10 @@ final class UpdateCheckerTests: XCTestCase {
         let contentsURL = bundleURL.appendingPathComponent("Contents", isDirectory: true)
         let infoPlistURL = contentsURL.appendingPathComponent("Info.plist")
 
-        try FileManager.default.createDirectory(at: contentsURL, withIntermediateDirectories: true)
         addTeardownBlock {
             try? FileManager.default.removeItem(at: bundleURL)
         }
+        try FileManager.default.createDirectory(at: contentsURL, withIntermediateDirectories: true)
 
         var plist: InfoPlistFixture = [
             "CFBundlePackageType": "BNDL",
