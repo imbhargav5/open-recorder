@@ -214,8 +214,8 @@ final class ScreenshotExportRendererTests: XCTestCase {
     }
 
     func testRendererKeepsScreenshotOrientationInsideShadowMargin() throws {
-        let imageShadow = 0.25
-        let padding = 3
+        let imageShadow: Double = 0.25
+        let padding: Int = 3
         let shadowMargin = Int(ceil(imageShadow * 56))
         let renderer = ScreenshotExportRenderer(configuration: ScreenshotExportConfiguration(
             background: .transparent,
