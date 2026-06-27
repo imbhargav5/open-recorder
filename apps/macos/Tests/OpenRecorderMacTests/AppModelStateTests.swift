@@ -1401,7 +1401,7 @@ private func waitForCondition(
     while !condition(), clock.now < deadline {
         try? await clock.sleep(for: .milliseconds(1))
     }
-    XCTAssertTrue(condition(), "Timed out waiting for condition after \(timeout)s", file: file, line: line)
+    XCTAssertTrue(condition(), "Timed out waiting for condition after \(timeout)", file: file, line: line)
 }
 
 @MainActor
