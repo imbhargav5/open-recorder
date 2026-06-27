@@ -234,7 +234,7 @@ export default function Home(): ReactElement {
             <p className="eyebrow">Open source on GitHub</p>
             <h2>Make your next product demo feel finished.</h2>
           </div>
-          <a className="primary-action" href="https://github.com/imbhargav5/open-recorder">
+          <a className="primary-action" href={sourceUrl}>
             View repository
           </a>
         </div>
