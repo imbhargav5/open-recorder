@@ -441,6 +441,7 @@ fn save_project_document(
     Ok(summary)
 }
 
+#[allow(clippy::too_many_arguments, reason = "mirrors optional update payload fields")]
 fn update_project_document(
     paths: &InternalPaths,
     project_path: &Path,
