@@ -16,7 +16,7 @@ final class TimelineAudioWaveformTests: XCTestCase {
     }
 
     func testWaveformBarRendererPreservesPeakWhenResampling() {
-        var samples = Array(repeating: 0.1, count: 60)
+        var samples = Array(repeating: Double(0.1), count: 60)
         samples[28] = 0.95
 
         let bars = TimelineWaveformBarRenderer.resampledLevels(from: samples, width: 60)
