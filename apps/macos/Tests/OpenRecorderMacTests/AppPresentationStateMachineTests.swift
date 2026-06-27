@@ -5,7 +5,7 @@ import XCTest
 @MainActor
 final class AppShellStateMachineTests: XCTestCase {
     func testHealthPayloadDecodesServiceResponseFields() throws {
-        let json = """
+        let json: String = """
         {
           "service": "open-recorder",
           "version": "1.2.3",
