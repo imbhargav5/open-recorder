@@ -415,6 +415,7 @@ final class VideoCropSelectionTests: XCTestCase {
         XCTAssertEqual(VideoCropKeyboardAdjustment.make(keyCode: 124, modifierFlags: []), .move(dx: 1, dy: 0))
         XCTAssertEqual(VideoCropKeyboardAdjustment.make(keyCode: 126, modifierFlags: []), .move(dx: 0, dy: -1))
         XCTAssertEqual(VideoCropKeyboardAdjustment.make(keyCode: 125, modifierFlags: []), .move(dx: 0, dy: 1))
+        XCTAssertEqual(VideoCropKeyboardAdjustment.make(keyCode: 124, modifierFlags: [.numericPad]), .move(dx: 1, dy: 0))
         XCTAssertEqual(VideoCropKeyboardAdjustment.make(keyCode: 123, modifierFlags: [.shift]), .move(dx: -10, dy: 0))
         XCTAssertEqual(VideoCropKeyboardAdjustment.make(keyCode: 125, modifierFlags: [.shift]), .move(dx: 0, dy: 10))
     }
