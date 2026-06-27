@@ -3,6 +3,8 @@ import XCTest
 @testable import OpenRecorderMac
 
 final class ScreenshotExportRendererTests: XCTestCase {
+    private typealias BackgroundOrientationFixture = (name: String, style: BackgroundStyle)
+
     private let orientationProbeRows: [String] = ["RGB", "CYM"]
 
     func testSuggestedFileNameUsesScreenshotBaseName() {
@@ -70,7 +72,7 @@ final class ScreenshotExportRendererTests: XCTestCase {
 
     func testRendererPreservesScreenshotOrientationAcrossBackgroundStyles() throws {
         let wallpaper = try XCTUnwrap(BackgroundPresets.wallpapers.first)
-        let backgrounds: [(String, BackgroundStyle)] = [
+        let backgrounds: [BackgroundOrientationFixture] = [
             ("transparent", .transparent),
             ("solid", .solid(SerializableColor(red: 0, green: 0, blue: 0))),
             ("gradient", .gradient(BackgroundPresets.gradients[0])),
