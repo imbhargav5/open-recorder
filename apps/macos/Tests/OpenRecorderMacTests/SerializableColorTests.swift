@@ -15,7 +15,7 @@ final class SerializableColorTests: XCTestCase {
     func testHexInitializerPreservesProvidedAlpha() {
         let color = SerializableColor(hex: "#FFFFFF", alpha: 0.42)
 
-        XCTAssertEqual(color.alpha, 0.42)
+        XCTAssertEqual(color.alpha, 0.42, accuracy: 0.0001)
     }
 
     func testHexInitializerAcceptsLowercaseValueWithoutHash() {
@@ -32,7 +32,7 @@ final class SerializableColorTests: XCTestCase {
         XCTAssertEqual(color.red, 0)
         XCTAssertEqual(color.green, 0)
         XCTAssertEqual(color.blue, 0)
-        XCTAssertEqual(color.alpha, 0.75)
+        XCTAssertEqual(color.alpha, 0.75, accuracy: 0.0001)
     }
 
     func testHexStringClampsOutOfRangeComponents() {
@@ -48,7 +48,7 @@ final class SerializableColorTests: XCTestCase {
         let decoded = try JSONDecoder().decode(SerializableColor.self, from: data)
 
         XCTAssertEqual(decoded, color)
-        XCTAssertEqual(decoded.alpha, 0.4)
+        XCTAssertEqual(decoded.alpha, 0.4, accuracy: 0.0001)
     }
 
     func testNSColorInitializerReadsSRGBComponents() {
