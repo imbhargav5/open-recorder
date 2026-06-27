@@ -939,6 +939,30 @@ mod tests {
     }
 
     #[test]
+    fn recent_screenshot_index_reads_items_newest_first_with_stable_ids() {
+        let paths = test_paths("screenshot-index-sorted-ids");
+        paths.ensure().unwrap();
+        write_json_pretty(
+            &screenshot_index_path(&paths),
+            &json!([
+                { "path": "/tmp/older shot.png", "createdAt": "100" },
+                { "path": "/tmp/newer:shot.png", "createdAt": "200" }
+            ]),
+        )
+        .unwrap();
+
+        let recent = read_screenshot_index(&paths).unwrap();
+
+        assert_eq!(recent.len(), 2);
+        assert_eq!(recent[0].path, "/tmp/newer:shot.png");
+        assert_eq!(recent[0].created_at, "200");
+        assert_eq!(recent[0].id, "screenshot-200-tmp-newer-shot.png");
+        assert_eq!(recent[1].path, "/tmp/older shot.png");
+        assert_eq!(recent[1].created_at, "100");
+        assert_eq!(recent[1].id, "screenshot-100-tmp-older-shot.png");
+    }
+
+    #[test]
     fn recent_screenshot_index_keeps_the_latest_one_hundred_items() {
         let paths = test_paths("screenshot-index-limit");
         paths.ensure().unwrap();
