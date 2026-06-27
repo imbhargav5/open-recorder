@@ -38,7 +38,8 @@ final class ProjectSummaryTests: XCTestCase {
         }
         """
 
-        let summary = try JSONDecoder().decode(ProjectSummary.self, from: Data(json.utf8))
+        let data: Data = Data(json.utf8)
+        let summary = try JSONDecoder().decode(ProjectSummary.self, from: data)
 
         XCTAssertNil(summary.screenshotPath)
         XCTAssertEqual(summary.mediaKind, .video)
