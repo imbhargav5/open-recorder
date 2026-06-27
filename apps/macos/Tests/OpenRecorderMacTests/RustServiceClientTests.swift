@@ -3,11 +3,14 @@ import XCTest
 @testable import OpenRecorderMac
 
 final class RustServiceClientTests: XCTestCase {
+    private typealias JSONParameters = [String: Any]
+
     func testInvalidParametersFailBeforeLaunchingService() {
         let client = RustServiceClient(executableURL: nil)
+        let invalidParameters: JSONParameters = ["value": Double.nan]
 
         XCTAssertThrowsError(
-            try client.call("listProjects", params: ["value": Double.nan], as: String.self)
+            try client.call("listProjects", params: invalidParameters, as: String.self)
         ) { error in
             guard case RustServiceError.invalidParameters = error else {
                 XCTFail("Expected invalidParameters, got \(error).")
