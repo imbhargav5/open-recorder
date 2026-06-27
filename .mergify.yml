@@ -25,3 +25,10 @@ merge_protections:
 merge_protections_settings:
   reporting_method: check-runs
   auto_merge_conditions: true
+pull_request_rules:
+  - name: Keep PRs up to date
+    conditions:
+      - -draft
+      - "#commits-behind >= 1"
+    actions:
+      update: {}
