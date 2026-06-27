@@ -179,7 +179,10 @@ enum VideoCropGeometry {
 
     static func pixelRect(for displayRect: CGRect, sourceSize: CGSize, videoFrame: CGRect) -> CGRect {
         let safeSourceSize = VideoCropSelection.safeSourceSize(sourceSize)
-        guard videoFrame.width > 0, videoFrame.height > 0 else {
+        guard videoFrame.width.isFinite,
+              videoFrame.height.isFinite,
+              videoFrame.width > 0,
+              videoFrame.height > 0 else {
             return CGRect(origin: .zero, size: safeSourceSize)
         }
         return VideoCropSelection.clampedPixelRect(
