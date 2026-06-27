@@ -197,9 +197,11 @@ enum VideoCropGeometry {
     }
 
     static func evenSize(_ size: CGSize) -> CGSize {
-        CGSize(
-            width: max(2, floor(max(2, size.width) / 2) * 2),
-            height: max(2, floor(max(2, size.height) / 2) * 2)
+        let width = size.width.isFinite ? size.width : 2
+        let height = size.height.isFinite ? size.height : 2
+        return CGSize(
+            width: max(2, floor(max(2, width) / 2) * 2),
+            height: max(2, floor(max(2, height) / 2) * 2)
         )
     }
 }
