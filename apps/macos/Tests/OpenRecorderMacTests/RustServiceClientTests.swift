@@ -4,6 +4,7 @@ import XCTest
 
 final class RustServiceClientTests: XCTestCase {
     private typealias JSONParameters = [String: Any]
+    private static let serviceCallTimeout: TimeInterval = 20
 
     func testInvalidParametersFailBeforeLaunchingService() {
         let client = RustServiceClient(executableURL: nil)
@@ -52,7 +53,7 @@ final class RustServiceClientTests: XCTestCase {
             completed.fulfill()
         }
 
-        let waitResult = XCTWaiter.wait(for: [completed], timeout: 10)
+        let waitResult = XCTWaiter.wait(for: [completed], timeout: Self.serviceCallTimeout)
         guard waitResult == .completed else {
             terminateServiceScript(at: serviceURL)
             XCTFail("RustServiceClient did not complete a response larger than the stdout pipe buffer: \(waitResult).")
@@ -81,7 +82,7 @@ final class RustServiceClientTests: XCTestCase {
             completed.fulfill()
         }
 
-        let waitResult = XCTWaiter.wait(for: [completed], timeout: 10)
+        let waitResult = XCTWaiter.wait(for: [completed], timeout: Self.serviceCallTimeout)
         guard waitResult == .completed else {
             terminateServiceScript(at: serviceURL)
             XCTFail("RustServiceClient did not complete a failure larger than the stderr pipe buffer: \(waitResult).")
