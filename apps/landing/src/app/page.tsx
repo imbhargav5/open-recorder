@@ -121,7 +121,7 @@ export default function Home(): ReactElement {
             <a href="#features">Features</a>
             <a href="#workflow">Workflow</a>
             <a href="#architecture">Architecture</a>
-            <a href={docsUrl} target="_blank" rel="noreferrer">
+            <a href={docsUrl} target="_blank" rel="noopener noreferrer">
               <span className="primary-action">Docs</span>
             </a>
           </div>
@@ -138,7 +138,7 @@ export default function Home(): ReactElement {
             PNG handoffs without a cloud pipeline.
           </p>
           <div className="hero-actions">
-            <a className="primary-action" href={docsUrl} target="_blank" rel="noreferrer">
+            <a className="primary-action" href={docsUrl} target="_blank" rel="noopener noreferrer">
               Docs
             </a>
             <a className="secondary-action" href={sourceUrl}>
@@ -234,7 +234,7 @@ export default function Home(): ReactElement {
             <p className="eyebrow">Open source on GitHub</p>
             <h2>Make your next product demo feel finished.</h2>
           </div>
-          <a className="primary-action" href="https://github.com/imbhargav5/open-recorder">
+          <a className="primary-action" href={sourceUrl}>
             View repository
           </a>
         </div>
