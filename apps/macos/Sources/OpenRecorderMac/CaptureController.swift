@@ -674,7 +674,7 @@ final class CaptureController: ObservableObject {
     }
 
     private func legacyWindowFrame(from window: CGWindowInfoDictionary) -> CGRect {
-        guard let bounds = window[kCGWindowBounds as String] as? [String: Any] else {
+        guard let bounds = window[kCGWindowBounds as String] as? CGWindowInfoDictionary else {
             return .zero
         }
 
