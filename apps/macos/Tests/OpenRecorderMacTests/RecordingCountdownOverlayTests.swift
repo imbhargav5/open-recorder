@@ -15,13 +15,14 @@ final class RecordingCountdownOverlayTests: XCTestCase {
             area: nil,
             thumbnailData: nil
         )
+        let screens: [RecordingOverlayScreen] = [
+            RecordingOverlayScreen(frame: CGRect(x: 0, y: 0, width: 1000, height: 700), displayID: 1),
+            RecordingOverlayScreen(frame: CGRect(x: 1000, y: 0, width: 800, height: 600), displayID: 42)
+        ]
 
         let frame = RecordingCountdownTargetResolver.frame(
             for: source,
-            screens: [
-                RecordingOverlayScreen(frame: CGRect(x: 0, y: 0, width: 1000, height: 700), displayID: 1),
-                RecordingOverlayScreen(frame: CGRect(x: 1000, y: 0, width: 800, height: 600), displayID: 42)
-            ]
+            screens: screens
         )
 
         XCTAssertEqual(frame, CGRect(x: 1000, y: 0, width: 800, height: 600))
