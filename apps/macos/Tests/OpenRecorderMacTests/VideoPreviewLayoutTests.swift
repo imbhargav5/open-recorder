@@ -17,10 +17,11 @@ final class VideoPreviewLayoutTests: XCTestCase {
         XCTAssertEqual(formatPlaybackTime(125.8), "2:05")
     }
 
-    func testVideoCompositorDoesNotCacheStreamingIntermediates() {
+    func testVideoCompositorDoesNotCacheStreamingIntermediates() throws {
         let options = VideoBackgroundCompositor.ciContextOptions()
+        let cacheIntermediates = try XCTUnwrap(options[.cacheIntermediates] as? Bool)
 
-        XCTAssertEqual(options[.cacheIntermediates] as? Bool, false)
+        XCTAssertEqual(cacheIntermediates, false)
     }
 
     func testAutoPreviewAspectUsesCropSelectionAspect() {
