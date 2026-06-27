@@ -21,7 +21,7 @@ final class RustServiceClientTests: XCTestCase {
 
     func testMissingExecutableFailsBeforeDecodingRawParameters() {
         let client = RustServiceClient(executableURL: nil)
-        let invalidUTF8 = Data([0xFF])
+        let invalidUTF8: Data = Data([0xFF])
 
         XCTAssertThrowsError(
             try client.call("listProjects", paramsData: invalidUTF8, as: String.self)
