@@ -604,8 +604,13 @@ fn read_screenshot_index(paths: &InternalPaths) -> Result<Vec<RecentScreenshotSu
             })
         })
         .collect::<Vec<_>>();
-    screenshots.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+    screenshots
+        .sort_by_key(|screenshot| std::cmp::Reverse(created_at_sort_key(&screenshot.created_at)));
     Ok(screenshots)
+}
+
+fn created_at_sort_key(created_at: &str) -> u64 {
+    created_at.parse::<u64>().unwrap_or(0)
 }
 
 fn write_screenshot_index(
@@ -999,6 +1004,26 @@ mod tests {
         assert_eq!(recent[1].path, "/tmp/older shot.png");
         assert_eq!(recent[1].created_at, "100");
         assert_eq!(recent[1].id, "screenshot-100-tmp-older-shot.png");
+    }
+
+    #[test]
+    fn recent_screenshot_index_sorts_numeric_timestamps() {
+        let paths = test_paths("screenshot-index-numeric-sort");
+        paths.ensure().unwrap();
+        write_json_pretty(
+            &screenshot_index_path(&paths),
+            &json!([
+                { "path": "/tmp/older.png", "createdAt": "9" },
+                { "path": "/tmp/newer.png", "createdAt": "10" }
+            ]),
+        )
+        .unwrap();
+
+        let recent = read_screenshot_index(&paths).unwrap();
+
+        assert_eq!(recent.len(), 2);
+        assert_eq!(recent[0].path, "/tmp/newer.png");
+        assert_eq!(recent[1].path, "/tmp/older.png");
     }
 
     #[test]
