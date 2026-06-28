@@ -362,7 +362,7 @@ final class VideoExportStateMachineTests: XCTestCase {
 
         XCTAssertEqual(state.applying(.savePanelCanceled), [.setStatusMessage("Export ready to save.")])
         XCTAssertEqual(state.phase, .savePending)
-        XCTAssertEqual(state.errorMessage, "Save dialog canceled. Click Save Again to save without re-exporting.")
+        XCTAssertEqual(state.errorMessage, "Save dialog canceled. Click Save Again to save without re-rendering.")
         XCTAssertEqual(state.pendingTempURL, tempURL)
 
         XCTAssertEqual(state.applying(.retrySaveRequested), [

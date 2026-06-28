@@ -166,7 +166,7 @@ struct VideoExportDialog: View {
         VStack(alignment: .leading, spacing: 16) {
             ExportMessageRow(
                 symbolName: "exclamationmark.triangle.fill",
-                message: errorMessage ?? "Save dialog canceled. Click Save Again to save without re-exporting.",
+                message: errorMessage ?? "Save dialog canceled. Click Save Again to save without re-rendering.",
                 tint: .orange
             )
 
