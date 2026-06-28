@@ -92,9 +92,9 @@ resolve_codesign_identity() {
 		return
 	fi
 
-	# When an Apple development certificate is not available, a stable local
-	# certificate keeps macOS TCC grants from being pinned to each rebuilt
-	# executable hash.
+	# When an Apple development certificate is not available, fall back to a
+	# stable local identity so macOS TCC grants survive rebuilds instead of
+	# being tied to each new executable hash.
 	if [[ "$signing_purpose" == "development" ]]; then
 		local_dev_identity="$(find_codesign_identity "$local_dev_identity_name")"
 		if [[ -n "$local_dev_identity" ]]; then
