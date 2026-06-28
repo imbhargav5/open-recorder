@@ -43,7 +43,7 @@ function parseArgs(argv) {
 		const arg = argv[index];
 		switch (arg) {
 			case "--":
-				break;
+				return args;
 			case "--release-type":
 				args.releaseType = argv[++index] ?? die("--release-type requires a value");
 				break;
