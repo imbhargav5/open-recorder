@@ -141,7 +141,12 @@ export default function Home(): ReactElement {
             <a className="primary-action" href={docsUrl} target="_blank" rel="noopener noreferrer">
               Docs
             </a>
-            <a className="secondary-action" href={sourceUrl}>
+            <a
+              className="secondary-action"
+              href={sourceUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
               <GitHubIcon /> Source
             </a>
           </div>
@@ -234,7 +239,7 @@ export default function Home(): ReactElement {
             <p className="eyebrow">Open source on GitHub</p>
             <h2>Make your next product demo feel finished.</h2>
           </div>
-          <a className="primary-action" href={sourceUrl}>
+          <a className="primary-action" href={sourceUrl} target="_blank" rel="noopener noreferrer">
             View repository
           </a>
         </div>
