@@ -450,8 +450,8 @@ struct StudioKeyDownMonitor: NSViewRepresentable {
 }
 
 
-// Top of the HUD surface gradient when recording — destructive-tinted dark;
-// doesn't map cleanly to a global token so it lives as a private constant.
+// Recording HUD gradient top color. Kept private because only the destructive
+// recording state uses it.
 private let hudRecordingGradientTop = Color(red: 0.16, green: 0.10, blue: 0.11)
 
 struct HUDSurface<Content: View>: View {
