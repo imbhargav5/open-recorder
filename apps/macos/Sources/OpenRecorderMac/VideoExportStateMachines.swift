@@ -109,7 +109,7 @@ extension VideoExportState {
 
         case .savePanelCanceled:
             phase = .savePending
-            errorMessage = "Save dialog canceled. Click Save Again to save without re-exporting."
+            errorMessage = "Save dialog canceled. Click Save Again to save without re-rendering."
             return [.setStatusMessage("Export ready to save.")]
 
         case .saveSucceeded(let targetURL):
