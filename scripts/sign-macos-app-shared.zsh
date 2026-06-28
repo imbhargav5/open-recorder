@@ -163,6 +163,7 @@ sign_sparkle_framework() {
 }
 
 ad_hoc_app_entitlements() {
+	local temporary_entitlements_plist
 	temporary_entitlements_plist="$(mktemp "${TMPDIR:-/tmp}/open-recorder-entitlements.XXXXXX")"
 
 	if [[ -f "$entitlements_plist" ]]; then
