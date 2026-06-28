@@ -5,9 +5,9 @@ import nextTs from "eslint-config-next/typescript";
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
-  // Keep Next's defaults and add this package's extra build ignores.
+  // Keep Next's defaults and ignore generated or local build artifacts for this app.
   globalIgnores([
-    // Extra ignores for this package:
+    // App-specific ignores:
     ".next/**",
     "**/._*",
     "out/**",
