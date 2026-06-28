@@ -4,6 +4,11 @@ import CoreGraphics
 import SwiftUI
 import UniformTypeIdentifiers
 
+private enum OpenRecorderLinks {
+    static let repository = URL(string: "https://github.com/imbhargav5/open-recorder")
+    static let issueChooser = URL(string: "https://github.com/imbhargav5/open-recorder/issues/new/choose")
+}
+
 struct SettingsInspector: View {
     @Binding var borderRadius: Double
     @Binding var padding: Double
@@ -62,8 +67,8 @@ struct SettingsInspector: View {
         }
     }
 
-    private func openExternal(_ urlString: String) {
-        guard let url = URL(string: urlString) else { return }
+    private func openExternal(_ url: URL?) {
+        guard let url else { return }
         NSWorkspace.shared.open(url)
     }
 
@@ -150,10 +155,10 @@ struct SettingsInspector: View {
     private var inspectorFooter: some View {
         HStack(spacing: 8) {
             InspectorFooterButton(title: "Report Bug", symbolName: "ladybug") {
-                openExternal("https://github.com/imbhargav5/open-recorder/issues/new/choose")
+                openExternal(OpenRecorderLinks.issueChooser)
             }
             InspectorFooterButton(title: "Star on GitHub", symbolName: "star") {
-                openExternal("https://github.com/imbhargav5/open-recorder")
+                openExternal(OpenRecorderLinks.repository)
             }
         }
         .padding(12)
