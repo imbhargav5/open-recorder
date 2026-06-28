@@ -38,7 +38,8 @@ final class UpdateChecker: NSObject {
         guard bundle.bundleIdentifier == productionBundleIdentifier,
               let feedURLString = bundle.object(forInfoDictionaryKey: "SUFeedURL") as? String,
               let feedURL = URL(string: feedURLString),
-              feedURL.scheme?.lowercased() == "https" else {
+              feedURL.scheme?.lowercased() == "https",
+              feedURL.host?.isEmpty == false else {
             return false
         }
 
