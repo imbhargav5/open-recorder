@@ -43,6 +43,10 @@ enum VideoExportEffect: Equatable {
     case setStatusMessage(String)
 }
 
+enum VideoExportCopy {
+    static let saveDialogCanceled = "Save dialog canceled. Click Save Again to save without re-rendering."
+}
+
 extension VideoExportState {
     mutating func applying(_ event: VideoExportEvent) -> [VideoExportEffect] {
         switch event {
@@ -109,7 +113,7 @@ extension VideoExportState {
 
         case .savePanelCanceled:
             phase = .savePending
-            errorMessage = "Save dialog canceled. Click Save Again to save without re-rendering."
+            errorMessage = VideoExportCopy.saveDialogCanceled
             return [.setStatusMessage("Export ready to save.")]
 
         case .saveSucceeded(let targetURL):
