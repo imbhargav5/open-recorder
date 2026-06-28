@@ -62,7 +62,7 @@ final class NativeScreenRecorderConfigurationTests: XCTestCase {
             sourceRect: CGRect(x: 20, y: 30, width: 640, height: 360),
             options: RecordingCaptureOptions(
                 includeMicrophone: false,
-                // This identifier is ignored when microphone capture is disabled.
+                // The configuration should clear the identifier when microphone capture is disabled.
                 microphoneDeviceID: "ignored-device",
                 includeSystemAudio: false,
                 includeCamera: false,
