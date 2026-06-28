@@ -419,6 +419,7 @@ fn save_project_document(
         &project_path,
         &serde_json::to_value(&document).map_err(|err| err.to_string())?,
     )?;
+    let missing = project_media_is_missing(recording_path.as_ref(), screenshot_path.as_ref());
 
     let summary = ProjectSummary {
         id,
@@ -430,7 +431,7 @@ fn save_project_document(
         created_at: now.clone(),
         updated_at: now.clone(),
         last_opened_at: now,
-        missing: false,
+        missing,
     };
 
     let mut projects = read_index(paths)?;
@@ -484,6 +485,7 @@ fn update_project_document(
         project_path,
         &serde_json::to_value(&document).map_err(|err| err.to_string())?,
     )?;
+    let missing = project_media_is_missing(recording_path.as_ref(), screenshot_path.as_ref());
 
     let mut projects = read_index(paths)?;
     let existing_summary = projects
@@ -510,11 +512,7 @@ fn update_project_document(
         last_opened_at: existing_summary
             .map(|project| project.last_opened_at)
             .unwrap_or(now),
-        missing: recording_path
-            .as_ref()
-            .or(screenshot_path.as_ref())
-            .map(|path| !Path::new(path).exists())
-            .unwrap_or(false),
+        missing,
     };
 
     projects.insert(0, summary.clone());
@@ -543,13 +541,21 @@ fn write_index(paths: &InternalPaths, projects: &[ProjectSummary]) -> Result<(),
 
 fn project_is_missing(project: &ProjectSummary) -> bool {
     let project_file_missing = !Path::new(&project.path).exists();
-    let media_file_missing = project
-        .recording_path
-        .as_ref()
-        .or(project.screenshot_path.as_ref())
-        .map(|path| !Path::new(path).exists())
-        .unwrap_or(false);
+    let media_file_missing = project_media_is_missing(
+        project.recording_path.as_ref(),
+        project.screenshot_path.as_ref(),
+    );
     project_file_missing || media_file_missing
+}
+
+fn project_media_is_missing(
+    recording_path: Option<&String>,
+    screenshot_path: Option<&String>,
+) -> bool {
+    recording_path
+        .into_iter()
+        .chain(screenshot_path)
+        .any(|path| !Path::new(path).exists())
 }
 
 fn screenshot_index_path(paths: &InternalPaths) -> PathBuf {
@@ -884,13 +890,15 @@ mod tests {
         let paths = test_paths("missing-screenshot-file");
         paths.ensure().unwrap();
         let project_path = paths.projects_dir.join("shot.openrecorder");
+        let recording_path = paths.recordings_dir.join("shot.mov");
         fs::write(&project_path, b"{}").unwrap();
+        fs::write(&recording_path, b"recording").unwrap();
 
         let summary = ProjectSummary {
             id: "project-existing".to_string(),
             title: "Shot".to_string(),
             path: project_path.to_string_lossy().to_string(),
-            recording_path: None,
+            recording_path: Some(recording_path.to_string_lossy().to_string()),
             screenshot_path: Some(
                 paths
                     .screenshots_dir
