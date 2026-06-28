@@ -185,8 +185,7 @@ final class CaptureDriverStateMachineTests: XCTestCase {
         )
 
         _ = driver.send(.recordingFilePrepared(source, outputURL))
-        await Task.yield()
-        XCTAssertEqual(started, 1)
+        await waitForCondition { started == 1 }
 
         _ = driver.send(.recordingStopRequested)
         await waitForCondition { canceled }
@@ -221,8 +220,7 @@ final class CaptureDriverStateMachineTests: XCTestCase {
             preferredSourceKind: source.kind
         ))
         _ = driver.send(.screenshotRequested)
-        await Task.yield()
-        XCTAssertEqual(started, 1)
+        await waitForCondition { started == 1 }
 
         _ = driver.send(.cancelCapture)
         await waitForCondition { canceled }
