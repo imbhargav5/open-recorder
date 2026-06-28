@@ -51,6 +51,15 @@ final class UpdateCheckerTests: XCTestCase {
         XCTAssertFalse(UpdateChecker.isEnabled(for: bundle))
     }
 
+    func testUpdateCheckerIsDisabledForHTTPSFeedWithoutHost() throws {
+        let bundle = try makeBundle(
+            identifier: "dev.openrecorder.app",
+            feedURLString: "https://"
+        )
+
+        XCTAssertFalse(UpdateChecker.isEnabled(for: bundle))
+    }
+
     func testUpdateCheckerIsDisabledForMalformedFeedURL() throws {
         let bundle = try makeBundle(
             identifier: "dev.openrecorder.app",
