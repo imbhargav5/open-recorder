@@ -360,7 +360,7 @@ final class VideoExportStateMachineTests: XCTestCase {
         XCTAssertEqual(state.phase, .saving)
         XCTAssertEqual(state.progress, 1)
 
-        XCTAssertEqual(state.applying(.savePanelCanceled), [.setStatusMessage("Export ready to save.")])
+        XCTAssertEqual(state.applying(.savePanelCanceled), [.setStatusMessage(VideoExportCopy.exportReadyToSave)])
         XCTAssertEqual(state.phase, .savePending)
         XCTAssertEqual(state.errorMessage, VideoExportCopy.saveDialogCanceled)
         XCTAssertEqual(state.pendingTempURL, tempURL)
