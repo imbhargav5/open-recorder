@@ -450,8 +450,7 @@ struct StudioKeyDownMonitor: NSViewRepresentable {
 }
 
 
-// Recording HUD gradient top color. Kept private because only the recording
-// state uses it.
+// Top accent color for the recording HUD variant.
 private let hudRecordingGradientTop = Color(red: 0.16, green: 0.10, blue: 0.11)
 
 struct HUDSurface<Content: View>: View {
