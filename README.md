@@ -113,7 +113,7 @@ Run verification:
 make test-macos
 ```
 
-The root `pnpm dev`, `pnpm build`, and `pnpm test` aliases now call those same macOS Swift/Rust targets.
+The root `pnpm dev`, `pnpm build`, and `pnpm test` aliases call those same macOS Swift/Rust targets.
 
 Run the landing page locally:
 
