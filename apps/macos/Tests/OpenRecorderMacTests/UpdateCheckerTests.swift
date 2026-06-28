@@ -4,7 +4,7 @@ import XCTest
 
 @MainActor
 final class UpdateCheckerTests: XCTestCase {
-    private typealias InfoPlistFixture = [String: Any]
+    private typealias InfoPlistFixture = [String: String]
 
     func testUpdateCheckerIsEnabledForProductionBundleWithHTTPSFeed() throws {
         let bundle = try makeBundle(
@@ -93,8 +93,12 @@ final class UpdateCheckerTests: XCTestCase {
         var plist: InfoPlistFixture = [
             "CFBundlePackageType": "BNDL",
         ]
-        plist["CFBundleIdentifier"] = identifier
-        plist["SUFeedURL"] = feedURLString
+        if let identifier {
+            plist["CFBundleIdentifier"] = identifier
+        }
+        if let feedURLString {
+            plist["SUFeedURL"] = feedURLString
+        }
         let data = try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
         try data.write(to: infoPlistURL)
 
