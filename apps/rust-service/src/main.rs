@@ -204,7 +204,7 @@ fn handle_method(method: &str, params: Value) -> Result<Value, String> {
             let editor_state = params
                 .get("editorState")
                 .cloned()
-                .unwrap_or_else(|| json!({ "timelineEdits": { "zoomRegions": [], "trimRegions": [], "annotationRegions": [], "clipSplitTimes": [], "clipSpeeds": {} } }));
+                .unwrap_or_else(default_timeline_editor_state);
             let recording_session = params.get("recordingSession").cloned();
             let summary = save_project_document(
                 &paths,
@@ -256,7 +256,7 @@ fn handle_method(method: &str, params: Value) -> Result<Value, String> {
             let editor_state = params
                 .get("editorState")
                 .cloned()
-                .unwrap_or_else(|| json!({ "timeline": [], "annotations": [] }));
+                .unwrap_or_else(default_timeline_editor_state);
             let recording_session = params.get("recordingSession").cloned();
             let summary = save_project_document(
                 &paths,
@@ -441,7 +441,10 @@ fn save_project_document(
     Ok(summary)
 }
 
-#[allow(clippy::too_many_arguments, reason = "mirrors optional update payload fields")]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "mirrors optional update payload fields"
+)]
 fn update_project_document(
     paths: &InternalPaths,
     project_path: &Path,
@@ -645,6 +648,18 @@ fn string_param(params: &Value, key: &str) -> Option<String> {
     params.get(key)?.as_str().map(ToString::to_string)
 }
 
+fn default_timeline_editor_state() -> Value {
+    json!({
+        "timelineEdits": {
+            "zoomRegions": [],
+            "trimRegions": [],
+            "annotationRegions": [],
+            "clipSplitTimes": [],
+            "clipSpeeds": {}
+        }
+    })
+}
+
 fn sanitize_file_name(value: &str) -> String {
     let mut sanitized = value
         .chars()
@@ -714,6 +729,22 @@ mod tests {
         );
         assert_eq!(string_param(&params, "count"), None);
         assert_eq!(string_param(&params, "missing"), None);
+    }
+
+    #[test]
+    fn default_timeline_editor_state_matches_project_editor_schema() {
+        assert_eq!(
+            default_timeline_editor_state(),
+            json!({
+                "timelineEdits": {
+                    "zoomRegions": [],
+                    "trimRegions": [],
+                    "annotationRegions": [],
+                    "clipSplitTimes": [],
+                    "clipSpeeds": {}
+                }
+            })
+        );
     }
 
     #[test]
