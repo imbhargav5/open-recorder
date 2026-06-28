@@ -192,6 +192,8 @@ private struct CursorGlyphCacheKey: Hashable {
     var sizeKey: Int
 }
 
+typealias VideoCompositorPixelBufferAttributes = [String: any Sendable]
+
 final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
     private let renderingQueueKey = DispatchSpecificKey<Bool>()
     private let renderingQueue = DispatchQueue(label: "com.openrecorder.video.compositor", qos: .userInitiated)
@@ -199,6 +201,10 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
     private var renderContext: AVVideoCompositionRenderContext?
     private let renderContextLock = NSLock()
     private var cursorGlyphCache: [CursorGlyphCacheKey: CursorGlyphImage] = [:]
+    private static let pixelBufferAttributes: VideoCompositorPixelBufferAttributes = [
+        kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32BGRA),
+        kCVPixelBufferIOSurfacePropertiesKey as String: VideoCompositorPixelBufferAttributes()
+    ]
 
     nonisolated static func ciContextOptions() -> [CIContextOption: Any] {
         [.cacheIntermediates: false]
@@ -214,18 +220,12 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
         renderingQueue.setSpecific(key: renderingQueueKey, value: true)
     }
 
-    var sourcePixelBufferAttributes: [String: any Sendable]? {
-        [
-            kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32BGRA),
-            kCVPixelBufferIOSurfacePropertiesKey as String: [String: any Sendable]()
-        ]
+    var sourcePixelBufferAttributes: VideoCompositorPixelBufferAttributes? {
+        Self.pixelBufferAttributes
     }
 
-    var requiredPixelBufferAttributesForRenderContext: [String: any Sendable] {
-        [
-            kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32BGRA),
-            kCVPixelBufferIOSurfacePropertiesKey as String: [String: any Sendable]()
-        ]
+    var requiredPixelBufferAttributesForRenderContext: VideoCompositorPixelBufferAttributes {
+        Self.pixelBufferAttributes
     }
 
     func renderContextChanged(_ newRenderContext: AVVideoCompositionRenderContext) {
