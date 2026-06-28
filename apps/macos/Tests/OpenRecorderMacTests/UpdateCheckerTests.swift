@@ -4,7 +4,7 @@ import XCTest
 
 @MainActor
 final class UpdateCheckerTests: XCTestCase {
-    private typealias InfoPlistFixture = [String: String]
+    private typealias InfoPlistFixture = [String: Any]
 
     func testUpdateCheckerIsEnabledForProductionBundleWithHTTPSFeed() throws {
         let bundle = try makeBundle(
