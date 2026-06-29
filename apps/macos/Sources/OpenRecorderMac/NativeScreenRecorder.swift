@@ -90,7 +90,7 @@ final class NativeScreenRecorder: NSObject {
         configuration.height = height
         configuration.minimumFrameInterval = CMTime(value: 1, timescale: 60)
         configuration.queueDepth = 8
-        // The editor/export pipeline composites cursor overlays itself, so keep the recorder from capturing the system cursor.
+        // Cursor overlays are rendered later by the editor/export pipeline, so the capture stream must exclude the system cursor.
         configuration.showsCursor = false
         configuration.capturesAudio = options.includeSystemAudio
         configuration.sampleRate = 48_000
