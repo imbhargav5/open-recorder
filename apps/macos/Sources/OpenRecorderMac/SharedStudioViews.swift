@@ -904,6 +904,7 @@ struct HUDToggle: View {
 //   Actions         actionPrimary(+Fg) / accent(+Fg) / destructive(+Fg)
 //   Overlays        overlay / overlayStrong / scrim
 //   Status          statusError / statusWarning / statusSuccess / statusInfo
+//   Timeline        timelineClip / timelineClipForeground / timelineClipBorder / timelineHandle / timelineCamera
 //
 // Prefer these over raw Color.white.opacity(N) or Color(red:...) literals.
 
