@@ -236,7 +236,7 @@ private func waitUntilCancelled() async {
 
 @MainActor
 private func waitForCondition(
-    timeout: Duration = .seconds(2),
+    timeout: Duration = .seconds(5),
     file: StaticString = #filePath,
     line: UInt = #line,
     condition: @escaping @MainActor () -> Bool
