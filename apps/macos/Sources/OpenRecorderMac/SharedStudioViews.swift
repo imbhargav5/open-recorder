@@ -892,7 +892,7 @@ struct HUDToggle: View {
 }
 
 
-// MARK: - Design Tokens (shadcn-aligned, dark theme)
+// MARK: - Design Tokens (shadcn-aligned semantic palette)
 //
 // Semantic color tokens for the app. Naming follows shadcn/ui conventions
 // adapted to SwiftUI (avoiding clashes with Color.primary / Color.secondary).
