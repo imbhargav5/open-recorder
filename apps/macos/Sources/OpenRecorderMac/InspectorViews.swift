@@ -5,8 +5,8 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 private enum OpenRecorderLinks {
-    static let repository = URL(string: "https://github.com/imbhargav5/open-recorder")
-    static let issueChooser = URL(string: "https://github.com/imbhargav5/open-recorder/issues/new/choose")
+    static let repository = URL(string: "https://github.com/imbhargav5/open-recorder")!
+    static let issueChooser = URL(string: "https://github.com/imbhargav5/open-recorder/issues/new/choose")!
 }
 
 struct SettingsInspector: View {
@@ -67,8 +67,7 @@ struct SettingsInspector: View {
         }
     }
 
-    private func openExternal(_ url: URL?) {
-        guard let url else { return }
+    private func openExternal(_ url: URL) {
         NSWorkspace.shared.open(url)
     }
 
