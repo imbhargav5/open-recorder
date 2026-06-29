@@ -706,6 +706,7 @@ final class CaptureController: ObservableObject {
         configuration.height = max(Int(size.height), 1)
         configuration.scalesToFit = true
         configuration.preservesAspectRatio = true
+        // Thumbnails intentionally omit the cursor; source previews render cursor state separately.
         configuration.showsCursor = false
         configuration.shouldBeOpaque = true
         configuration.ignoreShadowsSingleWindow = ignoreWindowShadow
