@@ -90,7 +90,7 @@ final class NativeScreenRecorder: NSObject {
         configuration.height = height
         configuration.minimumFrameInterval = CMTime(value: 1, timescale: 60)
         configuration.queueDepth = 8
-        // ScreenCaptureKit records the system cursor by default, but cursor overlays are composited later in the editor/export pipeline.
+        // Hide the raw cursor here; cursor overlays are composited later in the editor/export pipeline.
         configuration.showsCursor = false
         configuration.capturesAudio = options.includeSystemAudio
         configuration.sampleRate = 48_000
