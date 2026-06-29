@@ -90,7 +90,7 @@ final class NativeScreenRecorder: NSObject {
         configuration.height = height
         configuration.minimumFrameInterval = CMTime(value: 1, timescale: 60)
         configuration.queueDepth = 8
-        // Hide the system cursor here so the editor can composite its own cursor overlay later.
+        // Hide the system cursor during capture so the editor can draw its own cursor overlay later.
         configuration.showsCursor = false
         configuration.capturesAudio = options.includeSystemAudio
         configuration.sampleRate = 48_000
