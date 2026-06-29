@@ -5,6 +5,7 @@ Next.js landing page for Open Recorder.
 Run locally:
 
 ```bash
+pnpm install --dir apps/landing --frozen-lockfile
 pnpm --dir apps/landing dev
 ```
 
