@@ -17,7 +17,7 @@ next semantic version, updates the native Swift/Rust release metadata, and opens
 or updates the release PR. Merging that PR triggers the macOS release build.
 
 Options:
-  --release-type VALUE     Release type: patch, minor, or major. Uses a selector if omitted.
+  --release-type VALUE     Release type: patch, minor, or major. Uses an interactive picker if omitted.
   --name VALUE             Optional release title override.
   --notes VALUE            Optional release notes body. Defaults to commits since the previous release.
   --latest true|false      Whether the eventual release should be marked latest. Defaults to true.
