@@ -450,7 +450,7 @@ struct StudioKeyDownMonitor: NSViewRepresentable {
 }
 
 
-// Top gradient stop for the recording HUD variant.
+// Top gradient stop for the recording-state HUD gradient.
 private let hudRecordingGradientTop = Color(red: 0.16, green: 0.10, blue: 0.11)
 
 struct HUDSurface<Content: View>: View {
