@@ -2,6 +2,7 @@ import AppKit
 import XCTest
 @testable import OpenRecorderMac
 
+@MainActor
 final class ScreenshotExportRendererTests: XCTestCase {
     private typealias BackgroundOrientationFixture = (name: String, style: BackgroundStyle)
 
