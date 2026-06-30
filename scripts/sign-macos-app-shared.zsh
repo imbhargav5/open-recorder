@@ -163,7 +163,7 @@ sign_sparkle_framework() {
 }
 
 ad_hoc_app_entitlements() {
-	local temporary_entitlements_plist
+	typeset -g temporary_entitlements_plist
 	temporary_entitlements_plist="$(mktemp "${TMPDIR:-/tmp}/open-recorder-entitlements.XXXXXX")"
 
 	if [[ -f "$entitlements_plist" ]]; then
@@ -180,8 +180,6 @@ ad_hoc_app_entitlements() {
 		|| /usr/libexec/PlistBuddy \
 			-c "Set :com.apple.security.cs.disable-library-validation true" \
 			"$temporary_entitlements_plist"
-
-	print -- "$temporary_entitlements_plist"
 }
 
 if command -v codesign >/dev/null 2>&1; then
@@ -213,7 +211,8 @@ if command -v codesign >/dev/null 2>&1; then
 	fi
 	app_entitlements_plist="$entitlements_plist"
 	if [[ "$sign_identity" == "-" ]]; then
-		app_entitlements_plist="$(ad_hoc_app_entitlements)"
+		ad_hoc_app_entitlements
+		app_entitlements_plist="$temporary_entitlements_plist"
 	fi
 	if [[ -f "$app_entitlements_plist" ]]; then
 		app_codesign_args+=(--entitlements "$app_entitlements_plist")
