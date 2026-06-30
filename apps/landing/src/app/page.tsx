@@ -166,7 +166,7 @@ export default function Home(): ReactElement {
 
       <section className="proof-band" aria-label="Project highlights">
         <div className="section-inner proof-grid">
-          {proofPoints.map(([value, label]: ProofPoint) => (
+          {proofPoints.map(([value, label]) => (
             <div className="proof-item" key={value}>
               <strong>{value}</strong>
               <span>{label}</span>
@@ -183,7 +183,7 @@ export default function Home(): ReactElement {
           </div>
 
           <div className="feature-grid">
-            {featureHighlights.map((feature: LandingContentBlock) => (
+            {featureHighlights.map((feature) => (
               <article className="feature-card" key={feature.title}>
                 <p>{feature.eyebrow}</p>
                 <h3>{feature.title}</h3>
@@ -202,7 +202,7 @@ export default function Home(): ReactElement {
           </div>
 
           <ol className="workflow-list">
-            {workflow.map((item: WorkflowStep) => (
+            {workflow.map((item) => (
               <li key={item.step}>
                 <span>{item.step}</span>
                 <div>
@@ -223,7 +223,7 @@ export default function Home(): ReactElement {
           </div>
 
           <div className="architecture-panel">
-            {architectureNotes.map((note: ArchitectureNote) => (
+            {architectureNotes.map((note) => (
               <div className="architecture-row" key={note.label}>
                 <strong>{note.label}</strong>
                 <span>{note.value}</span>
