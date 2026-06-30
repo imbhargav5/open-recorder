@@ -218,7 +218,7 @@ struct TimelineClipSegment: Identifiable, Equatable {
 
 enum TimelineClipSpeed {
     static let defaultSpeed = 1.0
-    static let values = [1.0, 1.25, 1.5, 1.75, 2.0]
+    static let values: [Double] = [1.0, 1.25, 1.5, 1.75, 2.0]
 
     static func normalized(_ speed: Double) -> Double {
         guard speed.isFinite else { return defaultSpeed }
