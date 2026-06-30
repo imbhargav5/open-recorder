@@ -25,7 +25,7 @@ enum NativeScreenRecorderError: LocalizedError {
         case .selfCaptureUnsupported:
             return "Open Recorder windows are excluded from recordings."
         case .unsupportedSource:
-            return "Selected-area video recording is not implemented in the native recorder yet."
+            return "Selected-area video recording requires a valid area selection."
         case .recordingOutputUnavailable:
             return "ScreenCaptureKit recording output is not available on this macOS version."
         }
