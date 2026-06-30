@@ -83,7 +83,7 @@ final class ProjectEditorStateCodableTests: XCTestCase {
     private typealias RecordingSessionJSON = [String: Any]
 
     func testFormattedProjectDateUsesStableMonthLabelsForEpochStrings() {
-        let timestamp: String = "1767225600"
+        let timestamp = "1767225600"
         let expectedDate = Date(timeIntervalSince1970: 1_767_225_600)
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
@@ -94,7 +94,7 @@ final class ProjectEditorStateCodableTests: XCTestCase {
     }
 
     func testFormattedProjectDateUsesStableMonthLabelsForISO8601Strings() throws {
-        let timestamp: String = "2026-01-01T00:00:00Z"
+        let timestamp = "2026-01-01T00:00:00Z"
         let expectedDate = try XCTUnwrap(ISO8601DateFormatter().date(from: timestamp))
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
