@@ -243,6 +243,7 @@ final class CaptureController: ObservableObject {
 
     func reloadSources(requestScreenRecordingPermission: Bool = false) async {
         guard canLoadPreviewSources(requestScreenRecordingPermission: requestScreenRecordingPermission) else {
+            // Keep the source picker populated when preview access is unavailable.
             var nextSources = legacyDisplaySources()
             nextSources.append(contentsOf: legacyWindowSources())
             sources = nextSources
