@@ -706,7 +706,8 @@ final class CaptureController: ObservableObject {
         configuration.height = max(Int(size.height), 1)
         configuration.scalesToFit = true
         configuration.preservesAspectRatio = true
-        // ScreenCaptureKit thumbnail captures stay cursor-free.
+        // Keep thumbnail captures cursor-free so the snapshot matches the raw frame;
+        // cursor overlays are applied later in playback and export.
         configuration.showsCursor = false
         configuration.shouldBeOpaque = true
         configuration.ignoreShadowsSingleWindow = ignoreWindowShadow
