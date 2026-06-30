@@ -819,6 +819,6 @@ func timestampedFileName(prefix: String, extension fileExtension: String, date: 
     let formatter = DateFormatter()
     formatter.locale = Locale(identifier: "en_US_POSIX")
     formatter.calendar = Calendar(identifier: .gregorian)
-    formatter.dateFormat = "yyyy-MM-dd-HH-mm-ss"
+    formatter.dateFormat = "yyyy-MM-dd-HH-mm-ss-SSS"
     return "\(prefix)-\(formatter.string(from: date)).\(fileExtension)"
 }

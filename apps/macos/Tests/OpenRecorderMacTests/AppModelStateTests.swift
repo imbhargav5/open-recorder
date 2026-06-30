@@ -8,7 +8,7 @@ final class AppModelStateTests: XCTestCase {
         let formatter: DateFormatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.dateFormat = "yyyy-MM-dd-HH-mm-ss"
+        formatter.dateFormat = "yyyy-MM-dd-HH-mm-ss-SSS"
 
         XCTAssertEqual(
             timestampedFileName(prefix: "recording", extension: "mp4", date: date),
