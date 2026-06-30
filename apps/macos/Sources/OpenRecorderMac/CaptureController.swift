@@ -706,7 +706,7 @@ final class CaptureController: ObservableObject {
         configuration.height = max(Int(size.height), 1)
         configuration.scalesToFit = true
         configuration.preservesAspectRatio = true
-        // ScreenCaptureKit thumbnails intentionally omit the cursor overlay.
+        // ScreenCaptureKit thumbnail captures stay cursor-free.
         configuration.showsCursor = false
         configuration.shouldBeOpaque = true
         configuration.ignoreShadowsSingleWindow = ignoreWindowShadow
