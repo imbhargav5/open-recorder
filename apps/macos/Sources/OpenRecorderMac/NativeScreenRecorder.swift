@@ -90,7 +90,7 @@ final class NativeScreenRecorder: NSObject {
         configuration.height = height
         configuration.minimumFrameInterval = CMTime(value: 1, timescale: 60)
         configuration.queueDepth = 8
-        // Keep the raw recording cursor-free; the editor can restore cursor visibility from capture settings later.
+        // Keep the raw recording cursor-free; playback and export can restore cursor visibility from saved capture settings later.
         configuration.showsCursor = false
         configuration.capturesAudio = options.includeSystemAudio
         configuration.sampleRate = 48_000
