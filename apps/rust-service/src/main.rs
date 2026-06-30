@@ -400,7 +400,7 @@ fn save_project_document(
     let file_name = format!(
         "{}-{}.openrecorder",
         sanitize_file_name(title),
-        unix_timestamp()
+        unix_timestamp_millis()
     );
     let project_path = paths.projects_dir.join(file_name);
     let document = ProjectDocument {
