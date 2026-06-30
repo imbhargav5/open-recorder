@@ -90,7 +90,7 @@ final class NativeScreenRecorder: NSObject {
         configuration.height = height
         configuration.minimumFrameInterval = CMTime(value: 1, timescale: 60)
         configuration.queueDepth = 8
-        // Record without cursor capture here; playback and export reapply the saved cursor preference after capture.
+        // Record without cursor capture here; playback and export read the saved cursor preference from the recorded session.
         configuration.showsCursor = false
         configuration.capturesAudio = options.includeSystemAudio
         configuration.sampleRate = 48_000
