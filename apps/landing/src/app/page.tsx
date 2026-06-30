@@ -1,8 +1,8 @@
 import Image from "next/image";
 import type { ReactElement } from "react";
 
-const docsUrl = "https://docs.openrecorder.xyz/";
-const sourceUrl = "https://github.com/imbhargav5/open-recorder";
+const docsUrl: string = "https://docs.openrecorder.xyz/";
+const sourceUrl: string = "https://github.com/imbhargav5/open-recorder";
 
 type ProofPoint = readonly [value: string, label: string];
 
