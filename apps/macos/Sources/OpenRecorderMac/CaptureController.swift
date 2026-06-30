@@ -159,7 +159,7 @@ enum WindowSourceFilter {
         "spotlight"
     ]
 
-    private static let blockedBundlePrefixes = [
+    private static let blockedBundlePrefixes: [String] = [
         "com.apple.controlcenter",
         "com.apple.dock",
         "com.apple.loginwindow",
