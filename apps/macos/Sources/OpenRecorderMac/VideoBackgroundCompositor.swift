@@ -235,7 +235,7 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
     }
 
     func startRequest(_ request: AVAsynchronousVideoCompositionRequest) {
-        let renderRequest = {
+        let renderRequest: () -> Void = {
             autoreleasepool {
                 // Backpressure is intentional: queued requests retain decoded pixel buffers.
                 // Finish each frame before AVFoundation can hand us an unbounded backlog.
