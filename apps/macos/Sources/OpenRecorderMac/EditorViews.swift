@@ -4,6 +4,23 @@ import CoreGraphics
 import SwiftUI
 import UniformTypeIdentifiers
 
+struct EditorSessionMetadata: Equatable {
+    var recordingSession: RecordingSession?
+    var projectPath: String?
+    var title: String?
+    var videoEditorState: ProjectVideoEditorState?
+    var screenshotEditorState: ScreenshotEditorState?
+
+    init(explicitSession: EditorSession?, fallbackSession: EditorSession?) {
+        let source = explicitSession ?? fallbackSession
+        recordingSession = source?.recordingSession
+        projectPath = source?.projectPath
+        title = source?.title
+        videoEditorState = source?.videoEditorState
+        screenshotEditorState = source?.screenshotEditorState
+    }
+}
+
 struct EditorStudioView: View {
     @EnvironmentObject private var model: AppModel
     var editorSession: EditorSession?
@@ -17,6 +34,7 @@ struct EditorStudioView: View {
                 editorTitle: editorTitle,
                 initialScreenshotState: initialScreenshotState,
                 editorSessionID: editorSession?.id,
+                workspace: workspace,
                 editor: workspace.screenshot,
                 exportRequest: workspace.state.screenshotExportRequest
             )
@@ -29,9 +47,10 @@ struct EditorStudioView: View {
                 initialTimelineEdits: editorSession?.timelineEditSnapshot,
                 initialVideoState: initialVideoState,
                 editorSessionID: editorSession?.id,
+                workspace: workspace,
                 editor: workspace.video,
                 timelineEdits: workspace.timeline,
-                videoExport: model.appShell.videoExport,
+                videoExport: workspace.videoExport,
                 exportRequest: workspace.state.videoExportRequest
             )
         }
@@ -52,23 +71,30 @@ struct EditorStudioView: View {
     }
 
     private var recordingSession: RecordingSession? {
-        editorSession?.recordingSession ?? model.lastEditorSession?.recordingSession
+        sessionMetadata.recordingSession
     }
 
     private var projectPath: String? {
-        editorSession?.projectPath ?? model.lastEditorSession?.projectPath
+        sessionMetadata.projectPath
     }
 
     private var editorTitle: String? {
-        editorSession?.title ?? model.lastEditorSession?.title
+        sessionMetadata.title
     }
 
     private var initialVideoState: ProjectVideoEditorState? {
-        editorSession?.videoEditorState ?? model.lastEditorSession?.videoEditorState
+        sessionMetadata.videoEditorState
     }
 
     private var initialScreenshotState: ScreenshotEditorState? {
-        editorSession?.screenshotEditorState ?? model.lastEditorSession?.screenshotEditorState
+        sessionMetadata.screenshotEditorState
+    }
+
+    private var sessionMetadata: EditorSessionMetadata {
+        EditorSessionMetadata(
+            explicitSession: editorSession,
+            fallbackSession: model.lastEditorSession
+        )
     }
 }
 
@@ -81,6 +107,7 @@ struct VideoEditorStudioView: View {
     var initialTimelineEdits: TimelineEditSnapshot?
     var initialVideoState: ProjectVideoEditorState?
     var editorSessionID: UUID?
+    var workspace: EditorWorkspaceDriver
     @State private var playback = VideoPlaybackController()
     var editor: VideoEditorDriver
     var timelineEdits: TimelineEditDriver
@@ -129,20 +156,22 @@ struct VideoEditorStudioView: View {
                 applyTimelineSnapshot: { snapshot in
                     timelineEdits.applySnapshot(snapshot)
                 },
-                saveHandler: { snapshot in
-                    try await model.autosaveProject(snapshot)
+                saveHandler: { [weak model] snapshot in
+                    guard let model else { throw CancellationError() }
+                    return try await model.autosaveProject(snapshot)
                 },
-                statusHandler: { status in
-                    model.handleProjectAutosaveStatus(status)
+                statusHandler: { [weak workspace, weak model] status in
+                    workspace?.handleProjectAutosaveStatus(status, source: .video)
+                    model?.handleProjectAutosaveStatus(status)
                 },
-                pausePlayback: {
-                    playback.pause()
+                pausePlayback: { [weak playback] in
+                    playback?.pause()
                 },
-                exportVideo: { recordingURL, options, edits in
-                    videoExport.export(sourceURL: recordingURL ?? model.currentVideoURL, options: options, edits: edits)
+                exportVideo: { [weak model, weak videoExport] recordingURL, options, edits in
+                    videoExport?.export(sourceURL: recordingURL ?? model?.currentVideoURL, options: options, edits: edits)
                 },
-                clearVideoExportDialogState: {
-                    videoExport.clear()
+                clearVideoExportDialogState: { [weak videoExport] in
+                    videoExport?.clear()
                 }
             )
             syncEditorSession()

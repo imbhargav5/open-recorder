@@ -6,16 +6,100 @@ import UniformTypeIdentifiers
 
 struct StudioWindowView: View {
     @EnvironmentObject private var model: AppModel
+    @Environment(\.dismissWindow) private var dismissWindow
     var editorSession: EditorSession?
 
     var body: some View {
         let workspace = model.appShell.workspace(for: editorSession)
         StudioShell(editorSession: editorSession, workspace: workspace)
+            .alert("Couldn’t Save Changes", isPresented: workspace.autosaveRecoveryBinding) {
+                Button("Retry and Close") {
+                    Task {
+                        guard await workspace.retryPendingAutosaves() else { return }
+                        let outcome = await model.appShell.closeWorkspace(for: editorSession)
+                        if outcome == .autosaveFailed {
+                            model.appShell.activateWorkspace(for: editorSession)
+                        }
+                        guard outcome == .closed else { return }
+                        dismissEditorWindow()
+                    }
+                }
+                Button("Close Without Saving", role: .destructive) {
+                    guard model.appShell.discardWorkspace(for: editorSession) else { return }
+                    dismissEditorWindow()
+                }
+                .disabled(!workspace.canAbandonPendingAutosaves)
+                Button("Keep Editing", role: .cancel) {}
+            } message: {
+                Text(autosaveRecoveryMessage(for: workspace))
+            }
+            .background {
+                StudioWindowCloseInterceptor {
+                    guard let request = model.appShell.beginClosingWorkspace(for: editorSession) else {
+                        return true
+                    }
+                    let outcome = await model.appShell.finishClosingWorkspace(request)
+                    if outcome == .autosaveFailed {
+                        model.appShell.activateWorkspace(for: editorSession)
+                    }
+                    return outcome == .closed
+                }
+                .frame(width: 0, height: 0)
+            }
             .onAppear {
-                if model.selectedSection == .capture {
+                model.appShell.activateWorkspace(for: editorSession)
+                if editorSession == nil, model.selectedSection == .capture {
                     model.selectedSection = .editor
                 }
             }
+            .task(id: workspace.state.statusSeverity) {
+                guard workspace.state.statusSeverity == .failure else { return }
+                do {
+                    try await Task.sleep(nanoseconds: 150_000_000)
+                } catch {
+                    return
+                }
+                guard !Task.isCancelled,
+                      !workspace.state.isAutosaveRecoveryPresented else {
+                    return
+                }
+                announceAutosaveFailure(workspace.state.autosaveFailureMessage)
+            }
+    }
+
+    private func dismissEditorWindow() {
+        if let editorSession {
+            dismissWindow(id: "editor", value: editorSession)
+        } else {
+            dismissWindow(id: "studio")
+        }
+    }
+
+    private func autosaveRecoveryMessage(for workspace: EditorWorkspaceDriver) -> String {
+        let reason = workspace.state.autosaveFailureMessage
+            ?? "Open Recorder couldn’t save the latest changes."
+        if workspace.canAbandonPendingAutosaves {
+            return "Your latest edits haven’t been saved to disk. \(reason) Retry, keep editing, or close and discard them."
+        }
+        return "Your latest edits haven’t been saved to disk. \(reason) Keep editing while the current save finishes, or retry and close afterward."
+    }
+
+    private func announceAutosaveFailure(_ message: String?) {
+        guard let message else { return }
+        let element: Any
+        if let keyWindow = NSApp.keyWindow {
+            element = keyWindow
+        } else {
+            element = NSApplication.shared
+        }
+        NSAccessibility.post(
+            element: element,
+            notification: .announcementRequested,
+            userInfo: [
+                .announcement: "Save failed. \(message)",
+                .priority: NSAccessibilityPriorityLevel.high.rawValue
+            ]
+        )
     }
 }
 
@@ -31,6 +115,16 @@ struct StudioShell: View {
                 editorSession: editorSession,
                 workspace: workspace
             )
+            if let failureMessage = workspace.state.autosaveFailureMessage {
+                WorkspaceAutosaveFailureBanner(
+                    message: failureMessage,
+                    isRetrying: workspace.state.isAutosaveRetryInProgress
+                ) {
+                    Task {
+                        await workspace.retryPendingAutosavesKeepingWindowOpen()
+                    }
+                }
+            }
             detailView
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -45,22 +139,18 @@ struct StudioShell: View {
             .frame(width: 0, height: 0)
         }
         .onAppear {
-            workspace.configure(
-                setAppSection: { section in
-                    model.selectedSection = section
-                },
-                setStatusMessage: { message in
-                    model.statusMessage = message
+            if editorSession == nil {
+                if model.selectedSection == .capture {
+                    workspace.send(.sectionSelected(.editor))
+                } else {
+                    workspace.send(.appSectionSynced(model.selectedSection))
                 }
-            )
-            if model.selectedSection == .capture {
-                workspace.send(.sectionSelected(.editor))
-            } else {
-                workspace.send(.appSectionSynced(model.selectedSection))
             }
         }
         .onChange(of: model.selectedSection) { _, section in
-            workspace.send(.appSectionSynced(section))
+            if editorSession == nil {
+                workspace.send(.appSectionSynced(section))
+            }
         }
     }
 
@@ -97,7 +187,11 @@ struct StudioShell: View {
         case .editor:
             EditorStudioView(editorSession: editorSession, workspace: workspace)
         case .settings:
-            SettingsStudioView(driver: model.appShell.settings)
+            SettingsStudioView(
+                driver: model.appShell.settings,
+                serviceHealth: model.serviceHealth,
+                paths: model.paths
+            )
         }
     }
 
@@ -117,6 +211,57 @@ struct StudioShell: View {
     private var isTextInputActive: Bool {
         guard let responder = NSApp.keyWindow?.firstResponder else { return false }
         return responder is NSTextView || responder is NSTextField
+    }
+}
+
+private struct WorkspaceAutosaveFailureBanner: View {
+    var message: String
+    var isRetrying: Bool
+    var retry: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(Color.red)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Changes not saved")
+                    .font(.system(size: 12, weight: .semibold))
+                Text(message)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.secondary)
+                    .lineLimit(2)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Changes not saved. \(message)")
+
+            Spacer(minLength: 12)
+
+            StudioButton(hitTarget: .rounded(7), action: retry) {
+                HStack(spacing: 6) {
+                    if isRetrying {
+                        ProgressView()
+                            .controlSize(.mini)
+                    } else {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    Text(isRetrying ? "Retrying…" : "Retry Save")
+                }
+                    .font(.system(size: 11, weight: .semibold))
+                    .padding(.horizontal, 10)
+                    .frame(height: 28)
+                    .background(Theme.overlayStrong, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+            }
+            .disabled(isRetrying)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(Color.red.opacity(0.08))
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(Color.red.opacity(0.28))
+                .frame(height: 1)
+        }
     }
 }
 
@@ -377,8 +522,44 @@ struct StudioTitleBar: View {
                 .font(.system(size: 14, weight: .semibold))
                 .lineLimit(1)
                 .truncationMode(.middle)
+            workspaceStatusIndicator
         }
         .frame(maxWidth: .infinity, alignment: .center)
+    }
+
+    @ViewBuilder
+    private var workspaceStatusIndicator: some View {
+        Group {
+            switch workspace.state.statusSeverity {
+            case .none:
+                Color.clear
+                    .accessibilityHidden(true)
+            case .informational:
+                Image(systemName: "info.circle")
+                    .foregroundStyle(Color.secondary)
+                    .accessibilityLabel("Editor status: \(workspace.state.statusMessage)")
+                    .help(workspace.state.statusMessage)
+            case .progress:
+                ProgressView()
+                    .controlSize(.mini)
+                    .accessibilityLabel(workspace.state.statusMessage)
+                    .help(workspace.state.statusMessage)
+            case .success:
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(Color.green)
+                    .accessibilityLabel("Editor status: \(workspace.state.statusMessage)")
+                    .help(workspace.state.statusMessage)
+        case .failure:
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(Color.red)
+                .accessibilityLabel(
+                    "Editor error: \(workspace.state.statusMessage). "
+                        + (workspace.state.autosaveFailureMessage ?? "")
+                )
+                .help(workspace.state.autosaveFailureMessage ?? workspace.state.statusMessage)
+            }
+        }
+        .frame(width: 18, height: 18)
     }
 
     private var title: String {

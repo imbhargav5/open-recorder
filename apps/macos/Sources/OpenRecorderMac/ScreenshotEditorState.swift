@@ -90,7 +90,7 @@ enum ScreenshotEditorEffect: Equatable {
     case markAutosaved(ProjectAutosaveSnapshot?)
     case scheduleAutosave(ProjectAutosaveSnapshot?)
     case flushAutosave(ProjectAutosaveSnapshot?)
-    case setStatusMessage(String)
+    case setWorkspaceStatus(EditorWorkspaceStatus)
 }
 
 extension ScreenshotEditorMachineState {
@@ -128,16 +128,22 @@ extension ScreenshotEditorMachineState {
             return [.flushAutosave(snapshot)]
 
         case .saveFailed(let message):
-            return [.setStatusMessage(message)]
+            return [.setWorkspaceStatus(EditorWorkspaceStatus(message: message, severity: .failure))]
 
         case .saveSucceeded(let url):
-            return [.setStatusMessage("Exported \(url.lastPathComponent)")]
+            return [.setWorkspaceStatus(EditorWorkspaceStatus(
+                message: "Exported \(url.lastPathComponent)",
+                severity: .success
+            ))]
 
         case .copyFailed(let message):
-            return [.setStatusMessage(message)]
+            return [.setWorkspaceStatus(EditorWorkspaceStatus(message: message, severity: .failure))]
 
         case .copySucceeded:
-            return [.setStatusMessage("Screenshot PNG copied")]
+            return [.setWorkspaceStatus(EditorWorkspaceStatus(
+                message: "Screenshot PNG copied",
+                severity: .success
+            ))]
         }
     }
 }
@@ -150,7 +156,7 @@ final class ScreenshotEditorDriver {
 
     @ObservationIgnored private var history = EditorHistory<ScreenshotEditorState>()
     @ObservationIgnored private let autosave = ProjectAutosaveCoordinator()
-    @ObservationIgnored private var setStatusMessage: (String) -> Void = { _ in }
+    @ObservationIgnored private var setWorkspaceStatus: (EditorWorkspaceStatus) -> Void = { _ in }
     @ObservationIgnored private var renderPNG: (NSImage, ScreenshotEditorState) -> Data? = { image, state in
         let renderer = ScreenshotExportRenderer(configuration: ScreenshotExportConfiguration(screenshotState: state))
         return renderer.renderPNG(from: image)
@@ -189,13 +195,13 @@ final class ScreenshotEditorDriver {
     func configure(
         saveHandler: @escaping ProjectAutosaveCoordinator.SaveHandler,
         statusHandler: @escaping ProjectAutosaveCoordinator.StatusHandler,
-        setStatusMessage: @escaping (String) -> Void,
+        setWorkspaceStatus: @escaping (EditorWorkspaceStatus) -> Void,
         renderPNG: ((NSImage, ScreenshotEditorState) -> Data?)? = nil,
         presentSaveURL: ((String) -> URL?)? = nil,
         writePNG: ((Data, URL) throws -> Void)? = nil,
         copyPNG: ((Data) -> Bool)? = nil
     ) {
-        self.setStatusMessage = setStatusMessage
+        self.setWorkspaceStatus = setWorkspaceStatus
         if let renderPNG {
             self.renderPNG = renderPNG
         }
@@ -325,6 +331,22 @@ final class ScreenshotEditorDriver {
         }
     }
 
+    func flushPendingAutosave() async -> Bool {
+        await autosave.flush()
+    }
+
+    var hasPendingAutosave: Bool {
+        autosave.hasPendingChanges
+    }
+
+    func abandonPendingAutosave() -> Bool {
+        autosave.abandonPendingChanges()
+    }
+
+    var canAbandonPendingAutosave: Bool {
+        autosave.canAbandonPendingChanges
+    }
+
     private func perform(_ effects: [ScreenshotEditorEffect]) {
         for effect in effects {
             switch effect {
@@ -333,16 +355,15 @@ final class ScreenshotEditorDriver {
             case .scheduleAutosave(let snapshot):
                 autosave.schedule(snapshot)
             case .flushAutosave(let snapshot):
-                Task { [weak self] in
-                    await self?.flushAutosave(snapshot)
+                let autosave = autosave
+                autosave.schedule(snapshot)
+                Task {
+                    await autosave.flush()
                 }
-            case .setStatusMessage(let message):
-                setStatusMessage(message)
+            case .setWorkspaceStatus(let status):
+                setWorkspaceStatus(status)
             }
         }
     }
 
-    private func flushAutosave(_ snapshot: ProjectAutosaveSnapshot?) async {
-        await autosave.flush(snapshot)
-    }
 }

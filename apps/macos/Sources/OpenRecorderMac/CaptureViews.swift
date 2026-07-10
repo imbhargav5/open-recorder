@@ -60,7 +60,7 @@ struct CaptureStudioView: View {
                     sourceSelector.configure(refreshSources: {
                         model.reloadSourcesForPreview()
                     })
-                    sourceSelector.state.visibleTabs = visibleTabs
+                    sourceSelector.send(.visibleTabsChanged(visibleTabs))
                     model.reloadSourcesForPreview()
                 }
                 .onChange(of: model.preferredSourceSelectorKind) { _, kind in

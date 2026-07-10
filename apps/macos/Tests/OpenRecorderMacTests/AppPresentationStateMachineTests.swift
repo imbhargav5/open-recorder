@@ -75,23 +75,23 @@ final class AppShellStateMachineTests: XCTestCase {
 
     func testShellDriverOwnsLongLivedChildDrivers() {
         let shell = AppShellDriver()
-        let workspace = shell.workspace
+        let workspace = shell.workspace(for: nil)
         let capture = shell.capture
         let captureOptions = shell.captureOptions
         let inlineSourceSelector = shell.inlineSourceSelector
         let floatingSourceSelector = shell.floatingSourceSelector
         let onboarding = shell.onboarding
         let settings = shell.settings
-        let videoExport = shell.videoExport
+        let videoExport = workspace.videoExport
 
-        XCTAssertTrue(shell.workspace === workspace)
+        XCTAssertTrue(shell.workspace(for: nil) === workspace)
         XCTAssertTrue(shell.capture === capture)
         XCTAssertTrue(shell.captureOptions === captureOptions)
         XCTAssertTrue(shell.inlineSourceSelector === inlineSourceSelector)
         XCTAssertTrue(shell.floatingSourceSelector === floatingSourceSelector)
         XCTAssertTrue(shell.onboarding === onboarding)
         XCTAssertTrue(shell.settings === settings)
-        XCTAssertTrue(shell.videoExport === videoExport)
+        XCTAssertTrue(shell.workspace(for: nil).videoExport === videoExport)
     }
 
     func testShellDriverKeepsEditorWindowWorkspacesIndependentBySession() {
@@ -102,7 +102,7 @@ final class AppShellStateMachineTests: XCTestCase {
         let firstWorkspace = shell.workspace(for: firstSession)
         let secondWorkspace = shell.workspace(for: secondSession)
 
-        XCTAssertTrue(shell.workspace(for: nil) === shell.workspace)
+        XCTAssertTrue(shell.workspace(for: nil) === shell.workspace(for: nil))
         XCTAssertTrue(shell.workspace(for: firstSession) === firstWorkspace)
         XCTAssertFalse(firstWorkspace === secondWorkspace)
 
@@ -111,6 +111,728 @@ final class AppShellStateMachineTests: XCTestCase {
 
         XCTAssertEqual(firstWorkspace.screenshot.state.screenshot.padding, 96)
         XCTAssertEqual(secondWorkspace.screenshot.state.screenshot.padding, 18)
+        XCTAssertFalse(firstWorkspace.videoExport === secondWorkspace.videoExport)
+    }
+
+    func testSessionWorkspaceNavigationDoesNotMutateGlobalSection() {
+        let shell = AppShellDriver()
+        let session = EditorSession(kind: .video, url: URL(fileURLWithPath: "/tmp/session.mp4"))
+        let workspace = shell.workspace(for: session)
+        var forwardedSections: [AppSection] = []
+        workspace.configure(
+            setAppSection: { forwardedSections.append($0) },
+            setStatusMessage: { _ in }
+        )
+
+        workspace.send(.sectionSelected(.projects))
+
+        XCTAssertEqual(workspace.state.selectedSection, .projects)
+        XCTAssertTrue(forwardedSections.isEmpty)
+        XCTAssertEqual(shell.state.selectedSection, .capture)
+    }
+
+    func testDefaultWorkspaceMayForwardNavigationToAppShell() {
+        let shell = AppShellDriver()
+        var forwardedSections: [AppSection] = []
+        let workspace = shell.workspace(for: nil)
+        workspace.configure(
+            setAppSection: { forwardedSections.append($0) },
+            setStatusMessage: { _ in }
+        )
+
+        workspace.send(.sectionSelected(.projects))
+
+        XCTAssertEqual(forwardedSections, [.projects])
+    }
+
+    func testClosingSessionEvictsItsWorkspace() async {
+        let shell = AppShellDriver()
+        let session = EditorSession(kind: .screenshot, url: URL(fileURLWithPath: "/tmp/close.png"))
+        let originalWorkspace = shell.workspace(for: session)
+        XCTAssertEqual(shell.sessionWorkspaceCountForTesting, 1)
+
+        await shell.closeWorkspace(for: session)
+
+        XCTAssertEqual(shell.sessionWorkspaceCountForTesting, 0)
+        XCTAssertFalse(shell.workspace(for: session) === originalWorkspace)
+    }
+
+    func testClosingSessionFlushesBothEditorAutosavesBeforeEviction() async {
+        let shell = AppShellDriver()
+        let session = EditorSession(kind: .video, url: URL(fileURLWithPath: "/tmp/autosave.mp4"))
+        let workspace = shell.workspace(for: session)
+        let videoSnapshot = makeWorkspaceAutosaveSnapshot(path: "/tmp/video.openrecorder", kind: .video)
+        let screenshotSnapshot = makeWorkspaceAutosaveSnapshot(path: "/tmp/screenshot.openrecorder", kind: .screenshot)
+        var savedSnapshots: [ProjectAutosaveSnapshot] = []
+
+        workspace.video.configure(
+            applyTimelineSnapshot: { _ in },
+            saveHandler: { snapshot in
+                savedSnapshots.append(snapshot)
+                return makeProjectSummary(path: snapshot.projectPath)
+            },
+            statusHandler: { _ in },
+            pausePlayback: {},
+            exportVideo: { _, _, _ in },
+            clearVideoExportDialogState: {}
+        )
+        workspace.screenshot.configure(
+            saveHandler: { snapshot in
+                savedSnapshots.append(snapshot)
+                return makeProjectSummary(path: snapshot.projectPath)
+            },
+            statusHandler: { _ in },
+            setWorkspaceStatus: { _ in }
+        )
+        workspace.video.send(.autosaveSnapshotChanged(videoSnapshot))
+        workspace.screenshot.send(.autosaveSnapshotChanged(screenshotSnapshot))
+
+        await shell.closeWorkspace(for: session)
+
+        XCTAssertEqual(savedSnapshots, [videoSnapshot, screenshotSnapshot])
+        XCTAssertEqual(shell.sessionWorkspaceCountForTesting, 0)
+    }
+
+    func testReopeningSessionDuringCloseReusesWorkspaceAndCancelsEviction() async {
+        let shell = AppShellDriver()
+        let session = EditorSession(kind: .video, url: URL(fileURLWithPath: "/tmp/reopen.mp4"))
+        let workspace = shell.workspace(for: session)
+        let snapshot = makeWorkspaceAutosaveSnapshot(path: "/tmp/reopen.openrecorder", kind: .video)
+        let gate = WorkspaceAutosaveGate()
+        let saveStarted = expectation(description: "Workspace save started")
+
+        workspace.video.configure(
+            applyTimelineSnapshot: { _ in },
+            saveHandler: { snapshot in
+                saveStarted.fulfill()
+                await gate.wait()
+                return makeProjectSummary(path: snapshot.projectPath)
+            },
+            statusHandler: { _ in },
+            pausePlayback: {},
+            exportVideo: { _, _, _ in },
+            clearVideoExportDialogState: {}
+        )
+        workspace.video.send(.autosaveSnapshotChanged(snapshot))
+        let initialFlush = Task { @MainActor in
+            await workspace.video.flushPendingAutosave()
+        }
+        await fulfillment(of: [saveStarted], timeout: 1)
+
+        guard let closeRequest = shell.beginClosingWorkspace(for: session) else {
+            return XCTFail("Expected a close request")
+        }
+        let close = Task { @MainActor in
+            await shell.finishClosingWorkspace(closeRequest)
+        }
+
+        shell.activateWorkspace(for: session)
+        let reopenedWorkspace = shell.workspace(for: session)
+        await gate.open()
+        _ = await initialFlush.value
+        _ = await close.value
+
+        XCTAssertTrue(reopenedWorkspace === workspace)
+        XCTAssertEqual(shell.sessionWorkspaceCountForTesting, 1)
+
+        await shell.closeWorkspace(for: session)
+        XCTAssertEqual(shell.sessionWorkspaceCountForTesting, 0)
+    }
+
+    func testActivationCancelsCloseBeforeAsyncCleanupStarts() async {
+        let shell = AppShellDriver()
+        let session = EditorSession(kind: .video, url: URL(fileURLWithPath: "/tmp/delayed-close.mp4"))
+        let workspace = shell.workspace(for: session)
+        guard let closeRequest = shell.beginClosingWorkspace(for: session) else {
+            return XCTFail("Expected a close request")
+        }
+
+        shell.activateWorkspace(for: session)
+        let reopenedWorkspace = shell.workspace(for: session)
+        await shell.finishClosingWorkspace(closeRequest)
+
+        XCTAssertTrue(reopenedWorkspace === workspace)
+        XCTAssertEqual(shell.sessionWorkspaceCountForTesting, 1)
+
+        await shell.closeWorkspace(for: session)
+        XCTAssertEqual(shell.sessionWorkspaceCountForTesting, 0)
+    }
+
+    func testFailedAutosaveRetainsSessionWorkspaceAndExportForRecovery() async {
+        let shell = AppShellDriver()
+        let projectPath = "/tmp/failed-save.openrecorder"
+        let session = EditorSession(
+            kind: .video,
+            url: URL(fileURLWithPath: "/tmp/failed-save.mp4"),
+            projectPath: projectPath
+        )
+        let workspace = shell.workspace(for: session)
+        let snapshot = makeWorkspaceAutosaveSnapshot(path: projectPath, kind: .video)
+        var statuses: [ProjectAutosaveStatus] = []
+        let exportStarted = expectation(description: "Export started")
+        let exportCanceled = expectation(description: "Export is canceled explicitly")
+        let temporaryURL = URL(fileURLWithPath: "/tmp/failed-save-export.mov")
+        var cancellationToken: VideoExportCancellationToken?
+        var deletedURLs: [URL] = []
+        workspace.video.configure(
+            applyTimelineSnapshot: { _ in },
+            saveHandler: { _ in throw WorkspaceAutosaveError.failed },
+            statusHandler: { statuses.append($0) },
+            pausePlayback: {},
+            exportVideo: { _, _, _ in },
+            clearVideoExportDialogState: {}
+        )
+        workspace.videoExport.configure(
+            renderVideo: { _, _, _, token, _, _ in
+                cancellationToken = token
+                exportStarted.fulfill()
+                while !token.isCancelled && !Task.isCancelled {
+                    await Task.yield()
+                }
+                exportCanceled.fulfill()
+                throw CancellationError()
+            },
+            temporaryURL: { _ in temporaryURL },
+            saveDestination: { _, _ -> URL? in nil },
+            copyFile: { _, _ in },
+            deleteFile: { deletedURLs.append($0) },
+            revealFile: { _ in },
+            setStatusMessage: { _ in }
+        )
+        workspace.video.send(.autosaveSnapshotChanged(snapshot))
+        workspace.videoExport.export(sourceURL: session.url, options: .default, edits: .empty)
+        await fulfillment(of: [exportStarted], timeout: 1)
+
+        let closeOutcome = await shell.closeWorkspace(for: session)
+
+        let reopenedSession = EditorSession(
+            kind: .video,
+            url: session.url,
+            projectPath: projectPath
+        )
+        XCTAssertNotEqual(reopenedSession.id, session.id)
+        XCTAssertEqual(closeOutcome, .autosaveFailed)
+        XCTAssertTrue(shell.workspace(for: reopenedSession) === workspace)
+        XCTAssertEqual(shell.sessionWorkspaceCountForTesting, 1)
+        XCTAssertTrue(workspace.state.isAutosaveRecoveryPresented)
+        XCTAssertEqual(statuses.last, .failed("Save failed"))
+        XCTAssertFalse(cancellationToken?.isCancelled == true)
+        XCTAssertEqual(workspace.videoExport.state.phase, .exporting)
+        XCTAssertEqual(deletedURLs, [])
+
+        workspace.videoExport.cancelExport()
+        await fulfillment(of: [exportCanceled], timeout: 1)
+
+        XCTAssertTrue(cancellationToken?.isCancelled == true)
+        XCTAssertEqual(workspace.videoExport.state.phase, .failed)
+        XCTAssertEqual(deletedURLs, [temporaryURL])
+    }
+
+    func testMixedAutosaveOutcomePreservesTheFirstFailureReason() async {
+        let shell = AppShellDriver()
+        let session = EditorSession(
+            kind: .video,
+            url: URL(fileURLWithPath: "/tmp/mixed-save.mp4"),
+            projectPath: "/tmp/mixed-save.openrecorder"
+        )
+        let workspace = shell.workspace(for: session)
+        workspace.video.configure(
+            applyTimelineSnapshot: { _ in },
+            saveHandler: { _ in throw WorkspaceAutosaveError.failed },
+            statusHandler: { [weak workspace] status in
+                workspace?.handleProjectAutosaveStatus(status)
+            },
+            pausePlayback: {},
+            exportVideo: { _, _, _ in },
+            clearVideoExportDialogState: {}
+        )
+        workspace.screenshot.configure(
+            saveHandler: { snapshot in
+                makeProjectSummary(path: snapshot.projectPath)
+            },
+            statusHandler: { [weak workspace] status in
+                workspace?.handleProjectAutosaveStatus(status)
+            },
+            setWorkspaceStatus: { _ in }
+        )
+        workspace.video.send(.autosaveSnapshotChanged(
+            makeWorkspaceAutosaveSnapshot(path: session.projectPath!, kind: .video)
+        ))
+        workspace.screenshot.send(.autosaveSnapshotChanged(
+            makeWorkspaceAutosaveSnapshot(path: session.projectPath!, kind: .screenshot)
+        ))
+
+        let outcome = await shell.closeWorkspace(for: session)
+
+        XCTAssertEqual(outcome, .autosaveFailed)
+        XCTAssertEqual(workspace.state.statusSeverity, .failure)
+        XCTAssertEqual(workspace.state.autosaveFailureMessage, "Save failed")
+    }
+
+    func testCloseFlushesEditsCreatedWhileAnotherEditorAutosaveIsInFlight() async {
+        let shell = AppShellDriver()
+        let projectPath = "/tmp/quiescent-close.openrecorder"
+        let session = EditorSession(
+            kind: .video,
+            url: URL(fileURLWithPath: "/tmp/quiescent-close.mp4"),
+            projectPath: projectPath
+        )
+        let workspace = shell.workspace(for: session)
+        let screenshotGate = WorkspaceAutosaveGate()
+        let screenshotSaveStarted = expectation(description: "Screenshot save started")
+        var savedVideoTitles: [String] = []
+        workspace.video.configure(
+            applyTimelineSnapshot: { _ in },
+            saveHandler: { snapshot in
+                savedVideoTitles.append(snapshot.title)
+                return makeProjectSummary(path: snapshot.projectPath)
+            },
+            statusHandler: { [weak workspace] status in
+                workspace?.handleProjectAutosaveStatus(status)
+            },
+            pausePlayback: {},
+            exportVideo: { _, _, _ in },
+            clearVideoExportDialogState: {}
+        )
+        workspace.screenshot.configure(
+            saveHandler: { snapshot in
+                screenshotSaveStarted.fulfill()
+                await screenshotGate.wait()
+                return makeProjectSummary(path: snapshot.projectPath)
+            },
+            statusHandler: { [weak workspace] status in
+                workspace?.handleProjectAutosaveStatus(status)
+            },
+            setWorkspaceStatus: { _ in }
+        )
+        var initialVideo = makeWorkspaceAutosaveSnapshot(path: projectPath, kind: .video)
+        initialVideo.title = "Initial video"
+        workspace.video.send(.autosaveSnapshotChanged(initialVideo))
+        workspace.screenshot.send(.autosaveSnapshotChanged(
+            makeWorkspaceAutosaveSnapshot(path: projectPath, kind: .screenshot)
+        ))
+
+        let close = Task { @MainActor in
+            await shell.closeWorkspace(for: session)
+        }
+        await fulfillment(of: [screenshotSaveStarted], timeout: 1)
+        var updatedVideo = initialVideo
+        updatedVideo.title = "Updated during close"
+        workspace.video.send(.autosaveSnapshotChanged(updatedVideo))
+        await screenshotGate.open()
+
+        let closeOutcome = await close.value
+        XCTAssertEqual(closeOutcome, .closed)
+        XCTAssertEqual(savedVideoTitles, ["Initial video", "Updated during close"])
+        XCTAssertEqual(shell.sessionWorkspaceCountForTesting, 0)
+    }
+
+    func testCloseJoinerStartsFreshFlushForEditAddedBeforeCoalescedFlushCompletes() async {
+        let shell = AppShellDriver()
+        let projectPath = "/tmp/coalesced-close.openrecorder"
+        let session = EditorSession(
+            kind: .video,
+            url: URL(fileURLWithPath: "/tmp/coalesced-close.mp4"),
+            projectPath: projectPath
+        )
+        let workspace = shell.workspace(for: session)
+        let screenshotGate = WorkspaceAutosaveGate()
+        let screenshotSaveStarted = expectation(description: "Coalesced screenshot save started")
+        var savedVideoTitles: [String] = []
+        workspace.video.configure(
+            applyTimelineSnapshot: { _ in },
+            saveHandler: { snapshot in
+                savedVideoTitles.append(snapshot.title)
+                return makeProjectSummary(path: snapshot.projectPath)
+            },
+            statusHandler: { _ in },
+            pausePlayback: {},
+            exportVideo: { _, _, _ in },
+            clearVideoExportDialogState: {}
+        )
+        workspace.screenshot.configure(
+            saveHandler: { snapshot in
+                screenshotSaveStarted.fulfill()
+                await screenshotGate.wait()
+                return makeProjectSummary(path: snapshot.projectPath)
+            },
+            statusHandler: { _ in },
+            setWorkspaceStatus: { _ in }
+        )
+        var initialVideo = makeWorkspaceAutosaveSnapshot(path: projectPath, kind: .video)
+        initialVideo.title = "Initial coalesced video"
+        workspace.video.send(.autosaveSnapshotChanged(initialVideo))
+        workspace.screenshot.send(.autosaveSnapshotChanged(
+            makeWorkspaceAutosaveSnapshot(path: projectPath, kind: .screenshot)
+        ))
+
+        let originalFlush = Task { @MainActor in
+            await workspace.flushPendingAutosaves()
+        }
+        await fulfillment(of: [screenshotSaveStarted], timeout: 1)
+        let close = Task { @MainActor in
+            await shell.closeWorkspace(for: session)
+        }
+        await Task.yield()
+        var lateVideo = initialVideo
+        lateVideo.title = "Late coalesced video"
+        workspace.video.send(.autosaveSnapshotChanged(lateVideo))
+        await screenshotGate.open()
+
+        let originalFlushOutcome = await originalFlush.value
+        let closeOutcome = await close.value
+        XCTAssertTrue(originalFlushOutcome)
+        XCTAssertEqual(closeOutcome, .closed)
+        XCTAssertEqual(savedVideoTitles, ["Initial coalesced video", "Late coalesced video"])
+        XCTAssertEqual(shell.sessionWorkspaceCountForTesting, 0)
+    }
+
+    func testCancelingCloseDuringAutosaveDoesNotEvictWorkspace() async {
+        let shell = AppShellDriver()
+        let projectPath = "/tmp/canceled-close.openrecorder"
+        let session = EditorSession(
+            kind: .video,
+            url: URL(fileURLWithPath: "/tmp/canceled-close.mp4"),
+            projectPath: projectPath
+        )
+        let workspace = shell.workspace(for: session)
+        let gate = WorkspaceAutosaveGate()
+        let saveStarted = expectation(description: "Save started")
+        workspace.video.configure(
+            applyTimelineSnapshot: { _ in },
+            saveHandler: { snapshot in
+                saveStarted.fulfill()
+                await gate.wait()
+                return makeProjectSummary(path: snapshot.projectPath)
+            },
+            statusHandler: { _ in },
+            pausePlayback: {},
+            exportVideo: { _, _, _ in },
+            clearVideoExportDialogState: {}
+        )
+        workspace.video.send(.autosaveSnapshotChanged(
+            makeWorkspaceAutosaveSnapshot(path: projectPath, kind: .video)
+        ))
+        guard let request = shell.beginClosingWorkspace(for: session) else {
+            return XCTFail("Expected a close request")
+        }
+        let close = Task { @MainActor in
+            await shell.finishClosingWorkspace(request)
+        }
+        await fulfillment(of: [saveStarted], timeout: 1)
+
+        close.cancel()
+        await gate.open()
+
+        let canceledOutcome = await close.value
+        XCTAssertEqual(canceledOutcome, .canceled)
+        XCTAssertTrue(shell.workspace(for: session) === workspace)
+        XCTAssertEqual(shell.sessionWorkspaceCountForTesting, 1)
+        let finalCloseOutcome = await shell.closeWorkspace(for: session)
+        XCTAssertEqual(finalCloseOutcome, .closed)
+    }
+
+    func testRetryingRecoveredAutosaveAllowsCleanClose() async {
+        let shell = AppShellDriver()
+        let projectPath = "/tmp/retry-save.openrecorder"
+        let session = EditorSession(
+            kind: .video,
+            url: URL(fileURLWithPath: "/tmp/retry-save.mp4"),
+            projectPath: projectPath
+        )
+        let workspace = shell.workspace(for: session)
+        var shouldFail = true
+        workspace.video.configure(
+            applyTimelineSnapshot: { _ in },
+            saveHandler: { snapshot in
+                if shouldFail { throw WorkspaceAutosaveError.failed }
+                return makeProjectSummary(path: snapshot.projectPath)
+            },
+            statusHandler: { _ in },
+            pausePlayback: {},
+            exportVideo: { _, _, _ in },
+            clearVideoExportDialogState: {}
+        )
+        workspace.video.send(.autosaveSnapshotChanged(
+            makeWorkspaceAutosaveSnapshot(path: projectPath, kind: .video)
+        ))
+
+        let failedCloseOutcome = await shell.closeWorkspace(for: session)
+        XCTAssertEqual(failedCloseOutcome, .autosaveFailed)
+        shouldFail = false
+        let didRetrySave = await workspace.retryPendingAutosaves()
+        XCTAssertTrue(didRetrySave)
+        XCTAssertFalse(workspace.state.isAutosaveRecoveryPresented)
+        XCTAssertEqual(workspace.state.statusMessage, "Saved")
+
+        let successfulCloseOutcome = await shell.closeWorkspace(for: session)
+        XCTAssertEqual(successfulCloseOutcome, .closed)
+        XCTAssertEqual(shell.sessionWorkspaceCountForTesting, 0)
+    }
+
+    func testDiscardingRecoveredAutosaveAllowsExplicitDataLoss() async {
+        let shell = AppShellDriver()
+        let projectPath = "/tmp/discard-save.openrecorder"
+        let session = EditorSession(
+            kind: .video,
+            url: URL(fileURLWithPath: "/tmp/discard-save.mp4"),
+            projectPath: projectPath
+        )
+        let workspace = shell.workspace(for: session)
+        var didDiscard = false
+        let saveAfterDiscard = expectation(description: "Discarded workspace must not save on disappear")
+        saveAfterDiscard.isInverted = true
+        workspace.video.configure(
+            applyTimelineSnapshot: { _ in },
+            saveHandler: { _ in
+                if didDiscard { saveAfterDiscard.fulfill() }
+                throw WorkspaceAutosaveError.failed
+            },
+            statusHandler: { _ in },
+            pausePlayback: {},
+            exportVideo: { _, _, _ in },
+            clearVideoExportDialogState: {}
+        )
+        workspace.video.send(.autosaveSnapshotChanged(
+            makeWorkspaceAutosaveSnapshot(path: projectPath, kind: .video)
+        ))
+
+        let failedCloseOutcome = await shell.closeWorkspace(for: session)
+        XCTAssertEqual(failedCloseOutcome, .autosaveFailed)
+        didDiscard = true
+        shell.discardWorkspace(for: session)
+        workspace.video.send(.disappeared(
+            makeWorkspaceAutosaveSnapshot(path: projectPath, kind: .video)
+        ))
+
+        await fulfillment(of: [saveAfterDiscard], timeout: 0.05)
+        XCTAssertEqual(shell.sessionWorkspaceCountForTesting, 0)
+        XCTAssertFalse(shell.workspace(for: session) === workspace)
+    }
+
+    func testWorkspaceCannotBeDiscardedWhileAutosaveIsInFlight() async {
+        let shell = AppShellDriver()
+        let projectPath = "/tmp/in-flight-discard.openrecorder"
+        let session = EditorSession(
+            kind: .video,
+            url: URL(fileURLWithPath: "/tmp/in-flight-discard.mp4"),
+            projectPath: projectPath
+        )
+        let workspace = shell.workspace(for: session)
+        let gate = WorkspaceAutosaveGate()
+        let saveStarted = expectation(description: "Autosave started before discard")
+        workspace.video.configure(
+            applyTimelineSnapshot: { _ in },
+            saveHandler: { snapshot in
+                saveStarted.fulfill()
+                await gate.wait()
+                return makeProjectSummary(path: snapshot.projectPath)
+            },
+            statusHandler: { _ in },
+            pausePlayback: {},
+            exportVideo: { _, _, _ in },
+            clearVideoExportDialogState: {}
+        )
+        workspace.video.send(.autosaveSnapshotChanged(
+            makeWorkspaceAutosaveSnapshot(path: projectPath, kind: .video)
+        ))
+        let flush = Task { @MainActor in
+            await workspace.video.flushPendingAutosave()
+        }
+        await fulfillment(of: [saveStarted], timeout: 1)
+
+        XCTAssertFalse(shell.discardWorkspace(for: session))
+        XCTAssertTrue(shell.workspace(for: session) === workspace)
+        XCTAssertEqual(shell.sessionWorkspaceCountForTesting, 1)
+
+        await gate.open()
+        _ = await flush.value
+        let closeOutcome = await shell.closeWorkspace(for: session)
+        XCTAssertEqual(closeOutcome, .closed)
+    }
+
+    func testDefaultWorkspaceFailedCloseCanRetryWithoutEviction() async {
+        let shell = AppShellDriver()
+        let workspace = shell.workspace(for: nil)
+        let snapshot = makeWorkspaceAutosaveSnapshot(path: "/tmp/default-retry.openrecorder", kind: .video)
+        var shouldFail = true
+        workspace.video.configure(
+            applyTimelineSnapshot: { _ in },
+            saveHandler: { snapshot in
+                if shouldFail { throw WorkspaceAutosaveError.failed }
+                return makeProjectSummary(path: snapshot.projectPath)
+            },
+            statusHandler: { _ in },
+            pausePlayback: {},
+            exportVideo: { _, _, _ in },
+            clearVideoExportDialogState: {}
+        )
+        workspace.video.send(.autosaveSnapshotChanged(snapshot))
+
+        let failedCloseOutcome = await shell.closeWorkspace(for: nil)
+        XCTAssertEqual(failedCloseOutcome, .autosaveFailed)
+        XCTAssertTrue(workspace.state.isAutosaveRecoveryPresented)
+        XCTAssertTrue(shell.workspace(for: nil) === workspace)
+
+        shouldFail = false
+        let didRetrySave = await workspace.retryPendingAutosaves()
+        XCTAssertTrue(didRetrySave)
+        XCTAssertFalse(workspace.state.isAutosaveRecoveryPresented)
+
+        let successfulCloseOutcome = await shell.closeWorkspace(for: nil)
+        XCTAssertEqual(successfulCloseOutcome, .closed)
+        XCTAssertTrue(shell.workspace(for: nil) === workspace)
+    }
+
+    func testDefaultWorkspaceDiscardReplacesAbandonedState() async {
+        let shell = AppShellDriver()
+        let workspace = shell.workspace(for: nil)
+        let snapshot = makeWorkspaceAutosaveSnapshot(path: "/tmp/default-discard.openrecorder", kind: .video)
+        workspace.video.configure(
+            applyTimelineSnapshot: { _ in },
+            saveHandler: { _ in throw WorkspaceAutosaveError.failed },
+            statusHandler: { _ in },
+            pausePlayback: {},
+            exportVideo: { _, _, _ in },
+            clearVideoExportDialogState: {}
+        )
+        workspace.video.send(.autosaveSnapshotChanged(snapshot))
+
+        let failedCloseOutcome = await shell.closeWorkspace(for: nil)
+        XCTAssertEqual(failedCloseOutcome, .autosaveFailed)
+        shell.discardWorkspace(for: nil)
+
+        let replacement = shell.workspace(for: nil)
+        XCTAssertFalse(replacement === workspace)
+        XCTAssertFalse(replacement.state.isAutosaveRecoveryPresented)
+    }
+
+    func testReactivatedFailedSessionCannotBeStolenByAnotherWindow() async {
+        let shell = AppShellDriver()
+        let projectPath = "/tmp/reactivated.openrecorder"
+        let session = EditorSession(
+            kind: .video,
+            url: URL(fileURLWithPath: "/tmp/reactivated.mp4"),
+            projectPath: projectPath
+        )
+        let workspace = shell.workspace(for: session)
+        workspace.video.configure(
+            applyTimelineSnapshot: { _ in },
+            saveHandler: { _ in throw WorkspaceAutosaveError.failed },
+            statusHandler: { _ in },
+            pausePlayback: {},
+            exportVideo: { _, _, _ in },
+            clearVideoExportDialogState: {}
+        )
+        workspace.video.send(.autosaveSnapshotChanged(
+            makeWorkspaceAutosaveSnapshot(path: projectPath, kind: .video)
+        ))
+        await shell.closeWorkspace(for: session)
+
+        shell.activateWorkspace(for: session)
+        let secondSession = EditorSession(
+            kind: .video,
+            url: session.url,
+            projectPath: projectPath
+        )
+        let secondWorkspace = shell.workspace(for: secondSession)
+
+        XCTAssertTrue(shell.workspace(for: session) === workspace)
+        XCTAssertFalse(secondWorkspace === workspace)
+        XCTAssertEqual(shell.sessionWorkspaceCountForTesting, 2)
+    }
+
+    func testSessionStatusStaysLocalWhileDefaultWorkspaceStatusForwards() {
+        let model = AppModel()
+        let originalStatus = model.statusMessage
+        let session = EditorSession(kind: .screenshot, url: URL(fileURLWithPath: "/tmp/local.png"))
+        let sessionWorkspace = model.appShell.workspace(for: session)
+        let defaultWorkspace = model.appShell.workspace(for: nil)
+
+        sessionWorkspace.send(.statusUpdated(EditorWorkspaceStatus(
+            message: "Session-only status",
+            severity: .informational
+        )))
+
+        XCTAssertEqual(sessionWorkspace.state.statusMessage, "Session-only status")
+        XCTAssertEqual(model.statusMessage, originalStatus)
+
+        defaultWorkspace.send(.statusUpdated(EditorWorkspaceStatus(
+            message: "Default workspace status",
+            severity: .informational
+        )))
+
+        XCTAssertEqual(model.statusMessage, "Default workspace status")
+    }
+
+    func testWorkspaceConfigurationCoversExistingAndFutureSessions() {
+        let shell = AppShellDriver()
+        let firstSession = EditorSession(kind: .video, url: URL(fileURLWithPath: "/tmp/first-config.mp4"))
+        let secondSession = EditorSession(kind: .video, url: URL(fileURLWithPath: "/tmp/second-config.mp4"))
+        let firstWorkspace = shell.workspace(for: firstSession)
+        var configuredWorkspaces: [ObjectIdentifier] = []
+
+        shell.configure(configureWorkspace: { workspace in
+            configuredWorkspaces.append(ObjectIdentifier(workspace))
+        })
+        let secondWorkspace = shell.workspace(for: secondSession)
+
+        XCTAssertEqual(Set(configuredWorkspaces), Set([
+            ObjectIdentifier(shell.workspace(for: nil)),
+            ObjectIdentifier(firstWorkspace),
+            ObjectIdentifier(secondWorkspace)
+        ]))
+        XCTAssertEqual(configuredWorkspaces.count, 3)
+    }
+
+    func testClosingOneSessionClearsOnlyItsActiveExport() async {
+        let shell = AppShellDriver()
+        var temporaryURLs: [ObjectIdentifier: URL] = [:]
+        var cancellationTokens: [ObjectIdentifier: VideoExportCancellationToken] = [:]
+        var deletedURLs: [URL] = []
+        let rendersStarted = expectation(description: "Both workspace exports started")
+        rendersStarted.expectedFulfillmentCount = 2
+        shell.configure(configureWorkspace: { workspace in
+            let workspaceID = ObjectIdentifier(workspace)
+            let temporaryURL = URL(fileURLWithPath: "/tmp/\(UUID().uuidString).mov")
+            temporaryURLs[workspaceID] = temporaryURL
+            workspace.videoExport.configure(
+                renderVideo: { _, _, _, token, _, _ in
+                    cancellationTokens[workspaceID] = token
+                    rendersStarted.fulfill()
+                    while !token.isCancelled && !Task.isCancelled {
+                        await Task.yield()
+                    }
+                    throw CancellationError()
+                },
+                temporaryURL: { _ in temporaryURL },
+                saveDestination: { _, _ -> URL? in nil },
+                copyFile: { _, _ in },
+                deleteFile: { deletedURLs.append($0) },
+                revealFile: { _ in },
+                setStatusMessage: { _ in }
+            )
+        })
+        let firstSession = EditorSession(kind: .video, url: URL(fileURLWithPath: "/tmp/first-export.mp4"))
+        let secondSession = EditorSession(kind: .video, url: URL(fileURLWithPath: "/tmp/second-export.mp4"))
+        let firstWorkspace = shell.workspace(for: firstSession)
+        let secondWorkspace = shell.workspace(for: secondSession)
+        let firstID = ObjectIdentifier(firstWorkspace)
+        let secondID = ObjectIdentifier(secondWorkspace)
+
+        firstWorkspace.videoExport.export(sourceURL: firstSession.url, options: .default, edits: .empty)
+        secondWorkspace.videoExport.export(sourceURL: secondSession.url, options: .default, edits: .empty)
+        await fulfillment(of: [rendersStarted], timeout: 1)
+
+        await shell.closeWorkspace(for: firstSession)
+
+        XCTAssertEqual(firstWorkspace.videoExport.state.phase, .idle)
+        XCTAssertTrue(cancellationTokens[firstID]?.isCancelled == true)
+        XCTAssertEqual(deletedURLs, temporaryURLs[firstID].map { [$0] } ?? [])
+        XCTAssertEqual(secondWorkspace.videoExport.state.phase, .exporting)
+        XCTAssertFalse(cancellationTokens[secondID]?.isCancelled ?? true)
+
+        await shell.closeWorkspace(for: secondSession)
     }
 
     func testAppModelFacadeMirrorsShellRouting() {
@@ -129,6 +851,29 @@ final class AppShellStateMachineTests: XCTestCase {
         XCTAssertEqual(model.appShell.state.lastEditorSession, session)
         XCTAssertEqual(model.windowCommand?.action, .showStudio)
         XCTAssertEqual(model.windowCommand?.editorSession, session)
+    }
+}
+
+@MainActor
+final class RecordingPreferencesStoreTests: XCTestCase {
+    func testPreferencesRoundTripThroughIsolatedDefaults() throws {
+        let suiteName = "RecordingPreferencesStoreTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = RecordingPreferencesStore(defaults: defaults)
+
+        XCTAssertEqual(store.load(), RecordingPreferences(
+            createsZoomsAutomatically: true,
+            autoZoomAnimationPreset: .balanced
+        ))
+
+        store.setCreatesZoomsAutomatically(false)
+        store.setAutoZoomAnimationPreset(.cinematic)
+
+        XCTAssertEqual(store.load(), RecordingPreferences(
+            createsZoomsAutomatically: false,
+            autoZoomAnimationPreset: .cinematic
+        ))
     }
 }
 
@@ -251,6 +996,24 @@ private func waitForCondition(
 
 @MainActor
 final class CaptureOptionsStateMachineTests: XCTestCase {
+    func testBooleanBindingsRouteThroughCaptureOptionEvents() {
+        let driver = CaptureOptionsDriver()
+
+        driver.binding(\.includeMicrophone).wrappedValue = true
+        driver.binding(\.includeSystemAudio).wrappedValue = true
+        driver.binding(\.includeCamera).wrappedValue = true
+        driver.binding(\.showCursor).wrappedValue = false
+        driver.binding(\.showClicks).wrappedValue = true
+        driver.binding(\.canChangeOptions).wrappedValue = false
+
+        XCTAssertTrue(driver.state.includeMicrophone)
+        XCTAssertTrue(driver.state.includeSystemAudio)
+        XCTAssertTrue(driver.state.includeCamera)
+        XCTAssertFalse(driver.state.showCursor)
+        XCTAssertTrue(driver.state.showClicks)
+        XCTAssertFalse(driver.state.canChangeOptions)
+    }
+
     func testDeviceSelectionAndLockedSystemAudioAreReducerDriven() {
         var state = CaptureOptionsState(
             microphoneDevices: [CaptureDeviceInfo(id: "mic-1", name: "Studio Mic", isDefault: false)],
@@ -279,6 +1042,10 @@ final class SourceSelectorStateMachineTests: XCTestCase {
 
         XCTAssertEqual(state.applying(.preferredSourceKindSynced(.area)), [])
         XCTAssertEqual(state.sourceTab, .area)
+
+        XCTAssertEqual(state.applying(.visibleTabsChanged([.screens])), [])
+        XCTAssertEqual(state.visibleTabs, [.screens])
+        XCTAssertEqual(state.sourceTab, .screens)
 
         XCTAssertEqual(state.applying(.heightMeasured(500)), [])
         XCTAssertEqual(state.preferredHeight, 532)
@@ -329,11 +1096,7 @@ final class OnboardingAndSettingsStateMachineTests: XCTestCase {
         XCTAssertEqual(state.autoZoomAnimationPreset, .guided)
         XCTAssertEqual(state.applying(.folderOpenRequested("/tmp")), [.openFolder("/tmp")])
 
-        let health = HealthPayload(service: "open-recorder", version: "1", platform: "macOS")
-        let paths = AppPaths(recordingsDir: "/r", screenshotsDir: "/s", projectsDir: "/p", supportDir: "/support")
-        XCTAssertEqual(state.applying(.serviceRefreshSucceeded(serviceHealth: health, paths: paths)), [])
-        XCTAssertEqual(state.serviceHealth, health)
-        XCTAssertEqual(state.paths, paths)
+        XCTAssertEqual(state.applying(.serviceRefreshSucceeded), [])
         XCTAssertFalse(state.isRefreshingService)
     }
 }
@@ -398,6 +1161,46 @@ private func makeProjectSummary(path: String) -> ProjectSummary {
         lastOpenedAt: "2026-05-19T00:00:00Z",
         missing: false
     )
+}
+
+private func makeWorkspaceAutosaveSnapshot(path: String, kind: EditorMediaKind) -> ProjectAutosaveSnapshot {
+    ProjectAutosaveSnapshot(
+        projectPath: path,
+        title: URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent,
+        recordingPath: kind == .video ? "/tmp/demo.mp4" : nil,
+        screenshotPath: kind == .screenshot ? "/tmp/demo.png" : nil,
+        sourceName: nil,
+        editorState: ProjectEditorState(
+            timelineEdits: .empty,
+            video: kind == .video ? .default : nil,
+            screenshot: kind == .screenshot ? .default : nil
+        ),
+        recordingSession: nil
+    )
+}
+
+private actor WorkspaceAutosaveGate {
+    private var isOpen = false
+    private var continuation: CheckedContinuation<Void, Never>?
+
+    func wait() async {
+        guard !isOpen else { return }
+        await withCheckedContinuation { continuation in
+            self.continuation = continuation
+        }
+    }
+
+    func open() {
+        isOpen = true
+        continuation?.resume()
+        continuation = nil
+    }
+}
+
+private enum WorkspaceAutosaveError: LocalizedError {
+    case failed
+
+    var errorDescription: String? { "Save failed" }
 }
 
 private func makeCaptureSource(id: String, kind: CaptureSourceKind) -> CaptureSource {

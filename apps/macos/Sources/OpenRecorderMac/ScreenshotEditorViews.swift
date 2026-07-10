@@ -10,6 +10,7 @@ struct ScreenshotEditorStudioView: View {
     var editorTitle: String?
     var initialScreenshotState: ScreenshotEditorState?
     var editorSessionID: UUID?
+    var workspace: EditorWorkspaceDriver
     var editor: ScreenshotEditorDriver
     var exportRequest: EditorExportRequest?
     @State private var sidebarWidth: CGFloat = 320
@@ -79,14 +80,16 @@ struct ScreenshotEditorStudioView: View {
         }
         .onAppear {
             editor.configure(
-                saveHandler: { snapshot in
-                    try await model.autosaveProject(snapshot)
+                saveHandler: { [weak model] snapshot in
+                    guard let model else { throw CancellationError() }
+                    return try await model.autosaveProject(snapshot)
                 },
-                statusHandler: { status in
-                    model.handleProjectAutosaveStatus(status)
+                statusHandler: { [weak workspace, weak model] status in
+                    workspace?.handleProjectAutosaveStatus(status, source: .screenshot)
+                    model?.handleProjectAutosaveStatus(status)
                 },
-                setStatusMessage: { message in
-                    model.statusMessage = message
+                setWorkspaceStatus: { [weak workspace] status in
+                    workspace?.send(.statusUpdated(status))
                 }
             )
             syncEditorSession()

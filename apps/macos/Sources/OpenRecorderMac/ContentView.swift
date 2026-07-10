@@ -97,6 +97,10 @@ struct SettingsView: View {
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
-        SettingsStudioView(driver: model.appShell.settings)
+        SettingsStudioView(
+            driver: model.appShell.settings,
+            serviceHealth: model.serviceHealth,
+            paths: model.paths
+        )
     }
 }

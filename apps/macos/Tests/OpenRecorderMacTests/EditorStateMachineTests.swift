@@ -4,6 +4,49 @@ import XCTest
 @testable import OpenRecorderMac
 
 final class VideoEditorStateMachineTests: XCTestCase {
+    func testExplicitEditorSessionDoesNotInheritFallbackProjectMetadata() {
+        let fallback = EditorSession(
+            kind: .video,
+            url: URL(fileURLWithPath: "/tmp/project.mp4"),
+            title: "Project",
+            projectPath: "/tmp/project.openrecorder",
+            videoEditorState: .default
+        )
+        let explicit = EditorSession(
+            kind: .video,
+            url: URL(fileURLWithPath: "/tmp/raw.mp4")
+        )
+
+        let metadata = EditorSessionMetadata(
+            explicitSession: explicit,
+            fallbackSession: fallback
+        )
+
+        XCTAssertNil(metadata.projectPath)
+        XCTAssertEqual(metadata.title, explicit.title)
+        XCTAssertNil(metadata.videoEditorState)
+        XCTAssertNil(metadata.recordingSession)
+    }
+
+    func testDefaultEditorUsesFallbackSessionMetadata() {
+        let fallback = EditorSession(
+            kind: .screenshot,
+            url: URL(fileURLWithPath: "/tmp/project.png"),
+            title: "Project",
+            projectPath: "/tmp/project.openrecorder",
+            screenshotEditorState: .default
+        )
+
+        let metadata = EditorSessionMetadata(
+            explicitSession: nil,
+            fallbackSession: fallback
+        )
+
+        XCTAssertEqual(metadata.projectPath, fallback.projectPath)
+        XCTAssertEqual(metadata.title, fallback.title)
+        XCTAssertEqual(metadata.screenshotEditorState, fallback.screenshotEditorState)
+    }
+
     func testSessionAppliesInitialVideoStateAndTimelineSnapshot() {
         let videoURL = URL(fileURLWithPath: "/tmp/example.mp4")
         let projectPath = "/tmp/example.openrecorder"
@@ -210,6 +253,111 @@ final class VideoEditorStateMachineTests: XCTestCase {
 
         XCTAssertEqual(state.applying(.autosaveSnapshotChanged(snapshot)), [.scheduleAutosave(snapshot)])
         XCTAssertEqual(state.applying(.disappeared(snapshot)), [.flushAutosave(snapshot)])
+    }
+
+    @MainActor
+    func testDisappearedFlushSurvivesDriverRelease() async {
+        let snapshot = ProjectAutosaveSnapshot(
+            projectPath: "/tmp/release.openrecorder",
+            title: "Release",
+            recordingPath: "/tmp/release.mp4",
+            screenshotPath: nil,
+            sourceName: nil,
+            editorState: ProjectEditorState(video: .default),
+            recordingSession: nil
+        )
+        var savedSnapshots: [ProjectAutosaveSnapshot] = []
+        let saveCompleted = expectation(description: "Final autosave completed")
+        var driver: VideoEditorDriver? = VideoEditorDriver()
+        driver?.configure(
+            applyTimelineSnapshot: { _ in },
+            saveHandler: { snapshot in
+                savedSnapshots.append(snapshot)
+                saveCompleted.fulfill()
+                return ProjectSummary(
+                    id: "release",
+                    title: snapshot.title,
+                    path: snapshot.projectPath,
+                    recordingPath: snapshot.recordingPath,
+                    screenshotPath: snapshot.screenshotPath,
+                    sourceName: snapshot.sourceName,
+                    createdAt: "now",
+                    updatedAt: "now",
+                    lastOpenedAt: "now",
+                    missing: false
+                )
+            },
+            statusHandler: { _ in },
+            pausePlayback: {},
+            exportVideo: { _, _, _ in },
+            clearVideoExportDialogState: {}
+        )
+
+        driver?.send(.disappeared(snapshot))
+        driver = nil
+
+        await fulfillment(of: [saveCompleted], timeout: 1)
+        XCTAssertEqual(savedSnapshots, [snapshot])
+    }
+
+    @MainActor
+    func testDismissingExportWhileAutosaveIsPendingPreventsLateExportLaunch() async {
+        let recordingURL = URL(fileURLWithPath: "/tmp/pending-export.mp4")
+        let snapshot = ProjectAutosaveSnapshot(
+            projectPath: "/tmp/pending-export.openrecorder",
+            title: "Pending Export",
+            recordingPath: recordingURL.path,
+            screenshotPath: nil,
+            sourceName: nil,
+            editorState: ProjectEditorState(video: .default),
+            recordingSession: nil
+        )
+        let gate = EditorAutosaveGate()
+        let saveStarted = expectation(description: "Pre-export autosave started")
+        let exportCalled = expectation(description: "Late export should not start")
+        exportCalled.isInverted = true
+        var clearCount = 0
+        let driver = VideoEditorDriver()
+        driver.configure(
+            applyTimelineSnapshot: { _ in },
+            saveHandler: { snapshot in
+                saveStarted.fulfill()
+                await gate.wait()
+                return ProjectSummary(
+                    id: "pending-export",
+                    title: snapshot.title,
+                    path: snapshot.projectPath,
+                    recordingPath: snapshot.recordingPath,
+                    screenshotPath: snapshot.screenshotPath,
+                    sourceName: snapshot.sourceName,
+                    createdAt: "now",
+                    updatedAt: "now",
+                    lastOpenedAt: "now",
+                    missing: false
+                )
+            },
+            statusHandler: { _ in },
+            pausePlayback: {},
+            exportVideo: { _, _, _ in exportCalled.fulfill() },
+            clearVideoExportDialogState: { clearCount += 1 }
+        )
+        driver.send(.exportRequested)
+        driver.send(.exportConfirmed(
+            recordingURL: recordingURL,
+            edits: .empty,
+            snapshot: snapshot,
+            cursorTelemetryURL: nil,
+            facecamVideoURL: nil,
+            facecamOffsetMs: nil,
+            cameraFallback: nil
+        ))
+        await fulfillment(of: [saveStarted], timeout: 1)
+
+        driver.send(.sheetDismissed(exportIsBusy: false))
+        await gate.open()
+
+        await fulfillment(of: [exportCalled], timeout: 0.05)
+        XCTAssertEqual(clearCount, 1)
     }
 
     func testExportDraftInitializesMutatesAndConfirmsFromMachineState() {
@@ -587,10 +735,18 @@ final class ScreenshotEditorStateMachineTests: XCTestCase {
 
         XCTAssertEqual(state.applying(.autosaveSnapshotChanged(snapshot)), [.scheduleAutosave(snapshot)])
         XCTAssertEqual(state.applying(.disappeared(snapshot)), [.flushAutosave(snapshot)])
-        XCTAssertEqual(state.applying(.saveFailed("No image")), [.setStatusMessage("No image")])
-        XCTAssertEqual(state.applying(.saveSucceeded(exportURL)), [.setStatusMessage("Exported exported-shot.png")])
-        XCTAssertEqual(state.applying(.copyFailed("No image")), [.setStatusMessage("No image")])
-        XCTAssertEqual(state.applying(.copySucceeded), [.setStatusMessage("Screenshot PNG copied")])
+        XCTAssertEqual(state.applying(.saveFailed("No image")), [
+            .setWorkspaceStatus(EditorWorkspaceStatus(message: "No image", severity: .failure))
+        ])
+        XCTAssertEqual(state.applying(.saveSucceeded(exportURL)), [
+            .setWorkspaceStatus(EditorWorkspaceStatus(message: "Exported exported-shot.png", severity: .success))
+        ])
+        XCTAssertEqual(state.applying(.copyFailed("No image")), [
+            .setWorkspaceStatus(EditorWorkspaceStatus(message: "No image", severity: .failure))
+        ])
+        XCTAssertEqual(state.applying(.copySucceeded), [
+            .setWorkspaceStatus(EditorWorkspaceStatus(message: "Screenshot PNG copied", severity: .success))
+        ])
     }
 
     @MainActor
@@ -618,7 +774,7 @@ final class ScreenshotEditorStateMachineTests: XCTestCase {
                 )
             },
             statusHandler: { _ in },
-            setStatusMessage: { statusMessages.append($0) },
+            setWorkspaceStatus: { statusMessages.append($0.message) },
             renderPNG: { _, _ in Data([0x89, 0x50, 0x4E, 0x47]) },
             presentSaveURL: { _ in targetURL },
             writePNG: { _, url in savedURL = url },
@@ -668,7 +824,7 @@ final class ScreenshotEditorStateMachineTests: XCTestCase {
                 )
             },
             statusHandler: { _ in },
-            setStatusMessage: { _ in },
+            setWorkspaceStatus: { _ in },
             renderPNG: { _, state in
                 renderedState = state
                 return Data([0x89, 0x50, 0x4E, 0x47])
@@ -787,6 +943,69 @@ final class TimelineEditStateMachineTests: XCTestCase {
 }
 
 final class EditorWorkspaceStateMachineTests: XCTestCase {
+    func testAutosaveRecoveryPresentationAndResolutionStayWorkspaceLocal() {
+        var state = EditorWorkspaceState()
+
+        XCTAssertEqual(state.applying(.autosaveRecoveryRequired), [.setStatusMessage("Save failed")])
+        XCTAssertTrue(state.isAutosaveRecoveryPresented)
+
+        XCTAssertEqual(state.applying(.autosaveRecoveryPresented(false)), [])
+        XCTAssertFalse(state.isAutosaveRecoveryPresented)
+
+        XCTAssertEqual(state.applying(.autosaveRecoveryResolved("Saved")), [.setStatusMessage("Saved")])
+        XCTAssertFalse(state.isAutosaveRecoveryPresented)
+        XCTAssertEqual(state.statusMessage, "Saved")
+        XCTAssertEqual(state.statusSeverity, .success)
+        XCTAssertNil(state.autosaveFailureMessage)
+    }
+
+    func testAutosaveFailureKeepsTypedSeverityAndDetailedRecoveryReason() {
+        var state = EditorWorkspaceState()
+
+        XCTAssertEqual(state.applying(.statusUpdated(EditorWorkspaceStatus(
+            message: "Save failed",
+            severity: .failure,
+            domain: .autosave,
+            failureDetail: "The disk is full."
+        ))), [.setStatusMessage("Save failed")])
+        XCTAssertEqual(state.statusSeverity, .failure)
+        XCTAssertEqual(state.autosaveFailureMessage, "The disk is full.")
+
+        XCTAssertEqual(state.applying(.statusUpdated(EditorWorkspaceStatus(
+            message: "Exported demo.mov",
+            severity: .success
+        ))), [])
+        XCTAssertEqual(state.statusMessage, "Save failed")
+        XCTAssertEqual(state.statusSeverity, .failure)
+
+        XCTAssertEqual(state.applying(.autosaveRecoveryRequired), [])
+        XCTAssertTrue(state.isAutosaveRecoveryPresented)
+        XCTAssertEqual(state.autosaveFailureMessage, "The disk is full.")
+
+        XCTAssertEqual(state.applying(.autosaveRetryStarted), [.setStatusMessage("Retrying save…")])
+        XCTAssertTrue(state.isAutosaveRetryInProgress)
+        XCTAssertEqual(state.statusSeverity, .progress)
+        XCTAssertEqual(state.autosaveFailureMessage, "The disk is full.")
+        XCTAssertEqual(state.applying(.statusUpdated(EditorWorkspaceStatus(
+            message: "Save failed",
+            severity: .failure,
+            domain: .autosave,
+            failureDetail: "The disk is still full."
+        ))), [.setStatusMessage("Save failed")])
+        XCTAssertEqual(state.applying(.autosaveRetryFinished), [])
+        XCTAssertFalse(state.isAutosaveRetryInProgress)
+        XCTAssertEqual(state.statusSeverity, .failure)
+        XCTAssertEqual(state.autosaveFailureMessage, "The disk is still full.")
+
+        XCTAssertEqual(state.applying(.autosaveRecoveryResolved("Saved")), [.setStatusMessage("Saved")])
+        XCTAssertEqual(state.statusSeverity, .success)
+        XCTAssertNil(state.autosaveFailureMessage)
+
+        XCTAssertEqual(state.applying(.statusCleared), [.setStatusMessage("")])
+        XCTAssertEqual(state.statusSeverity, .none)
+        XCTAssertEqual(state.statusMessage, "")
+    }
+
     func testWorkspaceExportRequestsAreLocalEditorCommands() {
         var state = EditorWorkspaceState()
         let videoURL = URL(fileURLWithPath: "/tmp/video.mov")
@@ -825,4 +1044,22 @@ private func makeRecordingSession(hasCamera: Bool, showCursor: Bool) -> Recordin
         showCursorOverlay: showCursor,
         cursorTelemetryPath: nil
     )
+}
+
+private actor EditorAutosaveGate {
+    private var isOpen = false
+    private var continuation: CheckedContinuation<Void, Never>?
+
+    func wait() async {
+        guard !isOpen else { return }
+        await withCheckedContinuation { continuation in
+            self.continuation = continuation
+        }
+    }
+
+    func open() {
+        isOpen = true
+        continuation?.resume()
+        continuation = nil
+    }
 }

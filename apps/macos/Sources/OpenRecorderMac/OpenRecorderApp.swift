@@ -358,8 +358,6 @@ final class AppWindowActions {
 
     private func hideAppWindowsForCapture() {
         dismissCaptureWindows()
-        dismissWindow("studio")
-        dismissWindow("editor")
         hideApp()
     }
 }

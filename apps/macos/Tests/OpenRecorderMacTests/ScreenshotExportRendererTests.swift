@@ -481,7 +481,7 @@ final class ScreenshotEditorHistoryTests: XCTestCase {
         editor.configure(
             saveHandler: { _ in makeScreenshotProjectSummary() },
             statusHandler: { _ in },
-            setStatusMessage: { _ in },
+            setWorkspaceStatus: { _ in },
             renderPNG: { _, state in
                 renderedState = state
                 return Data("styled-png".utf8)
@@ -521,7 +521,7 @@ final class ScreenshotEditorHistoryTests: XCTestCase {
         editor.configure(
             saveHandler: { _ in makeScreenshotProjectSummary() },
             statusHandler: { _ in },
-            setStatusMessage: { _ in },
+            setWorkspaceStatus: { _ in },
             renderPNG: { _, state in
                 renderedState = state
                 return Data("copied-png".utf8)

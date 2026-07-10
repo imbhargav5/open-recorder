@@ -98,6 +98,27 @@ final class RustServiceClientTests: XCTestCase {
         }
     }
 
+    func testNonReturningServiceIsTerminatedAtConfiguredTimeout() throws {
+        let serviceURL = try makeServiceScript(
+            name: "stalled-service",
+            body: """
+            #!/bin/sh
+            exec /bin/sleep 60
+            """
+        )
+        let client = RustServiceClient(executableURL: serviceURL, callTimeout: 0.05)
+        let startedAt = Date()
+
+        XCTAssertThrowsError(try client.call("listProjects", as: String.self)) { error in
+            guard case RustServiceError.timedOut(let timeout) = error else {
+                XCTFail("Expected timedOut, got \(error).")
+                return
+            }
+            XCTAssertEqual(timeout, 0.05, accuracy: 0.001)
+        }
+        XCTAssertLessThan(Date().timeIntervalSince(startedAt), 2)
+    }
+
     private func makeServiceScript(name: String, body: String) throws -> URL {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("OpenRecorderMacTests-\(UUID().uuidString)", isDirectory: true)

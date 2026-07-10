@@ -48,6 +48,9 @@ struct CaptureOptionsState: Equatable {
 
 enum CaptureOptionsEvent: Equatable {
     case availabilityChanged(Bool)
+    case microphoneEnabledChanged(Bool)
+    case systemAudioChanged(Bool)
+    case cameraEnabledChanged(Bool)
     case devicesRefreshed(microphones: [CaptureDeviceInfo], cameras: [CaptureDeviceInfo])
     case systemAudioToggled
     case microphoneSelectionRequested
@@ -75,6 +78,18 @@ extension CaptureOptionsState {
         switch event {
         case .availabilityChanged(let canChange):
             canChangeOptions = canChange
+            return []
+
+        case .microphoneEnabledChanged(let isEnabled):
+            includeMicrophone = isEnabled
+            return []
+
+        case .systemAudioChanged(let isEnabled):
+            includeSystemAudio = isEnabled
+            return []
+
+        case .cameraEnabledChanged(let isEnabled):
+            includeCamera = isEnabled
             return []
 
         case .devicesRefreshed(let microphones, let cameras):
@@ -151,24 +166,33 @@ extension CaptureOptionsState {
 @Observable
 @MainActor
 final class CaptureOptionsDriver {
-    var state = CaptureOptionsState()
+    private(set) var state = CaptureOptionsState()
 
     @ObservationIgnored private var refreshDevices: () -> (microphones: [CaptureDeviceInfo], cameras: [CaptureDeviceInfo]) = { ([], []) }
     @ObservationIgnored private var requestWindow: (NativeWindowCommandAction) -> Void = { _ in }
     @ObservationIgnored private var setStatusMessage: (String) -> Void = { _ in }
+    @ObservationIgnored private var stateWillChange: () -> Void = {}
 
     func configure(
         refreshDevices: @escaping () -> (microphones: [CaptureDeviceInfo], cameras: [CaptureDeviceInfo]) = { ([], []) },
         requestWindow: @escaping (NativeWindowCommandAction) -> Void = { _ in },
-        setStatusMessage: @escaping (String) -> Void = { _ in }
+        setStatusMessage: @escaping (String) -> Void = { _ in },
+        stateWillChange: @escaping () -> Void = {}
     ) {
         self.refreshDevices = refreshDevices
         self.requestWindow = requestWindow
         self.setStatusMessage = setStatusMessage
+        self.stateWillChange = stateWillChange
     }
 
     func send(_ event: CaptureOptionsEvent) {
-        perform(state.applying(event))
+        var nextState = state
+        let effects = nextState.applying(event)
+        if nextState != state {
+            stateWillChange()
+            state = nextState
+        }
+        perform(effects)
     }
 
     func binding(_ keyPath: WritableKeyPath<CaptureOptionsState, Bool>) -> Binding<Bool> {
@@ -176,12 +200,20 @@ final class CaptureOptionsDriver {
             get: { self.state[keyPath: keyPath] },
             set: { value in
                 switch keyPath {
+                case \.includeMicrophone:
+                    self.send(.microphoneEnabledChanged(value))
+                case \.includeSystemAudio:
+                    self.send(.systemAudioChanged(value))
+                case \.includeCamera:
+                    self.send(.cameraEnabledChanged(value))
                 case \.showCursor:
                     self.send(.cursorVisibilityChanged(value))
                 case \.showClicks:
                     self.send(.clickVisibilityChanged(value))
+                case \.canChangeOptions:
+                    self.send(.availabilityChanged(value))
                 default:
-                    self.state[keyPath: keyPath] = value
+                    assertionFailure("Unsupported capture-options binding")
                 }
             }
         )
@@ -231,6 +263,7 @@ struct SourceSelectorState: Equatable {
 }
 
 enum SourceSelectorEvent: Equatable {
+    case visibleTabsChanged([SourceSelectorTab])
     case tabSelected(SourceSelectorTab)
     case preferredSourceKindSynced(CaptureSourceKind?)
     case heightMeasured(CGFloat)
@@ -250,6 +283,13 @@ enum SourceSelectorEffect: Equatable {
 extension SourceSelectorState {
     mutating func applying(_ event: SourceSelectorEvent) -> [SourceSelectorEffect] {
         switch event {
+        case .visibleTabsChanged(let tabs):
+            visibleTabs = tabs
+            if !visibleTabs.contains(sourceTab), let firstTab = visibleTabs.first {
+                sourceTab = firstTab
+            }
+            return []
+
         case .tabSelected(let tab):
             guard visibleTabs.contains(tab) else { return [] }
             sourceTab = tab
@@ -282,7 +322,7 @@ extension SourceSelectorState {
 @Observable
 @MainActor
 final class SourceSelectorDriver {
-    var state: SourceSelectorState
+    private(set) var state: SourceSelectorState
 
     @ObservationIgnored private var refreshSources: () -> Void = {}
     @ObservationIgnored private var cancel: () -> Void = {}
@@ -434,7 +474,7 @@ extension OnboardingMachineState {
 @Observable
 @MainActor
 final class OnboardingDriver {
-    var state: OnboardingMachineState
+    private(set) var state: OnboardingMachineState
 
     @ObservationIgnored private var currentPermissions: () -> (screen: ScreenRecordingPermissionState, accessibility: AccessibilityPermissionState)
     @ObservationIgnored private var requestScreenPermission: () -> ScreenRecordingPermissionRequestOutcome
@@ -442,6 +482,7 @@ final class OnboardingDriver {
     @ObservationIgnored private var openScreenRecordingSettings: () -> Void
     @ObservationIgnored private var openAccessibilitySettings: () -> Void
     @ObservationIgnored private var completeOnboarding: () -> Bool
+    @ObservationIgnored private var stateWillChange: () -> Void = {}
 
     init(
         screenRecordingPermissionState: ScreenRecordingPermissionState,
@@ -465,7 +506,8 @@ final class OnboardingDriver {
         requestAccessibilityPermission: @escaping () -> AccessibilityPermissionRequestOutcome,
         openScreenRecordingSettings: @escaping () -> Void,
         openAccessibilitySettings: @escaping () -> Void,
-        completeOnboarding: @escaping () -> Bool
+        completeOnboarding: @escaping () -> Bool,
+        stateWillChange: @escaping () -> Void = {}
     ) {
         self.currentPermissions = currentPermissions
         self.requestScreenPermission = requestScreenPermission
@@ -473,10 +515,17 @@ final class OnboardingDriver {
         self.openScreenRecordingSettings = openScreenRecordingSettings
         self.openAccessibilitySettings = openAccessibilitySettings
         self.completeOnboarding = completeOnboarding
+        self.stateWillChange = stateWillChange
     }
 
     func send(_ event: OnboardingEvent) {
-        perform(state.applying(event))
+        var nextState = state
+        let effects = nextState.applying(event)
+        if nextState != state {
+            stateWillChange()
+            state = nextState
+        }
+        perform(effects)
     }
 
     private func perform(_ effects: [OnboardingEffect]) {
@@ -503,8 +552,6 @@ final class OnboardingDriver {
 }
 
 struct SettingsMachineState: Equatable {
-    var serviceHealth: HealthPayload?
-    var paths: AppPaths?
     var createZoomsAutomatically: Bool
     var autoZoomAnimationPreset: TimelineZoomAnimationPreset = .balanced
     var statusMessage = ""
@@ -512,9 +559,8 @@ struct SettingsMachineState: Equatable {
 }
 
 enum SettingsEvent: Equatable {
-    case appeared(serviceHealth: HealthPayload?, paths: AppPaths?)
     case serviceRefreshRequested
-    case serviceRefreshSucceeded(serviceHealth: HealthPayload?, paths: AppPaths?)
+    case serviceRefreshSucceeded
     case serviceRefreshFailed(String)
     case autoZoomPreferenceSynced(Bool)
     case autoZoomPreferenceChanged(Bool)
@@ -539,20 +585,13 @@ enum SettingsEffect: Equatable {
 extension SettingsMachineState {
     mutating func applying(_ event: SettingsEvent) -> [SettingsEffect] {
         switch event {
-        case .appeared(let serviceHealth, let paths):
-            self.serviceHealth = serviceHealth
-            self.paths = paths
-            return []
-
         case .serviceRefreshRequested:
             isRefreshingService = true
             statusMessage = "Checking service..."
             return [.refreshService]
 
-        case .serviceRefreshSucceeded(let serviceHealth, let paths):
+        case .serviceRefreshSucceeded:
             isRefreshingService = false
-            self.serviceHealth = serviceHealth
-            self.paths = paths
             statusMessage = "Rust service ready"
             return []
 
@@ -598,7 +637,7 @@ extension SettingsMachineState {
 @Observable
 @MainActor
 final class SettingsDriver {
-    var state: SettingsMachineState
+    private(set) var state: SettingsMachineState
 
     @ObservationIgnored private var refreshService: () -> Void = {}
     @ObservationIgnored private var persistAutoZoomPreference: (Bool) -> Void = { _ in }
@@ -607,6 +646,7 @@ final class SettingsDriver {
     @ObservationIgnored private var openScreenRecordingSettings: () -> Void = {}
     @ObservationIgnored private var openAccessibilitySettings: () -> Void = {}
     @ObservationIgnored private var showOnboarding: () -> Void = {}
+    @ObservationIgnored private var stateWillChange: () -> Void = {}
 
     init(createZoomsAutomatically: Bool, autoZoomAnimationPreset: TimelineZoomAnimationPreset = .balanced) {
         state = SettingsMachineState(
@@ -622,7 +662,8 @@ final class SettingsDriver {
         openFolder: @escaping (String) -> Void = { _ in },
         openScreenRecordingSettings: @escaping () -> Void = {},
         openAccessibilitySettings: @escaping () -> Void = {},
-        showOnboarding: @escaping () -> Void = {}
+        showOnboarding: @escaping () -> Void = {},
+        stateWillChange: @escaping () -> Void = {}
     ) {
         self.refreshService = refreshService
         self.persistAutoZoomPreference = persistAutoZoomPreference
@@ -631,10 +672,17 @@ final class SettingsDriver {
         self.openScreenRecordingSettings = openScreenRecordingSettings
         self.openAccessibilitySettings = openAccessibilitySettings
         self.showOnboarding = showOnboarding
+        self.stateWillChange = stateWillChange
     }
 
     func send(_ event: SettingsEvent) {
-        perform(state.applying(event))
+        var nextState = state
+        let effects = nextState.applying(event)
+        if nextState != state {
+            stateWillChange()
+            state = nextState
+        }
+        perform(effects)
     }
 
     var autoZoomBinding: Binding<Bool> {

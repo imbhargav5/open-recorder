@@ -356,6 +356,7 @@ final class VideoEditorDriver {
     @ObservationIgnored private var pausePlayback: () -> Void = {}
     @ObservationIgnored private var exportVideo: (URL?, VideoExportOptions, TimelineEditSnapshot) -> Void = { _, _, _ in }
     @ObservationIgnored private var clearVideoExportDialogState: () -> Void = {}
+    @ObservationIgnored private var exportLaunchTask: Task<Void, Never>?
 
     func configure(
         applyTimelineSnapshot: @escaping (TimelineEditSnapshot) -> Void,
@@ -475,6 +476,27 @@ final class VideoEditorDriver {
         )
     }
 
+    func flushPendingAutosave() async -> Bool {
+        await autosave.flush()
+    }
+
+    var hasPendingAutosave: Bool {
+        autosave.hasPendingChanges
+    }
+
+    func abandonPendingAutosave() -> Bool {
+        autosave.abandonPendingChanges()
+    }
+
+    var canAbandonPendingAutosave: Bool {
+        autosave.canAbandonPendingChanges
+    }
+
+    func cancelPendingExportLaunch() {
+        exportLaunchTask?.cancel()
+        exportLaunchTask = nil
+    }
+
     private func updateVideoValue<Value: Equatable>(
         _ keyPath: WritableKeyPath<ProjectVideoEditorState, Value>,
         to value: Value
@@ -507,34 +529,29 @@ final class VideoEditorDriver {
             case .scheduleAutosave(let snapshot):
                 autosave.schedule(snapshot)
             case .flushAutosave(let snapshot):
-                Task { [weak self] in
-                    await self?.flushAutosave(snapshot)
+                let autosave = autosave
+                autosave.schedule(snapshot)
+                Task {
+                    await autosave.flush()
                 }
             case .pausePlayback:
                 pausePlayback()
             case .startVideoExport(let recordingURL, let options, let edits, let snapshot):
-                Task { [weak self] in
-                    await self?.flushAndExport(recordingURL: recordingURL, options: options, edits: edits, snapshot: snapshot)
+                cancelPendingExportLaunch()
+                let autosave = autosave
+                let exportVideo = exportVideo
+                exportLaunchTask = Task {
+                    await autosave.flush(snapshot)
+                    guard !Task.isCancelled else { return }
+                    exportVideo(recordingURL, options, edits)
                 }
             case .clearVideoExportDialogState:
+                cancelPendingExportLaunch()
                 clearVideoExportDialogState()
             }
         }
     }
 
-    private func flushAutosave(_ snapshot: ProjectAutosaveSnapshot?) async {
-        await autosave.flush(snapshot)
-    }
-
-    private func flushAndExport(
-        recordingURL: URL?,
-        options: VideoExportOptions,
-        edits: TimelineEditSnapshot,
-        snapshot: ProjectAutosaveSnapshot?
-    ) async {
-        await autosave.flush(snapshot)
-        exportVideo(recordingURL, options, edits)
-    }
 }
 
 struct ScreenshotEditorSessionContext: Equatable {
@@ -555,8 +572,68 @@ struct EditorExportRequest: Identifiable, Equatable {
     var editorSessionID: UUID?
 }
 
+enum EditorWorkspaceStatusSeverity: Equatable {
+    case none
+    case informational
+    case progress
+    case success
+    case failure
+}
+
+enum EditorWorkspaceStatusDomain: Equatable {
+    case general
+    case autosave
+}
+
+extension VideoExportPhase {
+    var editorWorkspaceStatusSeverity: EditorWorkspaceStatusSeverity {
+        switch self {
+        case .idle:
+            .none
+        case .exporting, .saving:
+            .progress
+        case .savePending:
+            .informational
+        case .success:
+            .success
+        case .failed:
+            .failure
+        }
+    }
+}
+
+struct EditorWorkspaceStatus: Equatable {
+    var message: String
+    var severity: EditorWorkspaceStatusSeverity
+    var domain: EditorWorkspaceStatusDomain
+    var failureDetail: String?
+
+    init(
+        message: String,
+        severity: EditorWorkspaceStatusSeverity,
+        domain: EditorWorkspaceStatusDomain = .general,
+        failureDetail: String? = nil
+    ) {
+        self.message = message
+        self.severity = severity
+        self.domain = domain
+        self.failureDetail = failureDetail
+    }
+}
+
+enum EditorWorkspaceAutosaveSource: Hashable {
+    case video
+    case screenshot
+    case unspecified
+}
+
 struct EditorWorkspaceState: Equatable {
     var selectedSection: AppSection = .editor
+    var statusMessage = ""
+    var statusSeverity: EditorWorkspaceStatusSeverity = .none
+    var autosaveFailureMessage: String?
+    var isAutosaveRetryInProgress = false
+    var isAutosaveRecoveryPresented = false
     var isShortcutsHelpPresented = false
     var videoExportRequest: EditorExportRequest?
     var screenshotExportRequest: EditorExportRequest?
@@ -565,6 +642,13 @@ struct EditorWorkspaceState: Equatable {
 enum EditorWorkspaceEvent: Equatable {
     case appSectionSynced(AppSection)
     case sectionSelected(AppSection)
+    case statusUpdated(EditorWorkspaceStatus)
+    case statusCleared
+    case autosaveRetryStarted
+    case autosaveRetryFinished
+    case autosaveRecoveryRequired
+    case autosaveRecoveryPresented(Bool)
+    case autosaveRecoveryResolved(String)
     case shortcutsHelpToggled
     case shortcutsHelpPresented(Bool)
     case videoExportRequested(URL?, editorSessionID: UUID?)
@@ -596,6 +680,50 @@ extension EditorWorkspaceState {
             selectedSection = section
             return [.setAppSection(section)]
 
+        case .statusUpdated(let status):
+            return applyStatus(status)
+
+        case .statusCleared:
+            guard autosaveFailureMessage == nil else { return [] }
+            guard !statusMessage.isEmpty || statusSeverity != .none else { return [] }
+            statusMessage = ""
+            statusSeverity = .none
+            return [.setStatusMessage("")]
+
+        case .autosaveRetryStarted:
+            guard !isAutosaveRetryInProgress else { return [] }
+            isAutosaveRetryInProgress = true
+            statusMessage = "Retrying save…"
+            statusSeverity = .progress
+            return [.setStatusMessage("Retrying save…")]
+
+        case .autosaveRetryFinished:
+            guard isAutosaveRetryInProgress else { return [] }
+            isAutosaveRetryInProgress = false
+            return []
+
+        case .autosaveRecoveryRequired:
+            isAutosaveRecoveryPresented = true
+            let didChangeStatus = statusMessage != "Save failed" || statusSeverity != .failure
+            statusMessage = "Save failed"
+            statusSeverity = .failure
+            if autosaveFailureMessage == nil {
+                autosaveFailureMessage = "Open Recorder couldn’t save the latest changes."
+            }
+            return didChangeStatus ? [.setStatusMessage("Save failed")] : []
+
+        case .autosaveRecoveryPresented(let isPresented):
+            isAutosaveRecoveryPresented = isPresented
+            return []
+
+        case .autosaveRecoveryResolved(let message):
+            isAutosaveRecoveryPresented = false
+            isAutosaveRetryInProgress = false
+            statusMessage = message
+            statusSeverity = .success
+            autosaveFailureMessage = nil
+            return [.setStatusMessage(message)]
+
         case .shortcutsHelpToggled:
             isShortcutsHelpPresented.toggle()
             return []
@@ -606,14 +734,20 @@ extension EditorWorkspaceState {
 
         case .videoExportRequested(let url, let editorSessionID):
             guard let url else {
-                return [.setStatusMessage("Open a recording first.")]
+                return applyStatus(EditorWorkspaceStatus(
+                    message: "Open a recording first.",
+                    severity: .failure
+                ))
             }
             videoExportRequest = EditorExportRequest(url: url, editorSessionID: editorSessionID)
             return []
 
         case .screenshotExportRequested(let url, let editorSessionID):
             guard let url else {
-                return [.setStatusMessage("Open a screenshot first.")]
+                return applyStatus(EditorWorkspaceStatus(
+                    message: "Open a screenshot first.",
+                    severity: .failure
+                ))
             }
             screenshotExportRequest = EditorExportRequest(url: url, editorSessionID: editorSessionID)
             return []
@@ -644,18 +778,57 @@ extension EditorWorkspaceState {
             return [.clearTimelineSelection]
         }
     }
+
+    private mutating func applyStatus(_ status: EditorWorkspaceStatus) -> [EditorWorkspaceEffect] {
+        if autosaveFailureMessage != nil, status.domain == .general {
+            return []
+        }
+
+        let failureDetailChanged = status.domain == .autosave
+            && status.severity == .failure
+            && autosaveFailureMessage != (status.failureDetail ?? status.message)
+        guard statusMessage != status.message
+                || statusSeverity != status.severity
+                || failureDetailChanged else {
+            return []
+        }
+        statusMessage = status.message
+        statusSeverity = status.severity
+        if status.domain == .autosave, status.severity == .failure {
+            autosaveFailureMessage = status.failureDetail ?? status.message
+        } else if status.domain == .autosave, status.severity == .success {
+            autosaveFailureMessage = nil
+        }
+        return [.setStatusMessage(status.message)]
+    }
 }
 
 @Observable
 @MainActor
 final class EditorWorkspaceDriver {
-    var state = EditorWorkspaceState()
+    private(set) var state = EditorWorkspaceState()
     let video = VideoEditorDriver()
     let timeline = TimelineEditDriver()
     let screenshot = ScreenshotEditorDriver()
+    let videoExport = VideoExportDriver()
 
+    @ObservationIgnored private let synchronizesAppShell: Bool
     @ObservationIgnored private var setAppSection: (AppSection) -> Void = { _ in }
     @ObservationIgnored private var setStatusMessage: (String) -> Void = { _ in }
+    @ObservationIgnored private var statusClearTask: Task<Void, Never>?
+    @ObservationIgnored private var pendingAutosaveFlushID: UUID?
+    @ObservationIgnored private var pendingAutosaveFlushTask: Task<Bool, Never>?
+    @ObservationIgnored private var isAggregatingAutosaveFlush = false
+    @ObservationIgnored private var autosaveFailureDuringFlush: String?
+    @ObservationIgnored private var autosaveFailuresBySource: [EditorWorkspaceAutosaveSource: String] = [:]
+
+    init(synchronizesAppShell: Bool = false) {
+        self.synchronizesAppShell = synchronizesAppShell
+    }
+
+    deinit {
+        statusClearTask?.cancel()
+    }
 
     func configure(
         setAppSection: @escaping (AppSection) -> Void,
@@ -673,6 +846,13 @@ final class EditorWorkspaceDriver {
         Binding(
             get: { self.state.isShortcutsHelpPresented },
             set: { self.send(.shortcutsHelpPresented($0)) }
+        )
+    }
+
+    var autosaveRecoveryBinding: Binding<Bool> {
+        Binding(
+            get: { self.state.isAutosaveRecoveryPresented },
+            set: { self.send(.autosaveRecoveryPresented($0)) }
         )
     }
 
@@ -714,13 +894,168 @@ final class EditorWorkspaceDriver {
         return true
     }
 
+    func flushPendingAutosaves() async -> Bool {
+        if let pendingAutosaveFlushTask {
+            return await pendingAutosaveFlushTask.value
+        }
+
+        let flushID = UUID()
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return false }
+            let didFlush = await performAutosaveFlush()
+            if pendingAutosaveFlushID == flushID {
+                pendingAutosaveFlushID = nil
+                pendingAutosaveFlushTask = nil
+            }
+            return didFlush
+        }
+        pendingAutosaveFlushID = flushID
+        pendingAutosaveFlushTask = task
+        return await task.value
+    }
+
+    var hasPendingAutosaves: Bool {
+        video.hasPendingAutosave || screenshot.hasPendingAutosave
+    }
+
+    func discardTransientState() {
+        video.cancelPendingExportLaunch()
+        videoExport.clear()
+    }
+
+    func abandonPendingAutosaves() -> Bool {
+        guard canAbandonPendingAutosaves else {
+            return false
+        }
+        let didAbandonVideo = video.abandonPendingAutosave()
+        let didAbandonScreenshot = screenshot.abandonPendingAutosave()
+        return didAbandonVideo && didAbandonScreenshot
+    }
+
+    var canAbandonPendingAutosaves: Bool {
+        video.canAbandonPendingAutosave && screenshot.canAbandonPendingAutosave
+    }
+
+    @discardableResult
+    func retryPendingAutosaves() async -> Bool {
+        let didSave = await retryPendingAutosavesKeepingWindowOpen()
+        if !didSave {
+            send(.autosaveRecoveryRequired)
+        }
+        return didSave
+    }
+
+    @discardableResult
+    func retryPendingAutosavesKeepingWindowOpen() async -> Bool {
+        guard !state.isAutosaveRetryInProgress else { return false }
+        send(.autosaveRetryStarted)
+        let didSave = await flushPendingAutosaves()
+        send(.autosaveRetryFinished)
+        if didSave {
+            autosaveFailuresBySource.removeAll()
+            send(.autosaveRecoveryResolved("Saved"))
+            scheduleStatusClear()
+        }
+        return didSave
+    }
+
+    func handleProjectAutosaveStatus(
+        _ status: ProjectAutosaveStatus,
+        source: EditorWorkspaceAutosaveSource = .unspecified
+    ) {
+        statusClearTask?.cancel()
+        switch status {
+        case .saving:
+            guard currentAutosaveFailureMessage == nil else { return }
+            send(.statusUpdated(EditorWorkspaceStatus(
+                message: "Saving…",
+                severity: .progress,
+                domain: .autosave
+            )))
+        case .saved:
+            autosaveFailuresBySource.removeValue(forKey: source)
+            if let failureMessage = currentAutosaveFailureMessage {
+                sendAutosaveFailure(failureMessage)
+                return
+            }
+            send(.statusUpdated(EditorWorkspaceStatus(
+                message: "Saved",
+                severity: .success,
+                domain: .autosave
+            )))
+            scheduleStatusClear()
+        case .failed(let message):
+            autosaveFailuresBySource[source] = message
+            if isAggregatingAutosaveFlush, autosaveFailureDuringFlush == nil {
+                autosaveFailureDuringFlush = message
+            }
+            sendAutosaveFailure(currentAutosaveFailureMessage ?? message)
+        }
+    }
+
+    private func performAutosaveFlush() async -> Bool {
+        autosaveFailureDuringFlush = nil
+        isAggregatingAutosaveFlush = true
+        defer {
+            isAggregatingAutosaveFlush = false
+            autosaveFailureDuringFlush = nil
+        }
+
+        let didFlushVideo = await video.flushPendingAutosave()
+        let didFlushScreenshot = await screenshot.flushPendingAutosave()
+        guard didFlushVideo && didFlushScreenshot else {
+            let message = currentAutosaveFailureMessage
+                ?? state.autosaveFailureMessage
+                ?? "Open Recorder couldn’t save the latest changes."
+            sendAutosaveFailure(message)
+            return false
+        }
+        return true
+    }
+
+    private var currentAutosaveFailureMessage: String? {
+        autosaveFailuresBySource[.video]
+            ?? autosaveFailuresBySource[.screenshot]
+            ?? autosaveFailuresBySource[.unspecified]
+            ?? autosaveFailureDuringFlush
+    }
+
+    private func sendAutosaveFailure(_ message: String) {
+        send(.statusUpdated(EditorWorkspaceStatus(
+            message: "Save failed",
+            severity: .failure,
+            domain: .autosave,
+            failureDetail: message
+        )))
+    }
+
+    private func scheduleStatusClear() {
+        statusClearTask?.cancel()
+        statusClearTask = Task { @MainActor [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: 2_000_000_000)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled,
+                  self?.state.statusSeverity == .success else {
+                return
+            }
+            self?.send(.statusCleared)
+        }
+    }
+
     private func perform(_ effects: [EditorWorkspaceEffect]) {
         for effect in effects {
             switch effect {
             case .setAppSection(let section):
-                setAppSection(section)
+                if synchronizesAppShell {
+                    setAppSection(section)
+                }
             case .setStatusMessage(let message):
-                setStatusMessage(message)
+                if synchronizesAppShell {
+                    setStatusMessage(message)
+                }
             case .undoTimeline:
                 timeline.undo()
             case .redoTimeline:

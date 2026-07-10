@@ -174,7 +174,7 @@ extension VideoExportState {
 @Observable
 @MainActor
 final class VideoExportDriver {
-    var state = VideoExportState()
+    private(set) var state = VideoExportState()
 
     @ObservationIgnored private var renderVideo: (
         _ sourceURL: URL,

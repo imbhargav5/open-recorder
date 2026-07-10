@@ -1,8 +1,42 @@
+import Combine
+import Observation
 import XCTest
 @testable import OpenRecorderMac
 
 @MainActor
 final class AppModelStateTests: XCTestCase {
+    func testDriverBackedFacadeParticipatesInObservationTracking() async {
+        let model = AppModel()
+        let changeObserved = expectation(description: "Driver-backed facade change observed")
+
+        withObservationTracking {
+            _ = model.includeCamera
+        } onChange: {
+            changeObserved.fulfill()
+        }
+
+        model.includeCamera = true
+
+        await fulfillment(of: [changeObserved], timeout: 1)
+    }
+
+    func testDriverBackedFacadePreservesObservableObjectNotifications() throws {
+        let suiteName = "AppModelStateTests.notifications.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let model = AppModel(recordingPreferences: RecordingPreferencesStore(defaults: defaults))
+        var emissionCount = 0
+        let observation = model.objectWillChange.sink {
+            emissionCount += 1
+        }
+
+        model.includeMicrophone.toggle()
+        model.createZoomsAutomatically.toggle()
+
+        XCTAssertEqual(emissionCount, 2)
+        withExtendedLifetime(observation) {}
+    }
+
     func testTimestampedFileNameUsesProvidedDate() {
         let date = Date(timeIntervalSince1970: 1_767_267_303)
         let formatter: DateFormatter = DateFormatter()
@@ -685,7 +719,7 @@ final class AppModelStateTests: XCTestCase {
             runRecordingCountdown: { _ in }
         )
         let source = makeSource()
-        model.captureOptions.state.includeCamera = true
+        model.includeCamera = true
         model.setCaptureStateForTesting(.ready(.recording, source))
 
         model.captureMachine.send(.recordingFilePrepared(source, outputURL))
@@ -1236,7 +1270,7 @@ final class AppModelStateTests: XCTestCase {
         XCTAssertEqual(dismissedWindows, ["hud", "source-selector", "area-selector", "microphone-selector", "camera-selector"])
     }
 
-    func testAppWindowActionsHideAppWindowsForCaptureDismissesEditorsToo() {
+    func testAppWindowActionsHideAppWindowsForCapturePreservesEditorWindows() {
         let actions = AppWindowActions()
         var openedWindows: [String] = []
         var dismissedWindows: [String] = []
@@ -1257,9 +1291,7 @@ final class AppModelStateTests: XCTestCase {
             "source-selector",
             "area-selector",
             "microphone-selector",
-            "camera-selector",
-            "studio",
-            "editor"
+            "camera-selector"
         ])
         XCTAssertTrue(didHideApp)
     }

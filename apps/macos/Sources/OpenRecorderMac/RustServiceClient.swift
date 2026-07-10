@@ -1,9 +1,11 @@
+import Darwin
 import Foundation
 
 enum RustServiceError: LocalizedError {
     case missingExecutable
     case invalidParameters
     case processFailed(String)
+    case timedOut(TimeInterval)
     case badResponse
     case serviceError(String)
 
@@ -15,6 +17,8 @@ enum RustServiceError: LocalizedError {
             "The request could not be encoded for the Rust service."
         case .processFailed(let message):
             message
+        case .timedOut(let timeout):
+            "The Rust service did not respond within \(Int(timeout.rounded())) seconds."
         case .badResponse:
             "The Rust service returned an invalid response."
         case .serviceError(let message):
@@ -31,8 +35,10 @@ struct RustServiceClient: Sendable {
     }
 
     private let executableURL: URL?
+    private let callTimeout: TimeInterval
 
-    init() {
+    init(callTimeout: TimeInterval = 5) {
+        self.callTimeout = callTimeout
         if let override = ProcessInfo.processInfo.environment["OPEN_RECORDER_SERVICE_PATH"],
            !override.isEmpty {
             executableURL = URL(fileURLWithPath: override)
@@ -41,8 +47,9 @@ struct RustServiceClient: Sendable {
         }
     }
 
-    init(executableURL: URL?) {
+    init(executableURL: URL?, callTimeout: TimeInterval = 5) {
         self.executableURL = executableURL
+        self.callTimeout = callTimeout
     }
 
     var isAvailable: Bool {
@@ -85,12 +92,34 @@ struct RustServiceClient: Sendable {
         process.standardOutput = outputPipe
         process.standardError = errorPipe
 
-        try process.run()
+        let processExit = DispatchGroup()
+        processExit.enter()
+        process.terminationHandler = { _ in
+            processExit.leave()
+        }
+
+        do {
+            try process.run()
+        } catch {
+            process.terminationHandler = nil
+            processExit.leave()
+            throw error
+        }
         let outputReader = PipeDataReader(pipe: outputPipe, label: "dev.openrecorder.service.stdout")
         let errorReader = PipeDataReader(pipe: errorPipe, label: "dev.openrecorder.service.stderr")
         outputReader.start()
         errorReader.start()
-        process.waitUntilExit()
+
+        guard processExit.wait(timeout: .now() + callTimeout) == .success else {
+            process.terminate()
+            if processExit.wait(timeout: .now() + 1) == .timedOut {
+                Darwin.kill(process.processIdentifier, SIGKILL)
+                _ = processExit.wait(timeout: .now() + 1)
+            }
+            outputReader.stop()
+            errorReader.stop()
+            throw RustServiceError.timedOut(callTimeout)
+        }
 
         let outputData = outputReader.waitForData()
         let errorData = errorReader.waitForData()
@@ -154,5 +183,9 @@ private final class PipeDataReader: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return data
+    }
+
+    func stop() {
+        try? fileHandle.close()
     }
 }

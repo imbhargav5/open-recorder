@@ -6,6 +6,8 @@ import UniformTypeIdentifiers
 
 struct SettingsStudioView: View {
     var driver: SettingsDriver
+    var serviceHealth: HealthPayload?
+    var paths: AppPaths?
 
     var body: some View {
         ScrollView {
@@ -14,8 +16,8 @@ struct SettingsStudioView: View {
                     .font(.system(size: 26, weight: .semibold))
                     .foregroundStyle(Theme.fg)
                 SettingsSection(title: "Service") {
-                    SettingsRow(title: "Status", value: driver.state.serviceHealth.map { "\($0.service) \($0.version)" } ?? "Unavailable")
-                    SettingsRow(title: "Platform", value: driver.state.serviceHealth?.platform ?? "macOS")
+                    SettingsRow(title: "Status", value: serviceHealth.map { "\($0.service) \($0.version)" } ?? "Unavailable")
+                    SettingsRow(title: "Platform", value: serviceHealth?.platform ?? "macOS")
                     StudioButton(hitTarget: .rounded(8)) {
                         driver.send(.serviceRefreshRequested)
                     } label: {
@@ -28,13 +30,13 @@ struct SettingsStudioView: View {
                 }
 
                 SettingsSection(title: "Folders") {
-                    FolderRow(title: "Recordings", path: driver.state.paths?.recordingsDir) {
+                    FolderRow(title: "Recordings", path: paths?.recordingsDir) {
                         driver.send(.folderOpenRequested($0))
                     }
-                    FolderRow(title: "Screenshots", path: driver.state.paths?.screenshotsDir) {
+                    FolderRow(title: "Screenshots", path: paths?.screenshotsDir) {
                         driver.send(.folderOpenRequested($0))
                     }
-                    FolderRow(title: "Projects", path: driver.state.paths?.projectsDir) {
+                    FolderRow(title: "Projects", path: paths?.projectsDir) {
                         driver.send(.folderOpenRequested($0))
                     }
                 }

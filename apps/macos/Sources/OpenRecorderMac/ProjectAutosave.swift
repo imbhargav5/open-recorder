@@ -49,6 +49,8 @@ final class ProjectAutosaveCoordinator: ObservableObject {
     private var lastSavedSnapshot: ProjectAutosaveSnapshot?
     private var isSaving = false
     private var needsSaveAfterCurrent = false
+    private var isAbandoned = false
+    private var saveCompletionWaiters: [CheckedContinuation<Void, Never>] = []
 
     init(
         debounceNanoseconds: UInt64 = 800_000_000,
@@ -69,7 +71,17 @@ final class ProjectAutosaveCoordinator: ObservableObject {
         self.statusHandler = statusHandler
     }
 
+    var canAbandonPendingChanges: Bool {
+        !isSaving
+    }
+
+    var hasPendingChanges: Bool {
+        guard !isAbandoned else { return false }
+        return isSaving || needsSaveAfterCurrent || latestSnapshot != lastSavedSnapshot
+    }
+
     func markSaved(_ snapshot: ProjectAutosaveSnapshot?) {
+        guard !isAbandoned else { return }
         pendingTask?.cancel()
         pendingTask = nil
         latestSnapshot = snapshot
@@ -77,7 +89,20 @@ final class ProjectAutosaveCoordinator: ObservableObject {
         needsSaveAfterCurrent = false
     }
 
+    @discardableResult
+    func abandonPendingChanges() -> Bool {
+        guard !isSaving else { return false }
+        isAbandoned = true
+        pendingTask?.cancel()
+        pendingTask = nil
+        latestSnapshot = nil
+        lastSavedSnapshot = nil
+        needsSaveAfterCurrent = false
+        return true
+    }
+
     func schedule(_ snapshot: ProjectAutosaveSnapshot?) {
+        guard !isAbandoned else { return }
         guard let snapshot else { return }
         latestSnapshot = snapshot
 
@@ -101,45 +126,66 @@ final class ProjectAutosaveCoordinator: ObservableObject {
                 return
             }
             guard !Task.isCancelled else { return }
-            await self?.saveLatestSnapshot()
+            await self?.runPendingSave()
         }
     }
 
-    func flush(_ snapshot: ProjectAutosaveSnapshot? = nil) async {
+    @discardableResult
+    func flush(_ snapshot: ProjectAutosaveSnapshot? = nil) async -> Bool {
+        guard !isAbandoned else { return true }
         if let snapshot {
             latestSnapshot = snapshot
         }
         pendingTask?.cancel()
         pendingTask = nil
+        if isSaving {
+            needsSaveAfterCurrent = true
+            await withCheckedContinuation { continuation in
+                saveCompletionWaiters.append(continuation)
+            }
+            return latestSnapshot == lastSavedSnapshot
+        }
+        await saveLatestSnapshot()
+        return latestSnapshot == lastSavedSnapshot
+    }
+
+    private func runPendingSave() async {
+        pendingTask = nil
         await saveLatestSnapshot()
     }
 
     private func saveLatestSnapshot() async {
-        guard let snapshot = latestSnapshot,
-              snapshot != lastSavedSnapshot,
-              let saveHandler else {
-            return
-        }
-
+        guard !isAbandoned else { return }
         if isSaving {
             needsSaveAfterCurrent = true
             return
         }
 
+        guard saveHandler != nil else { return }
         isSaving = true
-        statusHandler?(.saving)
-        do {
-            let summary = try await saveHandler(snapshot)
-            lastSavedSnapshot = snapshot
-            statusHandler?(.saved(summary))
-        } catch {
-            statusHandler?(.failed(error.localizedDescription))
-        }
+        repeat {
+            needsSaveAfterCurrent = false
+            guard let snapshot = latestSnapshot,
+                  snapshot != lastSavedSnapshot,
+                  let saveHandler else {
+                break
+            }
+
+            statusHandler?(.saving)
+            do {
+                let summary = try await saveHandler(snapshot)
+                lastSavedSnapshot = snapshot
+                statusHandler?(.saved(summary))
+            } catch {
+                statusHandler?(.failed(error.localizedDescription))
+            }
+        } while needsSaveAfterCurrent
         isSaving = false
 
-        if needsSaveAfterCurrent {
-            needsSaveAfterCurrent = false
-            await saveLatestSnapshot()
+        let waiters = saveCompletionWaiters
+        saveCompletionWaiters.removeAll()
+        for waiter in waiters {
+            waiter.resume()
         }
     }
 }

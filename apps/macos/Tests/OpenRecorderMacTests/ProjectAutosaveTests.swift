@@ -76,6 +76,44 @@ final class ProjectAutosaveCoordinatorTests: XCTestCase {
 
         XCTAssertEqual(statuses, [.saving, .saved(summary)])
     }
+
+    func testFlushWaitsForInFlightSaveAndPersistsNewestSnapshot() async {
+        let first = makeAutosaveSnapshot(title: "First In Flight", splitTime: 1)
+        let second = makeAutosaveSnapshot(title: "Newest", splitTime: 2)
+        let gate = AutosaveTestGate()
+        let firstSaveStarted = expectation(description: "First save started")
+        var savedSnapshots: [ProjectAutosaveSnapshot] = []
+        let coordinator = ProjectAutosaveCoordinator(
+            debounceNanoseconds: 1,
+            saveHandler: { snapshot in
+                if snapshot == first {
+                    firstSaveStarted.fulfill()
+                    await gate.wait()
+                }
+                savedSnapshots.append(snapshot)
+                return makeProjectSummary(for: snapshot)
+            },
+            statusHandler: { _ in }
+        )
+
+        coordinator.schedule(first)
+        await fulfillment(of: [firstSaveStarted], timeout: 1)
+        coordinator.schedule(second)
+
+        var flushReturned = false
+        let flushTask = Task { @MainActor in
+            await coordinator.flush()
+            flushReturned = true
+        }
+        await Task.yield()
+        XCTAssertFalse(flushReturned)
+
+        await gate.open()
+        await flushTask.value
+
+        XCTAssertTrue(flushReturned)
+        XCTAssertEqual(savedSnapshots, [first, second])
+    }
 }
 
 final class ProjectEditorStateCodableTests: XCTestCase {
@@ -274,4 +312,22 @@ private func makeProjectSummary(for snapshot: ProjectAutosaveSnapshot) -> Projec
         lastOpenedAt: "200",
         missing: false
     )
+}
+
+private actor AutosaveTestGate {
+    private var isOpen = false
+    private var continuation: CheckedContinuation<Void, Never>?
+
+    func wait() async {
+        guard !isOpen else { return }
+        await withCheckedContinuation { continuation in
+            self.continuation = continuation
+        }
+    }
+
+    func open() {
+        isOpen = true
+        continuation?.resume()
+        continuation = nil
+    }
 }

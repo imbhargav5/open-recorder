@@ -44,6 +44,9 @@ enum AppShellEvent: Equatable {
     case bootstrapRequested
     case sectionSelected(AppSection)
     case statusChanged(String)
+    case pathsChanged(AppPaths?)
+    case currentVideoURLChanged(URL?)
+    case currentScreenshotURLChanged(URL?)
     case windowCommandRequested(NativeWindowCommandAction, editorSession: EditorSession? = nil)
     case windowCommandConsumed(UUID?)
     case backendRefreshed(paths: AppPaths?, projects: [ProjectSummary], health: HealthPayload?)
@@ -77,6 +80,21 @@ extension AppShellState {
             guard statusMessage != message else { return [] }
             statusMessage = message
             return [.setStatusMessage(message)]
+
+        case .pathsChanged(let paths):
+            guard self.paths != paths else { return [] }
+            self.paths = paths
+            return []
+
+        case .currentVideoURLChanged(let url):
+            guard currentVideoURL != url else { return [] }
+            currentVideoURL = url
+            return []
+
+        case .currentScreenshotURLChanged(let url):
+            guard currentScreenshotURL != url else { return [] }
+            currentScreenshotURL = url
+            return []
 
         case .windowCommandRequested(let action, let editorSession):
             let command = NativeWindowCommand(action: action, editorSession: editorSession)
@@ -146,8 +164,8 @@ extension AppShellState {
 @Observable
 @MainActor
 final class AppShellDriver {
-    var state = AppShellState()
-    let workspace = EditorWorkspaceDriver()
+    private(set) var state = AppShellState()
+    @ObservationIgnored private let workspaces = EditorWorkspaceRegistry()
     let capture = CaptureDriver()
     let captureOptions = CaptureOptionsDriver()
     let inlineSourceSelector = SourceSelectorDriver(sourceTab: .screens)
@@ -157,9 +175,6 @@ final class AppShellDriver {
         accessibilityPermissionState: .requestAvailable
     )
     let settings = SettingsDriver(createZoomsAutomatically: false)
-    let videoExport = VideoExportDriver()
-
-    @ObservationIgnored private var editorWorkspacesBySessionID: [UUID: EditorWorkspaceDriver] = [:]
     @ObservationIgnored private var refreshBackend: () -> Void = {}
     @ObservationIgnored private var emitWindowCommand: (NativeWindowCommand) -> Void = { _ in }
     @ObservationIgnored private var openEditorSession: (EditorSession) -> Void = { _ in }
@@ -169,27 +184,48 @@ final class AppShellDriver {
         refreshBackend: @escaping () -> Void = {},
         emitWindowCommand: @escaping (NativeWindowCommand) -> Void = { _ in },
         openEditorSession: @escaping (EditorSession) -> Void = { _ in },
-        setStatusMessage: @escaping (String) -> Void = { _ in }
+        setStatusMessage: @escaping (String) -> Void = { _ in },
+        configureWorkspace: @escaping (EditorWorkspaceDriver) -> Void = { _ in }
     ) {
         self.refreshBackend = refreshBackend
         self.emitWindowCommand = emitWindowCommand
         self.openEditorSession = openEditorSession
         self.setStatusMessage = setStatusMessage
+        workspaces.configure(configureWorkspace)
     }
 
     func workspace(for editorSession: EditorSession?) -> EditorWorkspaceDriver {
-        guard let editorSession else {
-            return workspace
-        }
-
-        if let workspace = editorWorkspacesBySessionID[editorSession.id] {
-            return workspace
-        }
-
-        let workspace = EditorWorkspaceDriver()
-        editorWorkspacesBySessionID[editorSession.id] = workspace
-        return workspace
+        workspaces.workspace(for: editorSession)
     }
+
+    func activateWorkspace(for editorSession: EditorSession?) {
+        workspaces.activate(sessionID: editorSession?.id)
+    }
+
+    @discardableResult
+    func closeWorkspace(for editorSession: EditorSession?) async -> EditorWorkspaceCloseOutcome {
+        return await workspaces.close(session: editorSession)
+    }
+
+    func beginClosingWorkspace(for editorSession: EditorSession?) -> EditorWorkspaceCloseRequest? {
+        return workspaces.beginClose(session: editorSession)
+    }
+
+    @discardableResult
+    func finishClosingWorkspace(_ request: EditorWorkspaceCloseRequest) async -> EditorWorkspaceCloseOutcome {
+        await workspaces.finishClose(request)
+    }
+
+    @discardableResult
+    func discardWorkspace(for editorSession: EditorSession?) -> Bool {
+        workspaces.discard(session: editorSession)
+    }
+
+    #if DEBUG
+    var sessionWorkspaceCountForTesting: Int {
+        workspaces.sessionCountForTesting
+    }
+    #endif
 
     func send(_ event: AppShellEvent) {
         perform(state.applying(event))

@@ -498,8 +498,6 @@ struct WindowCommandBridge: View {
 
     private func hideAppWindowsForCapture() {
         dismissCaptureWindows()
-        dismissWindow(id: "studio")
-        dismissWindow(id: "editor")
         NSApp.hide(nil)
     }
 }

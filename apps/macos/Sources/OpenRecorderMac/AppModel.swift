@@ -8,59 +8,92 @@ import UniformTypeIdentifiers
 final class AppModel: ObservableObject {
     var selectedSection: AppSection {
         get { appShell.state.selectedSection }
-        set { mutateAppShellState { $0.selectedSection = newValue } }
+        set { sendAppShell(.sectionSelected(newValue)) }
     }
     @Published private(set) var captureState: CaptureState = .choosingMode
     var paths: AppPaths? {
         get { appShell.state.paths }
-        set { mutateAppShellState { $0.paths = newValue } }
+        set { sendAppShell(.pathsChanged(newValue)) }
     }
     var projects: [ProjectSummary] {
         get { appShell.state.projects }
-        set { mutateAppShellState { $0.projects = newValue } }
+        set { sendAppShell(.projectsReplaced(newValue)) }
     }
     var currentVideoURL: URL? {
         get { appShell.state.currentVideoURL }
-        set { mutateAppShellState { $0.currentVideoURL = newValue } }
+        set { sendAppShell(.currentVideoURLChanged(newValue)) }
     }
     var currentScreenshotURL: URL? {
         get { appShell.state.currentScreenshotURL }
-        set { mutateAppShellState { $0.currentScreenshotURL = newValue } }
+        set { sendAppShell(.currentScreenshotURLChanged(newValue)) }
     }
     var lastEditorSession: EditorSession? {
-        get { appShell.state.lastEditorSession }
-        set { mutateAppShellState { $0.lastEditorSession = newValue } }
+        appShell.state.lastEditorSession
     }
     var statusMessage: String {
         get { appShell.state.statusMessage }
-        set { mutateAppShellState { $0.statusMessage = newValue } }
+        set { sendAppShell(.statusChanged(newValue)) }
     }
     var serviceHealth: HealthPayload? {
-        get { appShell.state.serviceHealth }
-        set { mutateAppShellState { $0.serviceHealth = newValue } }
+        appShell.state.serviceHealth
     }
-    @Published var includeMicrophone = false
-    @Published var includeSystemAudio = false
-    @Published var includeCamera = false
-    @Published var showCursor = true
-    @Published var showClicks = false
-    @Published var createZoomsAutomatically: Bool {
-        didSet {
-            UserDefaults.standard.set(createZoomsAutomatically, forKey: Self.createZoomsAutomaticallyDefaultsKey)
+    var includeMicrophone: Bool {
+        get { captureOptions.state.includeMicrophone }
+        set { captureOptions.send(.microphoneEnabledChanged(newValue)) }
+    }
+    var includeSystemAudio: Bool {
+        get { captureOptions.state.includeSystemAudio }
+        set { captureOptions.send(.systemAudioChanged(newValue)) }
+    }
+    var includeCamera: Bool {
+        get { captureOptions.state.includeCamera }
+        set { captureOptions.send(.cameraEnabledChanged(newValue)) }
+    }
+    var showCursor: Bool {
+        get { captureOptions.state.showCursor }
+        set { captureOptions.send(.cursorVisibilityChanged(newValue)) }
+    }
+    var showClicks: Bool {
+        get { captureOptions.state.showClicks }
+        set { captureOptions.send(.clickVisibilityChanged(newValue)) }
+    }
+    var createZoomsAutomatically: Bool {
+        get { appShell.settings.state.createZoomsAutomatically }
+        set { appShell.settings.send(.autoZoomPreferenceChanged(newValue)) }
+    }
+    var autoZoomAnimationPreset: TimelineZoomAnimationPreset {
+        get { appShell.settings.state.autoZoomAnimationPreset }
+        set { appShell.settings.send(.autoZoomAnimationPresetChanged(newValue)) }
+    }
+    var microphoneDevices: [CaptureDeviceInfo] {
+        get { captureOptions.state.microphoneDevices }
+        set {
+            captureOptions.send(.devicesRefreshed(
+                microphones: newValue,
+                cameras: captureOptions.state.cameraDevices
+            ))
         }
     }
-    @Published var autoZoomAnimationPreset: TimelineZoomAnimationPreset {
-        didSet {
-            UserDefaults.standard.set(autoZoomAnimationPreset.rawValue, forKey: Self.autoZoomAnimationPresetDefaultsKey)
+    var cameraDevices: [CaptureDeviceInfo] {
+        get { captureOptions.state.cameraDevices }
+        set {
+            captureOptions.send(.devicesRefreshed(
+                microphones: captureOptions.state.microphoneDevices,
+                cameras: newValue
+            ))
         }
     }
-    @Published var microphoneDevices: [CaptureDeviceInfo] = []
-    @Published var cameraDevices: [CaptureDeviceInfo] = []
-    @Published var selectedMicrophoneDeviceID: String?
-    @Published var selectedCameraDeviceID: String?
-    @Published var screenRecordingPermissionState: ScreenRecordingPermissionState
-    @Published var accessibilityPermissionState: AccessibilityPermissionState
-    @Published var onboardingStatusMessage = ""
+    var selectedMicrophoneDeviceID: String? { captureOptions.state.selectedMicrophoneDeviceID }
+    var selectedCameraDeviceID: String? { captureOptions.state.selectedCameraDeviceID }
+    var screenRecordingPermissionState: ScreenRecordingPermissionState {
+        appShell.onboarding.state.screenRecordingPermissionState
+    }
+    var accessibilityPermissionState: AccessibilityPermissionState {
+        appShell.onboarding.state.accessibilityPermissionState
+    }
+    var onboardingStatusMessage: String {
+        appShell.onboarding.state.statusMessage
+    }
 
     private var activeScreenStartedAt: Date?
     private var activeFacecamStartedAt: Date?
@@ -75,10 +108,11 @@ final class AppModel: ObservableObject {
     let appShell = AppShellDriver()
     var captureMachine: CaptureDriver { appShell.capture }
     var captureOptions: CaptureOptionsDriver { appShell.captureOptions }
-    var videoExport: VideoExportDriver { appShell.videoExport }
+    var videoExport: VideoExportDriver { appShell.workspace(for: nil).videoExport }
     private let screenRecordingPermission: ScreenRecordingPermission
     private let accessibilityPermission: AccessibilityPermission
     private let onboardingStore: OnboardingStateStore
+    private let recordingPreferences: RecordingPreferencesStore
     private let screenSelectionPresenter: ScreenSelectionPresenting
     private let screenshotCapture: @MainActor (CaptureSource, URL) throws -> Void
     private let startRecordingCapture: @MainActor (CaptureSource, URL, RecordingCaptureOptions) async throws -> Date
@@ -96,13 +130,11 @@ final class AppModel: ObservableObject {
     private let captureDeviceProvider = CaptureDeviceProvider()
     private var nativeWindowCommandHandler: (NativeWindowCommand) -> Void = { _ in }
     private var runRecordingCountdown: @MainActor (CaptureSource) async throws -> Void = { _ in }
-    private static let createZoomsAutomaticallyDefaultsKey = "recording.createZoomsAutomatically"
-    private static let autoZoomAnimationPresetDefaultsKey = "recording.autoZoomAnimationPreset"
-
     init(
         screenRecordingPermission: ScreenRecordingPermission = ScreenRecordingPermission(),
         accessibilityPermission: AccessibilityPermission = AccessibilityPermission(),
         onboardingStore: OnboardingStateStore = .live,
+        recordingPreferences: RecordingPreferencesStore = RecordingPreferencesStore(),
         screenSelectionPresenter: ScreenSelectionPresenting = ScreenSelectionOverlayController(),
         captureUIHideDelayNanoseconds: UInt64 = 180_000_000,
         screenshotCapture: (@MainActor (CaptureSource, URL) throws -> Void)? = nil,
@@ -120,14 +152,12 @@ final class AppModel: ObservableObject {
     ) {
         let service = RustServiceClient()
         let capture = CaptureController(screenRecordingPermission: screenRecordingPermission)
-        self.createZoomsAutomatically = UserDefaults.standard.object(forKey: Self.createZoomsAutomaticallyDefaultsKey) as? Bool ?? true
-        self.autoZoomAnimationPreset = TimelineZoomAnimationPreset.storedValue(
-            UserDefaults.standard.string(forKey: Self.autoZoomAnimationPresetDefaultsKey)
-        )
+        let preferences = recordingPreferences.load()
         self.service = service
         self.screenRecordingPermission = screenRecordingPermission
         self.accessibilityPermission = accessibilityPermission
         self.onboardingStore = onboardingStore
+        self.recordingPreferences = recordingPreferences
         self.screenSelectionPresenter = screenSelectionPresenter
         self.captureUIHideDelayNanoseconds = captureUIHideDelayNanoseconds
         self.capture = capture
@@ -166,15 +196,13 @@ final class AppModel: ObservableObject {
         self.runRecordingCountdown = runRecordingCountdown ?? { [countdownOverlayController] source in
             try await countdownOverlayController.run(for: source)
         }
-        self.screenRecordingPermissionState = screenRecordingPermission.currentState()
-        self.accessibilityPermissionState = accessibilityPermission.currentState()
         appShell.configure(
             refreshBackend: { [weak self] in
                 self?.refreshBackendState()
             },
             emitWindowCommand: { _ in },
-            setStatusMessage: { [weak self] message in
-                self?.statusMessage = message
+            configureWorkspace: { [weak self] workspace in
+                self?.configureEditorWorkspace(workspace)
             }
         )
         captureMachine.configure(
@@ -182,7 +210,6 @@ final class AppModel: ObservableObject {
                 guard let self else { return }
                 self.captureState = transition.state
                 self.captureOptions.send(.availabilityChanged(self.canChangeRecordingOptions))
-                self.syncCaptureOptionsMirror()
                 if let message = transition.statusMessage {
                     self.statusMessage = message
                 }
@@ -251,19 +278,24 @@ final class AppModel: ObservableObject {
             },
             setStatusMessage: { [weak self] message in
                 self?.statusMessage = message
+            },
+            stateWillChange: { [weak self] in
+                self?.objectWillChange.send()
             }
         )
         appShell.onboarding.configure(
             currentPermissions: { [weak self] in
                 guard let self else { return (.requestAvailable, .requestAvailable) }
-                self.refreshOnboardingPermissionStates()
-                return (self.screenRecordingPermissionState, self.accessibilityPermissionState)
+                return (
+                    self.screenRecordingPermission.currentState(),
+                    self.accessibilityPermission.currentState()
+                )
             },
             requestScreenPermission: { [weak self] in
-                self?.requestOnboardingScreenRecordingPermission() ?? .promptAlreadyShown
+                self?.requestScreenRecordingPermission() ?? .promptAlreadyShown
             },
             requestAccessibilityPermission: { [weak self] in
-                self?.requestOnboardingAccessibilityPermission() ?? .promptAlreadyShown
+                self?.requestAccessibilityPermission() ?? .promptAlreadyShown
             },
             openScreenRecordingSettings: { [weak self] in
                 self?.openPrivacySettings()
@@ -272,23 +304,26 @@ final class AppModel: ObservableObject {
                 self?.openAccessibilitySettings()
             },
             completeOnboarding: { [weak self] in
-                self?.completeOnboarding() ?? false
+                self?.persistCompletedOnboarding() ?? false
+            },
+            stateWillChange: { [weak self] in
+                self?.objectWillChange.send()
             }
         )
         appShell.settings.configure(
             refreshService: { [weak self] in
                 guard let self else { return }
                 if self.refreshBackendState() {
-                    self.appShell.settings.send(.serviceRefreshSucceeded(serviceHealth: self.serviceHealth, paths: self.paths))
+                    self.appShell.settings.send(.serviceRefreshSucceeded)
                 } else {
                     self.appShell.settings.send(.serviceRefreshFailed(self.statusMessage))
                 }
             },
             persistAutoZoomPreference: { [weak self] value in
-                self?.createZoomsAutomatically = value
+                self?.recordingPreferences.setCreatesZoomsAutomatically(value)
             },
             persistAutoZoomAnimationPreset: { [weak self] preset in
-                self?.autoZoomAnimationPreset = preset
+                self?.recordingPreferences.setAutoZoomAnimationPreset(preset)
             },
             openFolder: { [weak self] path in
                 self?.openPath(path)
@@ -301,9 +336,27 @@ final class AppModel: ObservableObject {
             },
             showOnboarding: { [weak self] in
                 self?.showOnboarding()
+            },
+            stateWillChange: { [weak self] in
+                self?.objectWillChange.send()
             }
         )
-        videoExport.configure(
+        appShell.settings.send(.autoZoomPreferenceSynced(preferences.createsZoomsAutomatically))
+        appShell.settings.send(.autoZoomAnimationPresetSynced(preferences.autoZoomAnimationPreset))
+        refreshOnboardingPermissionStates()
+        syncAppShellMirror()
+    }
+
+    private func configureEditorWorkspace(_ workspace: EditorWorkspaceDriver) {
+        workspace.configure(
+            setAppSection: { [weak self] section in
+                self?.selectedSection = section
+            },
+            setStatusMessage: { [weak self] message in
+                self?.statusMessage = message
+            }
+        )
+        workspace.videoExport.configure(
             renderVideo: { sourceURL, targetURL, options, cancellationToken, edits, progressHandler in
                 try await VideoExportRenderer.export(
                     sourceURL: sourceURL,
@@ -335,14 +388,14 @@ final class AppModel: ObservableObject {
             revealFile: { url in
                 NSWorkspace.shared.activateFileViewerSelecting([url])
             },
-            setStatusMessage: { [weak self] message in
-                self?.statusMessage = message
+            setStatusMessage: { [weak workspace] message in
+                guard let workspace else { return }
+                workspace.send(.statusUpdated(EditorWorkspaceStatus(
+                    message: message,
+                    severity: workspace.videoExport.state.phase.editorWorkspaceStatusSeverity
+                )))
             }
         )
-        appShell.settings.send(.autoZoomPreferenceSynced(createZoomsAutomatically))
-        appShell.settings.send(.autoZoomAnimationPresetSynced(autoZoomAnimationPreset))
-        syncAppShellMirror()
-        syncCaptureOptionsMirror()
     }
 
     var captureMode: CaptureMode {
@@ -377,7 +430,6 @@ final class AppModel: ObservableObject {
         captureMachine.setStateForTesting(state)
         captureState = state
         captureOptions.send(.availabilityChanged(canChangeRecordingOptions))
-        syncCaptureOptionsMirror()
     }
 
     private func sendAppShell(_ event: AppShellEvent) {
@@ -391,17 +443,7 @@ final class AppModel: ObservableObject {
     }
 
     private func syncAppShellMirror() {
-        syncSettingsDriverFromShell()
         objectWillChange.send()
-    }
-
-    private func mutateAppShellState(_ update: (inout AppShellState) -> Void) {
-        update(&appShell.state)
-        syncAppShellMirror()
-    }
-
-    private func syncSettingsDriverFromShell() {
-        appShell.settings.send(.appeared(serviceHealth: serviceHealth, paths: paths))
     }
 
     var captureFlow: CaptureFlow {
@@ -430,24 +472,14 @@ final class AppModel: ObservableObject {
     }
 
     var canContinueOnboarding: Bool {
-        screenRecordingPermissionState == .granted
+        appShell.onboarding.state.canContinue
     }
 
     func refreshOnboardingPermissionStates() {
-        let nextScreenRecordingPermissionState = screenRecordingPermission.currentState()
-        let nextAccessibilityPermissionState = accessibilityPermission.currentState()
-
-        if screenRecordingPermissionState != nextScreenRecordingPermissionState {
-            screenRecordingPermissionState = nextScreenRecordingPermissionState
-        }
-
-        if accessibilityPermissionState != nextAccessibilityPermissionState {
-            accessibilityPermissionState = nextAccessibilityPermissionState
-        }
-
-        if canContinueOnboarding && onboardingStatusMessage.localizedCaseInsensitiveContains("required") {
-            onboardingStatusMessage = ""
-        }
+        appShell.onboarding.send(.permissionsRefreshed(
+            screen: screenRecordingPermission.currentState(),
+            accessibility: accessibilityPermission.currentState()
+        ))
     }
 
     func presentOnboardingIfNeeded() {
@@ -465,48 +497,36 @@ final class AppModel: ObservableObject {
 
     @discardableResult
     func requestOnboardingScreenRecordingPermission() -> ScreenRecordingPermissionRequestOutcome {
+        let outcome = requestScreenRecordingPermission()
+        appShell.onboarding.send(.screenPermissionRequested(outcome))
+        return outcome
+    }
+
+    private func requestScreenRecordingPermission() -> ScreenRecordingPermissionRequestOutcome {
         switch screenRecordingPermission.currentState() {
         case .granted:
-            onboardingStatusMessage = "Screen Recording is enabled."
             return .granted
         case .requestAvailable:
-            let outcome = screenRecordingPermission.requestGrant()
-            switch outcome {
-            case .granted:
-                onboardingStatusMessage = "Screen Recording is enabled."
-            case .promptShownWithoutGrant, .promptAlreadyShown:
-                onboardingStatusMessage = "Enable Screen Recording in System Settings, then quit and reopen Open Recorder if macOS asks."
-            }
-            refreshOnboardingPermissionStates()
-            return outcome
+            return screenRecordingPermission.requestGrant()
         case .requestAlreadyShown:
-            onboardingStatusMessage = "Enable Screen Recording in System Settings, then quit and reopen Open Recorder if macOS asks."
-            openPrivacySettings()
-            refreshOnboardingPermissionStates()
             return .promptAlreadyShown
         }
     }
 
     @discardableResult
     func requestOnboardingAccessibilityPermission() -> AccessibilityPermissionRequestOutcome {
+        let outcome = requestAccessibilityPermission()
+        appShell.onboarding.send(.accessibilityPermissionRequested(outcome))
+        return outcome
+    }
+
+    private func requestAccessibilityPermission() -> AccessibilityPermissionRequestOutcome {
         switch accessibilityPermission.currentState() {
         case .granted:
-            onboardingStatusMessage = "Accessibility access is enabled."
             return .granted
         case .requestAvailable:
-            let outcome = accessibilityPermission.requestGrant()
-            switch outcome {
-            case .granted:
-                onboardingStatusMessage = "Accessibility access is enabled."
-            case .promptShownWithoutGrant, .promptAlreadyShown:
-                onboardingStatusMessage = "Enable Accessibility access in System Settings to capture shortcuts and cursor details."
-            }
-            refreshOnboardingPermissionStates()
-            return outcome
+            return accessibilityPermission.requestGrant()
         case .requestAlreadyShown:
-            onboardingStatusMessage = "Enable Accessibility access in System Settings to capture shortcuts and cursor details."
-            openAccessibilitySettings()
-            refreshOnboardingPermissionStates()
             return .promptAlreadyShown
         }
     }
@@ -514,13 +534,13 @@ final class AppModel: ObservableObject {
     @discardableResult
     func completeOnboarding() -> Bool {
         refreshOnboardingPermissionStates()
-        guard canContinueOnboarding else {
-            onboardingStatusMessage = "Screen Recording permission is required before continuing."
-            return false
-        }
+        let canComplete = canContinueOnboarding
+        appShell.onboarding.send(.continueRequested)
+        return canComplete
+    }
 
+    private func persistCompletedOnboarding() -> Bool {
         onboardingStore.setCompleted(true)
-        onboardingStatusMessage = ""
         statusMessage = "Ready"
         setCaptureStateMirror(captureState.withPresentation(.visible))
         requestWindow(.finishOnboarding)
@@ -846,7 +866,6 @@ final class AppModel: ObservableObject {
                     try await prepareFacecam(cameraDeviceID: options.cameraDeviceID)
                 } catch {
                     captureOptions.send(.cameraDisabled)
-                    syncCaptureOptionsMirror()
                     options = currentCaptureOptions
                     statusMessage = "Recording without facecam: \(error.localizedDescription)"
                 }
@@ -870,7 +889,6 @@ final class AppModel: ObservableObject {
                     activeFacecamURL = url
                 } catch {
                     captureOptions.send(.cameraDisabled)
-                    syncCaptureOptionsMirror()
                     options = currentCaptureOptions
                     try? FileManager.default.removeItem(at: url)
                     activeFacecamURL = nil
@@ -1248,14 +1266,8 @@ final class AppModel: ObservableObject {
     }
 
     func handleProjectAutosaveStatus(_ status: ProjectAutosaveStatus) {
-        switch status {
-        case .saving:
-            statusMessage = "Saving..."
-        case .saved(let summary):
+        if case .saved(let summary) = status {
             upsertProjectSummary(summary)
-            statusMessage = "Saved"
-        case .failed(let message):
-            statusMessage = "Autosave failed: \(message)"
         }
     }
 
@@ -1394,7 +1406,6 @@ final class AppModel: ObservableObject {
         let microphones = captureDeviceProvider.devices(for: .audio)
         let cameras = captureDeviceProvider.devices(for: .video)
         captureOptions.send(.devicesRefreshed(microphones: microphones, cameras: cameras))
-        syncCaptureOptionsMirror()
     }
 
     func requestMicrophoneSelection(refreshDevices: Bool = true) {
@@ -1402,7 +1413,6 @@ final class AppModel: ObservableObject {
             refreshCaptureDevices()
         }
         captureOptions.send(.microphoneSelectionRequested)
-        syncCaptureOptionsMirror()
     }
 
     func requestCameraSelection(refreshDevices: Bool = true) {
@@ -1410,7 +1420,6 @@ final class AppModel: ObservableObject {
             refreshCaptureDevices()
         }
         captureOptions.send(.cameraSelectionRequested)
-        syncCaptureOptionsMirror()
     }
 
     func cancelMicrophoneSelection() {
@@ -1422,15 +1431,11 @@ final class AppModel: ObservableObject {
     }
 
     func selectMicrophoneDevice(_ deviceID: String?) {
-        syncCaptureOptionsDriverFromMirror()
         captureOptions.send(.microphoneSelected(deviceID))
-        syncCaptureOptionsMirror()
     }
 
     func selectCameraDevice(_ deviceID: String?) {
-        syncCaptureOptionsDriverFromMirror()
         captureOptions.send(.cameraSelected(deviceID))
-        syncCaptureOptionsMirror()
         prewarmSelectedFacecamIfNeeded()
     }
 
@@ -1445,22 +1450,16 @@ final class AppModel: ObservableObject {
     }
 
     func disableMicrophone() {
-        syncCaptureOptionsDriverFromMirror()
         captureOptions.send(.microphoneDisabled)
-        syncCaptureOptionsMirror()
     }
 
     func toggleSystemAudio() {
-        syncCaptureOptionsDriverFromMirror()
         captureOptions.send(.availabilityChanged(canChangeRecordingOptions))
         captureOptions.send(.systemAudioToggled)
-        syncCaptureOptionsMirror()
     }
 
     func disableCamera() {
-        syncCaptureOptionsDriverFromMirror()
         captureOptions.send(.cameraDisabled)
-        syncCaptureOptionsMirror()
         cancelFacecamPrewarm()
     }
 
@@ -1470,32 +1469,6 @@ final class AppModel: ObservableObject {
 
     var selectedCameraDeviceName: String {
         captureOptions.state.selectedCameraDeviceName
-    }
-
-    private func syncCaptureOptionsMirror() {
-        let options = captureOptions.state
-        includeMicrophone = options.includeMicrophone
-        includeSystemAudio = options.includeSystemAudio
-        includeCamera = options.includeCamera
-        showCursor = options.showCursor
-        showClicks = options.showClicks
-        microphoneDevices = options.microphoneDevices
-        cameraDevices = options.cameraDevices
-        selectedMicrophoneDeviceID = options.selectedMicrophoneDeviceID
-        selectedCameraDeviceID = options.selectedCameraDeviceID
-    }
-
-    private func syncCaptureOptionsDriverFromMirror() {
-        captureOptions.state.includeMicrophone = includeMicrophone
-        captureOptions.state.includeSystemAudio = includeSystemAudio
-        captureOptions.state.includeCamera = includeCamera
-        captureOptions.state.showCursor = showCursor
-        captureOptions.state.showClicks = showClicks
-        captureOptions.state.microphoneDevices = microphoneDevices
-        captureOptions.state.cameraDevices = cameraDevices
-        captureOptions.state.selectedMicrophoneDeviceID = selectedMicrophoneDeviceID
-        captureOptions.state.selectedCameraDeviceID = selectedCameraDeviceID
-        captureOptions.state.canChangeOptions = canChangeRecordingOptions
     }
 
     private var currentCaptureOptions: RecordingCaptureOptions {
