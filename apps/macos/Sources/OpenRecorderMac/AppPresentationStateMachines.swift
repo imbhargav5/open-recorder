@@ -4,6 +4,13 @@ import Foundation
 import Observation
 import SwiftUI
 
+enum CaptureDeviceLoadPhase: Equatable {
+    case idle
+    case loading
+    case loaded
+    case failed(String)
+}
+
 struct CaptureOptionsState: Equatable {
     var includeMicrophone = false
     var includeSystemAudio = false
@@ -16,21 +23,34 @@ struct CaptureOptionsState: Equatable {
     var selectedCameraDeviceID: String?
     var canChangeOptions = true
     var statusMessage: String?
+    var deviceLoadPhase: CaptureDeviceLoadPhase = .idle
 
     var selectedMicrophoneDeviceName: String {
-        guard let selectedMicrophoneDeviceID,
-              let device = microphoneDevices.first(where: { $0.id == selectedMicrophoneDeviceID }) else {
+        guard let selectedMicrophoneDeviceID else {
             return "System Default"
         }
-        return device.name
+        return microphoneDevices.first(where: { $0.id == selectedMicrophoneDeviceID })?.name
+            ?? "Previously Selected (Unavailable)"
     }
 
     var selectedCameraDeviceName: String {
-        guard let selectedCameraDeviceID,
-              let device = cameraDevices.first(where: { $0.id == selectedCameraDeviceID }) else {
+        guard let selectedCameraDeviceID else {
             return "System Default"
         }
-        return device.name
+        return cameraDevices.first(where: { $0.id == selectedCameraDeviceID })?.name
+            ?? "Previously Selected (Unavailable)"
+    }
+
+    var hasAvailableMicrophoneSelection: Bool {
+        guard !microphoneDevices.isEmpty else { return false }
+        guard let selectedMicrophoneDeviceID else { return true }
+        return microphoneDevices.contains { $0.id == selectedMicrophoneDeviceID }
+    }
+
+    var hasAvailableCameraSelection: Bool {
+        guard !cameraDevices.isEmpty else { return false }
+        guard let selectedCameraDeviceID else { return true }
+        return cameraDevices.contains { $0.id == selectedCameraDeviceID }
     }
 
     var recordingOptions: RecordingCaptureOptions {
@@ -51,7 +71,9 @@ enum CaptureOptionsEvent: Equatable {
     case microphoneEnabledChanged(Bool)
     case systemAudioChanged(Bool)
     case cameraEnabledChanged(Bool)
+    case deviceRefreshStarted
     case devicesRefreshed(microphones: [CaptureDeviceInfo], cameras: [CaptureDeviceInfo])
+    case deviceRefreshFailed(String)
     case systemAudioToggled
     case microphoneSelectionRequested
     case cameraSelectionRequested
@@ -59,6 +81,7 @@ enum CaptureOptionsEvent: Equatable {
     case cameraSelected(String?)
     case microphoneDisabled
     case cameraDisabled
+    case cameraDisabledForCaptureFailure
     case cursorVisibilityChanged(Bool)
     case clickVisibilityChanged(Bool)
     case statusCleared
@@ -81,28 +104,32 @@ extension CaptureOptionsState {
             return []
 
         case .microphoneEnabledChanged(let isEnabled):
+            guard canChangeOptions else { return lockedMutationEffects() }
             includeMicrophone = isEnabled
             return []
 
         case .systemAudioChanged(let isEnabled):
+            guard canChangeOptions else { return lockedMutationEffects() }
             includeSystemAudio = isEnabled
             return []
 
         case .cameraEnabledChanged(let isEnabled):
+            guard canChangeOptions else { return lockedMutationEffects() }
             includeCamera = isEnabled
+            return []
+
+        case .deviceRefreshStarted:
+            deviceLoadPhase = .loading
             return []
 
         case .devicesRefreshed(let microphones, let cameras):
             microphoneDevices = microphones
             cameraDevices = cameras
-            if let selectedMicrophoneDeviceID,
-               !microphones.contains(where: { $0.id == selectedMicrophoneDeviceID }) {
-                self.selectedMicrophoneDeviceID = nil
-            }
-            if let selectedCameraDeviceID,
-               !cameras.contains(where: { $0.id == selectedCameraDeviceID }) {
-                self.selectedCameraDeviceID = nil
-            }
+            deviceLoadPhase = .loaded
+            return []
+
+        case .deviceRefreshFailed(let message):
+            deviceLoadPhase = .failed(message)
             return []
 
         case .systemAudioToggled:
@@ -117,12 +144,15 @@ extension CaptureOptionsState {
             return [.setStatusMessage(message)]
 
         case .microphoneSelectionRequested:
-            return [.refreshDevices, .showMicrophoneSelector]
+            guard canChangeOptions else { return lockedMutationEffects() }
+            return [.showMicrophoneSelector]
 
         case .cameraSelectionRequested:
-            return [.refreshDevices, .showCameraSelector]
+            guard canChangeOptions else { return lockedMutationEffects() }
+            return [.showCameraSelector]
 
         case .microphoneSelected(let deviceID):
+            guard canChangeOptions else { return lockedMutationEffects() }
             includeMicrophone = true
             selectedMicrophoneDeviceID = deviceID
             let message = "Microphone set to \(selectedMicrophoneDeviceName)"
@@ -130,6 +160,7 @@ extension CaptureOptionsState {
             return [.setStatusMessage(message), .closeMicrophoneSelector]
 
         case .cameraSelected(let deviceID):
+            guard canChangeOptions else { return lockedMutationEffects() }
             includeCamera = true
             selectedCameraDeviceID = deviceID
             let message = "Camera set to \(selectedCameraDeviceName)"
@@ -137,22 +168,30 @@ extension CaptureOptionsState {
             return [.setStatusMessage(message), .closeCameraSelector]
 
         case .microphoneDisabled:
+            guard canChangeOptions else { return lockedMutationEffects() }
             includeMicrophone = false
             let message = "Microphone off"
             statusMessage = message
             return [.setStatusMessage(message)]
 
         case .cameraDisabled:
+            guard canChangeOptions else { return lockedMutationEffects() }
             includeCamera = false
             let message = "Camera off"
             statusMessage = message
             return [.setStatusMessage(message)]
 
+        case .cameraDisabledForCaptureFailure:
+            includeCamera = false
+            return []
+
         case .cursorVisibilityChanged(let isVisible):
+            guard canChangeOptions else { return lockedMutationEffects() }
             showCursor = isVisible
             return []
 
         case .clickVisibilityChanged(let isVisible):
+            guard canChangeOptions else { return lockedMutationEffects() }
             showClicks = isVisible
             return []
 
@@ -160,6 +199,12 @@ extension CaptureOptionsState {
             statusMessage = nil
             return []
         }
+    }
+
+    private mutating func lockedMutationEffects() -> [CaptureOptionsEffect] {
+        let message = "Recording options are locked while capture is starting."
+        statusMessage = message
+        return [.setStatusMessage(message)]
     }
 }
 
@@ -240,10 +285,30 @@ final class CaptureOptionsDriver {
     }
 }
 
+enum SourceSelectorLoadPhase: Equatable {
+    case idle
+    case loading
+    case loaded
+    case failed(String)
+}
+
+struct SourceSelectorRefreshResult: Equatable {
+    var sourceIDs: [String]
+    var errorMessage: String?
+
+    static func loaded(sourceIDs: [String]) -> SourceSelectorRefreshResult {
+        SourceSelectorRefreshResult(sourceIDs: sourceIDs, errorMessage: nil)
+    }
+}
+
 struct SourceSelectorState: Equatable {
     var sourceTab: SourceSelectorTab
     var preferredHeight: CGFloat = SourceSelectorWindowMetrics.compactHeight
     var visibleTabs: [SourceSelectorTab]
+    var committedSourceID: String?
+    var pendingSourceID: String?
+    var availableSourceIDs: Set<String> = []
+    var loadPhase: SourceSelectorLoadPhase = .idle
 
     init(sourceTab: SourceSelectorTab = .screens, visibleTabs: [SourceSelectorTab] = SourceSelectorTab.allCases) {
         self.sourceTab = sourceTab
@@ -260,14 +325,23 @@ struct SourceSelectorState: Equatable {
             return allSources.filter { $0.kind == .area }
         }
     }
+
+    var canSharePendingSource: Bool {
+        guard let pendingSourceID else { return false }
+        return availableSourceIDs.contains(pendingSourceID)
+    }
 }
 
 enum SourceSelectorEvent: Equatable {
     case visibleTabsChanged([SourceSelectorTab])
     case tabSelected(SourceSelectorTab)
     case preferredSourceKindSynced(CaptureSourceKind?)
+    case committedSelectionSynced(String?)
+    case sourceSelected(String)
+    case sourcesChanged([String])
     case heightMeasured(CGFloat)
     case refreshRequested
+    case refreshCompleted(SourceSelectorRefreshResult)
     case cancelRequested
     case shareRequested
     case drawAreaRequested
@@ -276,7 +350,7 @@ enum SourceSelectorEvent: Equatable {
 enum SourceSelectorEffect: Equatable {
     case refreshSources
     case cancel
-    case share
+    case share(String)
     case drawArea
 }
 
@@ -301,6 +375,20 @@ extension SourceSelectorState {
             sourceTab = visibleTabs.contains(nextTab) ? nextTab : sourceTab
             return []
 
+        case .committedSelectionSynced(let sourceID):
+            committedSourceID = sourceID
+            pendingSourceID = sourceID
+            return []
+
+        case .sourceSelected(let sourceID):
+            guard availableSourceIDs.contains(sourceID) else { return [] }
+            pendingSourceID = sourceID
+            return []
+
+        case .sourcesChanged(let sourceIDs):
+            availableSourceIDs = Set(sourceIDs)
+            return []
+
         case .heightMeasured(let cardHeight):
             let nextHeight = ceil(cardHeight + (SourceSelectorWindowMetrics.outerPadding * 2))
             guard abs(preferredHeight - nextHeight) > 0.5 else { return [] }
@@ -308,11 +396,30 @@ extension SourceSelectorState {
             return []
 
         case .refreshRequested:
+            loadPhase = .loading
             return [.refreshSources]
+        case .refreshCompleted(let result):
+            let sourceIDs = Set(result.sourceIDs)
+            availableSourceIDs = sourceIDs
+            if let pendingSourceID, !sourceIDs.contains(pendingSourceID) {
+                self.pendingSourceID = nil
+            }
+            if let committedSourceID, !sourceIDs.contains(committedSourceID) {
+                self.committedSourceID = nil
+            }
+            if let errorMessage = result.errorMessage {
+                loadPhase = .failed(errorMessage)
+            } else {
+                loadPhase = .loaded
+            }
+            return []
         case .cancelRequested:
+            pendingSourceID = committedSourceID
             return [.cancel]
         case .shareRequested:
-            return [.share]
+            guard canSharePendingSource, let pendingSourceID else { return [] }
+            committedSourceID = pendingSourceID
+            return [.share(pendingSourceID)]
         case .drawAreaRequested:
             return [.drawArea]
         }
@@ -324,19 +431,20 @@ extension SourceSelectorState {
 final class SourceSelectorDriver {
     private(set) var state: SourceSelectorState
 
-    @ObservationIgnored private var refreshSources: () -> Void = {}
+    @ObservationIgnored private var refreshSources: () async -> SourceSelectorRefreshResult = { .loaded(sourceIDs: []) }
     @ObservationIgnored private var cancel: () -> Void = {}
-    @ObservationIgnored private var share: () -> Void = {}
+    @ObservationIgnored private var share: (String) -> Void = { _ in }
     @ObservationIgnored private var drawArea: () -> Void = {}
+    @ObservationIgnored private var refreshTask: Task<Void, Never>?
 
     init(sourceTab: SourceSelectorTab = .screens, visibleTabs: [SourceSelectorTab] = SourceSelectorTab.allCases) {
         state = SourceSelectorState(sourceTab: sourceTab, visibleTabs: visibleTabs)
     }
 
     func configure(
-        refreshSources: @escaping () -> Void = {},
+        refreshSources: @escaping () async -> SourceSelectorRefreshResult = { .loaded(sourceIDs: []) },
         cancel: @escaping () -> Void = {},
-        share: @escaping () -> Void = {},
+        share: @escaping (String) -> Void = { _ in },
         drawArea: @escaping () -> Void = {}
     ) {
         self.refreshSources = refreshSources
@@ -360,12 +468,23 @@ final class SourceSelectorDriver {
         for effect in effects {
             switch effect {
             case .refreshSources:
-                refreshSources()
+                refreshTask?.cancel()
+                refreshTask = Task { [weak self] in
+                    guard let self else { return }
+                    let result = await refreshSources()
+                    guard !Task.isCancelled else { return }
+                    send(.refreshCompleted(result))
+                    refreshTask = nil
+                }
             case .cancel:
+                refreshTask?.cancel()
+                refreshTask = nil
                 cancel()
-            case .share:
-                share()
+            case .share(let sourceID):
+                share(sourceID)
             case .drawArea:
+                refreshTask?.cancel()
+                refreshTask = nil
                 drawArea()
             }
         }
@@ -444,15 +563,15 @@ extension OnboardingMachineState {
             switch outcome {
             case .granted:
                 accessibilityPermissionState = .granted
-                statusMessage = "Accessibility access is enabled."
+                statusMessage = "Optional Accessibility enhancements are enabled."
                 return [.refreshPermissions]
             case .promptAlreadyShown:
                 accessibilityPermissionState = .requestAlreadyShown
-                statusMessage = "Enable Accessibility access in System Settings to capture shortcuts and cursor details."
+                statusMessage = "Optional: enable Accessibility in System Settings for shortcuts and additional cursor details."
                 return [.openAccessibilitySettings, .refreshPermissions]
             case .promptShownWithoutGrant:
                 accessibilityPermissionState = .requestAlreadyShown
-                statusMessage = "Enable Accessibility access in System Settings to capture shortcuts and cursor details."
+                statusMessage = "Optional: enable Accessibility in System Settings for shortcuts and additional cursor details."
                 return [.refreshPermissions]
             }
 
@@ -560,6 +679,7 @@ struct SettingsMachineState: Equatable {
 
 enum SettingsEvent: Equatable {
     case serviceRefreshRequested
+    case serviceRefreshStarted
     case serviceRefreshSucceeded
     case serviceRefreshFailed(String)
     case autoZoomPreferenceSynced(Bool)
@@ -589,6 +709,11 @@ extension SettingsMachineState {
             isRefreshingService = true
             statusMessage = "Checking service..."
             return [.refreshService]
+
+        case .serviceRefreshStarted:
+            isRefreshingService = true
+            statusMessage = "Checking service..."
+            return []
 
         case .serviceRefreshSucceeded:
             isRefreshingService = false

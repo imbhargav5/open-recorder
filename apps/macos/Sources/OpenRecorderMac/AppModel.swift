@@ -4,6 +4,81 @@ import Foundation
 import SwiftUI
 import UniformTypeIdentifiers
 
+struct BackendSnapshot: Sendable {
+    var health: HealthPayload
+    var paths: AppPaths
+    var projects: [ProjectSummary]
+}
+
+private enum BackendLoadOutcome: Sendable {
+    case success(BackendSnapshot)
+    case failure(String)
+}
+
+private enum ImportedMediaRegistrationOutcome: Sendable {
+    case success(ProjectSummary, projectData: Data?)
+    case failure(String)
+}
+
+private enum RecordingFilePreparationOutcome: Sendable {
+    case success(URL)
+    case failure(String)
+}
+
+private enum ProjectFileLoadOutcome: Sendable {
+    case success(Data)
+    case failure(String)
+}
+
+private struct ProjectRegistrationFailure: LocalizedError, Sendable {
+    var message: String
+    var errorDescription: String? { message }
+}
+
+private enum LocalProjectPersistenceOutcome: Sendable {
+    case success(projectURL: URL, projectData: Data)
+    case failure(String)
+}
+
+private enum CapturedProjectRegistrationOutcome: Sendable {
+    case indexed(ProjectSummary)
+    case locallyPersisted(ProjectSummary)
+    case failed(String)
+
+    var summary: ProjectSummary? {
+        switch self {
+        case .indexed(let summary), .locallyPersisted(let summary):
+            summary
+        case .failed:
+            nil
+        }
+    }
+
+    var needsScreenshotIndexRetry: Bool {
+        if case .locallyPersisted = self { return true }
+        return false
+    }
+}
+
+private nonisolated func serviceJSONObject<T: Encodable>(for value: T) -> Any? {
+    guard let data = try? JSONEncoder().encode(value) else { return nil }
+    return try? JSONSerialization.jsonObject(with: data)
+}
+
+private nonisolated func canonicalMediaIdentity(for url: URL) -> String {
+    let resolvedURL = url.resolvingSymlinksInPath().standardizedFileURL
+    if let attributes = try? FileManager.default.attributesOfItem(atPath: resolvedURL.path),
+       let volumeNumber = attributes[.systemNumber] as? NSNumber,
+       let fileNumber = attributes[.systemFileNumber] as? NSNumber {
+        return "file:\(volumeNumber.uint64Value):\(fileNumber.uint64Value)"
+    }
+    let isCaseSensitive = try? resolvedURL.resourceValues(
+        forKeys: [.volumeSupportsCaseSensitiveNamesKey]
+    ).volumeSupportsCaseSensitiveNames
+    let path = isCaseSensitive == false ? resolvedURL.path.lowercased() : resolvedURL.path
+    return "path:\(path)"
+}
+
 @MainActor
 final class AppModel: ObservableObject {
     var selectedSection: AppSection {
@@ -17,7 +92,10 @@ final class AppModel: ObservableObject {
     }
     var projects: [ProjectSummary] {
         get { appShell.state.projects }
-        set { sendAppShell(.projectsReplaced(newValue)) }
+        set {
+            noteLocalProjectReplacement(from: appShell.state.projects, to: newValue)
+            sendAppShell(.projectsReplaced(newValue))
+        }
     }
     var currentVideoURL: URL? {
         get { appShell.state.currentVideoURL }
@@ -36,6 +114,9 @@ final class AppModel: ObservableObject {
     }
     var serviceHealth: HealthPayload? {
         appShell.state.serviceHealth
+    }
+    var backendLoadPhase: LoadPhase {
+        appShell.state.backendLoadPhase
     }
     var includeMicrophone: Bool {
         get { captureOptions.state.includeMicrophone }
@@ -91,6 +172,12 @@ final class AppModel: ObservableObject {
     var accessibilityPermissionState: AccessibilityPermissionState {
         appShell.onboarding.state.accessibilityPermissionState
     }
+    var microphoneCaptureAuthorization: CaptureMediaAuthorizationState {
+        captureMediaAuthorizationState(for: .audio)
+    }
+    var cameraCaptureAuthorization: CaptureMediaAuthorizationState {
+        captureMediaAuthorizationState(for: .video)
+    }
     var onboardingStatusMessage: String {
         appShell.onboarding.state.statusMessage
     }
@@ -99,6 +186,22 @@ final class AppModel: ObservableObject {
     private var activeFacecamStartedAt: Date?
     private var activeFacecamURL: URL?
     private var facecamPrewarmTask: Task<Void, Never>?
+    private var backendRefreshTask: Task<Bool, Never>?
+    private var backendRefreshGeneration = 0
+    private var projectMutationVersion = 0
+    private var projectMutationVersionsByPath: [String: Int] = [:]
+    private var locallyPersistedProjectPaths: Set<String> = []
+    private var capturePreflightTask: Task<Void, Never>?
+    private var capturePreflightGeneration = 0
+    private var pendingRecordingOptions: RecordingCaptureOptions?
+    private var recordingFilePreparationTask: Task<Void, Never>?
+    private var captureDeviceRefreshTask: Task<Void, Never>?
+    private var captureDeviceRefreshGeneration = 0
+    private var sourceRefreshGeneration = 0
+    private var mediaImportTasksByPath: [String: Task<Void, Never>] = [:]
+    private var mediaImportRequestIDsByPath: [String: UUID] = [:]
+    @Published private(set) var isCapturePreflightRunning = false
+    @Published private(set) var isTerminationPending = false
     private var displayFlashWindows: [NSWindow] = []
     private let countdownOverlayController = RecordingCountdownOverlayController()
     private let captureUIHideDelayNanoseconds: UInt64
@@ -120,6 +223,10 @@ final class AppModel: ObservableObject {
     private let rememberScreenshot: @Sendable (URL) throws -> Void
     private let trashProjectFile: @MainActor (URL) throws -> Void
     private let forgetProject: @Sendable (String) throws -> Void
+    private let loadBackendSnapshot: @Sendable () async throws -> BackendSnapshot
+    private let registerImportedMedia: @Sendable (EditorMediaKind, String) throws -> ProjectSummary
+    private let registerCapturedMedia: @Sendable (String, Data) throws -> ProjectSummary
+    private let prepareRecordingFilePath: @Sendable (String) throws -> PreparedFile
     private let prepareCameraPermission: (@MainActor () async -> Bool)?
     private let prepareFacecamRecording: (@MainActor (String?) async throws -> Void)?
     private let startFacecamRecording: (@MainActor (URL, String?) async throws -> Date)?
@@ -148,7 +255,11 @@ final class AppModel: ObservableObject {
         runRecordingCountdown: (@MainActor (CaptureSource) async throws -> Void)? = nil,
         rememberScreenshot: (@Sendable (URL) throws -> Void)? = nil,
         trashProjectFile: (@MainActor (URL) throws -> Void)? = nil,
-        forgetProject: (@Sendable (String) throws -> Void)? = nil
+        forgetProject: (@Sendable (String) throws -> Void)? = nil,
+        loadBackendSnapshot: (@Sendable () async throws -> BackendSnapshot)? = nil,
+        registerImportedMedia: (@Sendable (EditorMediaKind, String) throws -> ProjectSummary)? = nil,
+        registerCapturedMedia: (@Sendable (String, Data) throws -> ProjectSummary)? = nil,
+        prepareRecordingFilePath: (@Sendable (String) throws -> PreparedFile)? = nil
     ) {
         let service = RustServiceClient()
         let capture = CaptureController(screenRecordingPermission: screenRecordingPermission)
@@ -191,6 +302,72 @@ final class AppModel: ObservableObject {
                 "forgetProject",
                 params: ["path": path],
                 as: ForgetProjectResult.self
+            )
+        }
+        self.loadBackendSnapshot = loadBackendSnapshot ?? {
+            async let health: HealthPayload = Task.detached(priority: .userInitiated) {
+                try service.call("health", as: HealthPayload.self)
+            }.value
+            async let paths: AppPaths = Task.detached(priority: .userInitiated) {
+                try service.call("paths", as: AppPaths.self)
+            }.value
+            async let projects: [ProjectSummary] = Task.detached(priority: .userInitiated) {
+                try service.call("listProjects", as: [ProjectSummary].self)
+            }.value
+            return try await BackendSnapshot(
+                health: health,
+                paths: paths,
+                projects: projects
+            )
+        }
+        self.registerImportedMedia = registerImportedMedia ?? { kind, path in
+            let title = URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent
+            if let projects = try? service.call("listProjects", as: [ProjectSummary].self),
+               let existing = projects.first(where: { project in
+                   guard let mediaPath = project.mediaPath,
+                         FileManager.default.fileExists(atPath: project.path) else {
+                       return false
+                   }
+                   return canonicalMediaIdentity(for: URL(fileURLWithPath: mediaPath))
+                       == canonicalMediaIdentity(for: URL(fileURLWithPath: path))
+               }) {
+                return existing
+            }
+            switch kind {
+            case .video:
+                return try service.call(
+                    "registerRecording",
+                    params: [
+                        "path": path,
+                        "sourceName": "Imported Recording",
+                        "title": title,
+                        "editorState": serviceJSONObject(for: ProjectEditorState.empty) ?? [:]
+                    ],
+                    as: ProjectSummary.self
+                )
+            case .screenshot:
+                return try service.call(
+                    "registerScreenshot",
+                    params: [
+                        "path": path,
+                        "sourceName": "Imported Screenshot",
+                        "title": title,
+                        "editorState": serviceJSONObject(
+                            for: ProjectEditorState(screenshot: ScreenshotEditorState.default)
+                        ) ?? [:]
+                    ],
+                    as: ProjectSummary.self
+                )
+            }
+        }
+        self.registerCapturedMedia = registerCapturedMedia ?? { method, paramsData in
+            try service.call(method, paramsData: paramsData, as: ProjectSummary.self)
+        }
+        self.prepareRecordingFilePath = prepareRecordingFilePath ?? { fileName in
+            try service.call(
+                "prepareRecordingFile",
+                params: ["fileName": fileName],
+                as: PreparedFile.self
             )
         }
         self.runRecordingCountdown = runRecordingCountdown ?? { [countdownOverlayController] source in
@@ -312,12 +489,7 @@ final class AppModel: ObservableObject {
         )
         appShell.settings.configure(
             refreshService: { [weak self] in
-                guard let self else { return }
-                if self.refreshBackendState() {
-                    self.appShell.settings.send(.serviceRefreshSucceeded)
-                } else {
-                    self.appShell.settings.send(.serviceRefreshFailed(self.statusMessage))
-                }
+                self?.refreshBackendState()
             },
             persistAutoZoomPreference: { [weak self] value in
                 self?.recordingPreferences.setCreatesZoomsAutomatically(value)
@@ -398,6 +570,69 @@ final class AppModel: ObservableObject {
         )
     }
 
+    func prepareForTermination() async -> Bool {
+        guard !isTerminationPending else { return false }
+        guard !hasActiveCaptureWork else {
+            statusMessage = "Finish or cancel the current capture before quitting."
+            focusActiveCaptureWindow()
+            return false
+        }
+        isTerminationPending = true
+
+        while !mediaImportTasksByPath.isEmpty {
+            do {
+                try await Task.sleep(for: .milliseconds(20))
+            } catch {
+                isTerminationPending = false
+                return false
+            }
+            guard !hasActiveCaptureWork else {
+                isTerminationPending = false
+                statusMessage = "Finish or cancel the current capture before quitting."
+                focusActiveCaptureWindow()
+                return false
+            }
+        }
+
+        let canTerminate = await appShell.prepareForTermination()
+        guard canTerminate else {
+            isTerminationPending = false
+            requestWindow(
+                .showStudio,
+                editorSession: appShell.terminationBlockingEditorSession
+            )
+            return false
+        }
+        guard !hasActiveCaptureWork,
+              mediaImportTasksByPath.isEmpty else {
+            isTerminationPending = false
+            statusMessage = "Finish or cancel the current capture before quitting."
+            focusActiveCaptureWindow()
+            return false
+        }
+        // Keep mutations gated after the final fixed-point check. The app delegate
+        // immediately replies to AppKit and the process terminates from this state.
+        return true
+    }
+
+    private var hasActiveCaptureWork: Bool {
+        if capture.isRecording || isCapturePreflightRunning {
+            return true
+        }
+        switch captureState.phase {
+        case .countingDownRecording, .startingRecording, .recording, .stoppingRecording, .capturingScreenshot:
+            return true
+        case .idle, .choosingMode, .choosingSourceType, .screenSelecting, .selectingSource, .ready, .areaSelecting:
+            return false
+        }
+    }
+
+    private func rejectActionWhileTerminationIsPending() -> Bool {
+        guard isTerminationPending else { return false }
+        statusMessage = "Open Recorder is finishing pending work before quitting."
+        return true
+    }
+
     var captureMode: CaptureMode {
         captureState.mode ?? .recording
     }
@@ -459,7 +694,8 @@ final class AppModel: ObservableObject {
     }
 
     var canChangeRecordingOptions: Bool {
-        captureState.canChangeRecordingOptions(runtimeIsRecording: capture.isRecording)
+        !isCapturePreflightRunning &&
+            captureState.canChangeRecordingOptions(runtimeIsRecording: capture.isRecording)
     }
 
     func bootstrap() {
@@ -548,17 +784,55 @@ final class AppModel: ObservableObject {
     }
 
     @discardableResult
-    func refreshBackendState() -> Bool {
-        do {
-            let serviceHealth = try service.call("health", as: HealthPayload.self)
-            let paths = try service.call("paths", as: AppPaths.self)
-            let projects = try service.call("listProjects", as: [ProjectSummary].self)
-            sendAppShell(.backendRefreshed(paths: paths, projects: projects, health: serviceHealth))
-            return true
-        } catch {
-            sendAppShell(.backendRefreshFailed(error.localizedDescription))
-            return false
+    func refreshBackendState() -> Task<Bool, Never> {
+        backendRefreshGeneration += 1
+        let generation = backendRefreshGeneration
+        let projectVersionAtStart = projectMutationVersion
+        backendRefreshTask?.cancel()
+        sendAppShell(.backendRefreshStarted)
+        appShell.settings.send(.serviceRefreshStarted)
+
+        let loadBackendSnapshot = loadBackendSnapshot
+        let task = Task { [weak self] in
+            let outcome = await Task.detached(priority: .userInitiated) {
+                do {
+                    return BackendLoadOutcome.success(try await loadBackendSnapshot())
+                } catch {
+                    return BackendLoadOutcome.failure(error.localizedDescription)
+                }
+            }.value
+
+            guard !Task.isCancelled,
+                  let self,
+                  generation == self.backendRefreshGeneration else {
+                return false
+            }
+
+            switch outcome {
+            case .success(let snapshot):
+                self.locallyPersistedProjectPaths.subtract(snapshot.projects.map(\.path))
+                let projects = self.projectsMergingConcurrentMutations(
+                    into: snapshot.projects,
+                    since: projectVersionAtStart
+                )
+                self.sendAppShell(.backendRefreshed(
+                    paths: snapshot.paths,
+                    projects: projects,
+                    health: snapshot.health
+                ))
+                self.projectMutationVersionsByPath = self.projectMutationVersionsByPath.filter {
+                    $0.value > projectVersionAtStart
+                }
+                self.appShell.settings.send(.serviceRefreshSucceeded)
+                return true
+            case .failure(let message):
+                self.sendAppShell(.backendRefreshFailed(message))
+                self.appShell.settings.send(.serviceRefreshFailed(message))
+                return false
+            }
         }
+        backendRefreshTask = task
+        return task
     }
 
     func reloadSources() {
@@ -574,16 +848,18 @@ final class AppModel: ObservableObject {
     }
 
     func refreshSources(requestScreenRecordingPermission: Bool = false) async {
-        let previousSelection = selectedSource
+        sourceRefreshGeneration += 1
+        let generation = sourceRefreshGeneration
         await capture.reloadSources(requestScreenRecordingPermission: requestScreenRecordingPermission)
+        guard !Task.isCancelled, generation == sourceRefreshGeneration else { return }
 
-        let resolved = resolveSelection(previous: previousSelection, in: capture.sources)
+        let resolved = resolveSelection(previous: selectedSource, in: capture.sources)
         dispatch(.refreshSelectedSource(resolved))
     }
 
     private func resolveSelection(previous: CaptureSource?, in sources: [CaptureSource]) -> CaptureSource? {
         guard let previous else {
-            return sources.first
+            return nil
         }
         if previous.kind == .area {
             return previous
@@ -591,7 +867,7 @@ final class AppModel: ObservableObject {
         if let match = sources.first(where: { matchesIdentity($0, previous) }) {
             return match
         }
-        return sources.first
+        return nil
     }
 
     private func matchesIdentity(_ candidate: CaptureSource, _ reference: CaptureSource) -> Bool {
@@ -605,11 +881,9 @@ final class AppModel: ObservableObject {
             }
             return candidate.id == reference.id
         case .window:
-            if let candidateWindowID = candidate.windowID,
-               let referenceWindowID = reference.windowID,
-               candidateWindowID == referenceWindowID,
-               candidate.ownerBundleID == reference.ownerBundleID {
-                return true
+            if candidate.windowID != nil || reference.windowID != nil {
+                return candidate.windowID == reference.windowID
+                    && candidate.ownerBundleID == reference.ownerBundleID
             }
             if let bundleID = reference.ownerBundleID,
                candidate.ownerBundleID == bundleID,
@@ -629,16 +903,36 @@ final class AppModel: ObservableObject {
     }
 
     private func prepareRecordingFile(for source: CaptureSource) {
-        do {
-            let fileName = timestampedFileName(prefix: "recording", extension: "mp4")
-            let prepared: PreparedFile = try service.call(
-                "prepareRecordingFile",
-                params: ["fileName": fileName],
-                as: PreparedFile.self
-            )
-            dispatch(.recordingFilePrepared(source, URL(fileURLWithPath: prepared.path)))
-        } catch {
-            dispatch(.recordingFilePreparationFailed(source, message: error.localizedDescription))
+        recordingFilePreparationTask?.cancel()
+        statusMessage = "Preparing recording…"
+        let fileName = timestampedFileName(prefix: "recording", extension: "mp4")
+        let prepareRecordingFilePath = prepareRecordingFilePath
+        recordingFilePreparationTask = Task { [weak self] in
+            let outcome = await Task.detached(priority: .userInitiated) {
+                do {
+                    let prepared = try prepareRecordingFilePath(fileName)
+                    return RecordingFilePreparationOutcome.success(URL(fileURLWithPath: prepared.path))
+                } catch {
+                    return RecordingFilePreparationOutcome.failure(error.localizedDescription)
+                }
+            }.value
+
+            guard !Task.isCancelled, let self else { return }
+            self.recordingFilePreparationTask = nil
+            self.isCapturePreflightRunning = false
+            self.captureOptions.send(.availabilityChanged(self.canChangeRecordingOptions))
+            guard case .ready(.recording, let currentSource) = self.captureState.phase,
+                  currentSource.id == source.id else {
+                self.pendingRecordingOptions = nil
+                return
+            }
+            switch outcome {
+            case .success(let outputURL):
+                self.dispatch(.recordingFilePrepared(source, outputURL))
+            case .failure(let message):
+                self.pendingRecordingOptions = nil
+                self.dispatch(.recordingFilePreparationFailed(source, message: message))
+            }
         }
     }
 
@@ -647,6 +941,7 @@ final class AppModel: ObservableObject {
     }
 
     func beginCapture(_ mode: CaptureMode) {
+        guard !rejectActionWhileTerminationIsPending() else { return }
         dispatch(.beginCapture(mode, runtimeIsRecording: capture.isRecording))
     }
 
@@ -683,6 +978,16 @@ final class AppModel: ObservableObject {
         dispatch(.requestSourceSelector(kind))
         if case .screenSelecting = captureState.phase {
             presentCurrentScreenSelection()
+        }
+    }
+
+    func cancelSourceSelection() {
+        if case .ready(_, let source) = captureState.phase {
+            statusMessage = source.kind == .area ? "Selected area" : "Selected \(source.name)"
+            requestWindow(.closeSourceSelector)
+            showHUD()
+        } else {
+            cancelCapture()
         }
     }
 
@@ -741,12 +1046,27 @@ final class AppModel: ObservableObject {
     }
 
     func requestInteractiveAreaSelection() {
+        guard !rejectActionWhileTerminationIsPending() else { return }
+        if captureMode == .screenshot,
+           !ensureScreenRecordingPermissionForCapture() {
+            showHUD()
+            return
+        }
         dispatch(.selectSource(interactiveAreaSource()))
         dispatch(.requestInteractiveAreaSelection)
     }
 
     func completeInteractiveAreaSelection(_ area: CaptureArea) {
-        dispatch(.completeInteractiveAreaSelection(interactiveAreaSource(area: area)))
+        guard !rejectActionWhileTerminationIsPending() else { return }
+        let source = interactiveAreaSource(area: area)
+        if captureMode == .screenshot,
+           capture.screenRecordingPermissionState != .granted {
+            dispatch(.selectSource(source))
+            showHUD()
+            reportCaptureBlocker(.screenRecordingPermissionNeedsRestart)
+            return
+        }
+        dispatch(.completeInteractiveAreaSelection(source))
     }
 
     func cancelInteractiveAreaSelection() {
@@ -754,6 +1074,14 @@ final class AppModel: ObservableObject {
     }
 
     func cancelCapture() {
+        capturePreflightGeneration += 1
+        capturePreflightTask?.cancel()
+        capturePreflightTask = nil
+        recordingFilePreparationTask?.cancel()
+        recordingFilePreparationTask = nil
+        pendingRecordingOptions = nil
+        isCapturePreflightRunning = false
+        captureOptions.send(.availabilityChanged(canChangeRecordingOptions))
         dispatch(.cancelCapture)
     }
 
@@ -825,6 +1153,7 @@ final class AppModel: ObservableObject {
     }
 
     func toggleRecordingShortcut() {
+        guard !rejectActionWhileTerminationIsPending() else { return }
         switch captureState.phase {
         case .ready(.recording, _):
             startRecording()
@@ -849,24 +1178,85 @@ final class AppModel: ObservableObject {
     }
 
     func startRecording() {
-        dispatch(.recordingStartRequested)
+        guard !rejectActionWhileTerminationIsPending() else { return }
+        guard !isCapturePreflightRunning,
+              case .ready(.recording, _) = captureState.phase else {
+            return
+        }
+
+        capturePreflightTask?.cancel()
+        capturePreflightGeneration += 1
+        let generation = capturePreflightGeneration
+        let options = currentCaptureOptions
+        pendingRecordingOptions = options
+        isCapturePreflightRunning = true
+        captureOptions.send(.availabilityChanged(false))
+        statusMessage = "Checking capture readiness…"
+        capturePreflightTask = Task { [weak self] in
+            guard let self else { return }
+            guard self.ensureScreenRecordingPermissionForCapture() else {
+                self.finishCapturePreflight(generation: generation)
+                return
+            }
+
+            if self.captureState.source?.kind != .area {
+                await self.refreshSources()
+            }
+            guard !Task.isCancelled, generation == self.capturePreflightGeneration else {
+                self.finishCapturePreflight(generation: generation)
+                return
+            }
+
+            guard await self.preparePermissions(for: options) else {
+                self.finishCapturePreflight(generation: generation)
+                return
+            }
+            guard !Task.isCancelled, generation == self.capturePreflightGeneration else {
+                self.finishCapturePreflight(generation: generation)
+                return
+            }
+            if options.includeMicrophone || options.includeCamera {
+                await self.refreshCaptureDevicesForPreflight()
+            }
+            guard !Task.isCancelled, generation == self.capturePreflightGeneration else {
+                self.finishCapturePreflight(generation: generation)
+                return
+            }
+
+            let readiness = self.captureState.readiness(
+                availableSources: self.sourcesForReadiness,
+                screenRecordingPermissionState: self.capture.screenRecordingPermissionState,
+                options: self.captureOptions.state,
+                runtimeIsRecording: self.capture.isRecording,
+                microphoneAuthorization: self.microphoneCaptureAuthorization,
+                cameraAuthorization: self.cameraCaptureAuthorization
+            )
+            guard readiness.canCapture else {
+                if let blocker = readiness.primaryBlocker {
+                    self.reportCaptureBlocker(blocker)
+                }
+                self.finishCapturePreflight(generation: generation)
+                return
+            }
+
+            guard generation == self.capturePreflightGeneration else { return }
+            self.capturePreflightTask = nil
+            self.dispatch(.recordingStartRequested)
+        }
     }
 
     private func runRecordingStartFlow(source selectedSource: CaptureSource, outputURL: URL) async {
         do {
-            refreshCaptureDevices()
-            var options = currentCaptureOptions
-            guard await preparePermissions(for: options) else {
-                restoreRecordingSetup(source: selectedSource)
-                return
-            }
+            var options = pendingRecordingOptions ?? currentCaptureOptions
+            pendingRecordingOptions = nil
 
             if options.includeCamera {
                 do {
                     try await prepareFacecam(cameraDeviceID: options.cameraDeviceID)
                 } catch {
-                    captureOptions.send(.cameraDisabled)
-                    options = currentCaptureOptions
+                    captureOptions.send(.cameraDisabledForCaptureFailure)
+                    options.includeCamera = false
+                    options.cameraDeviceID = nil
                     statusMessage = "Recording without facecam: \(error.localizedDescription)"
                 }
             }
@@ -888,8 +1278,9 @@ final class AppModel: ObservableObject {
                     activeFacecamStartedAt = try await startFacecam(outputURL: url, cameraDeviceID: cameraDeviceID)
                     activeFacecamURL = url
                 } catch {
-                    captureOptions.send(.cameraDisabled)
-                    options = currentCaptureOptions
+                    captureOptions.send(.cameraDisabledForCaptureFailure)
+                    options.includeCamera = false
+                    options.cameraDeviceID = nil
                     try? FileManager.default.removeItem(at: url)
                     activeFacecamURL = nil
                     activeFacecamStartedAt = nil
@@ -982,21 +1373,26 @@ final class AppModel: ObservableObject {
                     screenStartedAt: activeScreenStartedAt,
                     facecamStartedAt: activeFacecamStartedAt
                 )
-                let summary = registerRecordingProject(
+                let summary = await registerRecordingProject(
                     outputURL,
                     sourceName: sourceName,
-                    timelineEdits: timelineEdits
+                    timelineEdits: timelineEdits,
+                    recordingSession: recordingSession
                 )
-                let title = summary?.title ?? outputURL.deletingPathExtension().lastPathComponent
+                let title = summary.summary?.title ?? outputURL.deletingPathExtension().lastPathComponent
                 showEditor(for: EditorSession(
                     kind: .video,
                     url: outputURL,
                     title: title,
-                    projectPath: summary?.path,
+                    projectPath: summary.summary?.path,
                     recordingSession: recordingSession,
                     timelineEditSnapshot: timelineEdits
                 ))
-                statusMessage = "Saved \(title)"
+                if case .failed(let message) = summary {
+                    statusMessage = "Saved \(title), but the editable project could not be created: \(message)"
+                } else {
+                    statusMessage = "Saved \(title)"
+                }
             } else {
                 dispatch(.recordingStopped(message: "Recording stopped before a file was written."))
             }
@@ -1014,9 +1410,28 @@ final class AppModel: ObservableObject {
     }
 
     func takeScreenshot() {
+        guard !rejectActionWhileTerminationIsPending() else { return }
         guard !capture.isRecording else {
             statusMessage = "Finish or cancel the current capture before starting another."
             focusActiveCaptureWindow()
+            return
+        }
+        guard ensureScreenRecordingPermissionForCapture() else { return }
+        let readiness = captureState.readiness(
+            availableSources: sourcesForReadiness,
+            screenRecordingPermissionState: capture.screenRecordingPermissionState,
+            options: captureOptions.state,
+            runtimeIsRecording: capture.isRecording,
+            microphoneAuthorization: microphoneCaptureAuthorization,
+            cameraAuthorization: cameraCaptureAuthorization,
+            isChecking: capture.sourceCatalogState == .loading
+        )
+        guard readiness.canCapture else {
+            if let blocker = readiness.primaryBlocker {
+                reportCaptureBlocker(blocker)
+            } else if readiness.isChecking {
+                statusMessage = "Refreshing capture sources…"
+            }
             return
         }
         dispatch(.screenshotRequested)
@@ -1034,7 +1449,16 @@ final class AppModel: ObservableObject {
                 throw CancellationError()
             }
 
-            let ensuredPaths = try paths ?? service.call("paths", as: AppPaths.self)
+            let ensuredPaths: AppPaths
+            if let paths {
+                ensuredPaths = paths
+            } else {
+                ensuredPaths = try await loadAppPaths()
+            }
+            try Task.checkCancellation()
+            guard isActiveScreenshotCapture(for: selectedSource) else {
+                throw CancellationError()
+            }
             let outputURL = URL(fileURLWithPath: ensuredPaths.screenshotsDir)
                 .appendingPathComponent(timestampedFileName(prefix: "screenshot", extension: "png"))
             try screenshotCapture(selectedSource, outputURL)
@@ -1042,7 +1466,7 @@ final class AppModel: ObservableObject {
             guard isActiveScreenshotCapture(for: selectedSource) else {
                 throw CancellationError()
             }
-            let summary = registerScreenshotProject(outputURL, sourceName: selectedSource.name)
+            let registration = await registerScreenshotProject(outputURL, sourceName: selectedSource.name)
             try Task.checkCancellation()
             guard isActiveScreenshotCapture(for: selectedSource) else {
                 throw CancellationError()
@@ -1052,12 +1476,16 @@ final class AppModel: ObservableObject {
             showEditor(for: EditorSession(
                 kind: .screenshot,
                 url: outputURL,
-                title: summary?.title,
-                projectPath: summary?.path,
+                title: registration.summary?.title,
+                projectPath: registration.summary?.path,
                 screenshotEditorState: .default
             ))
-            statusMessage = "Captured \(outputURL.lastPathComponent)"
-            if summary == nil {
+            if case .failed(let message) = registration {
+                statusMessage = "Captured \(outputURL.lastPathComponent), but the editable project could not be created: \(message)"
+            } else {
+                statusMessage = "Captured \(outputURL.lastPathComponent)"
+            }
+            if registration.needsScreenshotIndexRetry {
                 rememberScreenshotInBackground(outputURL)
             }
         } catch is CancellationError {
@@ -1088,56 +1516,215 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func registerScreenshotProject(_ outputURL: URL, sourceName: String?) -> ProjectSummary? {
+    private func loadAppPaths() async throws -> AppPaths {
+        let service = service
+        return try await Task.detached(priority: .utility) {
+            try service.call("paths", as: AppPaths.self)
+        }.value
+    }
+
+    private func registerScreenshotProject(
+        _ outputURL: URL,
+        sourceName: String?
+    ) async -> CapturedProjectRegistrationOutcome {
         let title = outputURL.deletingPathExtension().lastPathComponent
+        let editorState = ProjectEditorState(screenshot: ScreenshotEditorState.default)
         do {
-            let summary: ProjectSummary = try service.call(
-                "registerScreenshot",
-                params: [
-                    "path": outputURL.path,
-                    "sourceName": sourceName ?? "Screenshot",
-                    "title": title,
-                    "editorState": jsonObject(for: ProjectEditorState(screenshot: ScreenshotEditorState.default)) ?? [:]
-                ],
-                as: ProjectSummary.self
-            )
+            let params: [String: Any] = [
+                "path": outputURL.path,
+                "sourceName": sourceName ?? "Screenshot",
+                "title": title,
+                "editorState": jsonObject(for: editorState) ?? [:]
+            ]
+            let paramsData = try JSONSerialization.data(withJSONObject: params)
+            let registerCapturedMedia = registerCapturedMedia
+            let summary: ProjectSummary = try await Task.detached(priority: .utility) {
+                try registerCapturedMedia("registerScreenshot", paramsData)
+            }.value
             upsertProjectSummary(summary)
-            return summary
-        } catch {
-            return nil
+            return .indexed(summary)
+        } catch let registrationError {
+            return await persistCapturedProjectLocally(
+                title: title,
+                recordingURL: nil,
+                screenshotURL: outputURL,
+                sourceName: sourceName,
+                editorState: editorState,
+                recordingSession: nil,
+                registrationError: registrationError
+            )
         }
     }
 
     private func registerRecordingProject(
         _ outputURL: URL,
         sourceName: String?,
-        timelineEdits: TimelineEditSnapshot
-    ) -> ProjectSummary? {
+        timelineEdits: TimelineEditSnapshot,
+        recordingSession: RecordingSession
+    ) async -> CapturedProjectRegistrationOutcome {
         let title = outputURL.deletingPathExtension().lastPathComponent
+        let editorState = ProjectEditorState(timelineEdits: timelineEdits)
         do {
-            let summary: ProjectSummary = try service.call(
-                "registerRecording",
-                params: [
-                    "path": outputURL.path,
-                    "sourceName": sourceName ?? "Screen Recording",
-                    "title": title,
-                    "editorState": jsonObject(for: ProjectEditorState(timelineEdits: timelineEdits)) ?? [:]
-                ],
-                as: ProjectSummary.self
+            let params: [String: Any] = [
+                "path": outputURL.path,
+                "sourceName": sourceName ?? "Screen Recording",
+                "title": title,
+                "editorState": jsonObject(for: editorState) ?? [:],
+                "recordingSession": jsonObject(for: recordingSession) ?? [:]
+            ]
+            let paramsData = try JSONSerialization.data(withJSONObject: params)
+            let registerCapturedMedia = registerCapturedMedia
+            let summary: ProjectSummary = try await Task.detached(priority: .utility) {
+                try registerCapturedMedia("registerRecording", paramsData)
+            }.value
+            upsertProjectSummary(summary)
+            return .indexed(summary)
+        } catch let registrationError {
+            return await persistCapturedProjectLocally(
+                title: title,
+                recordingURL: outputURL,
+                screenshotURL: nil,
+                sourceName: sourceName,
+                editorState: editorState,
+                recordingSession: recordingSession,
+                registrationError: registrationError
             )
-            if let projects = try? service.call("listProjects", as: [ProjectSummary].self) {
-                sendAppShell(.projectsReplaced(projects))
-            } else {
-                upsertProjectSummary(summary)
-            }
-            return summary
-        } catch {
-            return nil
         }
     }
 
-    func openProject(_ project: ProjectSummary) {
-        openProjectFile(at: URL(fileURLWithPath: project.path))
+    private func persistCapturedProjectLocally(
+        title: String,
+        recordingURL: URL?,
+        screenshotURL: URL?,
+        sourceName: String?,
+        editorState: ProjectEditorState,
+        recordingSession: RecordingSession?,
+        registrationError: Error
+    ) async -> CapturedProjectRegistrationOutcome {
+        let now = ISO8601DateFormatter().string(from: Date())
+        let projectsDirectory: URL
+        if let paths {
+            projectsDirectory = URL(fileURLWithPath: paths.projectsDir, isDirectory: true)
+        } else if let applicationSupport = FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        ).first {
+            projectsDirectory = applicationSupport
+                .appendingPathComponent("Open Recorder", isDirectory: true)
+                .appendingPathComponent("Projects", isDirectory: true)
+        } else if let mediaURL = screenshotURL ?? recordingURL {
+            projectsDirectory = mediaURL.deletingLastPathComponent()
+        } else {
+            return .failed(registrationError.localizedDescription)
+        }
+        let newProjectURL = projectsDirectory
+            .appendingPathComponent("recovered-\(UUID().uuidString.lowercased())")
+            .appendingPathExtension("openrecorder")
+        let newRecoveryMarkerURL = newProjectURL.appendingPathExtension("recovery")
+        let document = ProjectDocument(
+            schemaVersion: 2,
+            title: title,
+            recordingPath: recordingURL?.path,
+            screenshotPath: screenshotURL?.path,
+            sourceName: sourceName,
+            createdAt: now,
+            updatedAt: now,
+            editorState: editorState,
+            recordingSession: recordingSession
+        )
+
+        let documentData: Data
+        do {
+            documentData = try JSONEncoder().encode(document)
+        } catch {
+            return .failed("\(registrationError.localizedDescription); local recovery failed: \(error.localizedDescription)")
+        }
+
+        let mediaURL = screenshotURL ?? recordingURL
+        let targetMediaIdentity = mediaURL.map { canonicalMediaIdentity(for: $0) }
+        let persistence = await Task.detached(priority: .utility) {
+            do {
+                try FileManager.default.createDirectory(
+                    at: projectsDirectory,
+                    withIntermediateDirectories: true
+                )
+                if let targetMediaIdentity,
+                   let candidates = try? FileManager.default.contentsOfDirectory(
+                       at: projectsDirectory,
+                       includingPropertiesForKeys: nil,
+                       options: [.skipsHiddenFiles]
+                   ) {
+                    for candidateURL in candidates {
+                        guard candidateURL.pathExtension == "recovery" else { continue }
+                        let candidateProjectURL = candidateURL.deletingPathExtension()
+                        guard candidateProjectURL.pathExtension == "openrecorder",
+                              let candidateData = try? Data(contentsOf: candidateProjectURL),
+                              let candidateDocument = try? JSONDecoder().decode(
+                                  ProjectDocument.self,
+                                  from: candidateData
+                              ),
+                              let candidateMediaPath = candidateDocument.screenshotPath
+                                  ?? candidateDocument.recordingPath,
+                              canonicalMediaIdentity(for: URL(fileURLWithPath: candidateMediaPath))
+                                  == targetMediaIdentity else {
+                            continue
+                        }
+                        return LocalProjectPersistenceOutcome.success(
+                            projectURL: candidateProjectURL.resolvingSymlinksInPath().standardizedFileURL,
+                            projectData: candidateData
+                        )
+                    }
+                }
+
+                try Data().write(to: newRecoveryMarkerURL, options: .atomic)
+                do {
+                    try documentData.write(to: newProjectURL, options: .atomic)
+                } catch {
+                    try? FileManager.default.removeItem(at: newRecoveryMarkerURL)
+                    throw error
+                }
+                return LocalProjectPersistenceOutcome.success(
+                    projectURL: newProjectURL.resolvingSymlinksInPath().standardizedFileURL,
+                    projectData: documentData
+                )
+            } catch {
+                return LocalProjectPersistenceOutcome.failure(error.localizedDescription)
+            }
+        }.value
+
+        switch persistence {
+        case .success(let projectURL, let persistedData):
+            guard let persistedDocument = try? JSONDecoder().decode(
+                ProjectDocument.self,
+                from: persistedData
+            ) else {
+                return .failed("\(registrationError.localizedDescription); local recovery project is invalid")
+            }
+            let summary = ProjectSummary(
+                id: "project-local-\(projectURL.deletingPathExtension().lastPathComponent)",
+                title: persistedDocument.title,
+                path: projectURL.path,
+                recordingPath: persistedDocument.recordingPath,
+                screenshotPath: persistedDocument.screenshotPath,
+                sourceName: persistedDocument.sourceName,
+                createdAt: persistedDocument.createdAt,
+                updatedAt: persistedDocument.updatedAt,
+                lastOpenedAt: persistedDocument.updatedAt,
+                missing: false,
+                availability: .available
+            )
+            locallyPersistedProjectPaths.insert(summary.path)
+            upsertProjectSummary(summary)
+            return .locallyPersisted(summary)
+        case .failure(let message):
+            return .failed("\(registrationError.localizedDescription); local recovery failed: \(message)")
+        }
+    }
+
+    @discardableResult
+    func openProject(_ project: ProjectSummary) -> Task<Void, Never> {
+        guard !rejectActionWhileTerminationIsPending() else { return Task {} }
+        return openProjectFile(at: URL(fileURLWithPath: project.path))
     }
 
     func deleteProject(_ project: ProjectSummary) {
@@ -1147,6 +1734,8 @@ final class AppModel: ObservableObject {
                 try trashProjectFile(projectURL)
             }
             try forgetProject(project.path)
+            locallyPersistedProjectPaths.remove(project.path)
+            noteLocalProjectMutation(path: project.path)
             sendAppShell(.projectSummaryRemoved(path: project.path))
             statusMessage = "Deleted \(project.title)"
         } catch {
@@ -1155,6 +1744,7 @@ final class AppModel: ObservableObject {
     }
 
     func openProjectFile() {
+        guard !rejectActionWhileTerminationIsPending() else { return }
         let panel = NSOpenPanel()
         if let projectType = UTType(filenameExtension: "openrecorder") {
             panel.allowedContentTypes = [projectType]
@@ -1169,71 +1759,238 @@ final class AppModel: ObservableObject {
         openProjectFile(at: projectURL)
     }
 
-    func openEditorFile(at url: URL) {
+    @discardableResult
+    func openEditorFile(at url: URL) -> Task<Void, Never>? {
+        guard !rejectActionWhileTerminationIsPending() else { return nil }
         if url.pathExtension.lowercased() == "openrecorder" {
-            openProjectFile(at: url)
-            return
+            return openProjectFile(at: url)
         }
 
+        let kind: EditorMediaKind
         if EditorMediaKind.screenshot.supports(url) {
-            currentScreenshotURL = url
-            currentVideoURL = nil
-            showEditor(for: EditorSession(kind: .screenshot, url: url))
-            statusMessage = "Opened \(url.lastPathComponent)"
-            return
+            kind = .screenshot
+        } else if EditorMediaKind.video.supports(url) {
+            kind = .video
+        } else {
+            statusMessage = "Unsupported file: \(url.lastPathComponent)"
+            return nil
         }
 
-        if EditorMediaKind.video.supports(url) {
-            currentVideoURL = url
-            currentScreenshotURL = nil
-            showEditor(for: EditorSession(kind: .video, url: url))
-            statusMessage = "Opened \(url.lastPathComponent)"
-            return
+        let resolvedMediaURL = url.resolvingSymlinksInPath().standardizedFileURL
+        let standardizedMediaPath = resolvedMediaURL.path
+        let mediaIdentity = canonicalMediaIdentity(for: resolvedMediaURL)
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: standardizedMediaPath, isDirectory: &isDirectory),
+              !isDirectory.boolValue,
+              FileManager.default.isReadableFile(atPath: standardizedMediaPath) else {
+            statusMessage = "Could not import \(url.lastPathComponent): the file is missing or unreadable."
+            return nil
         }
 
-        statusMessage = "Unsupported file: \(url.lastPathComponent)"
+        if let pendingImport = mediaImportTasksByPath[mediaIdentity] {
+            return pendingImport
+        }
+
+        if let existingProject = projects.first(where: { project in
+            guard let mediaPath = project.mediaPath else { return false }
+            return canonicalMediaIdentity(for: URL(fileURLWithPath: mediaPath)) == mediaIdentity
+                && FileManager.default.fileExists(atPath: project.path)
+        }) {
+            return openProject(existingProject)
+        }
+
+        statusMessage = "Importing \(url.lastPathComponent)…"
+        let registerImportedMedia = registerImportedMedia
+        let requestID = UUID()
+        mediaImportRequestIDsByPath[mediaIdentity] = requestID
+        let task = Task { [weak self] in
+            defer {
+                self?.finishMediaImport(path: mediaIdentity, requestID: requestID)
+            }
+            let outcome = await Task.detached(priority: .userInitiated) {
+                do {
+                    let summary = try registerImportedMedia(kind, standardizedMediaPath)
+                    let projectData = try? Data(contentsOf: URL(fileURLWithPath: summary.path))
+                    return ImportedMediaRegistrationOutcome.success(summary, projectData: projectData)
+                } catch {
+                    return ImportedMediaRegistrationOutcome.failure(error.localizedDescription)
+                }
+            }.value
+
+            guard !Task.isCancelled, let self else { return }
+            switch outcome {
+            case .success(let summary, let projectData):
+                self.upsertProjectSummary(summary)
+                switch kind {
+                case .screenshot:
+                    self.currentScreenshotURL = url
+                    self.currentVideoURL = nil
+                case .video:
+                    self.currentVideoURL = url
+                    self.currentScreenshotURL = nil
+                }
+                let document = projectData.flatMap { try? JSONDecoder().decode(ProjectDocument.self, from: $0) }
+                self.showEditor(for: self.importedEditorSession(
+                    kind: kind,
+                    url: url,
+                    summary: summary,
+                    document: document
+                ))
+                self.statusMessage = "Opened \(url.lastPathComponent)"
+            case .failure(let message):
+                let editorState: ProjectEditorState = kind == .screenshot
+                    ? ProjectEditorState(screenshot: .default)
+                    : .empty
+                let fallback = await self.persistCapturedProjectLocally(
+                    title: url.deletingPathExtension().lastPathComponent,
+                    recordingURL: kind == .video ? url : nil,
+                    screenshotURL: kind == .screenshot ? url : nil,
+                    sourceName: kind == .video ? "Imported Recording" : "Imported Screenshot",
+                    editorState: editorState,
+                    recordingSession: nil,
+                    registrationError: ProjectRegistrationFailure(message: message)
+                )
+                guard let summary = fallback.summary else {
+                    if case .failed(let fallbackMessage) = fallback {
+                        self.statusMessage = "Could not import \(url.lastPathComponent): \(fallbackMessage)"
+                    }
+                    return
+                }
+                let persistedData = await Task.detached(priority: .utility) {
+                    try? Data(contentsOf: URL(fileURLWithPath: summary.path))
+                }.value
+                let document = persistedData
+                    .flatMap { try? JSONDecoder().decode(ProjectDocument.self, from: $0) }
+                    ?? ProjectDocument(
+                    schemaVersion: 2,
+                    title: summary.title,
+                    recordingPath: summary.recordingPath,
+                    screenshotPath: summary.screenshotPath,
+                    sourceName: summary.sourceName,
+                    createdAt: summary.createdAt,
+                    updatedAt: summary.updatedAt,
+                    editorState: editorState,
+                    recordingSession: nil
+                    )
+                switch kind {
+                case .screenshot:
+                    self.currentScreenshotURL = url
+                    self.currentVideoURL = nil
+                case .video:
+                    self.currentVideoURL = url
+                    self.currentScreenshotURL = nil
+                }
+                self.showEditor(for: self.importedEditorSession(
+                    kind: kind,
+                    url: url,
+                    summary: summary,
+                    document: document
+                ))
+                self.statusMessage = "Opened \(url.lastPathComponent)"
+            }
+        }
+        mediaImportTasksByPath[mediaIdentity] = task
+        return task
     }
 
-    func openProjectFile(at projectURL: URL) {
-        do {
-            let document: ProjectDocument = try service.call(
-                "loadProject",
-                params: ["path": projectURL.path],
-                as: ProjectDocument.self
+    private func finishMediaImport(path: String, requestID: UUID) {
+        guard mediaImportRequestIDsByPath[path] == requestID else { return }
+        mediaImportRequestIDsByPath.removeValue(forKey: path)
+        mediaImportTasksByPath.removeValue(forKey: path)
+    }
+
+    private func importedEditorSession(
+        kind: EditorMediaKind,
+        url: URL,
+        summary: ProjectSummary,
+        document: ProjectDocument?
+    ) -> EditorSession {
+        switch kind {
+        case .video:
+            return EditorSession(
+                kind: .video,
+                url: url,
+                title: document?.title ?? summary.title,
+                projectPath: summary.path,
+                recordingSession: document.map { recordingSession(for: $0, recordingURL: url) },
+                timelineEditSnapshot: document?.editorState?.timelineEdits ?? .empty,
+                videoEditorState: document?.editorState?.video
             )
+        case .screenshot:
+            return EditorSession(
+                kind: .screenshot,
+                url: url,
+                title: document?.title ?? summary.title,
+                projectPath: summary.path,
+                screenshotEditorState: document?.editorState?.screenshot ?? .default
+            )
+        }
+    }
+
+    @discardableResult
+    func openProjectFile(at projectURL: URL) -> Task<Void, Never> {
+        statusMessage = "Opening \(projectURL.lastPathComponent)…"
+        return Task { [weak self] in
+            let outcome = await Task.detached(priority: .userInitiated) {
+                do {
+                    return ProjectFileLoadOutcome.success(try Data(contentsOf: projectURL))
+                } catch {
+                    return ProjectFileLoadOutcome.failure(error.localizedDescription)
+                }
+            }.value
+
+            guard !Task.isCancelled, let self else { return }
+            let document: ProjectDocument
+            switch outcome {
+            case .success(let data):
+                do {
+                    document = try JSONDecoder().decode(ProjectDocument.self, from: data)
+                } catch {
+                    self.statusMessage = "Could not open \(projectURL.lastPathComponent): \(error.localizedDescription)"
+                    return
+                }
+            case .failure(let message):
+                self.statusMessage = "Could not open \(projectURL.lastPathComponent): \(message)"
+                return
+            }
+
             if let screenshotPath = document.screenshotPath {
                 let screenshotURL = URL(fileURLWithPath: screenshotPath)
-                currentScreenshotURL = screenshotURL
-                currentVideoURL = nil
-                showEditor(for: EditorSession(
+                guard FileManager.default.isReadableFile(atPath: screenshotURL.path) else {
+                    self.statusMessage = "Could not open \(document.title): the screenshot file is missing or unreadable."
+                    return
+                }
+                self.currentScreenshotURL = screenshotURL
+                self.currentVideoURL = nil
+                self.showEditor(for: EditorSession(
                     kind: .screenshot,
                     url: screenshotURL,
                     title: document.title,
                     projectPath: projectURL.path,
                     screenshotEditorState: document.editorState?.screenshot
                 ))
-                statusMessage = "Opened \(document.title)"
-                refreshBackendState()
+                self.statusMessage = "Opened \(document.title)"
             } else if let recordingPath = document.recordingPath {
                 let recordingURL = URL(fileURLWithPath: recordingPath)
-                currentVideoURL = recordingURL
-                currentScreenshotURL = nil
-                showEditor(for: EditorSession(
+                guard FileManager.default.isReadableFile(atPath: recordingURL.path) else {
+                    self.statusMessage = "Could not open \(document.title): the recording file is missing or unreadable."
+                    return
+                }
+                self.currentVideoURL = recordingURL
+                self.currentScreenshotURL = nil
+                self.showEditor(for: EditorSession(
                     kind: .video,
                     url: recordingURL,
                     title: document.title,
                     projectPath: projectURL.path,
-                    recordingSession: recordingSession(for: document, recordingURL: recordingURL),
+                    recordingSession: self.recordingSession(for: document, recordingURL: recordingURL),
                     timelineEditSnapshot: document.editorState?.timelineEdits,
                     videoEditorState: document.editorState?.video
                 ))
-                statusMessage = "Opened \(document.title)"
-                refreshBackendState()
+                self.statusMessage = "Opened \(document.title)"
             } else {
-                statusMessage = "Project has no recording path."
+                self.statusMessage = "Project has no recording or screenshot path."
             }
-        } catch {
-            statusMessage = error.localizedDescription
         }
     }
 
@@ -1331,7 +2088,46 @@ final class AppModel: ObservableObject {
     }
 
     private func upsertProjectSummary(_ summary: ProjectSummary) {
+        if !summary.id.hasPrefix("project-local-") {
+            locallyPersistedProjectPaths.remove(summary.path)
+        }
+        noteLocalProjectMutation(path: summary.path)
         sendAppShell(.projectSummaryUpserted(summary))
+    }
+
+    private func noteLocalProjectMutation(path: String) {
+        projectMutationVersion += 1
+        projectMutationVersionsByPath[path] = projectMutationVersion
+    }
+
+    private func noteLocalProjectReplacement(
+        from previousProjects: [ProjectSummary],
+        to nextProjects: [ProjectSummary]
+    ) {
+        let previousByPath = Dictionary(previousProjects.map { ($0.path, $0) }, uniquingKeysWith: { _, latest in latest })
+        let nextByPath = Dictionary(nextProjects.map { ($0.path, $0) }, uniquingKeysWith: { _, latest in latest })
+        let changedPaths = Set(previousByPath.keys).union(nextByPath.keys).filter {
+            previousByPath[$0] != nextByPath[$0]
+        }
+        guard !changedPaths.isEmpty else { return }
+        projectMutationVersion += 1
+        for path in changedPaths {
+            projectMutationVersionsByPath[path] = projectMutationVersion
+        }
+    }
+
+    private func projectsMergingConcurrentMutations(
+        into refreshedProjects: [ProjectSummary],
+        since version: Int
+    ) -> [ProjectSummary] {
+        let changedPaths = Set(projectMutationVersionsByPath.compactMap { path, mutationVersion in
+            mutationVersion > version ? path : nil
+        }).union(locallyPersistedProjectPaths)
+        guard !changedPaths.isEmpty else { return refreshedProjects }
+
+        let locallyChangedProjects = projects.filter { changedPaths.contains($0.path) }
+        let unchangedRefreshedProjects = refreshedProjects.filter { !changedPaths.contains($0.path) }
+        return locallyChangedProjects + unchangedRefreshedProjects
     }
 
     private func jsonObject<T: Encodable>(for value: T) -> Any? {
@@ -1402,10 +2198,43 @@ final class AppModel: ObservableObject {
         openPrivacyPane("Privacy_Accessibility")
     }
 
-    func refreshCaptureDevices() {
-        let microphones = captureDeviceProvider.devices(for: .audio)
-        let cameras = captureDeviceProvider.devices(for: .video)
-        captureOptions.send(.devicesRefreshed(microphones: microphones, cameras: cameras))
+    @discardableResult
+    func refreshCaptureDevices() -> Task<Void, Never> {
+        captureDeviceRefreshGeneration += 1
+        let generation = captureDeviceRefreshGeneration
+        captureDeviceRefreshTask?.cancel()
+        captureOptions.send(.deviceRefreshStarted)
+        let provider = captureDeviceProvider
+        let task = Task { [weak self] in
+            let devices = await Task.detached(priority: .userInitiated) {
+                let microphones = provider.devices(for: .audio)
+                let cameras = provider.devices(for: .video)
+                return (microphones, cameras)
+            }.value
+            guard !Task.isCancelled,
+                  let self,
+                  generation == self.captureDeviceRefreshGeneration else {
+                return
+            }
+            self.captureOptions.send(.devicesRefreshed(
+                microphones: devices.0,
+                cameras: devices.1
+            ))
+            self.captureDeviceRefreshTask = nil
+        }
+        captureDeviceRefreshTask = task
+        return task
+    }
+
+    private func refreshCaptureDevicesForPreflight() async {
+        var refreshTask = refreshCaptureDevices()
+        await refreshTask.value
+        while !Task.isCancelled,
+              captureOptions.state.deviceLoadPhase == .loading,
+              let latestRefreshTask = captureDeviceRefreshTask {
+            refreshTask = latestRefreshTask
+            await refreshTask.value
+        }
     }
 
     func requestMicrophoneSelection(refreshDevices: Bool = true) {
@@ -1473,6 +2302,66 @@ final class AppModel: ObservableObject {
 
     private var currentCaptureOptions: RecordingCaptureOptions {
         captureOptions.state.recordingOptions
+    }
+
+    private func captureMediaAuthorizationState(for mediaType: AVMediaType) -> CaptureMediaAuthorizationState {
+        switch AVCaptureDevice.authorizationStatus(for: mediaType) {
+        case .authorized:
+            .authorized
+        case .notDetermined:
+            .undetermined
+        case .denied, .restricted:
+            .denied
+        @unknown default:
+            .denied
+        }
+    }
+
+    private var sourcesForReadiness: [CaptureSource] {
+        if capture.sourceCatalogState == .idle, let selectedSource {
+            return [selectedSource]
+        }
+        return capture.sources
+    }
+
+    @discardableResult
+    private func ensureScreenRecordingPermissionForCapture() -> Bool {
+        if capture.screenRecordingPermissionState == .granted {
+            return true
+        }
+
+        if capture.screenRecordingPermissionState == .requestAvailable {
+            _ = requestScreenRecordingPermission()
+            refreshOnboardingPermissionStates()
+        }
+
+        let state = capture.screenRecordingPermissionState
+        guard state == .granted else {
+            reportCaptureBlocker(
+                state == .requestAvailable
+                    ? .screenRecordingPermissionRequired
+                    : .screenRecordingPermissionNeedsRestart
+            )
+            return false
+        }
+        return true
+    }
+
+    private func reportCaptureBlocker(_ blocker: CaptureBlocker) {
+        statusMessage = blocker.message
+        if blocker.recoveryAction == .waitForCurrentCapture {
+            focusActiveCaptureWindow()
+        } else {
+            showHUD()
+        }
+    }
+
+    private func finishCapturePreflight(generation: Int) {
+        guard generation == capturePreflightGeneration else { return }
+        capturePreflightTask = nil
+        pendingRecordingOptions = nil
+        isCapturePreflightRunning = false
+        captureOptions.send(.availabilityChanged(canChangeRecordingOptions))
     }
 
     private func preparePermissions(for options: RecordingCaptureOptions) async -> Bool {

@@ -172,6 +172,7 @@ struct VideoCropDialog: View {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .stroke(Theme.borderStrong, lineWidth: 1)
         }
+        .interactiveDismissDisabled()
         .overlay(alignment: .topLeading) {
             StudioKeyDownMonitor { event in
                 handleKeyboardAdjustment(event)
@@ -196,7 +197,10 @@ struct VideoCropDialog: View {
 
     private var toolbar: some View {
         HStack(spacing: 14) {
-            trafficLights
+            Label("Crop", systemImage: "crop")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Color.white.opacity(0.88))
+                .accessibilityAddTraits(.isHeader)
 
             Spacer(minLength: 16)
 
@@ -204,41 +208,31 @@ struct VideoCropDialog: View {
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(Color.white.opacity(0.36))
 
-            CropNumberField(value: widthBinding)
+            CropNumberField(label: "Crop width", value: widthBinding)
             Text("x")
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(Theme.fgMuted)
-            CropNumberField(value: heightBinding)
+            CropNumberField(label: "Crop height", value: heightBinding)
 
-            Menu {
+            Picker("Aspect ratio", selection: driver.aspectBinding) {
                 ForEach(VideoCropAspect.allCases) { option in
-                    Button(option.title) {
-                        applyAspect(option)
-                    }
+                    Text(option.title)
+                        .tag(option)
                 }
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "rectangle.on.rectangle")
-                    Text(driver.state.aspect.title)
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 9, weight: .semibold))
-                }
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.white)
-                .frame(height: 36)
-                .padding(.horizontal, 10)
-                .background(Theme.overlay, in: RoundedRectangle(cornerRadius: 7))
             }
-            .menuStyle(.borderlessButton)
+            .labelsHidden()
+            .pickerStyle(.menu)
+            .controlSize(.small)
             .fixedSize()
+            .help("Crop aspect ratio")
 
             Text("Position")
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(Color.white.opacity(0.36))
                 .padding(.leading, 8)
 
-            CropNumberField(value: xBinding)
-            CropNumberField(value: yBinding)
+            CropNumberField(label: "Crop x position", value: xBinding)
+            CropNumberField(label: "Crop y position", value: yBinding)
 
             Button {
                 resetCrop()
@@ -272,15 +266,6 @@ struct VideoCropDialog: View {
         }
     }
 
-    private var trafficLights: some View {
-        HStack(spacing: 9) {
-            Circle().fill(Color(red: 1.0, green: 0.25, blue: 0.27))
-            Circle().fill(Theme.borderStrong)
-            Circle().fill(Theme.borderStrong)
-        }
-        .frame(width: 60, height: 14)
-    }
-
     private var footer: some View {
         HStack(spacing: 10) {
             Button {
@@ -294,8 +279,9 @@ struct VideoCropDialog: View {
                     .foregroundStyle(.white)
             }
             .buttonStyle(.plain)
+            .keyboardShortcut(.defaultAction)
 
-            Button {
+            Button(role: .cancel) {
                 driver.send(.cancelRequested)
             } label: {
                 Text("Discard changes")
@@ -310,16 +296,9 @@ struct VideoCropDialog: View {
                     .foregroundStyle(.white.opacity(0.92))
             }
             .buttonStyle(.plain)
+            .keyboardShortcut(.cancelAction)
         }
         .frame(maxWidth: .infinity)
-    }
-
-    private var effectiveSourceSize: CGSize {
-        driver.state.effectiveSourceSize
-    }
-
-    private var currentPixelRect: CGRect {
-        driver.state.currentPixelRect
     }
 
     private var widthBinding: Binding<Int> {
@@ -339,6 +318,7 @@ struct VideoCropDialog: View {
     }
 
     private func handleKeyboardAdjustment(_ event: NSEvent) -> Bool {
+        guard !StudioKeyEventScope.isTextInputActive(in: event.window) else { return false }
         guard let adjustment = VideoCropKeyboardAdjustment(event: event) else { return false }
         applyKeyboardAdjustment(adjustment)
         return true
@@ -346,10 +326,6 @@ struct VideoCropDialog: View {
 
     private func applyKeyboardAdjustment(_ adjustment: VideoCropKeyboardAdjustment) {
         driver.send(.keyboardAdjusted(adjustment))
-    }
-
-    private func applyAspect(_ option: VideoCropAspect) {
-        driver.send(.aspectSelected(option))
     }
 
     private func resetCrop() {
@@ -615,6 +591,7 @@ private struct VideoCropCanvas: View {
 }
 
 private struct CropNumberField: View {
+    var label: String
     @Binding var value: Int
 
     var body: some View {
@@ -625,6 +602,7 @@ private struct CropNumberField: View {
             .multilineTextAlignment(.center)
             .frame(width: 64, height: 36)
             .background(Theme.overlay, in: RoundedRectangle(cornerRadius: 7))
+            .accessibilityLabel(label)
     }
 }
 

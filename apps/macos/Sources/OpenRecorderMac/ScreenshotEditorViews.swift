@@ -48,6 +48,12 @@ struct ScreenshotEditorStudioView: View {
                 },
                 onExport: {
                     editor.send(.exportRequested)
+                },
+                onSave: {
+                    editor.saveComposedPNG(image: image, suggestedFileName: suggestedExportFileName)
+                },
+                onCopy: {
+                    editor.copyComposedPNG(image: image)
                 }
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -150,6 +156,7 @@ struct ScreenshotExportDialog: View {
     @Environment(\.dismiss) private var dismiss
     var onSave: () -> Void
     var onCopy: () -> Void
+    @State private var pendingChoice: ScreenshotExportChoice?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -162,11 +169,10 @@ struct ScreenshotExportDialog: View {
                     symbolName: "square.and.arrow.down",
                     isPrimary: true
                 ) {
+                    pendingChoice = .save
                     dismiss()
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                        onSave()
-                    }
                 }
+                .keyboardShortcut(.defaultAction)
 
                 ScreenshotExportActionCard(
                     title: "Copy",
@@ -174,12 +180,13 @@ struct ScreenshotExportDialog: View {
                     symbolName: "doc.on.doc",
                     isPrimary: false
                 ) {
-                    onCopy()
+                    pendingChoice = .copy
                     dismiss()
                 }
+                .keyboardShortcut("c", modifiers: .command)
             }
 
-            StudioButton(hitTarget: .rectangle) {
+            Button(role: .cancel) {
                 dismiss()
             } label: {
                 Text("Cancel")
@@ -188,6 +195,8 @@ struct ScreenshotExportDialog: View {
                     .frame(maxWidth: .infinity)
                     .frame(height: 28)
             }
+            .buttonStyle(.plain)
+            .keyboardShortcut(.cancelAction)
         }
         .padding(22)
         .background {
@@ -202,6 +211,20 @@ struct ScreenshotExportDialog: View {
                     endPoint: .bottom
                 )
             }
+        }
+        .onDisappear(perform: performPendingChoice)
+    }
+
+    private func performPendingChoice() {
+        let choice = pendingChoice
+        pendingChoice = nil
+        switch choice {
+        case .save:
+            onSave()
+        case .copy:
+            onCopy()
+        case nil:
+            break
         }
     }
 
@@ -224,6 +247,11 @@ struct ScreenshotExportDialog: View {
             Spacer(minLength: 0)
         }
     }
+}
+
+enum ScreenshotExportChoice: Equatable {
+    case save
+    case copy
 }
 
 private struct ScreenshotExportActionCard: View {
@@ -386,6 +414,8 @@ struct ScreenshotSettingsPanel: View {
     var onEditingChanged: (Bool) -> Void = { _ in }
     var onRevealFile: () -> Void = {}
     var onExport: () -> Void
+    var onSave: (() -> Void)? = nil
+    var onCopy: (() -> Void)? = nil
 
     var body: some View {
         VStack(spacing: 0) {
@@ -414,8 +444,12 @@ struct ScreenshotSettingsPanel: View {
                 InspectorFooterButton(title: "Reveal File", symbolName: "folder") {
                     onRevealFile()
                 }
-                InspectorFooterButton(title: "Export", symbolName: "square.and.arrow.up") {
-                    onExport()
+                if let onSave, let onCopy {
+                    ScreenshotExportMenu(onSave: onSave, onCopy: onCopy)
+                } else {
+                    InspectorFooterButton(title: "Export", symbolName: "square.and.arrow.up") {
+                        onExport()
+                    }
                 }
             }
             .padding(12)
@@ -451,6 +485,40 @@ struct ScreenshotSettingsPanel: View {
         }
     }
 
+}
+
+private struct ScreenshotExportMenu: View {
+    var onSave: () -> Void
+    var onCopy: () -> Void
+
+    var body: some View {
+        Menu {
+            Button(action: onSave) {
+                Label("Save PNG…", systemImage: "square.and.arrow.down")
+            }
+            .keyboardShortcut("s", modifiers: [.command, .shift])
+
+            Button(action: onCopy) {
+                Label("Copy PNG", systemImage: "doc.on.doc")
+            }
+            .keyboardShortcut("c", modifiers: [.command, .shift])
+        } label: {
+            Label("Export", systemImage: "square.and.arrow.up")
+                .font(.system(size: 10, weight: .medium))
+                .frame(maxWidth: .infinity)
+                .frame(height: 30)
+                .foregroundStyle(Theme.fgMuted)
+                .background(Theme.overlay, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .stroke(Theme.borderSubtle, lineWidth: 1)
+                }
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .accessibilityLabel("Export screenshot")
+        .help("Export screenshot")
+    }
 }
 
 struct Checkerboard: View {

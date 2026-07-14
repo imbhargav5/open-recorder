@@ -21,8 +21,9 @@ struct SourceSelectorWindowView: View {
                 sourceTab: sourceSelector.sourceTabBinding,
                 visibleTabs: sourceSelector.state.visibleTabs,
                 allSources: model.capture.sources,
-                selectedSourceID: model.selectedSource?.id,
+                selectedSourceID: sourceSelector.state.pendingSourceID,
                 captureMode: model.captureMode,
+                loadPhase: sourceSelector.state.loadPhase,
                 onCancel: {
                     sourceSelector.send(.cancelRequested)
                 },
@@ -30,7 +31,7 @@ struct SourceSelectorWindowView: View {
                     sourceSelector.send(.refreshRequested)
                 },
                 onSelectSource: { source in
-                    model.selectSource(source)
+                    sourceSelector.send(.sourceSelected(source.id))
                 },
                 onShare: {
                     sourceSelector.send(.shareRequested)
@@ -55,15 +56,21 @@ struct SourceSelectorWindowView: View {
         .onAppear {
             sourceSelector.configure(
                 refreshSources: {
-                    model.reloadSourcesForPreview()
+                    await model.refreshSources(requestScreenRecordingPermission: true)
+                    return SourceSelectorRefreshResult(
+                        sourceIDs: model.capture.sources.map(\.id),
+                        errorMessage: model.capture.sourceCatalogState.issueMessage
+                    )
                 },
                 cancel: {
-                    model.cancelCapture()
+                    model.cancelSourceSelection()
+                    dismissWindow(id: "source-selector")
                 },
-                share: {
-                    if let selectedSource = model.selectedSource {
-                        model.selectSource(selectedSource)
+                share: { sourceID in
+                    guard let source = model.capture.sources.first(where: { $0.id == sourceID }) else {
+                        return
                     }
+                    model.selectSource(source)
                     dismissWindow(id: "source-selector")
                 },
                 drawArea: {
@@ -74,8 +81,17 @@ struct SourceSelectorWindowView: View {
                     }
                 }
             )
+            sourceSelector.send(.visibleTabsChanged(visibleTabs))
+            sourceSelector.send(.committedSelectionSynced(model.selectedSource?.id))
+            sourceSelector.send(.sourcesChanged(model.capture.sources.map(\.id)))
             applyPreferredSourceTab()
             sourceSelector.send(.refreshRequested)
+        }
+        .onChange(of: model.selectedSource?.id) { _, sourceID in
+            sourceSelector.send(.committedSelectionSynced(sourceID))
+        }
+        .onChange(of: model.capture.sources.map(\.id)) { _, sourceIDs in
+            sourceSelector.send(.sourcesChanged(sourceIDs))
         }
         .onChange(of: model.preferredSourceSelectorKind) { _, _ in
             applyPreferredSourceTab()
@@ -90,7 +106,7 @@ struct SourceSelectorWindowView: View {
 
 
 
-enum SourceSelectorTab: String, CaseIterable, Identifiable {
+enum SourceSelectorTab: String, CaseIterable, Identifiable, Hashable {
     case screens
     case windows
     case area
@@ -132,6 +148,7 @@ struct SourceSelectorCard: View {
     var allSources: [CaptureSource]
     var selectedSourceID: String?
     var captureMode: CaptureMode
+    var loadPhase: SourceSelectorLoadPhase = .loaded
     var onCancel: (() -> Void)? = nil
     var onRefresh: (() -> Void)? = nil
     var onSelectSource: (CaptureSource) -> Void = { _ in }
@@ -175,9 +192,18 @@ struct SourceSelectorCard: View {
             VStack(spacing: 14) {
                 SourceTabs(sourceTab: $sourceTab, visibleTabs: visibleTabs)
 
-                if sources.isEmpty {
+                if sourceTab == .area && sources.isEmpty {
+                    SourceEmptyState(sourceTab: sourceTab, onDrawArea: onDrawArea)
+                } else if loadPhase == .loading && sources.isEmpty {
+                    SourceLoadingState()
+                } else if case .failed(let message) = loadPhase, sources.isEmpty {
+                    SourceLoadFailureState(message: message, onRetry: onRefresh)
+                } else if sources.isEmpty {
                     SourceEmptyState(sourceTab: sourceTab, onDrawArea: onDrawArea)
                 } else {
+                    if case .failed(let message) = loadPhase {
+                        SourceLoadIssueBanner(message: message)
+                    }
                     SourceGrid(
                         sources: sources,
                         sourceTab: sourceTab,
@@ -194,40 +220,43 @@ struct SourceSelectorCard: View {
                 .frame(height: 1)
 
             HStack {
-                StudioButton(hitTarget: .rounded(8)) {
-                    onCancel?()
-                } label: {
-                    Text("Cancel")
-                        .font(.system(size: 13, weight: .medium))
-                        .frame(height: 34)
-                        .padding(.horizontal, 12)
-                        .background(Color.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 8))
+                if let onCancel {
+                    StudioButton(hitTarget: .rounded(8), action: onCancel) {
+                        Text("Cancel")
+                            .font(.system(size: 13, weight: .medium))
+                            .frame(height: 34)
+                            .padding(.horizontal, 12)
+                            .background(Color.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 8))
+                    }
+                    .foregroundStyle(.secondary)
+                    .keyboardShortcut(.cancelAction)
                 }
-                .foregroundStyle(.secondary)
 
                 StudioButton(hitTarget: .rounded(8)) {
                     onRefresh?()
                 } label: {
-                    Label("Refresh", systemImage: "arrow.clockwise")
+                    Label(loadPhase == .loading ? "Refreshing" : "Refresh", systemImage: "arrow.clockwise")
                         .frame(height: 34)
                         .padding(.horizontal, 12)
                         .background(Theme.overlay, in: RoundedRectangle(cornerRadius: 8))
                 }
                 .foregroundStyle(.secondary)
+                .disabled(onRefresh == nil || loadPhase == .loading)
 
                 Spacer()
 
-                StudioButton(hitTarget: .rounded(8)) {
-                    onShare?()
-                } label: {
-                    Text("Share Source")
-                        .font(.system(size: 13, weight: .semibold))
-                        .frame(height: 34)
-                        .padding(.horizontal, 14)
-                        .background(canShareSource ? Theme.accent : Theme.border, in: RoundedRectangle(cornerRadius: 8))
-                        .foregroundStyle(canShareSource ? Color.white : Color.secondary)
+                if let onShare {
+                    StudioButton(hitTarget: .rounded(8), action: onShare) {
+                        Text("Share Source")
+                            .font(.system(size: 13, weight: .semibold))
+                            .frame(height: 34)
+                            .padding(.horizontal, 14)
+                            .background(canShareSource ? Theme.accent : Theme.border, in: RoundedRectangle(cornerRadius: 8))
+                            .foregroundStyle(canShareSource ? Color.white : Color.secondary)
+                    }
+                    .disabled(!canShareSource)
+                    .keyboardShortcut(.defaultAction)
                 }
-                .disabled(!canShareSource || onShare == nil)
             }
             .padding(16)
         }
@@ -261,40 +290,55 @@ struct SourceTabs: View {
     var visibleTabs: [SourceSelectorTab]
 
     var body: some View {
-        HStack(spacing: 4) {
+        Picker("Source Type", selection: $sourceTab) {
             ForEach(visibleTabs) { tab in
-                StudioSegmentedTabButton(
-                    title: tab.title,
-                    symbolName: tab.symbolName,
-                    isSelected: sourceTab == tab
-                ) {
-                    sourceTab = tab
-                }
+                Label(tab.title, systemImage: tab.symbolName)
+                    .tag(tab)
             }
         }
-        .padding(4)
-        .background(Theme.surfaceControl, in: RoundedRectangle(cornerRadius: 9))
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .accessibilityLabel("Source Type")
     }
 }
 
-struct StudioSegmentedTabButton: View {
-    var title: String
-    var symbolName: String
-    var isSelected: Bool
-    var action: () -> Void
+private struct SourceLoadingState: View {
+    var body: some View {
+        ProgressView("Loading current screens and windows…")
+            .controlSize(.small)
+            .frame(maxWidth: .infinity, minHeight: 210)
+    }
+}
+
+private struct SourceLoadFailureState: View {
+    var message: String
+    var onRetry: (() -> Void)?
 
     var body: some View {
-        StudioButton(hitTarget: .rounded(7), action: action) {
-            HStack(spacing: 6) {
-                Image(systemName: symbolName)
-                Text(title)
+        ContentUnavailableView {
+            Label("Sources Unavailable", systemImage: "exclamationmark.triangle")
+        } description: {
+            Text(message)
+        } actions: {
+            if let onRetry {
+                Button("Try Again", action: onRetry)
             }
-            .font(.system(size: 12, weight: .semibold))
-            .frame(maxWidth: .infinity)
-            .frame(height: 32)
-            .foregroundStyle(isSelected ? Color.primary : Color.secondary)
-            .background(isSelected ? Theme.border : Color.clear, in: RoundedRectangle(cornerRadius: 7))
         }
+        .frame(maxWidth: .infinity, minHeight: 210)
+    }
+}
+
+private struct SourceLoadIssueBanner: View {
+    var message: String
+
+    var body: some View {
+        Label(message, systemImage: "exclamationmark.triangle.fill")
+            .font(.system(size: 11, weight: .medium))
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(10)
+            .background(Theme.overlay, in: RoundedRectangle(cornerRadius: 8))
+            .accessibilityLabel("Source refresh warning: \(message)")
     }
 }
 

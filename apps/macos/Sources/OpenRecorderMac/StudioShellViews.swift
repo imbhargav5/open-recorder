@@ -572,19 +572,33 @@ struct StudioTitleBar: View {
             "Settings"
         case .editor:
             if let editorSession {
-                editorTitleWithProjectExtension(editorSession.displayTitle)
+                editorWindowTitle(
+                    displayTitle: editorSession.displayTitle,
+                    projectPath: editorSession.projectPath
+                )
             } else if let currentVideoURL = model.currentVideoURL {
-                editorTitleWithProjectExtension(EditorMediaKind.video.displayTitle(for: currentVideoURL))
+                editorWindowTitle(
+                    displayTitle: EditorMediaKind.video.displayTitle(for: currentVideoURL),
+                    projectPath: matchingLastSessionProjectPath(kind: .video, url: currentVideoURL)
+                )
             } else if let currentScreenshotURL = model.currentScreenshotURL {
-                editorTitleWithProjectExtension(EditorMediaKind.screenshot.displayTitle(for: currentScreenshotURL))
+                editorWindowTitle(
+                    displayTitle: EditorMediaKind.screenshot.displayTitle(for: currentScreenshotURL),
+                    projectPath: matchingLastSessionProjectPath(kind: .screenshot, url: currentScreenshotURL)
+                )
             } else {
                 "Open Recorder Editor"
             }
         }
     }
 
-    private func editorTitleWithProjectExtension(_ title: String) -> String {
-        title.hasSuffix(".openrecorder") ? title : "\(title).openrecorder"
+    private func matchingLastSessionProjectPath(kind: EditorMediaKind, url: URL) -> String? {
+        guard let session = model.lastEditorSession,
+              session.kind == kind,
+              session.url.standardizedFileURL == url.standardizedFileURL else {
+            return nil
+        }
+        return session.projectPath
     }
 
     private var editorMediaKind: EditorMediaKind? {
@@ -613,6 +627,11 @@ struct StudioTitleBar: View {
         }
         return model.currentScreenshotURL
     }
+}
+
+func editorWindowTitle(displayTitle: String, projectPath: String?) -> String {
+    guard projectPath != nil else { return displayTitle }
+    return displayTitle.hasSuffix(".openrecorder") ? displayTitle : "\(displayTitle).openrecorder"
 }
 
 struct EditorShortcutsHelpDialog: View {

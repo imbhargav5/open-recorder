@@ -9,6 +9,96 @@ enum HUDPresentationState: Hashable {
     }
 }
 
+enum CaptureRecoveryAction: Hashable {
+    case waitForCurrentCapture
+    case chooseSource
+    case drawArea
+    case openScreenRecordingSettings
+    case openMicrophoneSettings
+    case openCameraSettings
+    case chooseMicrophone
+    case chooseCamera
+}
+
+enum CaptureMediaAuthorizationState: Hashable {
+    case undetermined
+    case authorized
+    case denied
+}
+
+enum CaptureBlocker: Hashable {
+    case captureAlreadyRunning
+    case sourceRequired
+    case sourceUnavailable(name: String)
+    case areaSelectionRequired
+    case screenRecordingPermissionRequired
+    case screenRecordingPermissionNeedsRestart
+    case microphonePermissionDenied
+    case cameraPermissionDenied
+    case microphoneUnavailable(deviceID: String?)
+    case cameraUnavailable(deviceID: String?)
+
+    var recoveryAction: CaptureRecoveryAction {
+        switch self {
+        case .captureAlreadyRunning:
+            .waitForCurrentCapture
+        case .sourceRequired, .sourceUnavailable:
+            .chooseSource
+        case .areaSelectionRequired:
+            .drawArea
+        case .screenRecordingPermissionRequired, .screenRecordingPermissionNeedsRestart:
+            .openScreenRecordingSettings
+        case .microphonePermissionDenied:
+            .openMicrophoneSettings
+        case .cameraPermissionDenied:
+            .openCameraSettings
+        case .microphoneUnavailable:
+            .chooseMicrophone
+        case .cameraUnavailable:
+            .chooseCamera
+        }
+    }
+
+    var message: String {
+        switch self {
+        case .captureAlreadyRunning:
+            "Finish or cancel the current capture before starting another."
+        case .sourceRequired:
+            "Choose a source first."
+        case .sourceUnavailable(let name):
+            "\(name) is no longer available. Choose another source."
+        case .areaSelectionRequired:
+            "Draw the area you want to capture."
+        case .screenRecordingPermissionRequired:
+            "Screen Recording permission is required."
+        case .screenRecordingPermissionNeedsRestart:
+            "Screen Recording permission is still unavailable. You may need to restart Open Recorder after enabling it."
+        case .microphonePermissionDenied:
+            "Microphone permission is denied. Open System Settings to record narration."
+        case .cameraPermissionDenied:
+            "Camera permission is denied. Open System Settings to record facecam video."
+        case .microphoneUnavailable:
+            "The selected microphone is unavailable. Choose another microphone or turn it off."
+        case .cameraUnavailable:
+            "The selected camera is unavailable. Choose another camera or turn it off."
+        }
+    }
+}
+
+struct CaptureReadiness: Hashable {
+    var source: CaptureSource?
+    var blockers: [CaptureBlocker]
+    var isChecking: Bool
+
+    var canCapture: Bool {
+        !isChecking && blockers.isEmpty
+    }
+
+    var primaryBlocker: CaptureBlocker? {
+        blockers.first
+    }
+}
+
 enum CapturePhase: Hashable {
     case idle
     case choosingMode
@@ -327,6 +417,66 @@ struct CaptureState: Hashable {
             !isCaptureOccupied
     }
 
+    func readiness(
+        availableSources: [CaptureSource],
+        screenRecordingPermissionState: ScreenRecordingPermissionState,
+        options: CaptureOptionsState,
+        runtimeIsRecording: Bool,
+        microphoneAuthorization: CaptureMediaAuthorizationState = .authorized,
+        cameraAuthorization: CaptureMediaAuthorizationState = .authorized,
+        isChecking: Bool = false
+    ) -> CaptureReadiness {
+        let selectedSource = source
+        var blockers: [CaptureBlocker] = []
+
+        if runtimeIsRecording || recordingPhase != .idle {
+            blockers.append(.captureAlreadyRunning)
+        }
+
+        switch screenRecordingPermissionState {
+        case .granted:
+            break
+        case .requestAvailable:
+            blockers.append(.screenRecordingPermissionRequired)
+        case .requestAlreadyShown:
+            blockers.append(.screenRecordingPermissionNeedsRestart)
+        }
+
+        if let selectedSource {
+            switch selectedSource.kind {
+            case .area:
+                if selectedSource.area == nil {
+                    blockers.append(.areaSelectionRequired)
+                }
+            case .display, .window:
+                if !availableSources.contains(where: { $0.representsSameCaptureSource(as: selectedSource) }) {
+                    blockers.append(.sourceUnavailable(name: selectedSource.name))
+                }
+            }
+        } else {
+            blockers.append(.sourceRequired)
+        }
+
+        if mode == .recording {
+            if options.includeMicrophone {
+                if microphoneAuthorization == .denied {
+                    blockers.append(.microphonePermissionDenied)
+                } else if !options.hasAvailableMicrophoneSelection {
+                    blockers.append(.microphoneUnavailable(deviceID: options.selectedMicrophoneDeviceID))
+                }
+            }
+            if options.includeCamera {
+                if cameraAuthorization == .denied {
+                    blockers.append(.cameraPermissionDenied)
+                } else if !options.hasAvailableCameraSelection {
+                    blockers.append(.cameraUnavailable(deviceID: options.selectedCameraDeviceID))
+                }
+            }
+        }
+
+        return CaptureReadiness(source: selectedSource, blockers: blockers, isChecking: isChecking)
+    }
+
     func isDirectStopState(runtimeIsRecording: Bool) -> Bool {
         switch phase {
         case .countingDownRecording, .startingRecording, .recording:
@@ -472,7 +622,7 @@ struct CaptureState: Hashable {
             statusMessage = "Selected area"
             switch mode {
             case .recording:
-                effects.append(.prepareRecordingFile(source))
+                effects.append(.showHUD)
             case .screenshot:
                 next.setPhase(.capturingScreenshot(source))
                 effects.append(.dismissScreenSelection)
@@ -641,13 +791,45 @@ struct CaptureState: Hashable {
             effects.append(.showHUD)
 
         case .refreshSelectedSource(let source):
-            next.selectedSource = source
-            if let source {
-                next.preferredSourceKind = source.kind
-                if case .ready(let mode, let previousSource) = next.phase,
-                   previousSource.id == source.id || previousSource.kind == source.kind {
-                    next.setPhase(.ready(mode, source))
+            switch next.phase {
+            case .countingDownRecording,
+                 .startingRecording,
+                 .recording,
+                 .stoppingRecording,
+                 .capturingScreenshot:
+                // A catalog refresh must not rewrite the source of in-flight runtime work.
+                return finish(self)
+            case .idle,
+                 .choosingMode,
+                 .choosingSourceType,
+                 .screenSelecting,
+                 .selectingSource,
+                 .ready,
+                 .areaSelecting:
+                break
+            }
+            guard let previousSource = next.selectedSource else {
+                // Refreshing the catalog must never choose a source on the user's behalf.
+                return finish(self)
+            }
+            guard previousSource.kind != .area else {
+                // Interactive areas are local selections and do not appear in the source catalog.
+                return finish(self)
+            }
+            guard let source,
+                  source.representsSameCaptureSource(as: previousSource) else {
+                next.selectedSource = nil
+                if case .ready(let mode, _) = next.phase {
+                    next.setPhase(.selectingSource(mode), clearSource: true)
                 }
+                statusMessage = "\(previousSource.name) is no longer available. Choose another source."
+                return finish()
+            }
+
+            next.selectedSource = source
+            next.preferredSourceKind = source.kind
+            if case .ready(let mode, _) = next.phase {
+                next.setPhase(.ready(mode, source))
             }
         }
 
@@ -686,6 +868,31 @@ struct CaptureState: Hashable {
              .stoppingRecording,
              .capturingScreenshot:
             return false
+        }
+    }
+}
+
+private extension CaptureSource {
+    func representsSameCaptureSource(as other: CaptureSource) -> Bool {
+        guard kind == other.kind else { return false }
+        if id == other.id { return true }
+
+        switch kind {
+        case .display:
+            if let displayID, let otherDisplayID = other.displayID {
+                return displayID == otherDisplayID
+            }
+            return id == other.id
+        case .window:
+            if windowID != nil || other.windowID != nil {
+                return windowID == other.windowID && ownerBundleID == other.ownerBundleID
+            }
+            return ownerBundleID != nil &&
+                ownerBundleID == other.ownerBundleID &&
+                !name.isEmpty &&
+                name == other.name
+        case .area:
+            return id == other.id
         }
     }
 }

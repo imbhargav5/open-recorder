@@ -31,6 +31,25 @@ enum CaptureControllerError: LocalizedError {
     }
 }
 
+enum CaptureSourceCatalogState: Equatable {
+    case idle
+    case loading
+    case loaded
+    case permissionRequired
+    case failed(String)
+
+    var issueMessage: String? {
+        switch self {
+        case .idle, .loading, .loaded:
+            nil
+        case .permissionRequired:
+            "Screen Recording permission is required to list current screens and windows."
+        case .failed(let message):
+            message
+        }
+    }
+}
+
 struct WindowSourceMetadata: Equatable {
     var title: String?
     var ownerName: String?
@@ -215,6 +234,7 @@ enum WindowSourceFilter {
 @MainActor
 final class CaptureController: ObservableObject {
     @Published private(set) var sources: [CaptureSource] = []
+    @Published private(set) var sourceCatalogState: CaptureSourceCatalogState = .idle
     @Published private(set) var isRecording = false
     @Published private(set) var activeRecordingURL: URL?
 
@@ -222,9 +242,14 @@ final class CaptureController: ObservableObject {
     private var recordingProcess: Process?
     private var nativeRecorder: NativeScreenRecorder?
     private var activeStagedRecordingURL: URL?
+    private var sourceReloadGeneration = 0
 
     init(screenRecordingPermission: ScreenRecordingPermission = ScreenRecordingPermission()) {
         self.screenRecordingPermission = screenRecordingPermission
+    }
+
+    var screenRecordingPermissionState: ScreenRecordingPermissionState {
+        screenRecordingPermission.currentState()
     }
 
     #if DEBUG
@@ -234,6 +259,7 @@ final class CaptureController: ObservableObject {
 
     func setSourcesForTesting(_ sources: [CaptureSource]) {
         self.sources = sources
+        sourceCatalogState = .loaded
     }
 
     func ensureScreenRecordingPermissionForTesting() throws {
@@ -242,10 +268,16 @@ final class CaptureController: ObservableObject {
     #endif
 
     func reloadSources(requestScreenRecordingPermission: Bool = false) async {
+        sourceReloadGeneration += 1
+        let generation = sourceReloadGeneration
+        sourceCatalogState = .loading
+
         guard canLoadPreviewSources(requestScreenRecordingPermission: requestScreenRecordingPermission) else {
             var nextSources = legacyDisplaySources()
             nextSources.append(contentsOf: legacyWindowSources())
+            guard generation == sourceReloadGeneration else { return }
             sources = nextSources
+            sourceCatalogState = .permissionRequired
             return
         }
 
@@ -253,11 +285,15 @@ final class CaptureController: ObservableObject {
             let content = try await shareableContent()
             var nextSources = await displaySources(from: content)
             nextSources.append(contentsOf: await windowSources(from: content))
+            guard generation == sourceReloadGeneration else { return }
             sources = nextSources
+            sourceCatalogState = .loaded
         } catch {
             var nextSources = legacyDisplaySources()
             nextSources.append(contentsOf: legacyWindowSources())
+            guard generation == sourceReloadGeneration else { return }
             sources = nextSources
+            sourceCatalogState = .failed("Couldn’t refresh capture sources. \(error.localizedDescription)")
         }
     }
 

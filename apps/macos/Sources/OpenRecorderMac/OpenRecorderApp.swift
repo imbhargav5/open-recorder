@@ -11,6 +11,7 @@ final class OpenRecorderAppDelegate: NSObject, NSApplicationDelegate {
     private let statusItemController = OpenRecorderStatusItemController()
     private let hotKeyController = GlobalRecordingHotKeyController()
     private let updateChecker = UpdateChecker.shared
+    private var terminationTask: Task<Void, Never>?
 
     func attach(model: AppModel) {
         if self.model !== model {
@@ -41,6 +42,21 @@ final class OpenRecorderAppDelegate: NSObject, NSApplicationDelegate {
         pendingFileURLs.append(contentsOf: filenames.map { URL(fileURLWithPath: $0) })
         flushPendingFileURLs()
         sender.reply(toOpenOrPrint: .success)
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard let model else { return .terminateNow }
+        guard terminationTask == nil else { return .terminateLater }
+
+        terminationTask = Task { [weak self, weak model] in
+            let canTerminate = await model?.prepareForTermination() ?? true
+            self?.terminationTask = nil
+            if !canTerminate {
+                sender.activate(ignoringOtherApps: true)
+            }
+            sender.reply(toApplicationShouldTerminate: canTerminate)
+        }
+        return .terminateLater
     }
 
     private func flushPendingFileURLs() {

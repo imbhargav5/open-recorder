@@ -8,6 +8,9 @@ struct ProjectsStudioView: View {
     @EnvironmentObject private var model: AppModel
     @State private var selectedTab: ProjectLibraryTab = .screenRecordings
     @State private var projectPendingDeletion: ProjectSummary?
+    @State private var selectedProjectID: ProjectSummary.ID?
+    @State private var searchText = ""
+    @State private var sortOrder = [ProjectLibraryComparator(field: .lastOpened, order: .reverse)]
 
     var body: some View {
         ScrollView {
@@ -31,15 +34,23 @@ struct ProjectsStudioView: View {
 
                     Spacer()
 
-                    StudioButton(hitTarget: .rounded(7)) {
-                        model.refreshBackendState()
-                    } label: {
-                        Label("Refresh", systemImage: "arrow.clockwise")
-                            .font(.system(size: 12, weight: .semibold))
-                            .frame(height: 32)
-                            .padding(.horizontal, 12)
-                            .background(Theme.accent, in: RoundedRectangle(cornerRadius: 7))
-                            .foregroundStyle(.white)
+                    HStack(spacing: 8) {
+                        if isRefreshing {
+                            ProgressView()
+                                .controlSize(.small)
+                                .accessibilityLabel("Refreshing projects")
+                        }
+
+                        Button {
+                            model.refreshBackendState()
+                        } label: {
+                            Label("Refresh", systemImage: "arrow.clockwise")
+                                .font(.system(size: 12, weight: .semibold))
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.regular)
+                        .disabled(isRefreshing)
+                        .help(isRefreshing ? "Refreshing projects" : "Refresh projects")
                     }
                 }
 
@@ -105,29 +116,37 @@ struct ProjectsStudioView: View {
                         Text(selectedTab.listTitle)
                             .font(.system(size: 13, weight: .medium))
                             .foregroundStyle(.secondary)
+                        if !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            Text("\(selectedProjects.count) found")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.tertiary)
+                        }
                         Spacer()
                     }
 
-                    if selectedProjects.isEmpty {
+                    if let backendFailureMessage, !model.projects.isEmpty {
+                        ProjectLibraryFailureBanner(message: backendFailureMessage) {
+                            model.refreshBackendState()
+                        }
+                    }
+
+                    if isInitialLoadPending {
+                        ProjectLibraryIdlePanel {
+                            model.refreshBackendState()
+                        }
+                    } else if isLoadingWithoutProjects {
+                        ProjectLibraryLoadingPanel()
+                    } else if selectedProjects.isEmpty, isFailedWithoutProjects {
+                        ProjectLibraryFailurePanel(message: backendFailureMessage ?? "The project library could not be loaded.") {
+                            model.refreshBackendState()
+                        }
+                    } else if selectedProjects.isEmpty, !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        ContentUnavailableView.search(text: searchText)
+                            .frame(maxWidth: .infinity, minHeight: 240)
+                    } else if selectedProjects.isEmpty {
                         EmptyProjectsPanel(tab: selectedTab)
                     } else {
-                        VStack(spacing: 0) {
-                            ForEach(selectedProjects) { project in
-                                ProjectListRow(project: project) { project in
-                                    projectPendingDeletion = project
-                                }
-                                if project.id != selectedProjects.last?.id {
-                                    Rectangle()
-                                        .fill(Theme.border)
-                                        .frame(height: 1)
-                                }
-                            }
-                        }
-                        .background(Theme.surface.opacity(0.78), in: RoundedRectangle(cornerRadius: 10))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 10)
-                                .stroke(Theme.border)
-                        }
+                        projectTable
                     }
                 }
             }
@@ -136,6 +155,16 @@ struct ProjectsStudioView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.appBgMuted)
+        .searchable(text: $searchText, prompt: "Search projects")
+        .onChange(of: selectedTab) {
+            selectedProjectID = nil
+        }
+        .onChange(of: searchText) {
+            if let selectedProjectID,
+               !selectedProjects.contains(where: { $0.id == selectedProjectID }) {
+                self.selectedProjectID = nil
+            }
+        }
         .confirmationDialog(
             "Delete Project?",
             isPresented: deleteConfirmationPresented,
@@ -164,12 +193,128 @@ struct ProjectsStudioView: View {
     }
 
     private var selectedProjects: [ProjectSummary] {
-        switch selectedTab {
-        case .screenRecordings:
-            recordingProjects
-        case .screenshots:
-            screenshotProjects
+        ProjectLibraryQuery.projects(
+            from: model.projects,
+            tab: selectedTab,
+            searchText: searchText,
+            sortOrder: sortOrder
+        )
+    }
+
+    @ViewBuilder
+    private var projectTable: some View {
+        Table(selectedProjects, selection: $selectedProjectID, sortOrder: $sortOrder) {
+            TableColumn("Project", sortUsing: ProjectLibraryComparator(field: .title)) { project in
+                HStack(spacing: 8) {
+                    Image(systemName: project.mediaKind.titleIconSystemName)
+                        .foregroundStyle(Theme.accent)
+                        .accessibilityHidden(true)
+                    Text(project.title)
+                        .lineLimit(1)
+                    if let availabilityLabel = project.libraryAvailabilityLabel {
+                        Text(availabilityLabel)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.red)
+                    }
+                }
+                .accessibilityElement(children: .combine)
+            }
+            .width(min: 180, ideal: 260)
+
+            TableColumn("Source", sortUsing: ProjectLibraryComparator(field: .source)) { project in
+                Text(projectSourceDisplayName(project))
+                    .lineLimit(1)
+            }
+            .width(min: 140, ideal: 220)
+
+            TableColumn("Last opened", sortUsing: ProjectLibraryComparator(field: .lastOpened)) { project in
+                Text(formattedProjectDate(project.lastOpenedAt))
+                    .lineLimit(1)
+            }
+            .width(min: 130, ideal: 160)
+
+            TableColumn("Project file", sortUsing: ProjectLibraryComparator(field: .path)) { project in
+                Text(project.path)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .foregroundStyle(.secondary)
+            }
+            .width(min: 170, ideal: 260)
         }
+        .frame(height: min(max(CGFloat(selectedProjects.count * 34 + 44), 240), 480))
+        .contextMenu(forSelectionType: ProjectSummary.ID.self) { selection in
+            if let project = onlyProject(in: selection) {
+                Button {
+                    open(project)
+                } label: {
+                    Label("Open", systemImage: "folder")
+                }
+                .disabled(!project.isOpenableFromLibrary)
+
+                Divider()
+
+                Button(role: .destructive) {
+                    projectPendingDeletion = project
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+            }
+        } primaryAction: { selection in
+            guard let project = onlyProject(in: selection) else { return }
+            open(project)
+        }
+        .onKeyPress(.return) {
+            guard let project = selectedProject, project.isOpenableFromLibrary else { return .ignored }
+            open(project)
+            return .handled
+        }
+        .onDeleteCommand {
+            guard let project = selectedProject else { return }
+            projectPendingDeletion = project
+        }
+    }
+
+    private func onlyProject(in selection: Set<ProjectSummary.ID>) -> ProjectSummary? {
+        guard selection.count == 1, let id = selection.first else { return nil }
+        return model.projects.first { $0.id == id }
+    }
+
+    private var selectedProject: ProjectSummary? {
+        guard let selectedProjectID else { return nil }
+        return model.projects.first { $0.id == selectedProjectID }
+    }
+
+    private func open(_ project: ProjectSummary) {
+        guard project.isOpenableFromLibrary else { return }
+        model.openProject(project)
+    }
+
+    private var isRefreshing: Bool {
+        if case .loading = model.backendLoadPhase { return true }
+        return false
+    }
+
+    private var isInitialLoadPending: Bool {
+        guard model.projects.isEmpty else { return false }
+        if case .idle = model.backendLoadPhase { return true }
+        return false
+    }
+
+    private var isLoadingWithoutProjects: Bool {
+        isRefreshing && model.projects.isEmpty
+    }
+
+    private var isFailedWithoutProjects: Bool {
+        guard model.projects.isEmpty else { return false }
+        if case .failed = model.backendLoadPhase { return true }
+        return false
+    }
+
+    private var backendFailureMessage: String? {
+        if case .failed(let message) = model.backendLoadPhase {
+            return message
+        }
+        return nil
     }
 
     private var deleteConfirmationPresented: Binding<Bool> {
@@ -210,6 +355,13 @@ enum ProjectLibraryTab: String, CaseIterable, Identifiable {
         case .screenshots: "Recent screenshots"
         }
     }
+
+    var mediaKind: EditorMediaKind {
+        switch self {
+        case .screenRecordings: .video
+        case .screenshots: .screenshot
+        }
+    }
 }
 
 struct ProjectLibraryTabBar: View {
@@ -218,38 +370,16 @@ struct ProjectLibraryTabBar: View {
     var screenshotCount: Int
 
     var body: some View {
-        HStack(spacing: 4) {
+        Picker("Project type", selection: $selection) {
             ForEach(ProjectLibraryTab.allCases) { tab in
-                StudioButton(hitTarget: .rounded(8), help: tab.title) {
-                    selection = tab
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: tab.symbolName)
-                            .font(.system(size: 13, weight: .semibold))
-                        Text(tab.title)
-                            .font(.system(size: 12, weight: .semibold))
-                            .lineLimit(1)
-                        Text("\(count(for: tab))")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(selection == tab ? Color.white.opacity(0.75) : Color.secondary)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Color.white.opacity(selection == tab ? 0.16 : 0.06), in: Capsule())
-                    }
-                    .frame(height: 34)
-                    .padding(.horizontal, 12)
-                    .foregroundStyle(selection == tab ? Color.white : Color.secondary)
-                    .background(selection == tab ? Theme.accent : Theme.overlay, in: RoundedRectangle(cornerRadius: 8))
-                }
+                Label("\(tab.title) (\(count(for: tab)))", systemImage: tab.symbolName)
+                    .tag(tab)
             }
-            Spacer()
         }
-        .padding(4)
-        .background(Theme.overlay, in: RoundedRectangle(cornerRadius: 10))
-        .overlay {
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(Theme.border.opacity(0.9))
-        }
+        .labelsHidden()
+        .pickerStyle(.segmented)
+        .frame(maxWidth: 480, alignment: .leading)
+        .accessibilityLabel("Project type")
     }
 
     private func count(for tab: ProjectLibraryTab) -> Int {
@@ -312,7 +442,7 @@ struct ProjectListRow: View {
 
     var body: some View {
         StudioButton(hitTarget: .rectangle) {
-            if !project.missing {
+            if project.isOpenableFromLibrary {
                 model.openProject(project)
             }
         } label: {
@@ -332,8 +462,8 @@ struct ProjectListRow: View {
                         Text(project.title)
                             .font(.system(size: 14, weight: .medium))
                             .lineLimit(1)
-                        if project.missing {
-                            Text("Missing")
+                        if let availabilityLabel = project.libraryAvailabilityLabel {
+                            Text(availabilityLabel)
                                 .font(.system(size: 10, weight: .semibold))
                                 .foregroundStyle(.red)
                                 .padding(.horizontal, 6)
@@ -371,7 +501,7 @@ struct ProjectListRow: View {
             } label: {
                 Label("Open", systemImage: "folder")
             }
-            .disabled(project.missing)
+            .disabled(!project.isOpenableFromLibrary)
 
             Button(role: .destructive) {
                 requestDelete(project)
@@ -379,7 +509,7 @@ struct ProjectListRow: View {
                 Label("Delete", systemImage: "trash")
             }
         }
-        .opacity(project.missing ? 0.55 : 1)
+        .opacity(project.isOpenableFromLibrary ? 1 : 0.55)
     }
 }
 
@@ -387,17 +517,13 @@ struct EmptyProjectsPanel: View {
     var tab: ProjectLibraryTab
 
     var body: some View {
-        VStack(spacing: 12) {
-            Image(systemName: tab.symbolName)
-                .font(.system(size: 30))
-                .frame(width: 64, height: 64)
-                .foregroundStyle(Theme.accent)
-                .background(Theme.accent.opacity(0.10), in: RoundedRectangle(cornerRadius: 16))
-            Text(tab == .screenRecordings ? "No recent recordings yet" : "No recent screenshots yet")
-                .font(.system(size: 16, weight: .semibold))
+        ContentUnavailableView {
+            Label(
+                tab == .screenRecordings ? "No recent recordings yet" : "No recent screenshots yet",
+                systemImage: tab.symbolName
+            )
+        } description: {
             Text(tab == .screenRecordings ? "Screen recording projects will appear here after you save or open one." : "Screenshot projects will appear here after you capture or open one.")
-                .font(.system(size: 13))
-                .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, minHeight: 240)
         .background(Theme.surface.opacity(0.60), in: RoundedRectangle(cornerRadius: 10))
@@ -408,15 +534,77 @@ struct EmptyProjectsPanel: View {
     }
 }
 
+private struct ProjectLibraryLoadingPanel: View {
+    var body: some View {
+        VStack(spacing: 12) {
+            ProgressView()
+                .controlSize(.regular)
+            Text("Loading projects…")
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, minHeight: 240)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private struct ProjectLibraryIdlePanel: View {
+    var load: () -> Void
+
+    var body: some View {
+        ContentUnavailableView {
+            Label("Projects not loaded", systemImage: "rectangle.stack")
+        } description: {
+            Text("Load projects saved on this Mac.")
+        } actions: {
+            Button("Load Projects", action: load)
+                .buttonStyle(.borderedProminent)
+        }
+        .frame(maxWidth: .infinity, minHeight: 240)
+    }
+}
+
+private struct ProjectLibraryFailurePanel: View {
+    var message: String
+    var retry: () -> Void
+
+    var body: some View {
+        ContentUnavailableView {
+            Label("Projects unavailable", systemImage: "exclamationmark.triangle")
+        } description: {
+            Text(message)
+        } actions: {
+            Button("Try Again", action: retry)
+                .buttonStyle(.borderedProminent)
+        }
+        .frame(maxWidth: .infinity, minHeight: 240)
+    }
+}
+
+private struct ProjectLibraryFailureBanner: View {
+    var message: String
+    var retry: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Label(message, systemImage: "exclamationmark.triangle")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+            Spacer()
+            Button("Try Again", action: retry)
+                .controlSize(.small)
+                .disabled(false)
+        }
+        .padding(10)
+        .background(Theme.overlay, in: RoundedRectangle(cornerRadius: 8))
+        .accessibilityElement(children: .contain)
+    }
+}
+
 
 func formattedProjectDate(_ value: String) -> String {
-    let date: Date
-    if let seconds = TimeInterval(value) {
-        date = Date(timeIntervalSince1970: seconds)
-    } else {
-        let formatter = ISO8601DateFormatter()
-        date = formatter.date(from: value) ?? Date()
-    }
+    guard let date = projectDate(value) else { return "Unknown" }
 
     let formatter = DateFormatter()
     formatter.locale = Locale(identifier: "en_US_POSIX")

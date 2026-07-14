@@ -17,6 +17,7 @@ final class ScreenRecordingPermissionTests: XCTestCase {
         ))
         let controller = CaptureController(screenRecordingPermission: permission)
 
+        XCTAssertEqual(controller.screenRecordingPermissionState, .granted)
         try controller.ensureScreenRecordingPermissionForTesting()
 
         XCTAssertEqual(requestCount, 0)
@@ -123,5 +124,57 @@ final class ScreenRecordingPermissionTests: XCTestCase {
 
         XCTAssertEqual(requestCount, 0)
         XCTAssertFalse(controller.sources.isEmpty)
+        XCTAssertEqual(controller.sourceCatalogState, .permissionRequired)
+        XCTAssertEqual(
+            controller.sourceCatalogState.issueMessage,
+            "Screen Recording permission is required to list current screens and windows."
+        )
+    }
+
+    func testPreviewRefreshReportsDeniedPermissionInsteadOfPresentingFallbackAsFresh() async {
+        var requestCount = 0
+        var promptRequested = false
+        let permission = ScreenRecordingPermission(client: ScreenRecordingPermissionClient(
+            preflight: { false },
+            request: {
+                requestCount += 1
+                return false
+            },
+            hasRequestedPrompt: { promptRequested },
+            setRequestedPrompt: { promptRequested = $0 }
+        ))
+        let controller = CaptureController(screenRecordingPermission: permission)
+
+        await controller.reloadSources(requestScreenRecordingPermission: true)
+
+        XCTAssertEqual(requestCount, 1)
+        XCTAssertEqual(controller.screenRecordingPermissionState, .requestAlreadyShown)
+        XCTAssertEqual(controller.sourceCatalogState, .permissionRequired)
+    }
+
+    func testInjectedSourcesMarkCatalogAsLoadedForDeterministicConsumers() {
+        let permission = ScreenRecordingPermission(client: ScreenRecordingPermissionClient(
+            preflight: { false },
+            request: { false },
+            hasRequestedPrompt: { false },
+            setRequestedPrompt: { _ in }
+        ))
+        let controller = CaptureController(screenRecordingPermission: permission)
+        let source = CaptureSource(
+            id: "display:1",
+            kind: .display,
+            name: "Display 1",
+            subtitle: "Built-in",
+            displayIndex: 1,
+            displayID: 1,
+            windowID: nil,
+            area: nil,
+            thumbnailData: nil
+        )
+
+        controller.setSourcesForTesting([source])
+
+        XCTAssertEqual(controller.sources, [source])
+        XCTAssertEqual(controller.sourceCatalogState, .loaded)
     }
 }

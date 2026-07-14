@@ -238,44 +238,84 @@ struct ResizableStudioSplitPane<Primary: View, Secondary: View>: View {
     }
 
     var body: some View {
-        GeometryReader { proxy in
-            let resolvedSecondarySize = clampedSecondarySize(secondarySize, totalSize: proxy.size.width)
-            let resolvedPrimarySize = max(0, proxy.size.width - resolvedSecondarySize - spacing)
+        HSplitView {
+            primary
+                .frame(minWidth: minPrimarySize, maxWidth: .infinity, maxHeight: .infinity)
 
-            HStack(spacing: 0) {
-                primary
-                    .frame(width: resolvedPrimarySize, height: proxy.size.height)
-                    .clipped()
-
-                SidebarResizeHandle()
-                    .frame(width: spacing, height: proxy.size.height)
-                    .gesture(
-                        DragGesture(minimumDistance: 0)
-                            .onChanged { value in
-                                secondarySize = clampedSecondarySize(
-                                    resolvedSecondarySize - value.translation.width,
-                                    totalSize: proxy.size.width
-                                )
-                            }
-                    )
-
-                secondary
-                    .frame(width: resolvedSecondarySize, height: proxy.size.height)
-                    .zIndex(1)
+            secondary
+                .frame(
+                    minWidth: minSecondarySize,
+                    idealWidth: StudioSplitPaneSizing.normalizedSecondarySize(
+                        secondarySize,
+                        minimum: minSecondarySize,
+                        maximum: maxSecondarySize
+                    ),
+                    maxWidth: maxSecondarySize,
+                    maxHeight: .infinity
+                )
+                .background {
+                    GeometryReader { proxy in
+                        Color.clear.preference(
+                            key: StudioSecondaryPaneWidthPreferenceKey.self,
+                            value: proxy.size.width
+                        )
+                    }
+                }
+        }
+        .accessibilityElement(children: .contain)
+        .onAppear(perform: normalizeStoredSecondarySize)
+        .onPreferenceChange(StudioSecondaryPaneWidthPreferenceKey.self) { measuredWidth in
+            let normalized = StudioSplitPaneSizing.normalizedSecondarySize(
+                measuredWidth,
+                minimum: minSecondarySize,
+                maximum: maxSecondarySize
+            )
+            if abs(secondarySize - normalized) > 0.5 {
+                secondarySize = normalized
             }
         }
         .onChange(of: secondarySize) { _, newValue in
-            secondarySize = min(max(newValue, minSecondarySize), maxSecondarySize)
+            let normalized = StudioSplitPaneSizing.normalizedSecondarySize(
+                newValue,
+                minimum: minSecondarySize,
+                maximum: maxSecondarySize
+            )
+            if secondarySize != normalized {
+                secondarySize = normalized
+            }
         }
     }
 
-    private func clampedSecondarySize(_ requestedSize: CGFloat, totalSize: CGFloat) -> CGFloat {
-        let maxAllowedByPrimary = max(0, totalSize - minPrimarySize - spacing)
-        let upperBound = min(maxSecondarySize, maxAllowedByPrimary)
-        guard upperBound >= minSecondarySize else {
-            return max(0, upperBound)
+    private func normalizeStoredSecondarySize() {
+        secondarySize = StudioSplitPaneSizing.normalizedSecondarySize(
+            secondarySize,
+            minimum: minSecondarySize,
+            maximum: maxSecondarySize
+        )
+    }
+}
+
+private struct StudioSecondaryPaneWidthPreferenceKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        let candidate = nextValue()
+        if candidate.isFinite, candidate > 0 {
+            value = candidate
         }
-        return min(max(requestedSize, minSecondarySize), upperBound)
+    }
+}
+
+enum StudioSplitPaneSizing {
+    static func normalizedSecondarySize(
+        _ requestedSize: CGFloat,
+        minimum: CGFloat,
+        maximum: CGFloat
+    ) -> CGFloat {
+        let safeMinimum = minimum.isFinite ? max(0, minimum) : 0
+        let safeMaximum = maximum.isFinite ? max(safeMinimum, maximum) : safeMinimum
+        guard requestedSize.isFinite else { return safeMinimum }
+        return min(max(requestedSize, safeMinimum), safeMaximum)
     }
 }
 
@@ -400,8 +440,8 @@ struct StudioKeyDownMonitor: NSViewRepresentable {
         Coordinator(handler: handler)
     }
 
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView(frame: .zero)
+    func makeNSView(context: Context) -> StudioKeyMonitorAttachmentView {
+        let view = StudioKeyMonitorAttachmentView(frame: .zero)
         context.coordinator.view = view
         context.coordinator.handler = handler
         context.coordinator.isEnabled = isEnabled
@@ -409,19 +449,19 @@ struct StudioKeyDownMonitor: NSViewRepresentable {
         return view
     }
 
-    func updateNSView(_ nsView: NSView, context: Context) {
+    func updateNSView(_ nsView: StudioKeyMonitorAttachmentView, context: Context) {
         context.coordinator.view = nsView
         context.coordinator.handler = handler
         context.coordinator.isEnabled = isEnabled
         context.coordinator.install()
     }
 
-    static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
+    static func dismantleNSView(_ nsView: StudioKeyMonitorAttachmentView, coordinator: Coordinator) {
         coordinator.uninstall()
     }
 
     final class Coordinator {
-        weak var view: NSView?
+        weak var view: StudioKeyMonitorAttachmentView?
         var handler: (NSEvent) -> Bool
         var isEnabled = true
         private var monitor: Any?
@@ -433,7 +473,15 @@ struct StudioKeyDownMonitor: NSViewRepresentable {
         func install() {
             guard monitor == nil else { return }
             monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-                guard let self, self.isEnabled else {
+                guard let self,
+                      let view = self.view,
+                      let windowScope = view.windowScope.snapshot(),
+                      StudioKeyEventScope.shouldHandle(
+                          isEnabled: self.isEnabled,
+                          ownerWindowNumber: windowScope.windowNumber,
+                          eventWindowNumber: event.windowNumber,
+                          ownerWindowIsKey: windowScope.isKey
+                      ) else {
                     return event
                 }
                 return self.handler(event) ? nil : event
@@ -446,6 +494,117 @@ struct StudioKeyDownMonitor: NSViewRepresentable {
             }
             monitor = nil
         }
+    }
+}
+
+final class StudioKeyMonitorAttachmentView: NSView {
+    nonisolated let windowScope = StudioKeyWindowScopeCache()
+    private weak var observedWindow: NSWindow?
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        stopObservingWindow()
+
+        guard let window else {
+            windowScope.update(windowNumber: nil, isKey: false)
+            return
+        }
+
+        observedWindow = window
+        windowScope.update(windowNumber: window.windowNumber, isKey: window.isKeyWindow)
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(windowDidBecomeKey(_:)),
+            name: NSWindow.didBecomeKeyNotification,
+            object: window
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(windowDidResignKey(_:)),
+            name: NSWindow.didResignKeyNotification,
+            object: window
+        )
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    @objc private func windowDidBecomeKey(_ notification: Notification) {
+        windowScope.updateIsKey(true)
+    }
+
+    @objc private func windowDidResignKey(_ notification: Notification) {
+        windowScope.updateIsKey(false)
+    }
+
+    private func stopObservingWindow() {
+        guard let observedWindow else { return }
+        NotificationCenter.default.removeObserver(
+            self,
+            name: NSWindow.didBecomeKeyNotification,
+            object: observedWindow
+        )
+        NotificationCenter.default.removeObserver(
+            self,
+            name: NSWindow.didResignKeyNotification,
+            object: observedWindow
+        )
+        self.observedWindow = nil
+    }
+}
+
+struct StudioKeyWindowScope: Sendable {
+    var windowNumber: Int
+    var isKey: Bool
+}
+
+final class StudioKeyWindowScopeCache: @unchecked Sendable {
+    private let lock = NSLock()
+    private var windowNumber: Int?
+    private var isKey = false
+
+    func update(windowNumber: Int?, isKey: Bool) {
+        lock.lock()
+        self.windowNumber = windowNumber
+        self.isKey = isKey
+        lock.unlock()
+    }
+
+    func updateIsKey(_ isKey: Bool) {
+        lock.lock()
+        self.isKey = isKey
+        lock.unlock()
+    }
+
+    func snapshot() -> StudioKeyWindowScope? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let windowNumber else { return nil }
+        return StudioKeyWindowScope(windowNumber: windowNumber, isKey: isKey)
+    }
+}
+
+enum StudioKeyEventScope {
+    static func shouldHandle(
+        isEnabled: Bool,
+        ownerWindowNumber: Int?,
+        eventWindowNumber: Int?,
+        ownerWindowIsKey: Bool
+    ) -> Bool {
+        guard isEnabled,
+              ownerWindowIsKey,
+              let ownerWindowNumber,
+              let eventWindowNumber else {
+            return false
+        }
+        return ownerWindowNumber == eventWindowNumber
+    }
+
+    @MainActor
+    static func isTextInputActive(in window: NSWindow?) -> Bool {
+        guard let responder = window?.firstResponder else { return false }
+        return responder is NSTextView || responder is NSTextField
     }
 }
 

@@ -7,7 +7,7 @@ enum CaptureDeviceSelectorWindowMetrics {
     static let minHeight: CGFloat = 260
 }
 
-private enum CaptureDeviceDialogSelection: Equatable {
+private enum CaptureDeviceDialogSelection: Hashable {
     case noInput
     case systemDefault
     case device(String)
@@ -47,46 +47,52 @@ struct MicrophoneSelectorWindowView: View {
             .padding(14)
 
             ScrollView(.vertical) {
-                VStack(spacing: 6) {
-                    StudioButton(hitTarget: .rounded(8)) {
-                        pendingSelection = .noInput
-                    } label: {
-                        microphoneRow(
+                VStack(alignment: .leading, spacing: 10) {
+                    if options.deviceLoadPhase == .loading {
+                        ProgressView("Checking microphones…")
+                            .controlSize(.small)
+                    }
+
+                    Picker("Microphone", selection: $pendingSelection) {
+                        CaptureDevicePickerLabel(
                             title: "No Microphone",
-                            subtitle: "Do not record microphone audio",
-                            isSelected: pendingSelection == .noInput
+                            subtitle: "Do not record microphone audio"
                         )
-                    }
+                        .tag(CaptureDeviceDialogSelection.noInput)
 
-                    StudioButton(hitTarget: .rounded(8)) {
-                        pendingSelection = .systemDefault
-                    } label: {
-                        microphoneRow(
+                        CaptureDevicePickerLabel(
                             title: "System Default",
-                            subtitle: "Use the current macOS default",
-                            isSelected: pendingSelection == .systemDefault
+                            subtitle: options.microphoneDevices.isEmpty
+                                ? "No default microphone is currently available"
+                                : "Follow the current macOS default"
                         )
-                    }
+                        .tag(CaptureDeviceDialogSelection.systemDefault)
+                        .disabled(options.microphoneDevices.isEmpty)
 
-                    ForEach(options.microphoneDevices) { device in
-                        StudioButton(hitTarget: .rounded(8)) {
-                            pendingSelection = .device(device.id)
-                        } label: {
-                            microphoneRow(
-                                title: device.name,
-                                subtitle: device.isDefault ? "Current macOS default" : "Microphone",
-                                isSelected: pendingSelection == .device(device.id)
+                        if case .device(let selectedID) = pendingSelection,
+                           !options.microphoneDevices.contains(where: { $0.id == selectedID }) {
+                            CaptureDevicePickerLabel(
+                                title: "Previously Selected Microphone",
+                                subtitle: "This device is no longer available"
                             )
+                            .tag(CaptureDeviceDialogSelection.device(selectedID))
+                            .disabled(true)
+                        }
+
+                        ForEach(options.microphoneDevices) { device in
+                            CaptureDevicePickerLabel(
+                                title: device.name,
+                                subtitle: device.isDefault ? "Current macOS default" : "Microphone"
+                            )
+                            .tag(CaptureDeviceDialogSelection.device(device.id))
                         }
                     }
+                    .pickerStyle(.radioGroup)
+                    .labelsHidden()
+                    .accessibilityLabel("Microphone")
+                    .disabled(!options.canChangeOptions)
 
-                    if options.microphoneDevices.isEmpty {
-                        Text("No devices found")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 18)
-                    }
+                    deviceLoadMessage(emptyMessage: "No microphones are available.")
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 12)
@@ -110,6 +116,7 @@ struct MicrophoneSelectorWindowView: View {
                         .background(Theme.overlay, in: RoundedRectangle(cornerRadius: 8))
                 }
                 .foregroundStyle(.secondary)
+                .keyboardShortcut(.cancelAction)
 
                 StudioButton(hitTarget: .rounded(8)) {
                     applyMicrophoneSelection()
@@ -121,6 +128,8 @@ struct MicrophoneSelectorWindowView: View {
                         .background(Theme.accent, in: RoundedRectangle(cornerRadius: 8))
                         .foregroundStyle(.white)
                 }
+                .disabled(!canApplyMicrophoneSelection)
+                .keyboardShortcut(.defaultAction)
             }
             .padding(14)
         }
@@ -149,9 +158,21 @@ struct MicrophoneSelectorWindowView: View {
         dismissWindow(id: "microphone-selector")
     }
 
+    private var canApplyMicrophoneSelection: Bool {
+        guard options.canChangeOptions else { return false }
+        return switch pendingSelection {
+        case .noInput:
+            true
+        case .systemDefault:
+            !options.microphoneDevices.isEmpty
+        case .device(let deviceID):
+            options.microphoneDevices.contains { $0.id == deviceID }
+        }
+    }
+
     private func resetPendingMicrophoneSelection() {
         guard options.includeMicrophone else {
-            pendingSelection = .systemDefault
+            pendingSelection = .noInput
             return
         }
         if let selectedMicrophoneDeviceID = options.selectedMicrophoneDeviceID {
@@ -161,30 +182,19 @@ struct MicrophoneSelectorWindowView: View {
         }
     }
 
-    private func microphoneRow(title: String, subtitle: String, isSelected: Bool) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(isSelected ? Theme.accent : Theme.fgSubtle)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.system(size: 13, weight: .semibold))
-                    .lineLimit(1)
-                Text(subtitle)
-                    .font(.system(size: 11))
-                    .lineLimit(1)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-        }
-        .padding(.horizontal, 10)
-        .frame(height: 48)
-        .background(isSelected ? Theme.accent.opacity(0.14) : Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(isSelected ? Theme.accent.opacity(0.36) : Theme.overlay, lineWidth: 1)
+    @ViewBuilder
+    private func deviceLoadMessage(emptyMessage: String) -> some View {
+        switch options.deviceLoadPhase {
+        case .failed(let message):
+            Label(message, systemImage: "exclamationmark.triangle.fill")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.secondary)
+        case .loaded where options.microphoneDevices.isEmpty:
+            Label(emptyMessage, systemImage: "mic.slash")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.secondary)
+        case .idle, .loading, .loaded:
+            EmptyView()
         }
     }
 }
@@ -223,46 +233,52 @@ struct CameraSelectorWindowView: View {
             .padding(14)
 
             ScrollView(.vertical) {
-                VStack(spacing: 6) {
-                    StudioButton(hitTarget: .rounded(8)) {
-                        pendingSelection = .noInput
-                    } label: {
-                        cameraRow(
+                VStack(alignment: .leading, spacing: 10) {
+                    if options.deviceLoadPhase == .loading {
+                        ProgressView("Checking cameras…")
+                            .controlSize(.small)
+                    }
+
+                    Picker("Camera", selection: $pendingSelection) {
+                        CaptureDevicePickerLabel(
                             title: "No Camera",
-                            subtitle: "Do not record facecam video",
-                            isSelected: pendingSelection == .noInput
+                            subtitle: "Do not record facecam video"
                         )
-                    }
+                        .tag(CaptureDeviceDialogSelection.noInput)
 
-                    StudioButton(hitTarget: .rounded(8)) {
-                        pendingSelection = .systemDefault
-                    } label: {
-                        cameraRow(
+                        CaptureDevicePickerLabel(
                             title: "System Default",
-                            subtitle: "Use the current macOS default",
-                            isSelected: pendingSelection == .systemDefault
+                            subtitle: options.cameraDevices.isEmpty
+                                ? "No default camera is currently available"
+                                : "Follow the current macOS default"
                         )
-                    }
+                        .tag(CaptureDeviceDialogSelection.systemDefault)
+                        .disabled(options.cameraDevices.isEmpty)
 
-                    ForEach(options.cameraDevices) { device in
-                        StudioButton(hitTarget: .rounded(8)) {
-                            pendingSelection = .device(device.id)
-                        } label: {
-                            cameraRow(
-                                title: device.name,
-                                subtitle: device.isDefault ? "Current macOS default" : "Camera",
-                                isSelected: pendingSelection == .device(device.id)
+                        if case .device(let selectedID) = pendingSelection,
+                           !options.cameraDevices.contains(where: { $0.id == selectedID }) {
+                            CaptureDevicePickerLabel(
+                                title: "Previously Selected Camera",
+                                subtitle: "This device is no longer available"
                             )
+                            .tag(CaptureDeviceDialogSelection.device(selectedID))
+                            .disabled(true)
+                        }
+
+                        ForEach(options.cameraDevices) { device in
+                            CaptureDevicePickerLabel(
+                                title: device.name,
+                                subtitle: device.isDefault ? "Current macOS default" : "Camera"
+                            )
+                            .tag(CaptureDeviceDialogSelection.device(device.id))
                         }
                     }
+                    .pickerStyle(.radioGroup)
+                    .labelsHidden()
+                    .accessibilityLabel("Camera")
+                    .disabled(!options.canChangeOptions)
 
-                    if options.cameraDevices.isEmpty {
-                        Text("No devices found")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 18)
-                    }
+                    deviceLoadMessage(emptyMessage: "No cameras are available.")
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 12)
@@ -286,6 +302,7 @@ struct CameraSelectorWindowView: View {
                         .background(Theme.overlay, in: RoundedRectangle(cornerRadius: 8))
                 }
                 .foregroundStyle(.secondary)
+                .keyboardShortcut(.cancelAction)
 
                 StudioButton(hitTarget: .rounded(8)) {
                     applyCameraSelection()
@@ -297,6 +314,8 @@ struct CameraSelectorWindowView: View {
                         .background(Theme.accent, in: RoundedRectangle(cornerRadius: 8))
                         .foregroundStyle(.white)
                 }
+                .disabled(!canApplyCameraSelection)
+                .keyboardShortcut(.defaultAction)
             }
             .padding(14)
         }
@@ -325,9 +344,21 @@ struct CameraSelectorWindowView: View {
         dismissWindow(id: "camera-selector")
     }
 
+    private var canApplyCameraSelection: Bool {
+        guard options.canChangeOptions else { return false }
+        return switch pendingSelection {
+        case .noInput:
+            true
+        case .systemDefault:
+            !options.cameraDevices.isEmpty
+        case .device(let deviceID):
+            options.cameraDevices.contains { $0.id == deviceID }
+        }
+    }
+
     private func resetPendingCameraSelection() {
         guard options.includeCamera else {
-            pendingSelection = .systemDefault
+            pendingSelection = .noInput
             return
         }
         if let selectedCameraDeviceID = options.selectedCameraDeviceID {
@@ -337,30 +368,37 @@ struct CameraSelectorWindowView: View {
         }
     }
 
-    private func cameraRow(title: String, subtitle: String, isSelected: Bool) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(isSelected ? Theme.accent : Theme.fgSubtle)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.system(size: 13, weight: .semibold))
-                    .lineLimit(1)
-                Text(subtitle)
-                    .font(.system(size: 11))
-                    .lineLimit(1)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
+    @ViewBuilder
+    private func deviceLoadMessage(emptyMessage: String) -> some View {
+        switch options.deviceLoadPhase {
+        case .failed(let message):
+            Label(message, systemImage: "exclamationmark.triangle.fill")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.secondary)
+        case .loaded where options.cameraDevices.isEmpty:
+            Label(emptyMessage, systemImage: "video.slash")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.secondary)
+        case .idle, .loading, .loaded:
+            EmptyView()
         }
-        .padding(.horizontal, 10)
-        .frame(height: 48)
-        .background(isSelected ? Theme.accent.opacity(0.14) : Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(isSelected ? Theme.accent.opacity(0.36) : Theme.overlay, lineWidth: 1)
+    }
+}
+
+private struct CaptureDevicePickerLabel: View {
+    var title: String
+    var subtitle: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.system(size: 13, weight: .semibold))
+                .lineLimit(1)
+            Text(subtitle)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
         }
+        .padding(.vertical, 3)
     }
 }

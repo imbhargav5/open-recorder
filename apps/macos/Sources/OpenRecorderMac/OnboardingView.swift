@@ -23,7 +23,7 @@ struct OnboardingView: View {
                 .foregroundStyle(.white)
                 .padding(.bottom, 8)
 
-            Text("Before you can start recording, Open Recorder needs a couple of macOS permissions.")
+            Text("Screen Recording is required. Accessibility is an optional enhancement for shortcuts and cursor details.")
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(Color.white.opacity(0.58))
                 .multilineTextAlignment(.center)
@@ -32,6 +32,7 @@ struct OnboardingView: View {
                 OnboardingPermissionRow(
                     title: "Screen Recording Permission",
                     description: "Open Recorder needs to capture video of your screen. You might need to restart the app after granting it.",
+                    requirement: .required,
                     buttonTitle: screenRecordingButtonTitle,
                     buttonState: screenRecordingButtonState
                 ) {
@@ -40,7 +41,8 @@ struct OnboardingView: View {
 
                 OnboardingPermissionRow(
                     title: "Accessibility Permission",
-                    description: "Open Recorder uses Accessibility to capture cursor movement and shortcut keystrokes while you are recording.",
+                    description: "Optional: lets Open Recorder capture shortcut keystrokes and additional cursor details while recording.",
+                    requirement: .optional,
                     buttonTitle: accessibilityButtonTitle,
                     buttonState: accessibilityButtonState
                 ) {
@@ -166,9 +168,22 @@ private enum OnboardingPermissionButtonState {
     case enabled
 }
 
+private enum OnboardingPermissionRequirement {
+    case required
+    case optional
+
+    var title: String {
+        switch self {
+        case .required: "Required"
+        case .optional: "Optional"
+        }
+    }
+}
+
 private struct OnboardingPermissionRow: View {
     var title: String
     var description: String
+    var requirement: OnboardingPermissionRequirement
     var buttonTitle: String
     var buttonState: OnboardingPermissionButtonState
     var action: () -> Void
@@ -176,9 +191,17 @@ private struct OnboardingPermissionRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 34) {
             VStack(alignment: .leading, spacing: 5) {
-                Text(title)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Color.white.opacity(0.90))
+                HStack(spacing: 7) {
+                    Text(title)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.white.opacity(0.90))
+                    Text(requirement.title)
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Theme.overlay, in: Capsule())
+                }
 
                 Text(description)
                     .font(.system(size: 12, weight: .regular))
@@ -188,27 +211,44 @@ private struct OnboardingPermissionRow: View {
             }
             .frame(width: 240, alignment: .leading)
 
-            StudioButton(hitTarget: .rounded(6), action: action) {
-                HStack(spacing: 9) {
-                    if buttonState == .enabled {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 15, weight: .semibold))
-                    }
-                    Text(buttonTitle)
-                        .font(.system(size: 13, weight: .semibold))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.82)
-                }
-                .frame(width: 242, height: 36)
-                .foregroundStyle(foregroundColor)
-                .background(backgroundColor, in: RoundedRectangle(cornerRadius: 5))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 5)
-                        .stroke(borderColor, lineWidth: 1)
+            if buttonState == .enabled {
+                permissionStatusLabel
+            } else {
+                StudioButton(hitTarget: .rounded(6), action: action) {
+                    permissionActionLabel
                 }
             }
         }
         .frame(width: 516, alignment: .leading)
+    }
+
+    private var permissionActionLabel: some View {
+        Text(buttonTitle)
+            .font(.system(size: 13, weight: .semibold))
+            .lineLimit(1)
+            .minimumScaleFactor(0.82)
+            .frame(width: 242, height: 36)
+            .foregroundStyle(foregroundColor)
+            .background(backgroundColor, in: RoundedRectangle(cornerRadius: 5))
+            .overlay {
+                RoundedRectangle(cornerRadius: 5)
+                    .stroke(borderColor, lineWidth: 1)
+            }
+    }
+
+    private var permissionStatusLabel: some View {
+        Label(buttonTitle, systemImage: "checkmark")
+            .font(.system(size: 13, weight: .semibold))
+            .lineLimit(1)
+            .minimumScaleFactor(0.82)
+            .frame(width: 242, height: 36)
+            .foregroundStyle(foregroundColor)
+            .background(backgroundColor, in: RoundedRectangle(cornerRadius: 5))
+            .overlay {
+                RoundedRectangle(cornerRadius: 5)
+                    .stroke(borderColor, lineWidth: 1)
+            }
+            .accessibilityLabel("\(buttonTitle), \(requirement.title)")
     }
 
     private var foregroundColor: Color {

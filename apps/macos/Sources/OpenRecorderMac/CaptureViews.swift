@@ -40,6 +40,7 @@ struct CaptureStudioView: View {
                         allSources: model.capture.sources,
                         selectedSourceID: model.selectedSource?.id,
                         captureMode: model.captureMode,
+                        loadPhase: sourceSelector.state.loadPhase,
                         onRefresh: {
                             sourceSelector.send(.refreshRequested)
                         },
@@ -58,13 +59,22 @@ struct CaptureStudioView: View {
                 .background(Theme.appBgMuted)
                 .onAppear {
                     sourceSelector.configure(refreshSources: {
-                        model.reloadSourcesForPreview()
+                        await model.refreshSources(requestScreenRecordingPermission: true)
+                        return SourceSelectorRefreshResult(
+                            sourceIDs: model.capture.sources.map(\.id),
+                            errorMessage: model.capture.sourceCatalogState.issueMessage
+                        )
                     })
                     sourceSelector.send(.visibleTabsChanged(visibleTabs))
-                    model.reloadSourcesForPreview()
+                    sourceSelector.send(.committedSelectionSynced(model.selectedSource?.id))
+                    sourceSelector.send(.sourcesChanged(model.capture.sources.map(\.id)))
+                    sourceSelector.send(.refreshRequested)
                 }
                 .onChange(of: model.preferredSourceSelectorKind) { _, kind in
                     sourceSelector.send(.preferredSourceKindSynced(kind))
+                }
+                .onChange(of: model.capture.sources.map(\.id)) { _, sourceIDs in
+                    sourceSelector.send(.sourcesChanged(sourceIDs))
                 }
             }
         }

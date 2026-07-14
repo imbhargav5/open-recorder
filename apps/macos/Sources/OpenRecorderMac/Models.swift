@@ -1,5 +1,16 @@
 import Foundation
 
+enum LoadPhase: Equatable, Sendable {
+    case idle
+    case loading
+    case loaded
+    case failed(String)
+
+    var isLoading: Bool {
+        self == .loading
+    }
+}
+
 struct CaptureArea: Codable, Hashable {
     var x: Int
     var y: Int
@@ -19,7 +30,7 @@ enum RecordingPhase: String, Codable, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
-struct CaptureDeviceInfo: Identifiable, Codable, Hashable {
+struct CaptureDeviceInfo: Identifiable, Codable, Hashable, Sendable {
     var id: String
     var name: String
     var isDefault: Bool
@@ -97,19 +108,31 @@ struct CaptureSource: Identifiable, Codable, Hashable {
     var ownerName: String? = nil
 }
 
-struct AppPaths: Codable, Equatable {
+struct AppPaths: Codable, Equatable, Sendable {
     var recordingsDir: String
     var screenshotsDir: String
     var projectsDir: String
     var supportDir: String
 }
 
-struct PreparedFile: Codable {
+struct PreparedFile: Codable, Sendable {
     var path: String
 }
 
 struct ForgetProjectResult: Codable {
     var removed: Bool
+}
+
+enum ProjectAvailability: String, Codable, CaseIterable, Sendable {
+    case available
+    case missingProject
+    case missingMedia
+    case missingProjectAndMedia
+    case unavailable
+
+    var isAvailable: Bool {
+        self == .available
+    }
 }
 
 struct ProjectSummary: Codable, Identifiable, Hashable, Sendable {
@@ -123,6 +146,33 @@ struct ProjectSummary: Codable, Identifiable, Hashable, Sendable {
     var updatedAt: String
     var lastOpenedAt: String
     var missing: Bool
+    var availability: ProjectAvailability
+
+    init(
+        id: String,
+        title: String,
+        path: String,
+        recordingPath: String?,
+        screenshotPath: String? = nil,
+        sourceName: String?,
+        createdAt: String,
+        updatedAt: String,
+        lastOpenedAt: String,
+        missing: Bool,
+        availability: ProjectAvailability? = nil
+    ) {
+        self.id = id
+        self.title = title
+        self.path = path
+        self.recordingPath = recordingPath
+        self.screenshotPath = screenshotPath
+        self.sourceName = sourceName
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+        self.lastOpenedAt = lastOpenedAt
+        self.missing = missing
+        self.availability = availability ?? (missing ? .unavailable : .available)
+    }
 
     var mediaKind: EditorMediaKind {
         screenshotPath == nil ? .video : .screenshot
@@ -130,6 +180,51 @@ struct ProjectSummary: Codable, Identifiable, Hashable, Sendable {
 
     var mediaPath: String? {
         screenshotPath ?? recordingPath
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case title
+        case path
+        case recordingPath
+        case screenshotPath
+        case sourceName
+        case createdAt
+        case updatedAt
+        case lastOpenedAt
+        case missing
+        case availability
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        title = try container.decode(String.self, forKey: .title)
+        path = try container.decode(String.self, forKey: .path)
+        recordingPath = try container.decodeIfPresent(String.self, forKey: .recordingPath)
+        screenshotPath = try container.decodeIfPresent(String.self, forKey: .screenshotPath)
+        sourceName = try container.decodeIfPresent(String.self, forKey: .sourceName)
+        createdAt = try container.decode(String.self, forKey: .createdAt)
+        updatedAt = try container.decode(String.self, forKey: .updatedAt)
+        lastOpenedAt = try container.decode(String.self, forKey: .lastOpenedAt)
+        missing = try container.decodeIfPresent(Bool.self, forKey: .missing) ?? false
+        availability = try container.decodeIfPresent(ProjectAvailability.self, forKey: .availability)
+            ?? (missing ? .unavailable : .available)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(title, forKey: .title)
+        try container.encode(path, forKey: .path)
+        try container.encodeIfPresent(recordingPath, forKey: .recordingPath)
+        try container.encodeIfPresent(screenshotPath, forKey: .screenshotPath)
+        try container.encodeIfPresent(sourceName, forKey: .sourceName)
+        try container.encode(createdAt, forKey: .createdAt)
+        try container.encode(updatedAt, forKey: .updatedAt)
+        try container.encode(lastOpenedAt, forKey: .lastOpenedAt)
+        try container.encode(missing, forKey: .missing)
+        try container.encode(availability, forKey: .availability)
     }
 }
 
@@ -263,7 +358,7 @@ struct ProjectVideoEditorState: Codable, Equatable, Hashable {
     }
 }
 
-enum EditorMediaKind: String, Codable, Hashable {
+enum EditorMediaKind: String, Codable, Hashable, Sendable {
     case video
     case screenshot
 
@@ -809,7 +904,7 @@ struct NativeWindowCommand: Identifiable {
     var editorSession: EditorSession?
 }
 
-struct HealthPayload: Codable {
+struct HealthPayload: Codable, Sendable {
     var service: String
     var version: String
     var platform: String

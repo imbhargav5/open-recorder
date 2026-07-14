@@ -25,6 +25,7 @@ struct AppShellState: Equatable {
     var projects: [ProjectSummary] = []
     var paths: AppPaths?
     var serviceHealth: HealthPayload?
+    var backendLoadPhase: LoadPhase = .idle
 
     var activeEditorKind: EditorMediaKind? {
         if let lastEditorSession {
@@ -49,6 +50,7 @@ enum AppShellEvent: Equatable {
     case currentScreenshotURLChanged(URL?)
     case windowCommandRequested(NativeWindowCommandAction, editorSession: EditorSession? = nil)
     case windowCommandConsumed(UUID?)
+    case backendRefreshStarted
     case backendRefreshed(paths: AppPaths?, projects: [ProjectSummary], health: HealthPayload?)
     case backendRefreshFailed(String)
     case editorSessionShown(EditorSession)
@@ -106,14 +108,22 @@ extension AppShellState {
             windowCommand = nil
             return []
 
+        case .backendRefreshStarted:
+            guard backendLoadPhase != .loading else { return [] }
+            backendLoadPhase = .loading
+            statusMessage = "Loading projects…"
+            return [.setStatusMessage(statusMessage)]
+
         case .backendRefreshed(let paths, let projects, let health):
             self.paths = paths
             self.projects = projects
             serviceHealth = health
+            backendLoadPhase = .loaded
             statusMessage = "Rust service ready"
             return [.setStatusMessage(statusMessage)]
 
         case .backendRefreshFailed(let message):
+            backendLoadPhase = .failed(message)
             statusMessage = message
             return [.setStatusMessage(message)]
 
@@ -200,6 +210,14 @@ final class AppShellDriver {
 
     func activateWorkspace(for editorSession: EditorSession?) {
         workspaces.activate(sessionID: editorSession?.id)
+    }
+
+    func prepareForTermination() async -> Bool {
+        await workspaces.prepareForTermination()
+    }
+
+    var terminationBlockingEditorSession: EditorSession? {
+        workspaces.terminationBlockingSession
     }
 
     @discardableResult

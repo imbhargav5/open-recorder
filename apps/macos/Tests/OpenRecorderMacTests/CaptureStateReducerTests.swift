@@ -190,11 +190,212 @@ final class CaptureStateReducerTests: XCTestCase {
 
         let recording = CaptureState.areaSelecting(.recording).applying(.completeInteractiveAreaSelection(source))
         XCTAssertEqual(recording.state.phase, .ready(.recording, source))
-        XCTAssertEqual(recording.effects, [.prepareRecordingFile(source)])
+        XCTAssertEqual(recording.effects, [.showHUD])
 
         let screenshot = CaptureState.areaSelecting(.screenshot).applying(.completeInteractiveAreaSelection(source))
         XCTAssertEqual(screenshot.state.phase, .capturingScreenshot(source))
         XCTAssertEqual(screenshot.effects, [.dismissScreenSelection, .hideAppWindowsForCapture, .runScreenshotCapture(source)])
+    }
+
+    func testCaptureReadinessReportsTypedBlockersBeforeRuntimeWorkBegins() {
+        let selected = makeSource(id: "window:chosen", kind: .window)
+        let missingMicrophoneID = "mic:missing"
+        let state = CaptureState.ready(.recording, selected)
+        let options = CaptureOptionsState(
+            includeMicrophone: true,
+            includeCamera: true,
+            microphoneDevices: [CaptureDeviceInfo(id: "mic:other", name: "Other Mic", isDefault: true)],
+            cameraDevices: [],
+            selectedMicrophoneDeviceID: missingMicrophoneID
+        )
+
+        let readiness = state.readiness(
+            availableSources: [],
+            screenRecordingPermissionState: .requestAlreadyShown,
+            options: options,
+            runtimeIsRecording: false
+        )
+
+        XCTAssertFalse(readiness.canCapture)
+        XCTAssertEqual(readiness.source, selected)
+        XCTAssertEqual(readiness.blockers, [
+            .screenRecordingPermissionNeedsRestart,
+            .sourceUnavailable(name: selected.name),
+            .microphoneUnavailable(deviceID: missingMicrophoneID),
+            .cameraUnavailable(deviceID: nil)
+        ])
+        XCTAssertEqual(readiness.primaryBlocker?.recoveryAction, .openScreenRecordingSettings)
+    }
+
+    func testCaptureReadinessSucceedsOnlyAfterSourcePermissionAndDevicesAreAvailable() {
+        let selected = makeSource(id: "window:chosen", kind: .window)
+        let options = CaptureOptionsState(
+            includeMicrophone: true,
+            includeCamera: true,
+            microphoneDevices: [CaptureDeviceInfo(id: "mic:1", name: "Mic", isDefault: true)],
+            cameraDevices: [CaptureDeviceInfo(id: "cam:1", name: "Camera", isDefault: true)],
+            selectedMicrophoneDeviceID: "mic:1",
+            selectedCameraDeviceID: "cam:1"
+        )
+
+        let ready = CaptureState.ready(.recording, selected).readiness(
+            availableSources: [selected],
+            screenRecordingPermissionState: .granted,
+            options: options,
+            runtimeIsRecording: false
+        )
+        let checking = CaptureState.ready(.recording, selected).readiness(
+            availableSources: [selected],
+            screenRecordingPermissionState: .granted,
+            options: options,
+            runtimeIsRecording: false,
+            isChecking: true
+        )
+
+        XCTAssertTrue(ready.canCapture)
+        XCTAssertEqual(ready.blockers, [])
+        XCTAssertFalse(checking.canCapture)
+        XCTAssertEqual(checking.blockers, [])
+    }
+
+    func testCaptureReadinessReportsDeniedMediaPermissionsBeforeDeviceAvailability() {
+        let selected = makeSource()
+        let options = CaptureOptionsState(
+            includeMicrophone: true,
+            includeCamera: true,
+            microphoneDevices: [],
+            cameraDevices: []
+        )
+
+        let readiness = CaptureState.ready(.recording, selected).readiness(
+            availableSources: [selected],
+            screenRecordingPermissionState: .granted,
+            options: options,
+            runtimeIsRecording: false,
+            microphoneAuthorization: .denied,
+            cameraAuthorization: .denied
+        )
+
+        XCTAssertEqual(readiness.blockers, [
+            .microphonePermissionDenied,
+            .cameraPermissionDenied
+        ])
+        XCTAssertEqual(readiness.blockers.map(\.recoveryAction), [
+            .openMicrophoneSettings,
+            .openCameraSettings
+        ])
+    }
+
+    func testScreenshotReadinessIgnoresRecordingOnlyDeviceChoices() {
+        let selected = makeSource()
+        let options = CaptureOptionsState(
+            includeMicrophone: true,
+            includeCamera: true,
+            microphoneDevices: [],
+            cameraDevices: []
+        )
+
+        let readiness = CaptureState.ready(.screenshot, selected).readiness(
+            availableSources: [selected],
+            screenRecordingPermissionState: .granted,
+            options: options,
+            runtimeIsRecording: false
+        )
+
+        XCTAssertTrue(readiness.canCapture)
+    }
+
+    func testAreaReadinessRequiresCompletedGeometryButNotCatalogMembership() {
+        let placeholder = makeSource(id: "area:interactive", kind: .area)
+        var completed = placeholder
+        completed.area = CaptureArea(x: 10, y: 20, width: 640, height: 360, displayID: 1)
+        let options = CaptureOptionsState()
+
+        let placeholderReadiness = CaptureState.ready(.recording, placeholder).readiness(
+            availableSources: [],
+            screenRecordingPermissionState: .granted,
+            options: options,
+            runtimeIsRecording: false
+        )
+        let completedReadiness = CaptureState.ready(.recording, completed).readiness(
+            availableSources: [],
+            screenRecordingPermissionState: .granted,
+            options: options,
+            runtimeIsRecording: false
+        )
+
+        XCTAssertEqual(placeholderReadiness.blockers, [.areaSelectionRequired])
+        XCTAssertTrue(completedReadiness.canCapture)
+    }
+
+    func testCatalogRefreshNeverChoosesOrSilentlyReplacesASource() {
+        let previous = makeSource(id: "display:2", kind: .display)
+        let unrelated = makeSource(id: "display:1", kind: .display)
+
+        let withoutSelection = CaptureState.selectingSource(.recording)
+            .applying(.refreshSelectedSource(unrelated))
+        XCTAssertNil(withoutSelection.state.selectedSource)
+        XCTAssertEqual(withoutSelection.state.phase, .selectingSource(.recording))
+
+        let missing = CaptureState.ready(.recording, previous)
+            .applying(.refreshSelectedSource(unrelated))
+        XCTAssertNil(missing.state.selectedSource)
+        XCTAssertEqual(missing.state.phase, .selectingSource(.recording))
+        XCTAssertEqual(missing.state.preferredSourceKind, .display)
+        XCTAssertEqual(missing.statusMessage, "Display 1 is no longer available. Choose another source.")
+    }
+
+    func testCatalogRefreshUpdatesMatchingSourceMetadataAndPreservesInteractiveArea() {
+        var previous = makeSource(id: "window:old", kind: .window)
+        previous.ownerBundleID = "com.example.app"
+        previous.windowID = 42
+        var refreshed = previous
+        refreshed.id = "window:new"
+        refreshed.subtitle = "Updated"
+
+        let updated = CaptureState.ready(.recording, previous)
+            .applying(.refreshSelectedSource(refreshed))
+        XCTAssertEqual(updated.state.phase, .ready(.recording, refreshed))
+
+        var area = makeSource(id: "area:interactive", kind: .area)
+        area.area = CaptureArea(x: 0, y: 0, width: 100, height: 100)
+        let preserved = CaptureState.ready(.recording, area)
+            .applying(.refreshSelectedSource(nil))
+        XCTAssertEqual(preserved.state, CaptureState.ready(.recording, area))
+    }
+
+    func testCatalogRefreshDoesNotRetargetToSameTitleWindowWithDifferentWindowID() {
+        var selected = makeSource(id: "window:selected", kind: .window)
+        selected.name = "Document"
+        selected.ownerBundleID = "com.example.editor"
+        selected.windowID = 41
+        var differentWindow = selected
+        differentWindow.id = "window:different"
+        differentWindow.windowID = 42
+
+        let refreshed = CaptureState.ready(.recording, selected)
+            .applying(.refreshSelectedSource(differentWindow))
+
+        XCTAssertNil(refreshed.state.selectedSource)
+        XCTAssertEqual(refreshed.state.phase, .selectingSource(.recording))
+        XCTAssertEqual(refreshed.statusMessage, "Document is no longer available. Choose another source.")
+    }
+
+    func testCatalogRefreshCannotRewriteSourceDuringRuntimeCapture() {
+        let source = makeSource()
+        let states: [CaptureState] = [
+            .countingDownRecording(source),
+            .startingRecording(source),
+            .recording(source),
+            .stoppingRecording(source),
+            .capturingScreenshot(source)
+        ]
+
+        for state in states {
+            let transition = state.applying(.refreshSelectedSource(nil))
+            XCTAssertEqual(transition.state, state)
+            XCTAssertNil(transition.statusMessage)
+        }
     }
 
     private func makeSource(

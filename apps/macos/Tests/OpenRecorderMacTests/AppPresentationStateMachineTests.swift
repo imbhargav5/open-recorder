@@ -57,8 +57,41 @@ final class AppShellStateMachineTests: XCTestCase {
         XCTAssertEqual(state.paths, paths)
         XCTAssertEqual(state.projects, [project])
         XCTAssertEqual(state.serviceHealth, health)
+        XCTAssertEqual(state.backendLoadPhase, .loaded)
         XCTAssertEqual(state.statusMessage, "Rust service ready")
         XCTAssertEqual(effects, [.setStatusMessage("Rust service ready")])
+    }
+
+    func testShellBackendRefreshPublishesLoadingBeforeResultsArrive() {
+        var state = AppShellState()
+
+        let effects = state.applying(.backendRefreshStarted)
+
+        XCTAssertEqual(state.backendLoadPhase, .loading)
+        XCTAssertEqual(state.statusMessage, "Loading projects…")
+        XCTAssertEqual(effects, [.setStatusMessage("Loading projects…")])
+        XCTAssertEqual(state.applying(.backendRefreshStarted), [])
+    }
+
+    func testShellBackendFailurePreservesLastUsableData() {
+        let paths = AppPaths(recordingsDir: "/r", screenshotsDir: "/s", projectsDir: "/p", supportDir: "/support")
+        let project = makeProjectSummary(path: "/p/demo.openrecorder")
+        let health = HealthPayload(service: "open-recorder", version: "1.0", platform: "macOS")
+        var state = AppShellState(
+            projects: [project],
+            paths: paths,
+            serviceHealth: health,
+            backendLoadPhase: .loaded
+        )
+
+        _ = state.applying(.backendRefreshStarted)
+        let effects = state.applying(.backendRefreshFailed("Service unavailable"))
+
+        XCTAssertEqual(state.projects, [project])
+        XCTAssertEqual(state.paths, paths)
+        XCTAssertEqual(state.serviceHealth, health)
+        XCTAssertEqual(state.backendLoadPhase, .failed("Service unavailable"))
+        XCTAssertEqual(effects, [.setStatusMessage("Service unavailable")])
     }
 
     func testShellRemovesProjectSummaryByPath() {
@@ -191,6 +224,130 @@ final class AppShellStateMachineTests: XCTestCase {
 
         XCTAssertEqual(savedSnapshots, [videoSnapshot, screenshotSnapshot])
         XCTAssertEqual(shell.sessionWorkspaceCountForTesting, 0)
+    }
+
+    func testPreparingForTerminationFlushesAutosavesWithoutEvictingOpenWorkspace() async {
+        let shell = AppShellDriver()
+        let session = EditorSession(kind: .video, url: URL(fileURLWithPath: "/tmp/quit-save.mp4"))
+        let workspace = shell.workspace(for: session)
+        let snapshot = makeWorkspaceAutosaveSnapshot(path: "/tmp/quit-save.openrecorder", kind: .video)
+        var savedSnapshots: [ProjectAutosaveSnapshot] = []
+        workspace.video.configure(
+            applyTimelineSnapshot: { _ in },
+            saveHandler: { snapshot in
+                savedSnapshots.append(snapshot)
+                return makeProjectSummary(path: snapshot.projectPath)
+            },
+            statusHandler: { _ in },
+            pausePlayback: {},
+            exportVideo: { _, _, _ in },
+            clearVideoExportDialogState: {}
+        )
+        workspace.video.send(.autosaveSnapshotChanged(snapshot))
+
+        let canTerminate = await shell.prepareForTermination()
+
+        XCTAssertTrue(canTerminate)
+        XCTAssertEqual(savedSnapshots, [snapshot])
+        XCTAssertTrue(shell.workspace(for: session) === workspace)
+        XCTAssertEqual(shell.sessionWorkspaceCountForTesting, 1)
+    }
+
+    func testPreparingForTerminationRechecksEarlierAndNewWorkspacesAtAFixedPoint() async {
+        let shell = AppShellDriver()
+        let firstWorkspace = shell.workspace(for: nil)
+        let secondSession = EditorSession(kind: .video, url: URL(fileURLWithPath: "/tmp/quit-second.mp4"))
+        let secondWorkspace = shell.workspace(for: secondSession)
+        let secondSaveGate = WorkspaceAutosaveGate()
+        let secondSaveStarted = expectation(description: "Second workspace save started")
+        var savedPaths: [String] = []
+
+        firstWorkspace.video.configure(
+            applyTimelineSnapshot: { _ in },
+            saveHandler: { snapshot in
+                savedPaths.append(snapshot.projectPath)
+                return makeProjectSummary(path: snapshot.projectPath)
+            },
+            statusHandler: { _ in },
+            pausePlayback: {},
+            exportVideo: { _, _, _ in },
+            clearVideoExportDialogState: {}
+        )
+        secondWorkspace.video.configure(
+            applyTimelineSnapshot: { _ in },
+            saveHandler: { snapshot in
+                secondSaveStarted.fulfill()
+                await secondSaveGate.wait()
+                savedPaths.append(snapshot.projectPath)
+                return makeProjectSummary(path: snapshot.projectPath)
+            },
+            statusHandler: { _ in },
+            pausePlayback: {},
+            exportVideo: { _, _, _ in },
+            clearVideoExportDialogState: {}
+        )
+        firstWorkspace.video.send(.autosaveSnapshotChanged(
+            makeWorkspaceAutosaveSnapshot(path: "/tmp/quit-first-1.openrecorder", kind: .video)
+        ))
+        secondWorkspace.video.send(.autosaveSnapshotChanged(
+            makeWorkspaceAutosaveSnapshot(path: "/tmp/quit-second.openrecorder", kind: .video)
+        ))
+
+        let termination = Task { @MainActor in await shell.prepareForTermination() }
+        await fulfillment(of: [secondSaveStarted], timeout: 1)
+
+        firstWorkspace.video.send(.autosaveSnapshotChanged(
+            makeWorkspaceAutosaveSnapshot(path: "/tmp/quit-first-2.openrecorder", kind: .video)
+        ))
+        let thirdSession = EditorSession(kind: .screenshot, url: URL(fileURLWithPath: "/tmp/quit-third.png"))
+        let thirdWorkspace = shell.workspace(for: thirdSession)
+        thirdWorkspace.screenshot.configure(
+            saveHandler: { snapshot in
+                savedPaths.append(snapshot.projectPath)
+                return makeProjectSummary(path: snapshot.projectPath)
+            },
+            statusHandler: { _ in },
+            setWorkspaceStatus: { _ in }
+        )
+        thirdWorkspace.screenshot.send(.autosaveSnapshotChanged(
+            makeWorkspaceAutosaveSnapshot(path: "/tmp/quit-third.openrecorder", kind: .screenshot)
+        ))
+        await secondSaveGate.open()
+
+        let canTerminate = await termination.value
+        XCTAssertTrue(canTerminate)
+        XCTAssertEqual(Set(savedPaths), Set([
+            "/tmp/quit-first-1.openrecorder",
+            "/tmp/quit-first-2.openrecorder",
+            "/tmp/quit-second.openrecorder",
+            "/tmp/quit-third.openrecorder"
+        ]))
+    }
+
+    func testPreparingForTerminationCancelsQuitAndPresentsRecoveryWhenAutosaveFails() async {
+        let shell = AppShellDriver()
+        let session = EditorSession(kind: .video, url: URL(fileURLWithPath: "/tmp/quit-failure.mp4"))
+        let workspace = shell.workspace(for: session)
+        workspace.video.configure(
+            applyTimelineSnapshot: { _ in },
+            saveHandler: { _ in throw WorkspaceAutosaveError.failed },
+            statusHandler: { [weak workspace] status in
+                workspace?.handleProjectAutosaveStatus(status, source: .video)
+            },
+            pausePlayback: {},
+            exportVideo: { _, _, _ in },
+            clearVideoExportDialogState: {}
+        )
+        workspace.video.send(.autosaveSnapshotChanged(
+            makeWorkspaceAutosaveSnapshot(path: "/tmp/quit-failure.openrecorder", kind: .video)
+        ))
+
+        let canTerminate = await shell.prepareForTermination()
+
+        XCTAssertFalse(canTerminate)
+        XCTAssertTrue(workspace.state.isAutosaveRecoveryPresented)
+        XCTAssertEqual(workspace.state.statusSeverity, .failure)
+        XCTAssertEqual(shell.sessionWorkspaceCountForTesting, 1)
     }
 
     func testReopeningSessionDuringCloseReusesWorkspaceAndCancelsEviction() async {
@@ -785,9 +942,8 @@ final class AppShellStateMachineTests: XCTestCase {
         XCTAssertEqual(configuredWorkspaces.count, 3)
     }
 
-    func testClosingOneSessionClearsOnlyItsActiveExport() async {
+    func testClosingSessionDoesNotSilentlyCancelAnActiveExport() async {
         let shell = AppShellDriver()
-        var temporaryURLs: [ObjectIdentifier: URL] = [:]
         var cancellationTokens: [ObjectIdentifier: VideoExportCancellationToken] = [:]
         var deletedURLs: [URL] = []
         let rendersStarted = expectation(description: "Both workspace exports started")
@@ -795,7 +951,6 @@ final class AppShellStateMachineTests: XCTestCase {
         shell.configure(configureWorkspace: { workspace in
             let workspaceID = ObjectIdentifier(workspace)
             let temporaryURL = URL(fileURLWithPath: "/tmp/\(UUID().uuidString).mov")
-            temporaryURLs[workspaceID] = temporaryURL
             workspace.videoExport.configure(
                 renderVideo: { _, _, _, token, _, _ in
                     cancellationTokens[workspaceID] = token
@@ -824,15 +979,55 @@ final class AppShellStateMachineTests: XCTestCase {
         secondWorkspace.videoExport.export(sourceURL: secondSession.url, options: .default, edits: .empty)
         await fulfillment(of: [rendersStarted], timeout: 1)
 
-        await shell.closeWorkspace(for: firstSession)
+        let closeOutcome = await shell.closeWorkspace(for: firstSession)
+        let didDiscardActiveExport = shell.discardWorkspace(for: firstSession)
 
-        XCTAssertEqual(firstWorkspace.videoExport.state.phase, .idle)
-        XCTAssertTrue(cancellationTokens[firstID]?.isCancelled == true)
-        XCTAssertEqual(deletedURLs, temporaryURLs[firstID].map { [$0] } ?? [])
+        XCTAssertEqual(closeOutcome, .canceled)
+        XCTAssertFalse(didDiscardActiveExport)
+        XCTAssertEqual(firstWorkspace.videoExport.state.phase, .exporting)
+        XCTAssertFalse(cancellationTokens[firstID]?.isCancelled ?? true)
+        XCTAssertEqual(deletedURLs, [])
         XCTAssertEqual(secondWorkspace.videoExport.state.phase, .exporting)
         XCTAssertFalse(cancellationTokens[secondID]?.isCancelled ?? true)
 
+        firstWorkspace.videoExport.cancelExport()
+        secondWorkspace.videoExport.cancelExport()
         await shell.closeWorkspace(for: secondSession)
+    }
+
+    func testCloseAndQuitPreserveFinishedExportUntilUserSavesOrCancelsIt() async {
+        let shell = AppShellDriver()
+        let session = EditorSession(kind: .video, url: URL(fileURLWithPath: "/tmp/save-pending.mp4"))
+        let workspace = shell.workspace(for: session)
+        let temporaryURL = URL(fileURLWithPath: "/tmp/save-pending-export.mov")
+        var deletedURLs: [URL] = []
+        workspace.videoExport.configure(
+            renderVideo: { _, _, _, _, _, _ in },
+            temporaryURL: { _ in temporaryURL },
+            saveDestination: { _, _ in nil },
+            copyFile: { _, _ in },
+            deleteFile: { deletedURLs.append($0) },
+            revealFile: { _ in },
+            setStatusMessage: { _ in }
+        )
+
+        workspace.videoExport.export(sourceURL: session.url, options: .default, edits: .empty)
+        await waitForCondition { workspace.videoExport.state.phase == .savePending }
+
+        let closeWhilePending = await shell.closeWorkspace(for: session)
+        let canTerminateWhilePending = await shell.prepareForTermination()
+        let didDiscardFinishedExport = shell.discardWorkspace(for: session)
+        XCTAssertEqual(closeWhilePending, .canceled)
+        XCTAssertFalse(canTerminateWhilePending)
+        XCTAssertFalse(didDiscardFinishedExport)
+        XCTAssertEqual(workspace.videoExport.state.pendingTempURL, temporaryURL)
+        XCTAssertEqual(deletedURLs, [])
+        XCTAssertEqual(workspace.state.statusSeverity, .failure)
+
+        workspace.videoExport.clear()
+        XCTAssertEqual(deletedURLs, [temporaryURL])
+        let closeAfterCancel = await shell.closeWorkspace(for: session)
+        XCTAssertEqual(closeAfterCancel, .closed)
     }
 
     func testAppModelFacadeMirrorsShellRouting() {
@@ -1033,6 +1228,101 @@ final class CaptureOptionsStateMachineTests: XCTestCase {
         XCTAssertEqual(state.statusMessage, "System audio is on for this recording.")
         XCTAssertEqual(effects, [.setStatusMessage("System audio is on for this recording.")])
     }
+
+    func testLockedCaptureOptionsRejectEveryUserMutationButAllowRuntimeCameraFallback() {
+        var state = CaptureOptionsState(
+            includeMicrophone: true,
+            includeSystemAudio: true,
+            includeCamera: true,
+            showCursor: true,
+            showClicks: false,
+            selectedMicrophoneDeviceID: "mic-original",
+            selectedCameraDeviceID: "cam-original",
+            canChangeOptions: false
+        )
+        let lockedEvents: [CaptureOptionsEvent] = [
+            .microphoneEnabledChanged(false),
+            .systemAudioChanged(false),
+            .cameraEnabledChanged(false),
+            .microphoneSelectionRequested,
+            .cameraSelectionRequested,
+            .microphoneSelected("mic-new"),
+            .cameraSelected("cam-new"),
+            .microphoneDisabled,
+            .cameraDisabled,
+            .cursorVisibilityChanged(false),
+            .clickVisibilityChanged(true)
+        ]
+
+        for event in lockedEvents {
+            let effects = state.applying(event)
+            XCTAssertEqual(effects, [.setStatusMessage("Recording options are locked while capture is starting.")])
+        }
+        XCTAssertTrue(state.includeMicrophone)
+        XCTAssertTrue(state.includeSystemAudio)
+        XCTAssertTrue(state.includeCamera)
+        XCTAssertTrue(state.showCursor)
+        XCTAssertFalse(state.showClicks)
+        XCTAssertEqual(state.selectedMicrophoneDeviceID, "mic-original")
+        XCTAssertEqual(state.selectedCameraDeviceID, "cam-original")
+
+        XCTAssertEqual(state.applying(.cameraDisabledForCaptureFailure), [])
+        XCTAssertFalse(state.includeCamera)
+    }
+
+    func testDeviceRefreshPreservesExplicitUnavailableSelections() {
+        var state = CaptureOptionsState(
+            includeMicrophone: true,
+            includeCamera: true,
+            microphoneDevices: [CaptureDeviceInfo(id: "mic-old", name: "Old Mic", isDefault: true)],
+            cameraDevices: [CaptureDeviceInfo(id: "cam-old", name: "Old Camera", isDefault: true)],
+            selectedMicrophoneDeviceID: "mic-old",
+            selectedCameraDeviceID: "cam-old"
+        )
+
+        XCTAssertEqual(state.applying(.devicesRefreshed(
+            microphones: [CaptureDeviceInfo(id: "mic-new", name: "New Mic", isDefault: true)],
+            cameras: []
+        )), [])
+
+        XCTAssertEqual(state.selectedMicrophoneDeviceID, "mic-old")
+        XCTAssertEqual(state.selectedCameraDeviceID, "cam-old")
+        XCTAssertEqual(state.selectedMicrophoneDeviceName, "Previously Selected (Unavailable)")
+        XCTAssertEqual(state.selectedCameraDeviceName, "Previously Selected (Unavailable)")
+        XCTAssertFalse(state.hasAvailableMicrophoneSelection)
+        XCTAssertFalse(state.hasAvailableCameraSelection)
+        XCTAssertEqual(state.deviceLoadPhase, .loaded)
+    }
+
+    func testDeviceLoadPhaseAndSystemDefaultsRequireARealDevice() {
+        var state = CaptureOptionsState()
+
+        XCTAssertEqual(state.applying(.deviceRefreshStarted), [])
+        XCTAssertEqual(state.deviceLoadPhase, .loading)
+        XCTAssertEqual(state.applying(.deviceRefreshFailed("Device service unavailable")), [])
+        XCTAssertEqual(state.deviceLoadPhase, .failed("Device service unavailable"))
+        XCTAssertFalse(state.hasAvailableMicrophoneSelection)
+        XCTAssertFalse(state.hasAvailableCameraSelection)
+
+        _ = state.applying(.devicesRefreshed(
+            microphones: [CaptureDeviceInfo(id: "mic-1", name: "Mic", isDefault: true)],
+            cameras: [CaptureDeviceInfo(id: "cam-1", name: "Camera", isDefault: true)]
+        ))
+        XCTAssertTrue(state.hasAvailableMicrophoneSelection)
+        XCTAssertTrue(state.hasAvailableCameraSelection)
+    }
+
+    func testOpeningDeviceSelectorsDoesNotEnumerateDevicesTwice() {
+        var state = CaptureOptionsState(
+            microphoneDevices: [CaptureDeviceInfo(id: "mic-1", name: "Mic", isDefault: true)],
+            cameraDevices: [CaptureDeviceInfo(id: "cam-1", name: "Camera", isDefault: true)],
+            deviceLoadPhase: .loaded
+        )
+
+        XCTAssertEqual(state.applying(.microphoneSelectionRequested), [.showMicrophoneSelector])
+        XCTAssertEqual(state.applying(.cameraSelectionRequested), [.showCameraSelector])
+        XCTAssertEqual(state.deviceLoadPhase, .loaded)
+    }
 }
 
 @MainActor
@@ -1051,7 +1341,10 @@ final class SourceSelectorStateMachineTests: XCTestCase {
         XCTAssertEqual(state.preferredHeight, 532)
 
         XCTAssertEqual(state.applying(.refreshRequested), [.refreshSources])
-        XCTAssertEqual(state.applying(.shareRequested), [.share])
+        XCTAssertEqual(state.loadPhase, .loading)
+        XCTAssertEqual(state.applying(.sourcesChanged(["window-1"])), [])
+        XCTAssertEqual(state.applying(.sourceSelected("window-1")), [])
+        XCTAssertEqual(state.applying(.shareRequested), [.share("window-1")])
         XCTAssertEqual(state.applying(.drawAreaRequested), [.drawArea])
     }
 
@@ -1061,6 +1354,90 @@ final class SourceSelectorStateMachineTests: XCTestCase {
         XCTAssertEqual(state.applying(.preferredSourceKindSynced(.display)), [])
 
         XCTAssertEqual(state.sourceTab, .windows)
+    }
+
+    func testFloatingSelectionRemainsPendingUntilExplicitShare() {
+        var state = SourceSelectorState(sourceTab: .windows, visibleTabs: [.windows, .area])
+        _ = state.applying(.sourcesChanged(["window-1", "window-2"]))
+        _ = state.applying(.committedSelectionSynced("window-1"))
+
+        XCTAssertEqual(state.applying(.sourceSelected("window-2")), [])
+        XCTAssertEqual(state.committedSourceID, "window-1")
+        XCTAssertEqual(state.pendingSourceID, "window-2")
+
+        XCTAssertEqual(state.applying(.cancelRequested), [.cancel])
+        XCTAssertEqual(state.pendingSourceID, "window-1")
+
+        _ = state.applying(.sourceSelected("window-2"))
+        XCTAssertEqual(state.applying(.shareRequested), [.share("window-2")])
+        XCTAssertEqual(state.committedSourceID, "window-2")
+    }
+
+    func testSourceRefreshClearsUnavailablePendingChoiceAndReportsFailures() {
+        var state = SourceSelectorState(sourceTab: .windows, visibleTabs: [.windows])
+        _ = state.applying(.sourcesChanged(["window-1"]))
+        _ = state.applying(.sourceSelected("window-1"))
+
+        let effects = state.applying(.refreshCompleted(SourceSelectorRefreshResult(
+            sourceIDs: [],
+            errorMessage: "Screen Recording permission is required."
+        )))
+
+        XCTAssertEqual(effects, [])
+        XCTAssertNil(state.pendingSourceID)
+        XCTAssertFalse(state.canSharePendingSource)
+        XCTAssertEqual(state.loadPhase, .failed("Screen Recording permission is required."))
+        XCTAssertEqual(state.applying(.shareRequested), [])
+    }
+
+    func testDriverPublishesAsyncRefreshBeforeSharingExactPendingSource() async {
+        let driver = SourceSelectorDriver(sourceTab: .windows, visibleTabs: [.windows])
+        var sharedSourceID: String?
+        driver.configure(
+            refreshSources: {
+                .loaded(sourceIDs: ["window-1"])
+            },
+            share: { sourceID in
+                sharedSourceID = sourceID
+            }
+        )
+
+        driver.send(.refreshRequested)
+        XCTAssertEqual(driver.state.loadPhase, .loading)
+        await waitForCondition {
+            driver.state.loadPhase == .loaded
+        }
+
+        driver.send(.sourceSelected("window-1"))
+        driver.send(.shareRequested)
+
+        XCTAssertEqual(sharedSourceID, "window-1")
+        XCTAssertEqual(driver.state.committedSourceID, "window-1")
+    }
+
+    func testDriverIgnoresCanceledRefreshResultWhenANewerRequestWins() async {
+        let driver = SourceSelectorDriver(sourceTab: .windows, visibleTabs: [.windows])
+        var refreshCount = 0
+        driver.configure(refreshSources: {
+            refreshCount += 1
+            let currentRefresh = refreshCount
+            if currentRefresh == 1 {
+                try? await Task.sleep(for: .milliseconds(200))
+                return .loaded(sourceIDs: ["stale-window"])
+            }
+            return .loaded(sourceIDs: ["fresh-window"])
+        })
+
+        driver.send(.refreshRequested)
+        await waitForCondition { refreshCount == 1 }
+        driver.send(.refreshRequested)
+        await waitForCondition {
+            driver.state.loadPhase == .loaded &&
+                driver.state.availableSourceIDs == ["fresh-window"]
+        }
+        try? await Task.sleep(for: .milliseconds(20))
+
+        XCTAssertEqual(driver.state.availableSourceIDs, ["fresh-window"])
     }
 }
 
@@ -1096,6 +1473,8 @@ final class OnboardingAndSettingsStateMachineTests: XCTestCase {
         XCTAssertEqual(state.autoZoomAnimationPreset, .guided)
         XCTAssertEqual(state.applying(.folderOpenRequested("/tmp")), [.openFolder("/tmp")])
 
+        XCTAssertEqual(state.applying(.serviceRefreshStarted), [])
+        XCTAssertTrue(state.isRefreshingService)
         XCTAssertEqual(state.applying(.serviceRefreshSucceeded), [])
         XCTAssertFalse(state.isRefreshingService)
     }

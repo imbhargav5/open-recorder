@@ -32,6 +32,7 @@ struct TimelinePanel: View {
     var defaultCameraSettings: FacecamSettings?
     @State private var timelineViewport = TimelineViewport(duration: 0)
     @State private var isDraggingTimelineZoom = false
+    @State private var sourceFramesPerSecond = TimelineSourceFrameRate.fallback
     @FocusState private var isTimelineFocused: Bool
 
     var body: some View {
@@ -132,7 +133,7 @@ struct TimelinePanel: View {
                     .frame(width: 1, height: 22)
                     .padding(.horizontal, 3)
 
-                TimelinePreviewSpeedButton(playback: playback)
+                TimelinePreviewSpeedPicker(playback: playback)
 
                 TimelineZoomSlider(
                     viewport: $timelineViewport,
@@ -142,10 +143,18 @@ struct TimelinePanel: View {
                 )
             }
 
-            TimelineTransportControls(playback: playback)
+            TimelineTransportControls(
+                playback: playback,
+                framesPerSecond: sourceFramesPerSecond
+            )
         }
         .padding(TimelineMetrics.panelPadding)
         .zIndex(1)
+        .task(id: videoURL) {
+            let loadedFrameRate = await TimelineSourceFrameRate.load(from: videoURL)
+            guard !Task.isCancelled else { return }
+            sourceFramesPerSecond = loadedFrameRate
+        }
     }
 
     private func syncTimelineViewportDuration(_ duration: Double) {
@@ -182,6 +191,7 @@ struct TimelineTrackContent: View {
     var defaultCameraSettings: FacecamSettings?
     @Binding var viewport: TimelineViewport
     @State private var timelineSize = CGSize.zero
+    @State private var hoverTime: Double?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -207,25 +217,34 @@ struct TimelineTrackContent: View {
                 edits: edits
             )
         }
-        .overlay(alignment: .topLeading) { TimelinePlayhead(viewport: viewport, currentTime: playback.currentTime) }
+        .overlay(alignment: .topLeading) {
+            ZStack(alignment: .topLeading) {
+                TimelinePlayhead(viewport: viewport, currentTime: playback.currentTime)
+                if let hoverTime {
+                    TimelineHoverIndicator(viewport: viewport, time: hoverTime)
+                }
+            }
+        }
         .readSize { timelineSize = $0 }
         .rectangularHitTarget()
         .onContinuousHover(coordinateSpace: .local) { phase in
             switch phase {
             case .active(let location):
-                hoverSeek(at: location.x)
+                hoverTime = TimelineHoverPreview.time(
+                    videoIsAvailable: videoURL != nil,
+                    playbackIsActive: playback.isPlaying,
+                    x: location.x,
+                    viewport: viewport,
+                    width: timelineSize.width
+                )
             case .ended:
-                break
+                hoverTime = nil
             }
         }
-    }
-
-    private func hoverSeek(at x: CGFloat) {
-        guard videoURL != nil, !playback.isPlaying else { return }
-        guard let time = TimelineSeekMapper.time(forX: x, viewport: viewport, width: timelineSize.width) else { return }
-        playback.seek(to: time)
-        if !viewport.contains(time) {
-            viewport = viewport.keepingVisible(time: time)
+        .onChange(of: playback.isPlaying) { _, isPlaying in
+            if isPlaying {
+                hoverTime = nil
+            }
         }
     }
 }
@@ -233,6 +252,7 @@ struct TimelineTrackContent: View {
 
 private struct TimelineTransportControls: View {
     var playback: VideoPlaybackController
+    var framesPerSecond: Double
 
     var body: some View {
         HStack(spacing: 10) {
@@ -257,8 +277,12 @@ private struct TimelineTransportControls: View {
     }
 
     private func stepFrames(_ frameCount: Int) {
-        let frameDuration = 1.0 / 30.0
-        let target = playback.currentTime + Double(frameCount) * frameDuration
+        let target = TimelineFrameStepper.targetTime(
+            currentTime: playback.currentTime,
+            frameCount: frameCount,
+            framesPerSecond: framesPerSecond,
+            duration: playback.duration
+        )
         playback.seek(to: target)
     }
 }
@@ -355,34 +379,37 @@ private struct TimelineTimeDisplay: View {
     }
 }
 
-private struct TimelinePreviewSpeedButton: View {
+private struct TimelinePreviewSpeedPicker: View {
     var playback: VideoPlaybackController
-    @State private var isHovering = false
 
     var body: some View {
-        StudioButton(hitTarget: .rounded(7), help: "Preview playback speed") {
-            playback.cyclePreviewPlaybackSpeed()
-        } label: {
-            Text(playback.previewPlaybackSpeedLabel())
-                .font(.system(size: 11, weight: .bold, design: .monospaced))
-                .foregroundStyle(Color.white.opacity(isEnabled ? 0.92 : 0.48))
-                .frame(width: 42, height: 28)
-                .background(Color.white.opacity(isHovering && isEnabled ? 0.13 : 0.07), in: RoundedRectangle(cornerRadius: 7))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 7)
-                        .stroke(Color.white.opacity(isHovering && isEnabled ? 0.20 : 0.10), lineWidth: 1)
-                }
+        Picker("Preview speed", selection: speedBinding) {
+            ForEach(VideoPlaybackDriver.previewPlaybackSpeeds, id: \.self) { speed in
+                Text(PreviewPlaybackSpeedSelection.label(for: speed))
+                    .tag(speed)
+            }
         }
+        .labelsHidden()
+        .pickerStyle(.menu)
+        .controlSize(.small)
+        .frame(width: 64)
         .disabled(!isEnabled)
         .opacity(isEnabled ? 1 : 0.5)
         .accessibilityLabel("Preview playback speed \(playback.previewPlaybackSpeedLabel())")
-        .onHover { hovering in
-            isHovering = hovering
-        }
+        .help("Preview playback speed")
     }
 
     private var isEnabled: Bool {
         playback.player != nil
+    }
+
+    private var speedBinding: Binding<Double> {
+        Binding(
+            get: { playback.previewPlaybackSpeed },
+            set: { requestedSpeed in
+                PreviewPlaybackSpeedSelection.apply(requestedSpeed, to: playback)
+            }
+        )
     }
 }
 
@@ -656,6 +683,47 @@ struct TimelinePlayhead: View {
     }
 }
 
+struct TimelineHoverIndicator: View {
+    var viewport: TimelineViewport
+    var time: Double
+
+    var body: some View {
+        GeometryReader { proxy in
+            let x = viewport.x(for: time, width: proxy.size.width, clamped: true) ?? 0
+
+            ZStack(alignment: .topLeading) {
+                Rectangle()
+                    .fill(Color.white.opacity(0.38))
+                    .frame(width: 1, height: proxy.size.height)
+                    .offset(x: x - 0.5)
+
+                Text(formatPlaybackTime(time))
+                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(Theme.fg.opacity(0.92))
+                    .padding(.horizontal, 5)
+                    .frame(height: 18)
+                    .background(Theme.surfaceRaised.opacity(0.94), in: RoundedRectangle(cornerRadius: 4))
+                    .position(x: min(max(x, 28), max(28, proxy.size.width - 28)), y: 9)
+            }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
+enum TimelineHoverPreview {
+    static func time(
+        videoIsAvailable: Bool,
+        playbackIsActive: Bool,
+        x: CGFloat,
+        viewport: TimelineViewport,
+        width: CGFloat
+    ) -> Double? {
+        guard videoIsAvailable, !playbackIsActive else { return nil }
+        return TimelineSeekMapper.time(forX: x, viewport: viewport, width: width)
+    }
+}
+
 enum TimelineSeekMapper {
     static func time(forX x: CGFloat, duration: Double, width: CGFloat) -> Double? {
         guard duration.isFinite, duration > 0, width.isFinite, width > 0, x.isFinite else { return nil }
@@ -668,6 +736,92 @@ enum TimelineSeekMapper {
 
     static func x(forTime time: Double, viewport: TimelineViewport, width: CGFloat, clamped: Bool = false) -> CGFloat? {
         viewport.x(for: time, width: width, clamped: clamped)
+    }
+}
+
+enum TimelineSourceFrameRate {
+    static let fallback = 30.0
+    static let supportedRange = 1.0...240.0
+
+    static func normalized(_ framesPerSecond: Double) -> Double {
+        guard framesPerSecond.isFinite,
+              supportedRange.contains(framesPerSecond) else {
+            return fallback
+        }
+        return framesPerSecond
+    }
+
+    static func load(from videoURL: URL?) async -> Double {
+        guard let videoURL else { return fallback }
+
+        do {
+            let asset = AVURLAsset(url: videoURL)
+            guard let videoTrack = try await asset.loadTracks(withMediaType: .video).first else {
+                return fallback
+            }
+            try Task.checkCancellation()
+            let nominalFrameRate = try await videoTrack.load(.nominalFrameRate)
+            return normalized(Double(nominalFrameRate))
+        } catch {
+            return fallback
+        }
+    }
+}
+
+enum TimelineFrameStepper {
+    static func targetTime(
+        currentTime: Double,
+        frameCount: Int,
+        framesPerSecond: Double,
+        duration: Double
+    ) -> Double {
+        let safeFramesPerSecond = TimelineSourceFrameRate.normalized(framesPerSecond)
+        let safeCurrentTime = currentTime.isFinite ? max(0, currentTime) : 0
+        let safeDuration = duration.isFinite ? max(0, duration) : 0
+        let requestedTime = safeCurrentTime + Double(frameCount) / safeFramesPerSecond
+        return min(max(0, requestedTime), safeDuration)
+    }
+}
+
+enum PreviewPlaybackSpeedSelection {
+    static func label(for speed: Double) -> String {
+        guard speed.isFinite, speed > 0 else { return "1x" }
+        if speed.rounded() == speed {
+            return "\(Int(speed))x"
+        }
+        return "\(speed.formatted(.number.precision(.fractionLength(0...2))))x"
+    }
+
+    static func cycleCount(
+        from currentSpeed: Double,
+        to requestedSpeed: Double,
+        availableSpeeds: [Double] = VideoPlaybackDriver.previewPlaybackSpeeds
+    ) -> Int {
+        guard !availableSpeeds.isEmpty,
+              let targetIndex = availableSpeeds.firstIndex(where: { approximatelyEqual($0, requestedSpeed) }) else {
+            return 0
+        }
+
+        let currentIndex = availableSpeeds.enumerated().min { left, right in
+            abs(left.element - currentSpeed) < abs(right.element - currentSpeed)
+        }?.offset ?? 0
+
+        return (targetIndex - currentIndex + availableSpeeds.count) % availableSpeeds.count
+    }
+
+    @MainActor
+    static func apply(_ requestedSpeed: Double, to playback: VideoPlaybackController) {
+        let count = cycleCount(
+            from: playback.previewPlaybackSpeed,
+            to: requestedSpeed
+        )
+        for _ in 0..<count {
+            playback.cyclePreviewPlaybackSpeed()
+        }
+    }
+
+    private static func approximatelyEqual(_ lhs: Double, _ rhs: Double) -> Bool {
+        abs(lhs - rhs) < 0.000_001
     }
 }
 

@@ -44,6 +44,61 @@ final class ProjectSummaryTests: XCTestCase {
         XCTAssertNil(summary.screenshotPath)
         XCTAssertEqual(summary.mediaKind, .video)
         XCTAssertEqual(summary.mediaPath, "/tmp/recording.mp4")
+        XCTAssertEqual(summary.availability, .available)
+    }
+
+    func testLegacyMissingSummaryDecodesAsUnavailable() throws {
+        let json = """
+        {
+            "id": "project-1",
+            "title": "Project",
+            "path": "/tmp/project.openrecorder",
+            "recordingPath": "/tmp/recording.mp4",
+            "createdAt": "2026-06-26T00:00:00Z",
+            "updatedAt": "2026-06-26T00:00:00Z",
+            "lastOpenedAt": "2026-06-26T00:00:00Z",
+            "missing": true
+        }
+        """
+
+        let summary = try JSONDecoder().decode(ProjectSummary.self, from: Data(json.utf8))
+
+        XCTAssertTrue(summary.missing)
+        XCTAssertEqual(summary.availability, .unavailable)
+    }
+
+    func testDetailedAvailabilityDecodesWithoutChangingLegacyMissingFlag() throws {
+        let json = """
+        {
+            "id": "project-1",
+            "title": "Project",
+            "path": "/tmp/project.openrecorder",
+            "recordingPath": "/tmp/recording.mp4",
+            "createdAt": "2026-06-26T00:00:00Z",
+            "updatedAt": "2026-06-26T00:00:00Z",
+            "lastOpenedAt": "2026-06-26T00:00:00Z",
+            "missing": true,
+            "availability": "missingMedia"
+        }
+        """
+
+        let summary = try JSONDecoder().decode(ProjectSummary.self, from: Data(json.utf8))
+
+        XCTAssertTrue(summary.missing)
+        XCTAssertEqual(summary.availability, .missingMedia)
+    }
+
+    func testEncodingPreservesLegacyAndDetailedAvailabilityFields() throws {
+        var summary = makeProjectSummary(recordingPath: "/tmp/recording.mp4", screenshotPath: nil)
+        summary.missing = true
+        summary.availability = .missingProject
+
+        let object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(summary)) as? [String: Any]
+        )
+
+        XCTAssertEqual(object["missing"] as? Bool, true)
+        XCTAssertEqual(object["availability"] as? String, "missingProject")
     }
 }
 

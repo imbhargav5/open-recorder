@@ -29,11 +29,13 @@ final class EditorWorkspaceRegistry {
     private(set) var defaultWorkspace = EditorWorkspaceDriver(synchronizesAppShell: true)
 
     private var workspacesBySessionID: [UUID: EditorWorkspaceDriver] = [:]
+    private var sessionsByID: [UUID: EditorSession] = [:]
     private var defaultCloseGeneration: UUID?
     private var closeGenerationBySessionID: [UUID: UUID] = [:]
     private var recoverableSessionIDsByKey: [EditorWorkspaceRecoveryKey: [UUID]] = [:]
     private var recoveryKeyBySessionID: [UUID: EditorWorkspaceRecoveryKey] = [:]
     private var configureWorkspace: (EditorWorkspaceDriver) -> Void = { _ in }
+    private(set) var terminationBlockingSession: EditorSession?
 
     func configure(_ configureWorkspace: @escaping (EditorWorkspaceDriver) -> Void) {
         self.configureWorkspace = configureWorkspace
@@ -46,6 +48,7 @@ final class EditorWorkspaceRegistry {
             return defaultWorkspace
         }
         let sessionID = session.id
+        sessionsByID[sessionID] = session
 
         if let workspace = workspacesBySessionID[sessionID] {
             return workspace
@@ -69,6 +72,62 @@ final class EditorWorkspaceRegistry {
         }
         closeGenerationBySessionID.removeValue(forKey: sessionID)
         removeRecoveryRecord(for: sessionID)
+    }
+
+    func prepareForTermination() async -> Bool {
+        terminationBlockingSession = nil
+        while !Task.isCancelled {
+            let workspaces = uniqueWorkspaces
+
+            if workspaces.contains(where: { $0.videoExport.state.phase.isBusy }) {
+                do {
+                    try await Task.sleep(nanoseconds: 100_000_000)
+                } catch {
+                    return false
+                }
+                continue
+            }
+
+            if let workspace = workspaces.first(where: { $0.videoExport.state.pendingTempURL != nil }) {
+                terminationBlockingSession = session(for: workspace)
+                workspace.send(.statusUpdated(EditorWorkspaceStatus(
+                    message: "Save or cancel the finished export before quitting.",
+                    severity: .failure
+                )))
+                return false
+            }
+
+            for workspace in workspaces {
+                var didFlush = false
+                repeat {
+                    didFlush = await workspace.flushPendingAutosaves()
+                    guard !Task.isCancelled else { return false }
+                    guard didFlush else {
+                        terminationBlockingSession = session(for: workspace)
+                        workspace.send(.autosaveRecoveryRequired)
+                        return false
+                    }
+                } while workspace.hasPendingAutosaves
+            }
+
+            // Autosaving one workspace can suspend while another window changes or
+            // opens. Re-snapshot at a fixed point and repeat until every current
+            // workspace is quiescent in the same main-actor turn.
+            await Task.yield()
+            let currentWorkspaces = uniqueWorkspaces
+            let snapshotIDs = Set(workspaces.map(ObjectIdentifier.init))
+            let currentIDs = Set(currentWorkspaces.map(ObjectIdentifier.init))
+            if snapshotIDs != currentIDs
+                || currentWorkspaces.contains(where: {
+                    $0.hasPendingAutosaves
+                        || $0.videoExport.state.phase.isBusy
+                        || $0.videoExport.state.pendingTempURL != nil
+                }) {
+                continue
+            }
+            return true
+        }
+        return false
     }
 
     func beginClose(session: EditorSession?) -> EditorWorkspaceCloseRequest? {
@@ -115,6 +174,10 @@ final class EditorWorkspaceRegistry {
                 request.workspace.send(.autosaveRecoveryRequired)
                 return .autosaveFailed
             }
+            guard canCloseWithoutDiscardingExport(request.workspace) else {
+                cancelClose(request)
+                return .canceled
+            }
             request.workspace.discardTransientState()
             if request.workspace.state.isAutosaveRecoveryPresented {
                 request.workspace.send(.autosaveRecoveryResolved("Saved"))
@@ -132,8 +195,13 @@ final class EditorWorkspaceRegistry {
             request.workspace.send(.autosaveRecoveryRequired)
             return .autosaveFailed
         }
+        guard canCloseWithoutDiscardingExport(request.workspace) else {
+            cancelClose(request)
+            return .canceled
+        }
         request.workspace.discardTransientState()
         workspacesBySessionID.removeValue(forKey: sessionID)
+        sessionsByID.removeValue(forKey: sessionID)
         closeGenerationBySessionID.removeValue(forKey: sessionID)
         removeRecoveryRecord(for: sessionID)
         return .closed
@@ -149,6 +217,7 @@ final class EditorWorkspaceRegistry {
     func discard(session: EditorSession?) -> Bool {
         guard let session else {
             let discardedWorkspace = defaultWorkspace
+            guard canCloseWithoutDiscardingExport(discardedWorkspace) else { return false }
             guard discardedWorkspace.abandonPendingAutosaves() else { return false }
             discardedWorkspace.discardTransientState()
             defaultCloseGeneration = nil
@@ -158,8 +227,10 @@ final class EditorWorkspaceRegistry {
             return true
         }
         guard let workspace = workspacesBySessionID[session.id] else { return false }
+        guard canCloseWithoutDiscardingExport(workspace) else { return false }
         guard workspace.abandonPendingAutosaves() else { return false }
         workspacesBySessionID.removeValue(forKey: session.id)
+        sessionsByID.removeValue(forKey: session.id)
         workspace.discardTransientState()
         closeGenerationBySessionID.removeValue(forKey: session.id)
         removeRecoveryRecord(for: session.id)
@@ -191,6 +262,21 @@ final class EditorWorkspaceRegistry {
         }
     }
 
+    private func canCloseWithoutDiscardingExport(_ workspace: EditorWorkspaceDriver) -> Bool {
+        let exportState = workspace.videoExport.state
+        guard !exportState.phase.isBusy, exportState.pendingTempURL == nil else {
+            let message = exportState.phase.isBusy
+                ? "Finish or cancel the active export before closing this editor."
+                : "Save or cancel the finished export before closing this editor."
+            workspace.send(.statusUpdated(EditorWorkspaceStatus(
+                message: message,
+                severity: .failure
+            )))
+            return false
+        }
+        return true
+    }
+
     private func recoverWorkspace(
         for recoveryKey: EditorWorkspaceRecoveryKey,
         newSessionID: UUID
@@ -203,6 +289,7 @@ final class EditorWorkspaceRegistry {
             }
             closeGenerationBySessionID.removeValue(forKey: recoverableSessionID)
             recoveryKeyBySessionID.removeValue(forKey: recoverableSessionID)
+            sessionsByID.removeValue(forKey: recoverableSessionID)
             recoverableSessionIDsByKey[recoveryKey] = sessionIDs.isEmpty ? nil : sessionIDs
             workspacesBySessionID[newSessionID] = workspace
             return workspace
@@ -218,6 +305,20 @@ final class EditorWorkspaceRegistry {
         }
         sessionIDs.removeAll { $0 == sessionID }
         recoverableSessionIDsByKey[recoveryKey] = sessionIDs.isEmpty ? nil : sessionIDs
+    }
+
+    private var uniqueWorkspaces: [EditorWorkspaceDriver] {
+        var seen: Set<ObjectIdentifier> = []
+        return ([defaultWorkspace] + Array(workspacesBySessionID.values)).filter { workspace in
+            seen.insert(ObjectIdentifier(workspace)).inserted
+        }
+    }
+
+    private func session(for workspace: EditorWorkspaceDriver) -> EditorSession? {
+        guard let sessionID = workspacesBySessionID.first(where: { $0.value === workspace })?.key else {
+            return nil
+        }
+        return sessionsByID[sessionID]
     }
 
     #if DEBUG

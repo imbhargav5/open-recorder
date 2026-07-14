@@ -1,7 +1,7 @@
 import AVFoundation
 import Foundation
 
-struct CaptureDeviceProvider {
+struct CaptureDeviceProvider: Sendable {
     func devices(for mediaType: AVMediaType) -> [CaptureDeviceInfo] {
         let deviceTypes: [AVCaptureDevice.DeviceType] = mediaType == .video
             ? [.builtInWideAngleCamera, .external]

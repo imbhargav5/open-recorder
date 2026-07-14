@@ -38,7 +38,7 @@ struct EditorStudioView: View {
                 editor: workspace.screenshot,
                 exportRequest: workspace.state.screenshotExportRequest
             )
-        } else {
+        } else if videoURL != nil {
             VideoEditorStudioView(
                 videoURL: videoURL,
                 projectPath: projectPath,
@@ -53,6 +53,22 @@ struct EditorStudioView: View {
                 videoExport: workspace.videoExport,
                 exportRequest: workspace.state.videoExportRequest
             )
+        } else {
+            ContentUnavailableView {
+                Label("No Capture Open", systemImage: "rectangle.on.rectangle.slash")
+            } description: {
+                Text("Open an Open Recorder project or start a new recording to edit it here.")
+            } actions: {
+                Button("Open Project…") {
+                    model.openProjectFile()
+                }
+                .buttonStyle(.borderedProminent)
+
+                Button("New Recording") {
+                    model.beginCapture(.recording)
+                }
+                .disabled(!model.canStartNewCapture)
+            }
         }
     }
 

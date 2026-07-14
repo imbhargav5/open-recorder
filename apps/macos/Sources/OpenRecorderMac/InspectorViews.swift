@@ -74,7 +74,7 @@ struct SettingsInspector: View {
     private var inspectorRail: some View {
         ZStack(alignment: .topLeading) {
             VStack(spacing: railButtonSpacing) {
-                ForEach(InspectorTab.allCases) { tab in
+                ForEach(InspectorTab.availableCases) { tab in
                     InspectorRailButton(
                         tab: tab,
                         isActive: activeTab == tab,
@@ -103,7 +103,7 @@ struct SettingsInspector: View {
     }
 
     private func railItemOffset(for tab: InspectorTab) -> CGFloat {
-        let index = InspectorTab.allCases.firstIndex(of: tab) ?? 0
+        let index = InspectorTab.availableCases.firstIndex(of: tab) ?? 0
         return railVerticalPadding + CGFloat(index) * (railButtonSize + railButtonSpacing)
     }
 
@@ -281,6 +281,10 @@ struct InspectorRailButton: View {
             .animation(.snappy(duration: 0.18), value: isActive)
         }
         .buttonStyle(.plain)
+        .help(tab.title)
+        .accessibilityLabel(tab.title)
+        .accessibilityValue(isActive ? "Selected" : "Not selected")
+        .accessibilityAddTraits(isActive ? .isSelected : [])
         .onHover { hovering in
             isHovering = hovering
             onHoverChanged(hovering)
@@ -336,6 +340,10 @@ enum InspectorTab: CaseIterable, Identifiable {
     case cursor
     case camera
     case audio
+
+    // Audio preview controls are not implemented yet. Keep the case for source
+    // and state compatibility, but do not advertise controls that cannot work.
+    static let availableCases: [InspectorTab] = [.appearance, .cursor, .camera]
 
     var id: String { title }
 
@@ -946,22 +954,15 @@ struct InspectorSwitch: View {
     var isInteractive = true
 
     var body: some View {
-        HStack {
+        Toggle(isOn: $isOn) {
             Text(title)
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(Theme.fgMuted)
-            Spacer()
-            Toggle("", isOn: $isOn)
-                .labelsHidden()
-                .toggleStyle(.switch)
-                .allowsHitTesting(isInteractive)
         }
+        .toggleStyle(.switch)
+        .disabled(!isInteractive)
         .frame(maxWidth: .infinity, alignment: .leading)
         .rectangularHitTarget()
-        .onTapGesture {
-            guard isInteractive else { return }
-            isOn.toggle()
-        }
     }
 }
 

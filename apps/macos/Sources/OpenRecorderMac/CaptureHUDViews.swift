@@ -51,6 +51,7 @@ struct CaptureHUD: View {
                 ) {
                     toggleRecording()
                 }
+                .disabled(model.recordingPhase == .idle && !model.capture.isRecording && !captureReadiness.canCapture)
             }
         }
     }
@@ -75,6 +76,7 @@ struct CaptureHUD: View {
                 ) {
                     toggleRecording()
                 }
+                .disabled(model.recordingPhase == .idle && !model.capture.isRecording && !captureReadiness.canCapture)
             }
         }
     }
@@ -94,6 +96,7 @@ struct CaptureHUD: View {
             ) {
                 toggleRecording()
             }
+            .disabled(model.recordingPhase == .idle && !model.capture.isRecording && !captureReadiness.canCapture)
         }
     }
 
@@ -109,7 +112,7 @@ struct CaptureHUD: View {
             sharedLeadingControls
 
             FlowLabel(
-                tone: model.statusMessage.localizedCaseInsensitiveContains("permission") ? .red : .blue,
+                tone: captureReadiness.canCapture ? .blue : .red,
                 label: "Screenshot",
                 value: model.selectedSource == nil ? "Source" : "Ready"
             )
@@ -129,6 +132,7 @@ struct CaptureHUD: View {
             ) {
                 model.takeScreenshot()
             }
+            .disabled(!captureReadiness.canCapture)
         }
     }
 
@@ -137,7 +141,7 @@ struct CaptureHUD: View {
             compactLeadingControls
 
             CompactFlowLabel(
-                tone: model.statusMessage.localizedCaseInsensitiveContains("permission") ? .red : .blue,
+                tone: captureReadiness.canCapture ? .blue : .red,
                 value: model.selectedSource == nil ? "Source" : "Ready"
             )
 
@@ -153,6 +157,7 @@ struct CaptureHUD: View {
             ) {
                 model.takeScreenshot()
             }
+            .disabled(!captureReadiness.canCapture)
         }
     }
 
@@ -341,9 +346,30 @@ struct CaptureHUD: View {
 
     @ViewBuilder
     private var permissionControls: some View {
-        if model.statusMessage.localizedCaseInsensitiveContains("permission") {
-            HUDPermissionGroup {
-                openRelevantPrivacySettings()
+        if let blocker = captureReadiness.primaryBlocker {
+            switch blocker.recoveryAction {
+            case .openScreenRecordingSettings:
+                HUDPermissionGroup {
+                    model.openPrivacySettings()
+                }
+            case .openMicrophoneSettings:
+                HUDIconActionButton(symbolName: "mic.badge.xmark", title: blocker.message, tint: .red) {
+                    model.openMicrophoneSettings()
+                }
+            case .openCameraSettings:
+                HUDIconActionButton(symbolName: "video.badge.xmark", title: blocker.message, tint: .red) {
+                    model.openCameraSettings()
+                }
+            case .chooseMicrophone:
+                HUDIconActionButton(symbolName: "mic.badge.xmark", title: blocker.message, tint: .red) {
+                    openMicrophoneSelector()
+                }
+            case .chooseCamera:
+                HUDIconActionButton(symbolName: "video.badge.xmark", title: blocker.message, tint: .red) {
+                    openCameraSelector()
+                }
+            case .chooseSource, .drawArea, .waitForCurrentCapture:
+                CaptureStatusChip(message: blocker.message, isError: true)
             }
         } else if let captureStatusMessage {
             CaptureStatusChip(message: captureStatusMessage, isError: false)
@@ -352,9 +378,9 @@ struct CaptureHUD: View {
 
     @ViewBuilder
     private var compactPermissionControls: some View {
-        if model.statusMessage.localizedCaseInsensitiveContains("permission") {
-            HUDIconActionButton(symbolName: "exclamationmark.triangle.fill", title: "Open Privacy Settings", tint: .red) {
-                openRelevantPrivacySettings()
+        if let blocker = captureReadiness.primaryBlocker {
+            HUDIconActionButton(symbolName: "exclamationmark.triangle.fill", title: blocker.message, tint: .red) {
+                performRecovery(for: blocker)
             }
         } else if let captureStatusMessage {
             CaptureStatusChip(message: captureStatusMessage, isError: false, maxWidth: 96)
@@ -384,6 +410,39 @@ struct CaptureHUD: View {
             return "Choose source"
         }
         return message
+    }
+
+    private var captureReadiness: CaptureReadiness {
+        model.captureState.readiness(
+            availableSources: model.capture.sources,
+            screenRecordingPermissionState: model.capture.screenRecordingPermissionState,
+            options: options.state,
+            runtimeIsRecording: model.capture.isRecording,
+            microphoneAuthorization: model.microphoneCaptureAuthorization,
+            cameraAuthorization: model.cameraCaptureAuthorization,
+            isChecking: model.capture.sourceCatalogState == .loading || model.isCapturePreflightRunning
+        )
+    }
+
+    private func performRecovery(for blocker: CaptureBlocker) {
+        switch blocker.recoveryAction {
+        case .waitForCurrentCapture:
+            break
+        case .chooseSource:
+            model.requestSourceSelector()
+        case .drawArea:
+            model.requestInteractiveAreaSelection()
+        case .openScreenRecordingSettings:
+            model.openPrivacySettings()
+        case .openMicrophoneSettings:
+            model.openMicrophoneSettings()
+        case .openCameraSettings:
+            model.openCameraSettings()
+        case .chooseMicrophone:
+            openMicrophoneSelector()
+        case .chooseCamera:
+            openCameraSelector()
+        }
     }
 
     private func openRelevantPrivacySettings() {
