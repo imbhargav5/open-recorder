@@ -11,6 +11,7 @@ struct AreaSelectionWindowView: View {
     @State private var dragStart: CGPoint?
     @State private var dragCurrent: CGPoint?
     @State private var isFinishingSelection = false
+    @FocusState private var selectionHasFocus: Bool
 
     var body: some View {
         GeometryReader { proxy in
@@ -35,7 +36,9 @@ struct AreaSelectionWindowView: View {
                         .font(.system(size: 26, weight: .medium))
                     Text("Drag to select an area")
                         .font(.system(size: 18, weight: .semibold))
-                    Text("Release to start \(model.captureMode == .recording ? "recording" : "capturing"). Press Esc to cancel.")
+                    Text(model.captureMode == .recording
+                        ? "Release to set the recording area. Press Esc to cancel."
+                        : "Release to capture this area. Press Esc to cancel.")
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(.secondary)
                 }
@@ -47,20 +50,22 @@ struct AreaSelectionWindowView: View {
             }
             .rectangularHitTarget()
             .gesture(selectionGesture(in: proxy.size))
-            .onKeyPress(.escape) {
-                model.cancelInteractiveAreaSelection()
-                dismiss()
-                dismissWindow(id: "area-selector")
-                return .handled
-            }
         }
         .focusable()
+        .focused($selectionHasFocus)
+        .onKeyPress(.escape) {
+            model.cancelInteractiveAreaSelection()
+            dismiss()
+            dismissWindow(id: "area-selector")
+            return .handled
+        }
         .focusedValue(\.areaSelectionIsFocused, true)
         .onAppear {
             dragStart = nil
             dragCurrent = nil
             isFinishingSelection = false
             DispatchQueue.main.async {
+                selectionHasFocus = true
                 if !model.isAreaSelectionActive {
                     dismiss()
                     dismissWindow(id: "area-selector")

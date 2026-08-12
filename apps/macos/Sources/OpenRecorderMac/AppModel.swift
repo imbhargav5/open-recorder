@@ -85,7 +85,7 @@ final class AppModel: ObservableObject {
         get { appShell.state.selectedSection }
         set { sendAppShell(.sectionSelected(newValue)) }
     }
-    @Published private(set) var captureState: CaptureState = .choosingMode
+    @Published private(set) var captureState: CaptureState = .setup(.recording)
     var paths: AppPaths? {
         get { appShell.state.paths }
         set { sendAppShell(.pathsChanged(newValue)) }
@@ -216,6 +216,7 @@ final class AppModel: ObservableObject {
     private let accessibilityPermission: AccessibilityPermission
     private let onboardingStore: OnboardingStateStore
     private let recordingPreferences: RecordingPreferencesStore
+    private let captureSetupPreferencesStore: CaptureSetupPreferencesStore
     private let screenSelectionPresenter: ScreenSelectionPresenting
     private let screenshotCapture: @MainActor (CaptureSource, URL) throws -> Void
     private let startRecordingCapture: @MainActor (CaptureSource, URL, RecordingCaptureOptions) async throws -> Date
@@ -237,11 +238,14 @@ final class AppModel: ObservableObject {
     private let captureDeviceProvider = CaptureDeviceProvider()
     private var nativeWindowCommandHandler: (NativeWindowCommand) -> Void = { _ in }
     private var runRecordingCountdown: @MainActor (CaptureSource) async throws -> Void = { _ in }
+    private var storedCaptureSetup = CaptureSetupPreferences.default
+    private var hasAttemptedStoredCaptureSetupRestore = false
     init(
         screenRecordingPermission: ScreenRecordingPermission = ScreenRecordingPermission(),
         accessibilityPermission: AccessibilityPermission = AccessibilityPermission(),
         onboardingStore: OnboardingStateStore = .live,
         recordingPreferences: RecordingPreferencesStore = RecordingPreferencesStore(),
+        captureSetupPreferencesStore: CaptureSetupPreferencesStore = .ephemeral(),
         screenSelectionPresenter: ScreenSelectionPresenting = ScreenSelectionOverlayController(),
         captureUIHideDelayNanoseconds: UInt64 = 180_000_000,
         screenshotCapture: (@MainActor (CaptureSource, URL) throws -> Void)? = nil,
@@ -269,6 +273,8 @@ final class AppModel: ObservableObject {
         self.accessibilityPermission = accessibilityPermission
         self.onboardingStore = onboardingStore
         self.recordingPreferences = recordingPreferences
+        self.captureSetupPreferencesStore = captureSetupPreferencesStore
+        self.storedCaptureSetup = captureSetupPreferencesStore.load()
         self.screenSelectionPresenter = screenSelectionPresenter
         self.captureUIHideDelayNanoseconds = captureUIHideDelayNanoseconds
         self.capture = capture
@@ -517,6 +523,11 @@ final class AppModel: ObservableObject {
         appShell.settings.send(.autoZoomAnimationPresetSynced(preferences.autoZoomAnimationPreset))
         refreshOnboardingPermissionStates()
         syncAppShellMirror()
+        dispatch(.restoreSetup(
+            storedCaptureSetup.mode,
+            nil,
+            preferredSourceKind: storedCaptureSetup.preferredSourceKind
+        ))
     }
 
     private func configureEditorWorkspace(_ workspace: EditorWorkspaceDriver) {
@@ -622,7 +633,7 @@ final class AppModel: ObservableObject {
         switch captureState.phase {
         case .countingDownRecording, .startingRecording, .recording, .stoppingRecording, .capturingScreenshot:
             return true
-        case .idle, .choosingMode, .choosingSourceType, .screenSelecting, .selectingSource, .ready, .areaSelecting:
+        case .idle, .setup, .sourceSelecting, .choosingMode, .choosingSourceType, .screenSelecting, .selectingSource, .ready, .areaSelecting:
             return false
         }
     }
@@ -853,8 +864,21 @@ final class AppModel: ObservableObject {
         await capture.reloadSources(requestScreenRecordingPermission: requestScreenRecordingPermission)
         guard !Task.isCancelled, generation == sourceRefreshGeneration else { return }
 
-        let resolved = resolveSelection(previous: selectedSource, in: capture.sources)
-        dispatch(.refreshSelectedSource(resolved))
+        if let selectedSource {
+            let resolved = resolveSelection(previous: selectedSource, in: capture.sources)
+            dispatch(.refreshSelectedSource(resolved))
+        } else if !hasAttemptedStoredCaptureSetupRestore {
+            hasAttemptedStoredCaptureSetupRestore = true
+            let restoredSource = storedCaptureSetup.sourceReference?.resolve(
+                in: capture.sources,
+                displayFrames: NSScreen.captureDisplayFramesByID
+            )
+            dispatch(.restoreSetup(
+                storedCaptureSetup.mode,
+                restoredSource,
+                preferredSourceKind: storedCaptureSetup.preferredSourceKind
+            ))
+        }
     }
 
     private func resolveSelection(previous: CaptureSource?, in sources: [CaptureSource]) -> CaptureSource? {
@@ -897,6 +921,29 @@ final class AppModel: ObservableObject {
         }
     }
 
+    private func persistCaptureSetup(source: CaptureSource) {
+        storedCaptureSetup.mode = captureMode
+        storedCaptureSetup.preferredSourceKind = source.kind
+        storedCaptureSetup.sourceReference = CaptureSourceReference(source: source)
+        saveCaptureSetupPreferences()
+    }
+
+    private func saveCaptureSetupPreferences() {
+        captureSetupPreferencesStore.save(storedCaptureSetup)
+    }
+
+    private func isRecordingSetup(for source: CaptureSource? = nil) -> Bool {
+        let isSetupPhase: Bool
+        switch captureState.phase {
+        case .setup(.recording), .ready(.recording, _):
+            isSetupPhase = true
+        default:
+            isSetupPhase = false
+        }
+        guard isSetupPhase, let currentSource = captureState.source else { return false }
+        return source == nil || currentSource.id == source?.id
+    }
+
     @discardableResult
     private func dispatch(_ event: CaptureEvent) -> CaptureTransition {
         captureMachine.send(event)
@@ -921,8 +968,7 @@ final class AppModel: ObservableObject {
             self.recordingFilePreparationTask = nil
             self.isCapturePreflightRunning = false
             self.captureOptions.send(.availabilityChanged(self.canChangeRecordingOptions))
-            guard case .ready(.recording, let currentSource) = self.captureState.phase,
-                  currentSource.id == source.id else {
+            guard self.isRecordingSetup(for: source) else {
                 self.pendingRecordingOptions = nil
                 return
             }
@@ -942,11 +988,19 @@ final class AppModel: ObservableObject {
 
     func beginCapture(_ mode: CaptureMode) {
         guard !rejectActionWhileTerminationIsPending() else { return }
-        dispatch(.beginCapture(mode, runtimeIsRecording: capture.isRecording))
+        let transition = dispatch(.beginCapture(mode, runtimeIsRecording: capture.isRecording))
+        guard transition.state.mode == mode else { return }
+        storedCaptureSetup.mode = mode
+        saveCaptureSetupPreferences()
     }
 
     func selectSource(_ source: CaptureSource) {
+        let shouldCaptureImmediately = captureMode == .screenshot
         dispatch(.selectSource(source))
+        persistCaptureSetup(source: source)
+        if shouldCaptureImmediately {
+            takeScreenshot()
+        }
     }
 
     func selectInteractiveAreaSource(area: CaptureArea? = nil) {
@@ -968,27 +1022,23 @@ final class AppModel: ObservableObject {
     }
 
     func chooseSourceType(_ sourceType: CaptureSourceType) {
-        dispatch(.chooseSourceType(sourceType))
-        if sourceType == .screen {
-            presentCurrentScreenSelection()
+        switch sourceType {
+        case .screen:
+            requestSourceSelector(kind: .display)
+        case .window:
+            requestSourceSelector(kind: .window)
+        case .area:
+            requestSourceSelector(kind: .area)
         }
     }
 
     func requestSourceSelector(kind: CaptureSourceKind? = nil) {
         dispatch(.requestSourceSelector(kind))
-        if case .screenSelecting = captureState.phase {
-            presentCurrentScreenSelection()
-        }
     }
 
     func cancelSourceSelection() {
-        if case .ready(_, let source) = captureState.phase {
-            statusMessage = source.kind == .area ? "Selected area" : "Selected \(source.name)"
-            requestWindow(.closeSourceSelector)
-            showHUD()
-        } else {
-            cancelCapture()
-        }
+        dispatch(.cancelSourceSelection)
+        requestWindow(.closeSourceSelector)
     }
 
     func requestScreenSelection() {
@@ -1052,25 +1102,30 @@ final class AppModel: ObservableObject {
             showHUD()
             return
         }
-        dispatch(.selectSource(interactiveAreaSource()))
         dispatch(.requestInteractiveAreaSelection)
     }
 
     func completeInteractiveAreaSelection(_ area: CaptureArea) {
         guard !rejectActionWhileTerminationIsPending() else { return }
         let source = interactiveAreaSource(area: area)
+        let shouldCaptureImmediately = captureMode == .screenshot
         if captureMode == .screenshot,
            capture.screenRecordingPermissionState != .granted {
-            dispatch(.selectSource(source))
+            dispatch(.completeInteractiveAreaSelection(source))
+            persistCaptureSetup(source: source)
             showHUD()
             reportCaptureBlocker(.screenRecordingPermissionNeedsRestart)
             return
         }
         dispatch(.completeInteractiveAreaSelection(source))
+        persistCaptureSetup(source: source)
+        if shouldCaptureImmediately {
+            takeScreenshot()
+        }
     }
 
     func cancelInteractiveAreaSelection() {
-        cancelCapture()
+        dispatch(.cancelInteractiveAreaSelection)
     }
 
     func cancelCapture() {
@@ -1131,7 +1186,7 @@ final class AppModel: ObservableObject {
 
     private func focusActiveCaptureWindow() {
         switch captureState.phase {
-        case .selectingSource:
+        case .sourceSelecting, .selectingSource:
             requestWindow(.showSourceSelector)
         case .ready(_, let source):
             if source.kind == .display {
@@ -1147,7 +1202,7 @@ final class AppModel: ObservableObject {
             requestWindow(.showHUD)
         case .countingDownRecording, .startingRecording, .recording, .stoppingRecording, .capturingScreenshot:
             setCaptureStateMirror(captureState.withPresentation(.hidden))
-        case .idle, .choosingMode:
+        case .idle, .setup, .choosingMode:
             showHUD()
         }
     }
@@ -1155,6 +1210,8 @@ final class AppModel: ObservableObject {
     func toggleRecordingShortcut() {
         guard !rejectActionWhileTerminationIsPending() else { return }
         switch captureState.phase {
+        case .setup(.recording):
+            startRecording()
         case .ready(.recording, _):
             startRecording()
         case .countingDownRecording:
@@ -1166,6 +1223,8 @@ final class AppModel: ObservableObject {
         case .stoppingRecording:
             return
         case .idle,
+             .setup,
+             .sourceSelecting,
              .choosingMode,
              .choosingSourceType,
              .screenSelecting,
@@ -1180,7 +1239,7 @@ final class AppModel: ObservableObject {
     func startRecording() {
         guard !rejectActionWhileTerminationIsPending() else { return }
         guard !isCapturePreflightRunning,
-              case .ready(.recording, _) = captureState.phase else {
+              isRecordingSetup() else {
             return
         }
 

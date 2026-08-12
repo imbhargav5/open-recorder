@@ -326,10 +326,6 @@ struct SourceSelectorState: Equatable {
         }
     }
 
-    var canSharePendingSource: Bool {
-        guard let pendingSourceID else { return false }
-        return availableSourceIDs.contains(pendingSourceID)
-    }
 }
 
 enum SourceSelectorEvent: Equatable {
@@ -343,14 +339,13 @@ enum SourceSelectorEvent: Equatable {
     case refreshRequested
     case refreshCompleted(SourceSelectorRefreshResult)
     case cancelRequested
-    case shareRequested
     case drawAreaRequested
 }
 
 enum SourceSelectorEffect: Equatable {
     case refreshSources
     case cancel
-    case share(String)
+    case select(String)
     case drawArea
 }
 
@@ -382,8 +377,9 @@ extension SourceSelectorState {
 
         case .sourceSelected(let sourceID):
             guard availableSourceIDs.contains(sourceID) else { return [] }
+            committedSourceID = sourceID
             pendingSourceID = sourceID
-            return []
+            return [.select(sourceID)]
 
         case .sourcesChanged(let sourceIDs):
             availableSourceIDs = Set(sourceIDs)
@@ -416,10 +412,6 @@ extension SourceSelectorState {
         case .cancelRequested:
             pendingSourceID = committedSourceID
             return [.cancel]
-        case .shareRequested:
-            guard canSharePendingSource, let pendingSourceID else { return [] }
-            committedSourceID = pendingSourceID
-            return [.share(pendingSourceID)]
         case .drawAreaRequested:
             return [.drawArea]
         }
@@ -433,7 +425,7 @@ final class SourceSelectorDriver {
 
     @ObservationIgnored private var refreshSources: () async -> SourceSelectorRefreshResult = { .loaded(sourceIDs: []) }
     @ObservationIgnored private var cancel: () -> Void = {}
-    @ObservationIgnored private var share: (String) -> Void = { _ in }
+    @ObservationIgnored private var select: (String) -> Void = { _ in }
     @ObservationIgnored private var drawArea: () -> Void = {}
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
 
@@ -444,12 +436,12 @@ final class SourceSelectorDriver {
     func configure(
         refreshSources: @escaping () async -> SourceSelectorRefreshResult = { .loaded(sourceIDs: []) },
         cancel: @escaping () -> Void = {},
-        share: @escaping (String) -> Void = { _ in },
+        select: @escaping (String) -> Void = { _ in },
         drawArea: @escaping () -> Void = {}
     ) {
         self.refreshSources = refreshSources
         self.cancel = cancel
-        self.share = share
+        self.select = select
         self.drawArea = drawArea
     }
 
@@ -480,8 +472,10 @@ final class SourceSelectorDriver {
                 refreshTask?.cancel()
                 refreshTask = nil
                 cancel()
-            case .share(let sourceID):
-                share(sourceID)
+            case .select(let sourceID):
+                refreshTask?.cancel()
+                refreshTask = nil
+                select(sourceID)
             case .drawArea:
                 refreshTask?.cancel()
                 refreshTask = nil

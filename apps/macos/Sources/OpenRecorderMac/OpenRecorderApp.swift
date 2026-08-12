@@ -96,7 +96,7 @@ final class OpenRecorderAppDelegate: NSObject, NSApplicationDelegate {
 @main
 struct OpenRecorderApp: App {
     @NSApplicationDelegateAdaptor(OpenRecorderAppDelegate.self) private var appDelegate
-    @StateObject private var model = AppModel()
+    @StateObject private var model = AppModel(captureSetupPreferencesStore: .live)
 
     var body: some Scene {
         Window("Open Recorder", id: "hud") {
@@ -302,6 +302,7 @@ final class AppWindowActions {
         case .showHUD:
             unhideApp()
             openWindow("hud")
+            activateApp()
         case .hideHUD:
             dismissWindow("hud")
         case .showOnboarding:

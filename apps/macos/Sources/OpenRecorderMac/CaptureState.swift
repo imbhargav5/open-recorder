@@ -101,6 +101,8 @@ struct CaptureReadiness: Hashable {
 
 enum CapturePhase: Hashable {
     case idle
+    case setup(CaptureMode)
+    case sourceSelecting(CaptureMode)
     case choosingMode
     case choosingSourceType(CaptureMode)
     case screenSelecting(CaptureMode)
@@ -122,6 +124,8 @@ enum CapturePhase: Hashable {
              .capturingScreenshot:
             true
         case .idle,
+             .setup,
+             .sourceSelecting,
              .choosingMode,
              .choosingSourceType,
              .screenSelecting,
@@ -136,6 +140,9 @@ enum CapturePhase: Hashable {
         switch self {
         case .idle, .choosingMode:
             nil
+        case .setup(let mode),
+             .sourceSelecting(let mode):
+            mode
         case .selectingSource(let mode),
              .choosingSourceType(let mode),
              .screenSelecting(let mode),
@@ -163,6 +170,8 @@ enum CapturePhase: Hashable {
              .capturingScreenshot(let source):
             source
         case .idle,
+             .setup,
+             .sourceSelecting,
              .choosingMode,
              .choosingSourceType,
              .screenSelecting,
@@ -183,6 +192,8 @@ enum CapturePhase: Hashable {
         case .stoppingRecording:
             .stopping
         case .idle,
+             .setup,
+             .sourceSelecting,
              .choosingMode,
              .choosingSourceType,
              .screenSelecting,
@@ -201,12 +212,15 @@ enum CaptureEvent: Hashable {
     case beginCapture(CaptureMode, runtimeIsRecording: Bool)
     case chooseSourceType(CaptureSourceType)
     case requestSourceSelector(CaptureSourceKind?)
+    case cancelSourceSelection
     case selectSource(CaptureSource)
     case requestScreenSelection
     case completeScreenSelection(CaptureSource)
     case cancelScreenSelection(message: String?)
     case requestInteractiveAreaSelection
     case completeInteractiveAreaSelection(CaptureSource)
+    case cancelInteractiveAreaSelection
+    case restoreSetup(CaptureMode, CaptureSource?, preferredSourceKind: CaptureSourceKind)
     case cancelCapture
     case showHUD
     case hideHUD
@@ -263,7 +277,7 @@ struct CaptureState: Hashable {
     var preferredSourceKind: CaptureSourceKind?
 
     init(
-        phase: CapturePhase = .choosingMode,
+        phase: CapturePhase = .setup(.recording),
         presentation: HUDPresentationState = .visible,
         selectedSource: CaptureSource? = nil,
         preferredSourceKind: CaptureSourceKind? = nil
@@ -280,6 +294,30 @@ struct CaptureState: Hashable {
 
     static var choosingMode: CaptureState {
         CaptureState(phase: .choosingMode)
+    }
+
+    static func setup(
+        _ mode: CaptureMode,
+        source: CaptureSource? = nil,
+        preferredSourceKind: CaptureSourceKind = .display
+    ) -> CaptureState {
+        CaptureState(
+            phase: .setup(mode),
+            selectedSource: source,
+            preferredSourceKind: source?.kind ?? preferredSourceKind
+        )
+    }
+
+    static func sourceSelecting(
+        _ mode: CaptureMode,
+        source: CaptureSource? = nil,
+        preferredSourceKind: CaptureSourceKind = .display
+    ) -> CaptureState {
+        CaptureState(
+            phase: .sourceSelecting(mode),
+            selectedSource: source,
+            preferredSourceKind: preferredSourceKind
+        )
     }
 
     static func choosingSourceType(_ mode: CaptureMode) -> CaptureState {
@@ -362,9 +400,10 @@ struct CaptureState: Hashable {
 
     var isCaptureOccupied: Bool {
         switch phase {
-        case .idle, .choosingMode:
+        case .idle, .choosingMode, .setup:
             false
-        case .choosingSourceType,
+        case .sourceSelecting,
+             .choosingSourceType,
              .screenSelecting,
              .selectingSource,
              .ready,
@@ -382,6 +421,9 @@ struct CaptureState: Hashable {
         switch phase {
         case .idle, .choosingMode:
             .choice
+        case .setup(let mode),
+             .sourceSelecting(let mode):
+            mode == .screenshot ? .screenshotSetup : .recordingSetup
         case .choosingSourceType(let mode),
              .screenSelecting(let mode),
              .selectingSource(let mode),
@@ -482,6 +524,8 @@ struct CaptureState: Hashable {
         case .countingDownRecording, .startingRecording, .recording:
             true
         case .idle,
+             .setup,
+             .sourceSelecting,
              .choosingMode,
              .choosingSourceType,
              .screenSelecting,
@@ -498,12 +542,16 @@ struct CaptureState: Hashable {
         guard !runtimeIsRecording else { return true }
 
         switch phase {
+        case .setup(.recording):
+            return source != nil
         case .ready(.recording, _),
              .countingDownRecording,
              .startingRecording,
              .recording:
             return true
         case .idle,
+             .setup,
+             .sourceSelecting,
              .choosingMode,
              .choosingSourceType,
              .screenSelecting,
@@ -536,9 +584,9 @@ struct CaptureState: Hashable {
                 effects.append(.focusActiveCaptureWindow)
                 return finish(self)
             }
-            next.setPhase(.choosingSourceType(mode), clearSource: false)
-            next.preferredSourceKind = nil
-            statusMessage = "Choose a source type."
+            next.setPhase(.setup(mode), clearSource: false)
+            next.preferredSourceKind = next.selectedSource?.kind ?? next.preferredSourceKind ?? .display
+            statusMessage = next.selectedSource == nil ? "Choose a source." : nil
             effects.append(.dismissScreenSelection)
             effects.append(.showHUD)
 
@@ -563,22 +611,27 @@ struct CaptureState: Hashable {
             }
 
         case .requestSourceSelector(let kind):
-            let resolvedKind = kind ?? next.selectedSource?.kind ?? next.preferredSourceKind ?? .window
-            if resolvedKind == .display {
-                next.setPhase(.screenSelecting(modeForSelection()), clearSource: false)
-                next.preferredSourceKind = .display
-                statusMessage = "Choose a screen."
-                effects.append(.dismissScreenSelection)
-            } else {
-                next.preferredSourceKind = resolvedKind
-                effects.append(.showSourceSelector)
-            }
+            let resolvedKind = kind ?? next.selectedSource?.kind ?? next.preferredSourceKind ?? .display
+            next.setPhase(.sourceSelecting(modeForSelection()), clearSource: false)
+            next.preferredSourceKind = resolvedKind
+            statusMessage = "Choose what to capture."
+            effects.append(.showSourceSelector)
+
+        case .cancelSourceSelection:
+            next.setPhase(.setup(modeForSelection()), clearSource: false)
+            statusMessage = next.selectedSource.map { $0.kind == .area ? "Selected area" : "Selected \($0.name)" }
+                ?? "Choose a source."
+            effects.append(.showHUD)
 
         case .selectSource(let source):
             next.selectedSource = source
             next.preferredSourceKind = source.kind
-            next.setPhase(.ready(modeForSelection(), source))
+            let mode = modeForSelection()
+            next.setPhase(.setup(mode))
             statusMessage = source.kind == .area ? "Selected area" : "Selected \(source.name)"
+            if mode == .recording {
+                effects.append(.showHUD)
+            }
             if source.kind == .display {
                 effects.append(.flashDisplay(source))
             }
@@ -596,15 +649,15 @@ struct CaptureState: Hashable {
             }
             next.selectedSource = source
             next.preferredSourceKind = .display
-            next.setPhase(.ready(modeForSelection(), source))
+            next.setPhase(.setup(modeForSelection()))
             statusMessage = "Selected \(source.name)"
             effects.append(.dismissScreenSelection)
             effects.append(.showHUD)
             effects.append(.flashDisplay(source))
 
         case .cancelScreenSelection(let message):
-            next.setPhase(.choosingSourceType(modeForSelection()), clearSource: false)
-            statusMessage = message ?? "Choose a source type."
+            next.setPhase(.setup(modeForSelection()), clearSource: false)
+            statusMessage = message ?? (next.selectedSource == nil ? "Choose a source." : nil)
             effects.append(.dismissScreenSelection)
             effects.append(.showHUD)
 
@@ -618,22 +671,26 @@ struct CaptureState: Hashable {
             next.selectedSource = source
             next.preferredSourceKind = .area
             let mode = modeForSelection()
-            next.setPhase(.ready(mode, source))
+            next.setPhase(.setup(mode))
             statusMessage = "Selected area"
-            switch mode {
-            case .recording:
-                effects.append(.showHUD)
-            case .screenshot:
-                next.setPhase(.capturingScreenshot(source))
-                effects.append(.dismissScreenSelection)
-                effects.append(.hideAppWindowsForCapture)
-                effects.append(.runScreenshotCapture(source))
-            }
+            effects.append(.showHUD)
+
+        case .cancelInteractiveAreaSelection:
+            next.setPhase(.setup(modeForSelection()), clearSource: false)
+            statusMessage = next.selectedSource.map {
+                $0.kind == .area ? "Selected area" : "Selected \($0.name)"
+            } ?? "Choose a source."
+            effects.append(.showHUD)
+
+        case .restoreSetup(let mode, let source, let preferredSourceKind):
+            next.selectedSource = source
+            next.preferredSourceKind = source?.kind ?? preferredSourceKind
+            next.setPhase(.setup(mode), clearSource: source == nil)
 
         case .cancelCapture:
             let previousPhase = phase
-            next.setPhase(.choosingMode, clearSource: true)
-            next.preferredSourceKind = nil
+            next.setPhase(.setup(modeForSelection()), clearSource: false)
+            next.preferredSourceKind = next.selectedSource?.kind ?? next.preferredSourceKind ?? .display
             statusMessage = "Ready"
             effects.append(.dismissScreenSelection)
             effects.append(.cancelRecordingStart)
@@ -655,8 +712,7 @@ struct CaptureState: Hashable {
             effects.append(.hideHUD)
 
         case .showEditor, .screenshotSucceeded, .screenshotCanceled:
-            next.setPhase(.choosingMode, clearSource: true)
-            next.preferredSourceKind = nil
+            next.setPhase(.setup(modeForSelection()), clearSource: false)
             effects.append(.dismissScreenSelection)
             effects.append(.cancelRecordingStart)
             effects.append(.cancelScreenshotCapture)
@@ -710,7 +766,9 @@ struct CaptureState: Hashable {
         case .recordingStopRequested:
             switch next.phase {
             case .countingDownRecording(let source):
-                next.setPhase(.ready(.recording, source))
+                next.selectedSource = source
+                next.preferredSourceKind = source.kind
+                next.setPhase(.setup(.recording))
                 statusMessage = "Recording canceled."
                 effects.append(.cancelRecordingStart)
                 effects.append(.showRecordingSetup(source.kind))
@@ -724,6 +782,8 @@ struct CaptureState: Hashable {
             case .stoppingRecording:
                 break
             case .idle,
+                 .setup,
+                 .sourceSelecting,
                  .choosingMode,
                  .choosingSourceType,
                  .screenSelecting,
@@ -742,8 +802,7 @@ struct CaptureState: Hashable {
             effects.append(.stopRecording(source))
 
         case .recordingStopped(let message):
-            next.setPhase(.choosingMode, clearSource: true)
-            next.preferredSourceKind = nil
+            next.setPhase(.setup(.recording), clearSource: false)
             statusMessage = message
             effects.append(.dismissScreenSelection)
             effects.append(.cancelRecordingStart)
@@ -751,16 +810,18 @@ struct CaptureState: Hashable {
         case .recordingRestored(let source, let message):
             next.selectedSource = source
             next.preferredSourceKind = source.kind
-            next.setPhase(.ready(.recording, source))
+            next.setPhase(.setup(.recording))
             statusMessage = message
             effects.append(.showRecordingSetup(source.kind))
 
         case .recordingFailed(let source, let message):
             if let source {
-                next.setPhase(.ready(.recording, source))
+                next.selectedSource = source
+                next.preferredSourceKind = source.kind
+                next.setPhase(.setup(.recording))
                 effects.append(.showRecordingSetup(source.kind))
             } else {
-                next.setPhase(.choosingMode, clearSource: true)
+                next.setPhase(.setup(.recording), clearSource: true)
             }
             statusMessage = message
 
@@ -786,7 +847,7 @@ struct CaptureState: Hashable {
         case .screenshotRestored(let source, let message):
             next.selectedSource = source
             next.preferredSourceKind = source.kind
-            next.setPhase(.ready(.screenshot, source))
+            next.setPhase(.setup(.screenshot))
             statusMessage = message
             effects.append(.showHUD)
 
@@ -800,6 +861,8 @@ struct CaptureState: Hashable {
                 // A catalog refresh must not rewrite the source of in-flight runtime work.
                 return finish(self)
             case .idle,
+                 .setup,
+                 .sourceSelecting,
                  .choosingMode,
                  .choosingSourceType,
                  .screenSelecting,
@@ -819,8 +882,8 @@ struct CaptureState: Hashable {
             guard let source,
                   source.representsSameCaptureSource(as: previousSource) else {
                 next.selectedSource = nil
-                if case .ready(let mode, _) = next.phase {
-                    next.setPhase(.selectingSource(mode), clearSource: true)
+                if let mode = next.mode {
+                    next.setPhase(.setup(mode), clearSource: true)
                 }
                 statusMessage = "\(previousSource.name) is no longer available. Choose another source."
                 return finish()
@@ -858,9 +921,10 @@ struct CaptureState: Hashable {
         }
 
         switch previousPhase {
-        case .choosingSourceType, .screenSelecting, .selectingSource, .ready, .areaSelecting:
+        case .sourceSelecting, .choosingSourceType, .screenSelecting, .selectingSource, .ready, .areaSelecting:
             return true
         case .idle,
+             .setup,
              .choosingMode,
              .countingDownRecording,
              .startingRecording,

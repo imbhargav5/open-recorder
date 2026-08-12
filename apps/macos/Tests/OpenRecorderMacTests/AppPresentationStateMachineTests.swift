@@ -1095,9 +1095,9 @@ final class CaptureDriverStateMachineTests: XCTestCase {
 
         let transition = driver.send(.beginCapture(.recording, runtimeIsRecording: false))
 
-        XCTAssertEqual(driver.state.phase, .choosingSourceType(.recording))
-        XCTAssertEqual(transition.statusMessage, "Choose a source type.")
-        XCTAssertEqual(transitions.map(\.state.phase), [.choosingSourceType(.recording)])
+        XCTAssertEqual(driver.state.phase, .setup(.recording))
+        XCTAssertEqual(transition.statusMessage, "Choose a source.")
+        XCTAssertEqual(transitions.map(\.state.phase), [.setup(.recording)])
         XCTAssertEqual(effects, [[.dismissScreenSelection, .showHUD]])
         XCTAssertTrue(didDismissScreenSelection)
         XCTAssertTrue(didShowHUD)
@@ -1327,6 +1327,22 @@ final class CaptureOptionsStateMachineTests: XCTestCase {
 
 @MainActor
 final class SourceSelectorStateMachineTests: XCTestCase {
+    func testEveryTabFiltersOnlyItsMatchingSourceKind() {
+        let display = makeCaptureSource(id: "display-1", kind: .display)
+        let window = makeCaptureSource(id: "window-1", kind: .window)
+        let area = makeCaptureSource(id: "area-1", kind: .area)
+        let sources = [display, window, area]
+
+        var state = SourceSelectorState(sourceTab: .screens)
+        XCTAssertEqual(state.sources(from: sources), [display])
+
+        _ = state.applying(.tabSelected(.windows))
+        XCTAssertEqual(state.sources(from: sources), [window])
+
+        _ = state.applying(.tabSelected(.area))
+        XCTAssertEqual(state.sources(from: sources), [area])
+    }
+
     func testPreferredTabHeightAndEffectsAreReducerDriven() {
         var state = SourceSelectorState(sourceTab: .windows, visibleTabs: [.windows, .area])
 
@@ -1343,8 +1359,7 @@ final class SourceSelectorStateMachineTests: XCTestCase {
         XCTAssertEqual(state.applying(.refreshRequested), [.refreshSources])
         XCTAssertEqual(state.loadPhase, .loading)
         XCTAssertEqual(state.applying(.sourcesChanged(["window-1"])), [])
-        XCTAssertEqual(state.applying(.sourceSelected("window-1")), [])
-        XCTAssertEqual(state.applying(.shareRequested), [.share("window-1")])
+        XCTAssertEqual(state.applying(.sourceSelected("window-1")), [.select("window-1")])
         XCTAssertEqual(state.applying(.drawAreaRequested), [.drawArea])
     }
 
@@ -1356,20 +1371,29 @@ final class SourceSelectorStateMachineTests: XCTestCase {
         XCTAssertEqual(state.sourceTab, .windows)
     }
 
-    func testFloatingSelectionRemainsPendingUntilExplicitShare() {
+    func testSelectingHiddenTabOrUnavailableSourceIsIgnored() {
+        var state = SourceSelectorState(sourceTab: .windows, visibleTabs: [.windows, .area])
+        _ = state.applying(.sourcesChanged(["window-1"]))
+
+        XCTAssertEqual(state.applying(.tabSelected(.screens)), [])
+        XCTAssertEqual(state.sourceTab, .windows)
+
+        XCTAssertEqual(state.applying(.sourceSelected("window-missing")), [])
+        XCTAssertNil(state.pendingSourceID)
+        XCTAssertNil(state.committedSourceID)
+    }
+
+    func testFloatingSelectionCommitsImmediatelyAndCancelKeepsCurrentSource() {
         var state = SourceSelectorState(sourceTab: .windows, visibleTabs: [.windows, .area])
         _ = state.applying(.sourcesChanged(["window-1", "window-2"]))
         _ = state.applying(.committedSelectionSynced("window-1"))
 
-        XCTAssertEqual(state.applying(.sourceSelected("window-2")), [])
-        XCTAssertEqual(state.committedSourceID, "window-1")
+        XCTAssertEqual(state.applying(.sourceSelected("window-2")), [.select("window-2")])
+        XCTAssertEqual(state.committedSourceID, "window-2")
         XCTAssertEqual(state.pendingSourceID, "window-2")
 
         XCTAssertEqual(state.applying(.cancelRequested), [.cancel])
-        XCTAssertEqual(state.pendingSourceID, "window-1")
-
-        _ = state.applying(.sourceSelected("window-2"))
-        XCTAssertEqual(state.applying(.shareRequested), [.share("window-2")])
+        XCTAssertEqual(state.pendingSourceID, "window-2")
         XCTAssertEqual(state.committedSourceID, "window-2")
     }
 
@@ -1385,20 +1409,44 @@ final class SourceSelectorStateMachineTests: XCTestCase {
 
         XCTAssertEqual(effects, [])
         XCTAssertNil(state.pendingSourceID)
-        XCTAssertFalse(state.canSharePendingSource)
+        XCTAssertNil(state.committedSourceID)
         XCTAssertEqual(state.loadPhase, .failed("Screen Recording permission is required."))
-        XCTAssertEqual(state.applying(.shareRequested), [])
     }
 
-    func testDriverPublishesAsyncRefreshBeforeSharingExactPendingSource() async {
+    func testSuccessfulRefreshKeepsAvailableCommittedSelection() {
+        var state = SourceSelectorState(sourceTab: .windows, visibleTabs: [.windows])
+        _ = state.applying(.sourcesChanged(["window-1", "window-2"]))
+        _ = state.applying(.committedSelectionSynced("window-2"))
+
+        let effects = state.applying(.refreshCompleted(.loaded(sourceIDs: ["window-2", "window-3"])))
+
+        XCTAssertEqual(effects, [])
+        XCTAssertEqual(state.loadPhase, .loaded)
+        XCTAssertEqual(state.availableSourceIDs, ["window-2", "window-3"])
+        XCTAssertEqual(state.pendingSourceID, "window-2")
+        XCTAssertEqual(state.committedSourceID, "window-2")
+    }
+
+    func testMeasuredHeightIgnoresSubpixelNoiseButRoundsMeaningfulChanges() {
+        var state = SourceSelectorState()
+        let original = state.preferredHeight
+
+        XCTAssertEqual(state.applying(.heightMeasured(original - SourceSelectorWindowMetrics.outerPadding * 2 - 0.1)), [])
+        XCTAssertEqual(state.preferredHeight, original)
+
+        XCTAssertEqual(state.applying(.heightMeasured(500.2)), [])
+        XCTAssertEqual(state.preferredHeight, 533)
+    }
+
+    func testDriverPublishesAsyncRefreshBeforeSelectingExactSource() async {
         let driver = SourceSelectorDriver(sourceTab: .windows, visibleTabs: [.windows])
-        var sharedSourceID: String?
+        var selectedSourceID: String?
         driver.configure(
             refreshSources: {
                 .loaded(sourceIDs: ["window-1"])
             },
-            share: { sourceID in
-                sharedSourceID = sourceID
+            select: { sourceID in
+                selectedSourceID = sourceID
             }
         )
 
@@ -1409,9 +1457,8 @@ final class SourceSelectorStateMachineTests: XCTestCase {
         }
 
         driver.send(.sourceSelected("window-1"))
-        driver.send(.shareRequested)
 
-        XCTAssertEqual(sharedSourceID, "window-1")
+        XCTAssertEqual(selectedSourceID, "window-1")
         XCTAssertEqual(driver.state.committedSourceID, "window-1")
     }
 
@@ -1438,6 +1485,43 @@ final class SourceSelectorStateMachineTests: XCTestCase {
         try? await Task.sleep(for: .milliseconds(20))
 
         XCTAssertEqual(driver.state.availableSourceIDs, ["fresh-window"])
+    }
+
+    func testDriverCancelStopsRefreshAndInvokesCancelExactlyOnce() async {
+        let driver = SourceSelectorDriver(sourceTab: .windows, visibleTabs: [.windows])
+        var refreshStarted = false
+        var cancelCount = 0
+        driver.configure(
+            refreshSources: {
+                refreshStarted = true
+                try? await Task.sleep(for: .milliseconds(100))
+                return .loaded(sourceIDs: ["late-window"])
+            },
+            cancel: {
+                cancelCount += 1
+            }
+        )
+
+        driver.send(.refreshRequested)
+        await waitForCondition { refreshStarted }
+        driver.send(.cancelRequested)
+        try? await Task.sleep(for: .milliseconds(130))
+
+        XCTAssertEqual(cancelCount, 1)
+        XCTAssertTrue(driver.state.availableSourceIDs.isEmpty)
+    }
+
+    func testDriverNeverSelectsAnUnavailableOrStaleSource() async {
+        let driver = SourceSelectorDriver(sourceTab: .windows, visibleTabs: [.windows])
+        var selectedIDs: [String] = []
+        driver.configure(select: { selectedIDs.append($0) })
+        driver.send(.sourcesChanged(["window-current"]))
+
+        driver.send(.sourceSelected("window-stale"))
+        XCTAssertTrue(selectedIDs.isEmpty)
+
+        driver.send(.sourceSelected("window-current"))
+        XCTAssertEqual(selectedIDs, ["window-current"])
     }
 }
 

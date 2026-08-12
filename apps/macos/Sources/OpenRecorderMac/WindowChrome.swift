@@ -426,6 +426,7 @@ struct WindowCommandBridge: View {
         case .showHUD:
             NSApp.unhide(nil)
             openWindow(id: "hud")
+            NSApp.activate(ignoringOtherApps: true)
         case .hideHUD:
             dismissWindow(id: "hud")
         case .showOnboarding:
@@ -509,14 +510,7 @@ struct HUDOverlayWindowView: View {
         ZStack {
             Color.clear
 
-            switch model.hudState.phase {
-            case .idle, .choosingMode:
-                CaptureChoiceHUD()
-            case .choosingSourceType(let mode), .screenSelecting(let mode):
-                SourceTypeChoiceHUD(mode: mode)
-            default:
-                CaptureHUD(options: model.captureOptions, sourceTab: .constant(model.captureMode == .screenshot ? .screens : .screens))
-            }
+            CaptureHUD(options: model.captureOptions)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 18)

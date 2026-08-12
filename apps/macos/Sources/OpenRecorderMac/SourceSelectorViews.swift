@@ -12,7 +12,7 @@ struct SourceSelectorWindowView: View {
     }
 
     private var visibleTabs: [SourceSelectorTab] {
-        [.windows, .area]
+        SourceSelectorTab.allCases
     }
 
     var body: some View {
@@ -32,9 +32,6 @@ struct SourceSelectorWindowView: View {
                 },
                 onSelectSource: { source in
                     sourceSelector.send(.sourceSelected(source.id))
-                },
-                onShare: {
-                    sourceSelector.send(.shareRequested)
                 },
                 onDrawArea: {
                     sourceSelector.send(.drawAreaRequested)
@@ -66,7 +63,7 @@ struct SourceSelectorWindowView: View {
                     model.cancelSourceSelection()
                     dismissWindow(id: "source-selector")
                 },
-                share: { sourceID in
+                select: { sourceID in
                     guard let source = model.capture.sources.first(where: { $0.id == sourceID }) else {
                         return
                     }
@@ -74,7 +71,6 @@ struct SourceSelectorWindowView: View {
                     dismissWindow(id: "source-selector")
                 },
                 drawArea: {
-                    model.selectInteractiveAreaSource()
                     dismissWindow(id: "source-selector")
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                         model.requestInteractiveAreaSelection()
@@ -100,7 +96,7 @@ struct SourceSelectorWindowView: View {
 
     private func applyPreferredSourceTab() {
         let preferredKind = model.preferredSourceSelectorKind ?? model.selectedSource?.kind ?? .window
-        sourceSelector.send(.tabSelected(preferredKind == .display ? .windows : SourceSelectorTab(sourceKind: preferredKind)))
+        sourceSelector.send(.tabSelected(SourceSelectorTab(sourceKind: preferredKind)))
     }
 }
 
@@ -152,7 +148,6 @@ struct SourceSelectorCard: View {
     var onCancel: (() -> Void)? = nil
     var onRefresh: (() -> Void)? = nil
     var onSelectSource: (CaptureSource) -> Void = { _ in }
-    var onShare: (() -> Void)? = nil
     var onDrawArea: (() -> Void)? = nil
 
     private var sources: [CaptureSource] {
@@ -168,24 +163,36 @@ struct SourceSelectorCard: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(alignment: .top) {
+            HStack(alignment: .center, spacing: 10) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Choose what to share")
+                    Text("Choose what to capture")
                         .font(.system(size: 18, weight: .semibold))
                     Text(selectorDescription)
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                Text("\(allSources.filter { $0.kind != .area }.count) sources")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 5)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 6)
-                            .stroke(Theme.border)
+                StudioButton(hitTarget: .circle, help: loadPhase == .loading ? "Refreshing Sources" : "Refresh Sources") {
+                    onRefresh?()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 12, weight: .semibold))
+                        .frame(width: 32, height: 32)
+                        .background(Theme.overlay, in: Circle())
+                }
+                .foregroundStyle(.secondary)
+                .disabled(onRefresh == nil || loadPhase == .loading)
+
+                if let onCancel {
+                    StudioButton(hitTarget: .circle, help: "Cancel", action: onCancel) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 12, weight: .semibold))
+                            .frame(width: 32, height: 32)
+                            .background(Theme.overlay, in: Circle())
                     }
+                    .foregroundStyle(.secondary)
+                    .keyboardShortcut(.cancelAction)
+                }
             }
             .padding(16)
 
@@ -215,50 +222,6 @@ struct SourceSelectorCard: View {
             .padding(.horizontal, 16)
             .padding(.bottom, 16)
 
-            Rectangle()
-                .fill(Theme.border)
-                .frame(height: 1)
-
-            HStack {
-                if let onCancel {
-                    StudioButton(hitTarget: .rounded(8), action: onCancel) {
-                        Text("Cancel")
-                            .font(.system(size: 13, weight: .medium))
-                            .frame(height: 34)
-                            .padding(.horizontal, 12)
-                            .background(Color.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 8))
-                    }
-                    .foregroundStyle(.secondary)
-                    .keyboardShortcut(.cancelAction)
-                }
-
-                StudioButton(hitTarget: .rounded(8)) {
-                    onRefresh?()
-                } label: {
-                    Label(loadPhase == .loading ? "Refreshing" : "Refresh", systemImage: "arrow.clockwise")
-                        .frame(height: 34)
-                        .padding(.horizontal, 12)
-                        .background(Theme.overlay, in: RoundedRectangle(cornerRadius: 8))
-                }
-                .foregroundStyle(.secondary)
-                .disabled(onRefresh == nil || loadPhase == .loading)
-
-                Spacer()
-
-                if let onShare {
-                    StudioButton(hitTarget: .rounded(8), action: onShare) {
-                        Text("Share Source")
-                            .font(.system(size: 13, weight: .semibold))
-                            .frame(height: 34)
-                            .padding(.horizontal, 14)
-                            .background(canShareSource ? Theme.accent : Theme.border, in: RoundedRectangle(cornerRadius: 8))
-                            .foregroundStyle(canShareSource ? Color.white : Color.secondary)
-                    }
-                    .disabled(!canShareSource)
-                    .keyboardShortcut(.defaultAction)
-                }
-            }
-            .padding(16)
         }
         .background(Theme.surface.opacity(0.96), in: RoundedRectangle(cornerRadius: 12))
         .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -277,12 +240,6 @@ struct SourceSelectorCard: View {
         }
     }
 
-    private var canShareSource: Bool {
-        guard let selectedSourceID else {
-            return false
-        }
-        return sources.contains { $0.id == selectedSourceID }
-    }
 }
 
 struct SourceTabs: View {
@@ -397,6 +354,8 @@ struct SourceTile: View {
                 standardContent
             }
         }
+        .accessibilityLabel("\(source.name), \(source.subtitle)")
+        .accessibilityValue(isSelected ? "Current source" : "")
     }
 
     private var standardContent: some View {
@@ -451,7 +410,7 @@ struct SourceTile: View {
                     .lineLimit(1)
                 Spacer()
                 if isSelected {
-                    Text("Selected")
+                    Text("Current")
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 6)

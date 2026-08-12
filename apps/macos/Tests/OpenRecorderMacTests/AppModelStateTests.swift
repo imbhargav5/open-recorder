@@ -51,25 +51,194 @@ final class AppModelStateTests: XCTestCase {
         )
     }
 
-    func testBeginRecordingMovesToSourceTypeChoiceAndRequestsHUD() {
+    func testBeginRecordingMovesToReusableSetupAndRequestsHUD() {
         let model = AppModel()
 
         model.beginCapture(.recording)
 
         XCTAssertEqual(model.captureMode, .recording)
         XCTAssertEqual(model.captureFlow, .recordingSetup)
-        XCTAssertEqual(model.hudState, .choosingSourceType(.recording))
+        XCTAssertEqual(model.hudState, .setup(.recording))
         XCTAssertEqual(model.windowCommand?.action, .showHUD)
     }
 
-    func testBeginScreenshotMovesToSourceTypeChoiceAndRequestsHUD() {
+    func testBeginScreenshotMovesToReusableSetupAndRequestsHUD() {
         let model = AppModel()
 
         model.beginCapture(.screenshot)
 
         XCTAssertEqual(model.captureMode, .screenshot)
         XCTAssertEqual(model.captureFlow, .screenshotSetup)
-        XCTAssertEqual(model.hudState, .choosingSourceType(.screenshot))
+        XCTAssertEqual(model.hudState, .setup(.screenshot))
+        XCTAssertEqual(model.windowCommand?.action, .showHUD)
+    }
+
+    func testSavedCaptureSetupRestoresModeAndPreferredSourceKindOnLaunch() throws {
+        let suiteName = "AppModelStateTests.CaptureSetup.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = CaptureSetupPreferencesStore(defaults: defaults)
+        store.save(CaptureSetupPreferences(
+            mode: .screenshot,
+            preferredSourceKind: .window,
+            sourceReference: nil
+        ))
+
+        let model = AppModel(captureSetupPreferencesStore: store)
+
+        XCTAssertEqual(model.hudState, .setup(.screenshot, preferredSourceKind: .window))
+        XCTAssertEqual(model.captureMode, .screenshot)
+        XCTAssertEqual(model.preferredSourceSelectorKind, .window)
+    }
+
+    func testCaptureSetupPersistsModeAndLightweightSelectedSource() throws {
+        let suiteName = "AppModelStateTests.CaptureSetup.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = CaptureSetupPreferencesStore(defaults: defaults)
+        let model = AppModel(captureSetupPreferencesStore: store)
+        var source = makeSource(displayID: 42)
+        source.thumbnailData = Data(repeating: 1, count: 1_024)
+
+        model.beginCapture(.screenshot)
+        model.beginCapture(.recording)
+        model.selectSource(source)
+
+        XCTAssertEqual(store.load(), CaptureSetupPreferences(
+            mode: .recording,
+            preferredSourceKind: .display,
+            sourceReference: .display(displayID: 42, displayIndex: 1, name: "Display 1")
+        ))
+    }
+
+    func testSwitchingModesPersistsTheModeWithoutLosingSelectedSource() throws {
+        let suiteName = "AppModelStateTests.CaptureSetup.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = CaptureSetupPreferencesStore(defaults: defaults)
+        let model = AppModel(captureSetupPreferencesStore: store)
+        let source = makeSource(displayID: 42)
+
+        model.selectSource(source)
+        model.beginCapture(.screenshot)
+
+        XCTAssertEqual(model.hudState, .setup(.screenshot, source: source))
+        XCTAssertEqual(store.load(), CaptureSetupPreferences(
+            mode: .screenshot,
+            preferredSourceKind: .display,
+            sourceReference: .display(displayID: 42, displayIndex: 1, name: "Display 1")
+        ))
+    }
+
+    func testCancelingSourceAndAreaChangesDoesNotOverwriteSavedSource() throws {
+        let suiteName = "AppModelStateTests.CaptureSetup.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = CaptureSetupPreferencesStore(defaults: defaults)
+        let model = AppModel(captureSetupPreferencesStore: store)
+        let source = makeSource(displayID: 42)
+        model.selectSource(source)
+        let committed = store.load()
+
+        model.requestSourceSelector(kind: .window)
+        model.cancelSourceSelection()
+        XCTAssertEqual(model.selectedSource, source)
+        XCTAssertEqual(store.load(), committed)
+
+        model.requestInteractiveAreaSelection()
+        model.cancelInteractiveAreaSelection()
+        XCTAssertEqual(model.hudState.phase, .setup(.recording))
+        XCTAssertEqual(model.selectedSource, source)
+        XCTAssertEqual(model.preferredSourceSelectorKind, .area)
+        XCTAssertEqual(model.statusMessage, "Selected Display 1")
+        XCTAssertEqual(store.load(), committed)
+    }
+
+    func testSelectingRecordingSourceNeverInvokesScreenshotCapture() {
+        var screenshotCaptureCount = 0
+        let model = AppModel(screenshotCapture: { _, _ in
+            screenshotCaptureCount += 1
+        })
+        let source = makeSource()
+
+        model.beginCapture(.recording)
+        model.requestSourceSelector(kind: .display)
+        model.selectSource(source)
+
+        XCTAssertEqual(screenshotCaptureCount, 0)
+        XCTAssertEqual(model.hudState, .setup(.recording, source: source))
+        XCTAssertEqual(model.windowCommand?.action, .showHUD)
+        XCTAssertEqual(model.recordingPhase, .idle)
+    }
+
+    func testCompletingRecordingAreaPersistsGeometryWithoutStartingCapture() throws {
+        let suiteName = "AppModelStateTests.CaptureSetup.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = CaptureSetupPreferencesStore(defaults: defaults)
+        var screenshotCaptureCount = 0
+        let model = AppModel(
+            captureSetupPreferencesStore: store,
+            screenshotCapture: { _, _ in screenshotCaptureCount += 1 }
+        )
+        let area = CaptureArea(x: 12, y: 24, width: 640, height: 360, displayID: 7)
+
+        model.beginCapture(.recording)
+        model.requestInteractiveAreaSelection()
+        model.completeInteractiveAreaSelection(area)
+
+        XCTAssertEqual(model.hudState.phase, .setup(.recording))
+        XCTAssertEqual(model.selectedSource?.kind, .area)
+        XCTAssertEqual(model.selectedSource?.area, area)
+        XCTAssertEqual(model.preferredSourceSelectorKind, .area)
+        XCTAssertEqual(screenshotCaptureCount, 0)
+        XCTAssertEqual(model.recordingPhase, .idle)
+        XCTAssertEqual(model.windowCommand?.action, .showHUD)
+        XCTAssertEqual(store.load(), CaptureSetupPreferences(
+            mode: .recording,
+            preferredSourceKind: .area,
+            sourceReference: .area(area)
+        ))
+    }
+
+    func testDeniedScreenshotSelectionPersistsSourceButNeverInvokesCapturer() throws {
+        let suiteName = "AppModelStateTests.CaptureSetup.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = CaptureSetupPreferencesStore(defaults: defaults)
+        var captureCount = 0
+        let model = AppModel(
+            screenRecordingPermission: makeScreenRecordingPermission(isGranted: false),
+            captureSetupPreferencesStore: store,
+            screenshotCapture: { _, _ in captureCount += 1 }
+        )
+        let source = makeSource(displayID: 42)
+        model.capture.setSourcesForTesting([source])
+
+        model.beginCapture(.screenshot)
+        model.requestSourceSelector(kind: .display)
+        model.selectSource(source)
+
+        XCTAssertEqual(captureCount, 0)
+        XCTAssertEqual(model.hudState, .setup(.screenshot, source: source))
+        XCTAssertEqual(model.statusMessage, CaptureBlocker.screenRecordingPermissionNeedsRestart.message)
+        XCTAssertEqual(model.windowCommand?.action, .showHUD)
+        XCTAssertEqual(store.load(), CaptureSetupPreferences(
+            mode: .screenshot,
+            preferredSourceKind: .display,
+            sourceReference: .display(displayID: 42, displayIndex: 1, name: "Display 1")
+        ))
+    }
+
+    func testDeniedScreenshotAreaRequestNeverOpensAreaSelector() {
+        let model = AppModel(screenRecordingPermission: makeScreenRecordingPermission(isGranted: false))
+        model.beginCapture(.screenshot)
+
+        model.requestInteractiveAreaSelection()
+
+        XCTAssertEqual(model.hudState, .setup(.screenshot))
+        XCTAssertFalse(model.isAreaSelectionActive)
+        XCTAssertEqual(model.statusMessage, CaptureBlocker.screenRecordingPermissionNeedsRestart.message)
         XCTAssertEqual(model.windowCommand?.action, .showHUD)
     }
 
@@ -124,9 +293,9 @@ final class AppModelStateTests: XCTestCase {
         model.beginCapture(.recording)
         model.chooseSourceType(.window)
 
-        XCTAssertEqual(model.hudState.phase, .selectingSource(.recording))
+        XCTAssertEqual(model.hudState.phase, .sourceSelecting(.recording))
         XCTAssertEqual(model.preferredSourceSelectorKind, .window)
-        XCTAssertEqual(model.statusMessage, "Choose a window.")
+        XCTAssertEqual(model.statusMessage, "Choose what to capture.")
         XCTAssertEqual(model.windowCommand?.action, .showSourceSelector)
     }
 
@@ -138,21 +307,21 @@ final class AppModelStateTests: XCTestCase {
 
         model.cancelSourceSelection()
 
-        XCTAssertEqual(model.hudState.phase, .ready(.recording, source))
+        XCTAssertEqual(model.hudState.phase, .setup(.recording))
         XCTAssertEqual(model.selectedSource, source)
         XCTAssertEqual(model.statusMessage, "Selected \(source.name)")
-        XCTAssertEqual(model.windowCommand?.action, .showHUD)
+        XCTAssertEqual(model.windowCommand?.action, .closeSourceSelector)
     }
 
-    func testCancelingInitialSourceSelectionStillCancelsCaptureSetup() {
+    func testCancelingInitialSourceSelectionReturnsToSetup() {
         let model = AppModel()
         model.beginCapture(.recording)
         model.chooseSourceType(.window)
 
         model.cancelSourceSelection()
 
-        XCTAssertEqual(model.hudState, .choosingMode)
-        XCTAssertEqual(model.windowCommand?.action, .closeCaptureSetup)
+        XCTAssertEqual(model.hudState, .setup(.recording, preferredSourceKind: .window))
+        XCTAssertEqual(model.windowCommand?.action, .closeSourceSelector)
     }
 
     func testChoosingAreaSourceTypeOpensSourceSelectorOnAreaTab() {
@@ -161,34 +330,34 @@ final class AppModelStateTests: XCTestCase {
         model.beginCapture(.screenshot)
         model.chooseSourceType(.area)
 
-        XCTAssertEqual(model.hudState.phase, .selectingSource(.screenshot))
+        XCTAssertEqual(model.hudState.phase, .sourceSelecting(.screenshot))
         XCTAssertEqual(model.preferredSourceSelectorKind, .area)
-        XCTAssertEqual(model.statusMessage, "Choose an area.")
+        XCTAssertEqual(model.statusMessage, "Choose what to capture.")
         XCTAssertEqual(model.windowCommand?.action, .showSourceSelector)
     }
 
-    func testCancelRecordingSetupReturnsToChoiceAndClosesCaptureSetup() {
+    func testCancelRecordingWorkReturnsToRecordingSetup() {
         let model = AppModel()
 
         model.beginCapture(.recording)
         model.cancelCapture()
 
-        XCTAssertEqual(model.hudState, .choosingMode)
-        XCTAssertEqual(model.captureFlow, .choice)
+        XCTAssertEqual(model.hudState, .setup(.recording))
+        XCTAssertEqual(model.captureFlow, .recordingSetup)
         XCTAssertFalse(model.isAreaSelectionActive)
-        XCTAssertEqual(model.windowCommand?.action, .closeCaptureSetup)
+        XCTAssertEqual(model.windowCommand?.action, .showHUD)
     }
 
-    func testCancelScreenshotSetupReturnsToChoiceAndClosesCaptureSetup() {
+    func testCancelScreenshotWorkReturnsToScreenshotSetup() {
         let model = AppModel()
 
         model.beginCapture(.screenshot)
         model.cancelCapture()
 
-        XCTAssertEqual(model.hudState, .choosingMode)
-        XCTAssertEqual(model.captureFlow, .choice)
+        XCTAssertEqual(model.hudState, .setup(.screenshot))
+        XCTAssertEqual(model.captureFlow, .screenshotSetup)
         XCTAssertFalse(model.isAreaSelectionActive)
-        XCTAssertEqual(model.windowCommand?.action, .closeCaptureSetup)
+        XCTAssertEqual(model.windowCommand?.action, .showHUD)
     }
 
     func testCancelReadySetupDoesNotLeaveSelectorOrAreaCloseCommand() {
@@ -199,40 +368,40 @@ final class AppModelStateTests: XCTestCase {
         model.beginCapture(.recording)
         model.cancelCapture()
 
-        XCTAssertEqual(model.hudState, .choosingMode)
-        XCTAssertEqual(model.captureFlow, .choice)
+        XCTAssertEqual(model.hudState, .setup(.recording, source: source))
+        XCTAssertEqual(model.captureFlow, .recordingSetup)
         XCTAssertNotEqual(model.windowCommand?.action, .showSourceSelector)
         XCTAssertNotEqual(model.windowCommand?.action, .closeAreaSelector)
-        XCTAssertEqual(model.windowCommand?.action, .closeCaptureSetup)
-    }
-
-    func testNewCaptureIsDisabledDuringRecordingSetup() {
-        let model = AppModel()
-
-        model.beginCapture(.recording)
-
-        XCTAssertFalse(model.canStartNewCapture)
-
-        model.beginCapture(.screenshot)
-
-        XCTAssertEqual(model.captureMode, .recording)
-        XCTAssertEqual(model.captureFlow, .recordingSetup)
-        XCTAssertEqual(model.hudState, .choosingSourceType(.recording))
         XCTAssertEqual(model.windowCommand?.action, .showHUD)
     }
 
-    func testNewCaptureIsDisabledDuringScreenshotSetup() {
+    func testModeCanSwitchDuringRecordingSetup() {
+        let model = AppModel()
+
+        model.beginCapture(.recording)
+
+        XCTAssertTrue(model.canStartNewCapture)
+
+        model.beginCapture(.screenshot)
+
+        XCTAssertEqual(model.captureMode, .screenshot)
+        XCTAssertEqual(model.captureFlow, .screenshotSetup)
+        XCTAssertEqual(model.hudState, .setup(.screenshot))
+        XCTAssertEqual(model.windowCommand?.action, .showHUD)
+    }
+
+    func testModeCanSwitchDuringScreenshotSetup() {
         let model = AppModel()
 
         model.beginCapture(.screenshot)
 
-        XCTAssertFalse(model.canStartNewCapture)
+        XCTAssertTrue(model.canStartNewCapture)
 
         model.beginCapture(.recording)
 
-        XCTAssertEqual(model.captureMode, .screenshot)
-        XCTAssertEqual(model.captureFlow, .screenshotSetup)
-        XCTAssertEqual(model.hudState, .choosingSourceType(.screenshot))
+        XCTAssertEqual(model.captureMode, .recording)
+        XCTAssertEqual(model.captureFlow, .recordingSetup)
+        XCTAssertEqual(model.hudState, .setup(.recording))
         XCTAssertEqual(model.windowCommand?.action, .showHUD)
     }
 
@@ -276,10 +445,7 @@ final class AppModelStateTests: XCTestCase {
             thumbnailData: nil
         )
         let occupiedStates: [HUDState] = [
-            .choosingSourceType(.recording),
-            .screenSelecting(.screenshot),
-            .selectingSource(.recording),
-            .ready(.recording, source),
+            .sourceSelecting(.recording),
             .areaSelecting(.screenshot),
             .countingDownRecording(source),
             .startingRecording(source),
@@ -307,8 +473,8 @@ final class AppModelStateTests: XCTestCase {
 
         XCTAssertEqual(model.selectedSection, .editor)
         XCTAssertEqual(model.lastEditorSession, session)
-        XCTAssertEqual(model.captureFlow, .choice)
-        XCTAssertEqual(model.hudState, .choosingMode)
+        XCTAssertEqual(model.captureFlow, .recordingSetup)
+        XCTAssertEqual(model.hudState, .setup(.recording))
         XCTAssertTrue(model.canStartNewCapture)
         XCTAssertEqual(model.windowCommand?.action, .showStudio)
         XCTAssertEqual(model.windowCommand?.editorSession, session)
@@ -354,7 +520,7 @@ final class AppModelStateTests: XCTestCase {
         XCTAssertEqual(EditorMediaKind.screenshot.titleIconSystemName, "photo.fill")
     }
 
-    func testSelectingSourceMovesHUDToReadyState() {
+    func testSelectingSourceCommitsReusableSetup() {
         let model = AppModel()
         let source = CaptureSource(
             id: "display:1",
@@ -371,9 +537,47 @@ final class AppModelStateTests: XCTestCase {
         model.beginCapture(.recording)
         model.selectSource(source)
 
-        XCTAssertEqual(model.hudState, .ready(.recording, source))
+        XCTAssertEqual(model.hudState, .setup(.recording, source: source))
         XCTAssertEqual(model.captureFlow, .recordingSetup)
-        XCTAssertFalse(model.canStartNewCapture)
+        XCTAssertTrue(model.canStartNewCapture)
+        XCTAssertFalse(model.capture.isRecording)
+    }
+
+    func testSelectingScreenshotSourceCapturesImmediately() async throws {
+        var captureCount = 0
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let model = AppModel(
+            screenRecordingPermission: makeScreenRecordingPermission(isGranted: true),
+            captureUIHideDelayNanoseconds: 0,
+            screenshotCapture: { _, outputURL in
+                captureCount += 1
+                try Data("png".utf8).write(to: outputURL)
+            },
+            rememberScreenshot: { _ in },
+            registerCapturedMedia: { _, _ in
+                throw AppModelTestError.backendUnavailable
+            }
+        )
+        let source = makeSource()
+        model.paths = AppPaths(
+            recordingsDir: directory.path,
+            screenshotsDir: directory.path,
+            projectsDir: directory.path,
+            supportDir: directory.path
+        )
+        model.capture.setSourcesForTesting([source])
+        model.beginCapture(.screenshot)
+        model.requestSourceSelector(kind: .display)
+
+        model.selectSource(source)
+
+        XCTAssertEqual(model.hudState.phase, .capturingScreenshot(source))
+        XCTAssertEqual(model.windowCommand?.action, .hideAppWindowsForCapture)
+        await waitForCondition { captureCount == 1 }
+        try? await Task.sleep(for: .milliseconds(20))
+        XCTAssertEqual(captureCount, 1)
+        model.cancelCapture()
     }
 
     func testRecordingFilePreparationRunsOffMainActorAfterSuccessfulPreflight() async {
@@ -398,7 +602,7 @@ final class AppModelStateTests: XCTestCase {
 
         XCTAssertFalse(model.isCapturePreflightRunning)
         XCTAssertEqual(model.captureOptions.state.deviceLoadPhase, .idle)
-        XCTAssertEqual(model.hudState.phase, .ready(.recording, source))
+        XCTAssertEqual(model.hudState.phase, .setup(.recording))
         XCTAssertEqual(model.hudState.presentation, .visible)
     }
 
@@ -429,11 +633,11 @@ final class AppModelStateTests: XCTestCase {
         try? await Task.sleep(for: .milliseconds(50))
 
         XCTAssertFalse(model.isCapturePreflightRunning)
-        XCTAssertEqual(model.hudState.phase, .choosingSourceType(.screenshot))
-        XCTAssertEqual(model.statusMessage, "Choose a source type.")
+        XCTAssertEqual(model.hudState.phase, .setup(.screenshot))
+        XCTAssertEqual(model.statusMessage, "Ready")
     }
 
-    func testChoosingScreenSourceTypePresentsDisplayOverlay() {
+    func testChoosingScreenSourceTypeOpensUnifiedSelector() {
         let presenter = ScreenSelectionPresenterSpy()
         let model = AppModel(screenSelectionPresenter: presenter)
         let source = makeSource(displayID: 42)
@@ -442,15 +646,15 @@ final class AppModelStateTests: XCTestCase {
         model.beginCapture(.screenshot)
         model.chooseSourceType(.screen)
 
-        XCTAssertEqual(model.hudState, .screenSelecting(.screenshot))
+        XCTAssertEqual(model.hudState, .sourceSelecting(.screenshot, preferredSourceKind: .display))
         XCTAssertEqual(model.preferredSourceSelectorKind, .display)
-        XCTAssertEqual(presenter.presentedSources, [source])
-        XCTAssertNotNil(presenter.onSelect)
-        XCTAssertNotNil(presenter.onCancel)
-        XCTAssertNotEqual(model.windowCommand?.action, .showSourceSelector)
+        XCTAssertTrue(presenter.presentedSources.isEmpty)
+        XCTAssertNil(presenter.onSelect)
+        XCTAssertNil(presenter.onCancel)
+        XCTAssertEqual(model.windowCommand?.action, .showSourceSelector)
     }
 
-    func testChoosingScreenSelectsDisplayAndReturnsReadyHUD() {
+    func testChoosingScreenSelectsDisplayAndReturnsToSetup() {
         let presenter = ScreenSelectionPresenterSpy()
         let model = AppModel(screenSelectionPresenter: presenter)
         let source = makeSource(displayID: 42)
@@ -458,16 +662,16 @@ final class AppModelStateTests: XCTestCase {
 
         model.beginCapture(.recording)
         model.chooseSourceType(.screen)
-        presenter.select(source)
+        model.selectSource(source)
 
-        XCTAssertEqual(model.hudState, .ready(.recording, source))
+        XCTAssertEqual(model.hudState, .setup(.recording, source: source))
         XCTAssertEqual(model.selectedSource, source)
         XCTAssertEqual(model.captureFlow, .recordingSetup)
         XCTAssertEqual(model.windowCommand?.action, .showHUD)
-        XCTAssertGreaterThanOrEqual(presenter.dismissCallCount, 1)
+        XCTAssertEqual(presenter.dismissCallCount, 1)
     }
 
-    func testRequestingSourceSelectorForSelectedScreenReopensScreenSelectionOverlay() {
+    func testRequestingSourceSelectorForSelectedScreenOpensUnifiedSelector() {
         let presenter = ScreenSelectionPresenterSpy()
         let model = AppModel(screenSelectionPresenter: presenter)
         let source = makeSource(displayID: 42)
@@ -476,13 +680,13 @@ final class AppModelStateTests: XCTestCase {
 
         model.requestSourceSelector()
 
-        XCTAssertEqual(model.hudState.phase, .screenSelecting(.recording))
+        XCTAssertEqual(model.hudState.phase, .sourceSelecting(.recording))
         XCTAssertEqual(model.preferredSourceSelectorKind, .display)
-        XCTAssertEqual(presenter.presentedSources, [source])
-        XCTAssertNotEqual(model.windowCommand?.action, .showSourceSelector)
+        XCTAssertTrue(presenter.presentedSources.isEmpty)
+        XCTAssertEqual(model.windowCommand?.action, .showSourceSelector)
     }
 
-    func testCancelingScreenSelectionReturnsToSourceTypeChoice() {
+    func testCancelingScreenSelectionReturnsToSetup() {
         let presenter = ScreenSelectionPresenterSpy()
         let model = AppModel(screenSelectionPresenter: presenter)
         let source = makeSource(displayID: 42)
@@ -490,12 +694,12 @@ final class AppModelStateTests: XCTestCase {
 
         model.beginCapture(.recording)
         model.chooseSourceType(.screen)
-        presenter.cancel()
+        model.cancelSourceSelection()
 
-        XCTAssertEqual(model.hudState.phase, .choosingSourceType(.recording))
-        XCTAssertEqual(model.statusMessage, "Choose a source type.")
-        XCTAssertEqual(model.windowCommand?.action, .showHUD)
-        XCTAssertGreaterThanOrEqual(presenter.dismissCallCount, 1)
+        XCTAssertEqual(model.hudState.phase, .setup(.recording))
+        XCTAssertEqual(model.statusMessage, "Choose a source.")
+        XCTAssertEqual(model.windowCommand?.action, .closeSourceSelector)
+        XCTAssertEqual(presenter.dismissCallCount, 1)
     }
 
     func testScreenshotEditorReleasesCaptureSlot() {
@@ -506,8 +710,8 @@ final class AppModelStateTests: XCTestCase {
         model.beginCapture(.screenshot)
         model.showEditor(for: session)
 
-        XCTAssertEqual(model.hudState, .choosingMode)
-        XCTAssertEqual(model.captureFlow, .choice)
+        XCTAssertEqual(model.hudState, .setup(.screenshot))
+        XCTAssertEqual(model.captureFlow, .screenshotSetup)
         XCTAssertTrue(model.canStartNewCapture)
     }
 
@@ -892,8 +1096,8 @@ final class AppModelStateTests: XCTestCase {
         let editorSession = try XCTUnwrap(model.windowCommand?.editorSession)
         let screenshotURL = try XCTUnwrap(model.currentScreenshotURL)
         XCTAssertEqual(capturedSources.first?.area, area)
-        XCTAssertEqual(model.hudState, .choosingMode)
-        XCTAssertEqual(model.captureFlow, .choice)
+        XCTAssertEqual(model.hudState, .setup(.screenshot, source: capturedSources[0]))
+        XCTAssertEqual(model.captureFlow, .screenshotSetup)
         XCTAssertTrue(model.canStartNewCapture)
         XCTAssertEqual(model.selectedSection, .editor)
         XCTAssertEqual(model.windowCommand?.action, .showStudio)
@@ -957,7 +1161,7 @@ final class AppModelStateTests: XCTestCase {
         await waitForCondition {
             model.windowCommand?.action == .showStudio
         }
-        XCTAssertEqual(model.hudState, .choosingMode)
+        XCTAssertEqual(model.hudState, .setup(.screenshot, source: source))
         XCTAssertEqual(model.windowCommand?.action, .showStudio)
     }
 
@@ -1004,7 +1208,7 @@ final class AppModelStateTests: XCTestCase {
         XCTAssertTrue(handledCommands.contains { $0.action == .hideAppWindowsForCapture })
         let editorCommand = try XCTUnwrap(handledCommands.last { $0.action == .showStudio })
         XCTAssertEqual(editorCommand.editorSession?.kind, .screenshot)
-        XCTAssertEqual(model.hudState, .choosingMode)
+        XCTAssertEqual(model.hudState, .setup(.screenshot, source: source))
         XCTAssertEqual(model.selectedSection, .editor)
         XCTAssertNil(model.windowCommand)
     }
@@ -1050,7 +1254,7 @@ final class AppModelStateTests: XCTestCase {
             model.canStartNewCapture
         }
 
-        XCTAssertEqual(model.hudState, .choosingMode)
+        XCTAssertEqual(model.hudState, .setup(.screenshot, source: source))
         XCTAssertEqual(model.statusMessage, "Ready")
         XCTAssertNil(model.currentScreenshotURL)
         XCTAssertNil(model.currentVideoURL)
@@ -1077,8 +1281,8 @@ final class AppModelStateTests: XCTestCase {
             model.statusMessage == "Recording stopped before a file was written."
         }
 
-        XCTAssertEqual(model.hudState, .choosingMode)
-        XCTAssertEqual(model.captureFlow, .choice)
+        XCTAssertEqual(model.hudState, .setup(.recording, source: source))
+        XCTAssertEqual(model.captureFlow, .recordingSetup)
         XCTAssertTrue(model.canStartNewCapture)
         XCTAssertEqual(model.currentVideoURL, outputURL)
         XCTAssertNil(model.currentScreenshotURL)
@@ -1125,7 +1329,7 @@ final class AppModelStateTests: XCTestCase {
         )
         XCTAssertEqual(document.recordingPath, outputURL.path)
         XCTAssertEqual(document.recordingSession, editorSession.recordingSession)
-        XCTAssertEqual(model.hudState, .choosingMode)
+        XCTAssertEqual(model.hudState, .setup(.recording, source: source))
         XCTAssertTrue(model.canStartNewCapture)
     }
 
@@ -1159,7 +1363,7 @@ final class AppModelStateTests: XCTestCase {
         let editorCommand = try XCTUnwrap(handledCommands.last { $0.action == .showStudio })
         XCTAssertEqual(editorCommand.editorSession?.kind, .video)
         XCTAssertEqual(editorCommand.editorSession?.url, outputURL)
-        XCTAssertEqual(model.hudState, .choosingMode)
+        XCTAssertEqual(model.hudState, .setup(.recording, source: source))
         XCTAssertEqual(model.selectedSection, .editor)
         XCTAssertNil(model.windowCommand)
     }
@@ -1685,7 +1889,7 @@ final class AppModelStateTests: XCTestCase {
         model.toggleRecordingShortcut()
 
         XCTAssertEqual(model.recordingPhase, .idle)
-        XCTAssertEqual(model.hudState, .ready(.recording, source))
+        XCTAssertEqual(model.hudState, .setup(.recording, source: source))
         XCTAssertEqual(model.hudState.presentation, .visible)
         XCTAssertEqual(model.statusMessage, "Recording canceled.")
         XCTAssertEqual(model.windowCommand?.action, .showScreenRecordingSetup)

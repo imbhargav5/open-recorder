@@ -854,7 +854,7 @@ enum AppSection: String, CaseIterable, Identifiable {
     }
 }
 
-enum CaptureMode: String, CaseIterable, Identifiable {
+enum CaptureMode: String, Codable, CaseIterable, Identifiable {
     case recording
     case screenshot
 

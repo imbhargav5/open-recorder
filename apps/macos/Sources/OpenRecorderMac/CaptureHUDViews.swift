@@ -8,7 +8,6 @@ struct CaptureHUD: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.openWindow) private var openWindow
     var options: CaptureOptionsDriver
-    @Binding var sourceTab: SourceSelectorTab
 
     var body: some View {
         HUDSurface(isRecording: model.capture.isRecording) {
@@ -83,7 +82,7 @@ struct CaptureHUD: View {
 
     private var narrowRecordingControls: some View {
         HStack(spacing: 6) {
-            backButton
+            modePicker(width: 116)
 
             sourcePicker(minWidth: 112, maxWidth: 134)
 
@@ -111,12 +110,6 @@ struct CaptureHUD: View {
         HStack(spacing: 10) {
             sharedLeadingControls
 
-            FlowLabel(
-                tone: captureReadiness.canCapture ? .blue : .red,
-                label: "Screenshot",
-                value: model.selectedSource == nil ? "Source" : "Ready"
-            )
-
             HStack(spacing: 4) {
                 sourcePicker()
                     .layoutPriority(2)
@@ -140,11 +133,6 @@ struct CaptureHUD: View {
         HStack(spacing: 8) {
             compactLeadingControls
 
-            CompactFlowLabel(
-                tone: captureReadiness.canCapture ? .blue : .red,
-                value: model.selectedSource == nil ? "Source" : "Ready"
-            )
-
             HStack(spacing: 4) {
                 sourcePicker(minWidth: 128, maxWidth: 172)
                 compactPermissionControls
@@ -164,7 +152,7 @@ struct CaptureHUD: View {
     private var sharedLeadingControls: some View {
         HStack(spacing: 8) {
             DragHandle()
-            backButton
+            modePicker(width: 158)
             HUDDivider()
         }
     }
@@ -172,27 +160,26 @@ struct CaptureHUD: View {
     private var compactLeadingControls: some View {
         HStack(spacing: 6) {
             DragHandle()
-            backButton
+            modePicker(width: 140)
         }
     }
 
-    private var backButton: some View {
-        StudioButton(hitTarget: .circle, help: "Back") {
-            if !model.capture.isRecording {
-                model.cancelCapture()
-            }
-        } label: {
-            Image(systemName: "chevron.left")
-                .font(.system(size: 13, weight: .bold))
-                .frame(width: 38, height: 38)
-                .foregroundStyle(model.capture.isRecording ? Theme.fgDisabled : Color.white.opacity(0.70))
-                .background(Theme.overlay, in: Circle())
-                .overlay {
-                    Circle()
-                        .stroke(Theme.border, lineWidth: 1)
-                }
+    private func modePicker(width: CGFloat) -> some View {
+        Picker("Capture Mode", selection: Binding(
+            get: { model.captureMode },
+            set: { model.beginCapture($0) }
+        )) {
+            Label("Record", systemImage: "record.circle")
+                .tag(CaptureMode.recording)
+            Label("Screenshot", systemImage: "camera")
+                .tag(CaptureMode.screenshot)
         }
-        .disabled(model.capture.isRecording)
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .frame(width: width)
+        .disabled(model.capture.isRecording || model.recordingPhase != .idle)
+        .accessibilityLabel("Capture Mode")
+        .accessibilityValue(model.captureMode.title)
     }
 
     private func sourcePicker(minWidth: CGFloat = 132, maxWidth: CGFloat = 198) -> some View {
@@ -201,6 +188,8 @@ struct CaptureHUD: View {
         } label: {
             SourceChip(source: model.selectedSource, tone: sourceChipTone, minWidth: minWidth, maxWidth: maxWidth)
         }
+        .accessibilityLabel("Capture Source")
+        .accessibilityValue(model.selectedSource.map { "\($0.name), \($0.subtitle)" } ?? "Not selected")
     }
 
     private var recordingCaptureControlGroup: some View {
