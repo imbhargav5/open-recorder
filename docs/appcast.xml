@@ -678,5 +678,28 @@
 ]]></description>
             <enclosure url="https://github.com/imbhargav5/open-recorder/releases/download/v0.2.35/open-recorder-macos.zip" sparkle:edSignature="H+vub3VsLVWd+l3SYPAb3y7yT9Iops+8LbsedtZcWTGkUnYwPhGCiWORfgcQNRc7C9JH5YWvTDaZX5KqmwOxAg==" length="42312441" type="application/octet-stream"/>
         </item>
+        <item>
+            <title>Version 0.2.36</title>
+            <pubDate>Tue, 18 Aug 2026 19:24:03 GMT</pubDate>
+            <sparkle:version>0.2.36</sparkle:version>
+            <sparkle:shortVersionString>0.2.36</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+## Commits since v0.2.35
+
+- a716ce2 Merge pull request #1004 from Arushi-Gupta13/feat/macos-hud-ui-polish
+- 4161312 feat: implement synthesized audio feedback and UI animations for the recording countdown overlay
+- c70e911 feat: introduce resizable camera bubble overlay with configurable shapes and controls
+- b083f39 refactor: simplify HUD window sizing, improve slider aesthetics, and fix capture window dismissal logic
+- 74a1c74 refactor: standardize corner radii and typography across UI components using the Theme system
+- abd7965 refactor: modularize landing page components and update global styles for redesign
+- 4731aad refactor: introduce reusable StepList component and update workflow styling
+- 2301a86 fix(landing): unify section background, grid layout, and card metrics across workflow and architecture
+- 078fc82 fix(landing): polish padding, margins, and typography in workflow section
+- d143823 feat(macos): polish capture HUD and modernize source selector dialog
+- e2ff021 Update appcast for v0.2.35
+]]></description>
+            <enclosure url="https://github.com/imbhargav5/open-recorder/releases/download/v0.2.36/open-recorder-macos.zip" sparkle:edSignature="MpApW/Z1rC9swK3Bckx1oucRxGPgaaI/1qC82IgvsMoqkdNhtBa2yIXHr84XRvidSwj887UyePT3n5Bz4W0/DQ==" length="42585080" type="application/octet-stream"/>
+        </item>
     </channel>
 </rss>
