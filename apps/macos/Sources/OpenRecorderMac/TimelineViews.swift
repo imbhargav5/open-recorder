@@ -328,12 +328,12 @@ private struct TimelineToolbarIconButton: View {
     @State private var isHovering = false
 
     var body: some View {
-        StudioButton(hitTarget: .rounded(10), action: action) {
+        StudioButton(hitTarget: .rectangle, action: action) {
             Image(systemName: symbolName)
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(Color.white.opacity(isEnabled ? 0.90 : 0.35))
                 .frame(width: 30, height: 30)
-                .background(Color.white.opacity(isHovering && isEnabled ? 0.10 : 0.001), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                .background(Color.white.opacity(isHovering && isEnabled ? 0.10 : 0.001), in: Rectangle())
         }
         .disabled(!isEnabled)
         .accessibilityLabel(title)
@@ -359,21 +359,22 @@ private struct TimelineTimeDisplay: View {
     var duration: Double
 
     var body: some View {
-        HStack(spacing: 3) {
+        HStack(spacing: 4) {
             Text(formatPlaybackTime(currentTime))
-                .foregroundStyle(Theme.fg.opacity(0.90))
+                .foregroundStyle(Color.white)
             Text("/")
                 .foregroundStyle(Theme.fgSubtle)
             Text(formatPlaybackTime(duration))
                 .foregroundStyle(Theme.fgMuted)
         }
-        .font(.system(size: 11, weight: .semibold, design: .monospaced))
-        .padding(.horizontal, 9)
+        .font(.system(size: 11, weight: .bold, design: .monospaced))
+        .monospacedDigit()
+        .padding(.horizontal, 10)
         .frame(height: 28)
-        .background(Theme.overlay.opacity(0.86), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .background(Theme.surfaceRaised.opacity(0.92), in: RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .stroke(Theme.borderSubtle, lineWidth: 1)
+            RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous)
+                .stroke(Theme.borderStrong.opacity(0.75), lineWidth: 1)
         }
         .accessibilityLabel("Playback time \(formatPlaybackTime(currentTime)) of \(formatPlaybackTime(duration))")
     }
@@ -424,38 +425,26 @@ private struct TimelineZoomSlider: View {
             value: sliderValue,
             range: 0...1,
             step: 0.01,
+            valueText: visibleDurationText,
             onEditingChanged: { editing in
                 withAnimation(.easeOut(duration: 0.12)) {
                     isDragging = editing
                 }
             },
-            trackHeight: 7,
-            hitHeight: 28,
-            fillColor: Color.primary.opacity(0.92),
-            dragFillColor: Color(red: 0.48, green: 0.48, blue: 0.50),
+            trackHeight: 24,
+            hitHeight: 24,
+            fillColor: Theme.accent,
+            thumbWidth: 34,
+            thumbHeight: 18,
+            showStepDots: true,
+            showTooltip: false,
             setsValueFromPointerLocation: true
         )
-        .frame(width: 132)
+        .frame(width: 140)
         .disabled(!isEnabled)
         .opacity(isEnabled ? 1 : 0.45)
         .accessibilityLabel("Timeline zoom")
         .help("Timeline zoom")
-        .overlay(alignment: .top) {
-            if isDragging, isEnabled {
-                Text(visibleDurationText)
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Color.black.opacity(0.78), in: RoundedRectangle(cornerRadius: 6))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 6)
-                            .stroke(Theme.border, lineWidth: 1)
-                    }
-                    .offset(y: 27)
-                    .allowsHitTesting(false)
-            }
-        }
     }
 
     private var sliderValue: Binding<Double> {
@@ -702,7 +691,7 @@ struct TimelineHoverIndicator: View {
                     .foregroundStyle(Theme.fg.opacity(0.92))
                     .padding(.horizontal, 5)
                     .frame(height: 18)
-                    .background(Theme.surfaceRaised.opacity(0.94), in: RoundedRectangle(cornerRadius: 4))
+                    .background(Theme.surfaceRaised.opacity(0.94), in: Rectangle())
                     .position(x: min(max(x, 28), max(28, proxy.size.width - 28)), y: 9)
             }
         }
@@ -902,9 +891,19 @@ struct TimelineClipRow: View {
 
     private func clipBody(segment: TimelineClipSegment, width: CGFloat, isSelected: Bool, isDeleted: Bool) -> some View {
         let foreground = isDeleted ? Color.white.opacity(0.48) : Theme.timelineClipForeground
-        return RoundedRectangle(cornerRadius: 8, style: .continuous)
-            .fill(isDeleted ? Color.secondary.opacity(isSelected ? 0.30 : 0.20) : Theme.timelineClip.opacity(isSelected ? 0.95 : 1))
-            .overlay { RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(isSelected ? Theme.timelineHandle.opacity(0.95) : (isDeleted ? Color.secondary.opacity(0.42) : Theme.timelineClipBorder), lineWidth: isSelected ? 2 : 1) }
+        return Rectangle()
+            .fill(
+                isDeleted
+                    ? Color.secondary.opacity(isSelected ? 0.30 : 0.20)
+                    : (isSelected ? Theme.accent : Theme.timelineClip)
+            )
+            .overlay {
+                Rectangle()
+                    .stroke(
+                        isSelected ? Theme.timelineHandle : (isDeleted ? Color.secondary.opacity(0.42) : Theme.timelineClipBorder),
+                        lineWidth: isSelected ? 2 : 1
+                    )
+            }
             .overlay(alignment: .bottom) {
                 if let waveformSamples, !waveformSamples.isEmpty, !isDeleted {
                     TimelineWaveformPreview(samples: waveformSamples)
@@ -920,16 +919,16 @@ struct TimelineClipRow: View {
                         Label(isDeleted ? "Deleted" : "Clip \(segment.index + 1)", systemImage: isDeleted ? "trash" : "rectangle.on.rectangle")
                             .font(.system(size: 10, weight: .semibold))
                         Text("\(formatClipDuration(segment.end - segment.start)) @ \(TimelineClipSpeed.label(segment.speed))")
-                            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
                     }
                     .foregroundStyle(foreground)
-                    .shadow(color: Theme.borderStrong, radius: 3, y: 1)
+                    .shadow(color: Color.black.opacity(0.35), radius: 3, y: 1)
                     .padding(.top, 11)
                     .allowsHitTesting(false)
                 }
             }
-            .overlay(alignment: .bottomLeading) { Text(formatPlaybackTime(segment.start)).font(.system(size: 8, weight: .medium, design: .monospaced)).foregroundStyle(foreground.opacity(0.52)).padding(.leading, 9).padding(.bottom, 4) }
-            .overlay(alignment: .bottomTrailing) { Text(formatPlaybackTime(segment.end)).font(.system(size: 8, weight: .medium, design: .monospaced)).foregroundStyle(foreground.opacity(0.52)).padding(.trailing, 9).padding(.bottom, 4) }
+            .overlay(alignment: .bottomLeading) { Text(formatPlaybackTime(segment.start)).font(.system(size: 8, weight: .medium, design: .monospaced)).foregroundStyle(foreground.opacity(0.65)).padding(.leading, 9).padding(.bottom, 5) }
+            .overlay(alignment: .bottomTrailing) { Text(formatPlaybackTime(segment.end)).font(.system(size: 8, weight: .medium, design: .monospaced)).foregroundStyle(foreground.opacity(0.65)).padding(.trailing, 9).padding(.bottom, 5) }
             .padding(.vertical, 5)
             .padding(.horizontal, 2)
     }
@@ -1292,10 +1291,10 @@ private struct TimelineCameraClipItem: View {
         Button {
             edits.selectCameraClip(id: clip.id)
         } label: {
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
+            Rectangle()
                 .fill(accent.opacity(clip.settings.clamped.enabled ? (isSelected ? 0.55 : 0.34) : 0.18))
                 .overlay {
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    Rectangle()
                         .stroke(accent.opacity(isSelected ? 0.95 : 0.65), lineWidth: isSelected ? 2 : 1)
                 }
                 .overlay { label(width: itemWidth) }
@@ -1385,9 +1384,9 @@ struct TimelineRegionItem: View {
     }
 
     private func regionBody(width: CGFloat) -> some View {
-        RoundedRectangle(cornerRadius: 7, style: .continuous)
+        Rectangle()
             .fill(kind.accent.opacity(isSelected ? 0.55 : 0.34))
-            .overlay { RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(kind.accent.opacity(isSelected ? 0.95 : 0.65), lineWidth: isSelected ? 2 : 1) }
+            .overlay { Rectangle().stroke(kind.accent.opacity(isSelected ? 0.95 : 0.65), lineWidth: isSelected ? 2 : 1) }
             .overlay { regionLabel(width: width) }
             .overlay(alignment: .leading) {
                 if showsLeadingHandle {
@@ -1414,7 +1413,7 @@ struct TimelineRegionItem: View {
                     .foregroundStyle(.white.opacity(0.92))
                     .padding(.horizontal, 4)
                     .padding(.vertical, 1)
-                    .background(Theme.borderStrong, in: Capsule())
+                    .background(Theme.borderStrong, in: Rectangle())
             }
         }
         .minimumScaleFactor(0.75)

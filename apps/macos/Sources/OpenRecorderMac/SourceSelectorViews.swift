@@ -16,39 +16,40 @@ struct SourceSelectorWindowView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            SourceSelectorCard(
-                sourceTab: sourceSelector.sourceTabBinding,
-                visibleTabs: sourceSelector.state.visibleTabs,
-                allSources: model.capture.sources,
-                selectedSourceID: sourceSelector.state.pendingSourceID,
-                captureMode: model.captureMode,
-                loadPhase: sourceSelector.state.loadPhase,
-                onCancel: {
-                    sourceSelector.send(.cancelRequested)
-                },
-                onRefresh: {
-                    sourceSelector.send(.refreshRequested)
-                },
-                onSelectSource: { source in
-                    sourceSelector.send(.sourceSelected(source.id))
-                },
-                onDrawArea: {
-                    sourceSelector.send(.drawAreaRequested)
-                }
-            )
-            .padding(16)
-            .background {
-                GeometryReader { proxy in
-                    Color.clear
-                        .preference(key: SourceSelectorCardHeightPreferenceKey.self, value: proxy.size.height)
-                }
+        SourceSelectorCard(
+            sourceTab: sourceSelector.sourceTabBinding,
+            visibleTabs: sourceSelector.state.visibleTabs,
+            allSources: model.capture.sources,
+            selectedSourceID: sourceSelector.state.pendingSourceID,
+            captureMode: model.captureMode,
+            loadPhase: sourceSelector.state.loadPhase,
+            onCancel: {
+                sourceSelector.send(.cancelRequested)
+            },
+            onRefresh: {
+                sourceSelector.send(.refreshRequested)
+            },
+            onSelectSource: { source in
+                sourceSelector.send(.sourceSelected(source.id))
+            },
+            onDrawArea: {
+                sourceSelector.send(.drawAreaRequested)
             }
-        }
-        .background(SourceSelectorWindowSizer(size: CGSize(width: SourceSelectorWindowMetrics.width, height: sourceSelector.state.preferredHeight)))
-        .background(Theme.appBg.ignoresSafeArea())
-        .onPreferenceChange(SourceSelectorCardHeightPreferenceKey.self) { cardHeight in
-            sourceSelector.send(.heightMeasured(cardHeight))
+        )
+        .frame(width: SourceSelectorWindowMetrics.width, height: SourceSelectorWindowMetrics.height)
+        .background {
+            ZStack {
+                Rectangle()
+                    .fill(.ultraThinMaterial)
+                Rectangle()
+                    .fill(Theme.surface.opacity(0.96))
+                LinearGradient(
+                    colors: [Color.white.opacity(0.04), Color.clear],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            }
+            .ignoresSafeArea()
         }
         .onAppear {
             sourceSelector.configure(
@@ -100,8 +101,6 @@ struct SourceSelectorWindowView: View {
     }
 }
 
-
-
 enum SourceSelectorTab: String, CaseIterable, Identifiable, Hashable {
     case screens
     case windows
@@ -137,7 +136,6 @@ enum SourceSelectorTab: String, CaseIterable, Identifiable, Hashable {
     }
 }
 
-
 struct SourceSelectorCard: View {
     @Binding var sourceTab: SourceSelectorTab
     var visibleTabs: [SourceSelectorTab]
@@ -163,73 +161,90 @@ struct SourceSelectorCard: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(alignment: .center, spacing: 10) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Choose what to capture")
-                        .font(.system(size: 18, weight: .semibold))
-                    Text(selectorDescription)
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
+            header
+                .padding(.horizontal, 20)
+                .padding(.top, 18)
+                .padding(.bottom, 12)
+
+            VStack(spacing: 12) {
+                HStack {
+                    SourceTabs(sourceTab: $sourceTab, visibleTabs: visibleTabs)
+                    Spacer()
                 }
-                Spacer()
-                StudioButton(hitTarget: .circle, help: loadPhase == .loading ? "Refreshing Sources" : "Refresh Sources") {
+
+                ZStack {
+                    if sourceTab == .area && sources.isEmpty {
+                        SourceEmptyState(sourceTab: sourceTab, onDrawArea: onDrawArea)
+                    } else if loadPhase == .loading && sources.isEmpty {
+                        SourceLoadingState()
+                    } else if case .failed(let message) = loadPhase, sources.isEmpty {
+                        SourceLoadFailureState(message: message, onRetry: onRefresh)
+                    } else if sources.isEmpty {
+                        SourceEmptyState(sourceTab: sourceTab, onDrawArea: onDrawArea)
+                    } else {
+                        VStack(spacing: 8) {
+                            if case .failed(let message) = loadPhase {
+                                SourceLoadIssueBanner(message: message)
+                            }
+                            SourceGrid(
+                                sources: sources,
+                                sourceTab: sourceTab,
+                                selectedSourceID: selectedSourceID,
+                                onSelectSource: onSelectSource
+                            )
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 18)
+        }
+    }
+
+    private var header: some View {
+        HStack(alignment: .center, spacing: 10) {
+            Image(systemName: headerIcon)
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(Theme.accent)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Choose what to capture")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Color.white)
+                Text(selectorDescription)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.fgMuted)
+            }
+
+            Spacer(minLength: 8)
+
+            HStack(spacing: 4) {
+                StudioButton(hitTarget: .rounded(6), help: loadPhase == .loading ? "Refreshing Sources" : "Refresh Sources") {
                     onRefresh?()
                 } label: {
                     Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 12, weight: .semibold))
-                        .frame(width: 32, height: 32)
-                        .background(Theme.overlay, in: Circle())
+                        .font(.system(size: 12, weight: .medium))
+                        .frame(width: 26, height: 26)
                 }
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.fgMuted)
                 .disabled(onRefresh == nil || loadPhase == .loading)
 
                 if let onCancel {
-                    StudioButton(hitTarget: .circle, help: "Cancel", action: onCancel) {
+                    StudioButton(hitTarget: .rounded(6), help: "Cancel", action: onCancel) {
                         Image(systemName: "xmark")
-                            .font(.system(size: 12, weight: .semibold))
-                            .frame(width: 32, height: 32)
-                            .background(Theme.overlay, in: Circle())
+                            .font(.system(size: 12, weight: .medium))
+                            .frame(width: 26, height: 26)
                     }
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.fgMuted)
                     .keyboardShortcut(.cancelAction)
                 }
             }
-            .padding(16)
-
-            VStack(spacing: 14) {
-                SourceTabs(sourceTab: $sourceTab, visibleTabs: visibleTabs)
-
-                if sourceTab == .area && sources.isEmpty {
-                    SourceEmptyState(sourceTab: sourceTab, onDrawArea: onDrawArea)
-                } else if loadPhase == .loading && sources.isEmpty {
-                    SourceLoadingState()
-                } else if case .failed(let message) = loadPhase, sources.isEmpty {
-                    SourceLoadFailureState(message: message, onRetry: onRefresh)
-                } else if sources.isEmpty {
-                    SourceEmptyState(sourceTab: sourceTab, onDrawArea: onDrawArea)
-                } else {
-                    if case .failed(let message) = loadPhase {
-                        SourceLoadIssueBanner(message: message)
-                    }
-                    SourceGrid(
-                        sources: sources,
-                        sourceTab: sourceTab,
-                        selectedSourceID: selectedSourceID,
-                        onSelectSource: onSelectSource
-                    )
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 16)
-
         }
-        .background(Theme.surface.opacity(0.96), in: RoundedRectangle(cornerRadius: 12))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .overlay {
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Theme.border)
-        }
-        .shadow(color: Color.black.opacity(0.35), radius: 26, y: 18)
+    }
+
+    private var headerIcon: String {
+        captureMode == .screenshot ? "camera.viewfinder" : "record.circle"
     }
 
     private var selectorDescription: String {
@@ -239,7 +254,6 @@ struct SourceSelectorCard: View {
             "Pick a screen, app window, or drawn area for the next recording."
         }
     }
-
 }
 
 struct SourceTabs: View {
@@ -247,23 +261,44 @@ struct SourceTabs: View {
     var visibleTabs: [SourceSelectorTab]
 
     var body: some View {
-        Picker("Source Type", selection: $sourceTab) {
+        HStack(spacing: 4) {
             ForEach(visibleTabs) { tab in
-                Label(tab.title, systemImage: tab.symbolName)
-                    .tag(tab)
+                let isSelected = sourceTab == tab
+                Button {
+                    withAnimation(Theme.springFast) {
+                        sourceTab = tab
+                    }
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: tab.symbolName)
+                            .font(.system(size: 12, weight: .semibold))
+                        Text(tab.title)
+                            .font(.system(size: 12, weight: isSelected ? .semibold : .medium))
+                    }
+                    .padding(.horizontal, 10)
+                    .frame(height: 26)
+                    .foregroundStyle(isSelected ? Color.white : Theme.fgMuted)
+                    .background(
+                        isSelected ? Color.white.opacity(0.12) : Color.clear,
+                        in: RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous)
+                    )
+                }
+                .buttonStyle(.plain)
             }
         }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .accessibilityLabel("Source Type")
     }
 }
 
 private struct SourceLoadingState: View {
     var body: some View {
-        ProgressView("Loading current screens and windows…")
-            .controlSize(.small)
-            .frame(maxWidth: .infinity, minHeight: 210)
+        VStack(spacing: 12) {
+            ProgressView()
+                .controlSize(.regular)
+            Text("Loading current screens and windows…")
+                .font(.system(size: 12))
+                .foregroundStyle(Theme.fgMuted)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
@@ -272,16 +307,30 @@ private struct SourceLoadFailureState: View {
     var onRetry: (() -> Void)?
 
     var body: some View {
-        ContentUnavailableView {
-            Label("Sources Unavailable", systemImage: "exclamationmark.triangle")
-        } description: {
+        VStack(spacing: 10) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: 26))
+                .foregroundStyle(Theme.statusWarning)
+            Text("Sources Unavailable")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Color.white)
             Text(message)
-        } actions: {
+                .font(.system(size: 12))
+                .foregroundStyle(Theme.fgMuted)
+                .multilineTextAlignment(.center)
             if let onRetry {
-                Button("Try Again", action: onRetry)
+                StudioButton(hitTarget: .rectangle, action: onRetry) {
+                    Text("Try Again")
+                        .font(.system(size: 12, weight: .semibold))
+                        .padding(.horizontal, 14)
+                        .frame(height: 30)
+                        .background(Theme.accent, in: Rectangle())
+                        .foregroundStyle(.white)
+                }
+                .padding(.top, 4)
             }
         }
-        .frame(maxWidth: .infinity, minHeight: 210)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
@@ -289,13 +338,23 @@ private struct SourceLoadIssueBanner: View {
     var message: String
 
     var body: some View {
-        Label(message, systemImage: "exclamationmark.triangle.fill")
-            .font(.system(size: 11, weight: .medium))
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(10)
-            .background(Theme.overlay, in: RoundedRectangle(cornerRadius: 8))
-            .accessibilityLabel("Source refresh warning: \(message)")
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Theme.statusWarning)
+            Text(message)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(Theme.fgMuted)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(Theme.statusWarning.opacity(0.12), in: RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous)
+                .stroke(Theme.statusWarning.opacity(0.3), lineWidth: 1)
+        }
     }
 }
 
@@ -306,26 +365,46 @@ struct SourceGrid: View {
     var onSelectSource: (CaptureSource) -> Void
 
     private var columns: [GridItem] {
-        let count = sourceTab == .windows ? 3 : min(max(sources.count, 1), 3)
-        return Array(repeating: GridItem(.flexible(), spacing: 8), count: count)
+        let count = sourceTab == .windows ? 3 : min(max(sources.count, 1), 2)
+        return Array(repeating: GridItem(.flexible(), spacing: 14), count: count)
     }
 
     var body: some View {
-        if sourceTab == .windows {
-            ScrollView(.vertical) {
+        if sourceTab == .screens && sources.count == 1, let singleSource = sources.first {
+            singleScreenLayout(singleSource)
+        } else if sourceTab == .windows {
+            ScrollView(.vertical, showsIndicators: true) {
                 grid
-                    .padding(.trailing, 2)
+                    .padding(.horizontal, 2)
+                    .padding(.vertical, 4)
             }
-            .frame(maxHeight: 356)
-            .scrollClipDisabled(false)
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .frame(maxHeight: .infinity)
         } else {
             grid
+                .padding(.horizontal, 2)
+                .frame(maxHeight: .infinity, alignment: .center)
         }
     }
 
+    private func singleScreenLayout(_ source: CaptureSource) -> some View {
+        VStack {
+            Spacer(minLength: 0)
+            SourceTile(
+                source: source,
+                isSelected: selectedSourceID == source.id,
+                isCompact: false
+            ) {
+                onSelectSource(source)
+            }
+            .frame(maxWidth: 520)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 2)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
     private var grid: some View {
-        LazyVGrid(columns: columns, spacing: 8) {
+        LazyVGrid(columns: columns, spacing: 14) {
             ForEach(sources) { source in
                 SourceTile(
                     source: source,
@@ -336,7 +415,6 @@ struct SourceGrid: View {
                 }
             }
         }
-        .clipped()
     }
 }
 
@@ -345,95 +423,61 @@ struct SourceTile: View {
     var isSelected: Bool
     var isCompact: Bool
     var action: () -> Void
+    @State private var isHovering = false
 
     var body: some View {
-        StudioButton(hitTarget: .rounded(9), action: action) {
-            if isCompact {
-                squareContent
-            } else {
-                standardContent
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 6) {
+                SourceThumbnailPreview(
+                    source: source,
+                    isSelected: isSelected,
+                    isHovering: isHovering,
+                    isCompact: isCompact
+                )
+
+                labels
             }
         }
+        .buttonStyle(.plain)
         .accessibilityLabel("\(source.name), \(source.subtitle)")
         .accessibilityValue(isSelected ? "Current source" : "")
-    }
-
-    private var standardContent: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            SourceThumbnailPreview(
-                source: source,
-                isSelected: isSelected,
-                isCompact: isCompact
-            )
-            .aspectRatio(previewAspectRatio, contentMode: .fit)
-            .frame(maxWidth: .infinity)
-
-            labels
-        }
-        .padding(8)
-        .background(Theme.surfaceRaised.opacity(0.8), in: RoundedRectangle(cornerRadius: 9))
-        .clipShape(RoundedRectangle(cornerRadius: 9))
-        .overlay {
-            RoundedRectangle(cornerRadius: 9)
-                .stroke(isSelected ? Theme.accent : Theme.border, lineWidth: isSelected ? 2 : 1)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private var squareContent: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            SourceThumbnailPreview(
-                source: source,
-                isSelected: isSelected,
-                isCompact: isCompact
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-
-            labels
-        }
-        .padding(4)
-        .aspectRatio(1, contentMode: .fit)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.surfaceRaised.opacity(0.8), in: RoundedRectangle(cornerRadius: 9))
-        .clipShape(RoundedRectangle(cornerRadius: 9))
-        .overlay {
-            RoundedRectangle(cornerRadius: 9)
-                .stroke(isSelected ? Theme.accent : Theme.border, lineWidth: isSelected ? 2 : 1)
+        .onHover { hovering in
+            withAnimation(Theme.springFast) {
+                isHovering = hovering
+            }
         }
     }
 
     private var labels: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: 1) {
+            HStack(spacing: 4) {
                 Text(source.name)
-                    .font(.system(size: isCompact ? 12 : 13, weight: .medium))
+                    .font(.system(size: isCompact ? 11 : 12, weight: .semibold))
+                    .foregroundStyle(isSelected ? Color.white : (isHovering ? Color.white : Theme.fg))
                     .lineLimit(1)
-                Spacer()
+                Spacer(minLength: 0)
                 if isSelected {
-                    Text("Current")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 3)
-                        .background(Theme.overlay, in: RoundedRectangle(cornerRadius: 5))
+                    Text("Selected")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(Theme.accent)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(Theme.accent.opacity(0.16), in: RoundedRectangle(cornerRadius: 3, style: .continuous))
                 }
             }
             Text(source.subtitle)
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
+                .font(.system(size: 10))
+                .foregroundStyle(Theme.fgMuted)
                 .lineLimit(1)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private var previewAspectRatio: CGFloat {
-        source.kind == .window ? 1.6 : 16.0 / 9.0
+        .padding(.horizontal, 2)
     }
 }
 
 struct SourceThumbnailPreview: View {
     var source: CaptureSource
     var isSelected: Bool
+    var isHovering: Bool
     var isCompact: Bool
 
     private var aspectRatio: CGFloat {
@@ -442,16 +486,13 @@ struct SourceThumbnailPreview: View {
 
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(Theme.overlay)
-
             if let thumbnail = source.thumbnailData,
                let image = NSImage(data: thumbnail) {
                 Image(nsImage: image)
                     .resizable()
                     .scaledToFit()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .clipped()
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous))
             } else {
                 thumbnailPlaceholder
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -463,9 +504,10 @@ struct SourceThumbnailPreview: View {
                         Spacer()
                         Image(systemName: "checkmark")
                             .font(.system(size: 10, weight: .bold))
-                            .frame(width: 18, height: 18)
-                            .background(Theme.accent, in: Circle())
+                            .frame(width: 20, height: 20)
+                            .background(Theme.accent, in: RoundedRectangle(cornerRadius: 4, style: .continuous))
                             .foregroundStyle(.white)
+                            .shadow(color: Theme.accent.opacity(0.5), radius: 4)
                     }
                     Spacer()
                 }
@@ -473,22 +515,25 @@ struct SourceThumbnailPreview: View {
             }
         }
         .aspectRatio(aspectRatio, contentMode: .fit)
-        .frame(maxWidth: .infinity)
-        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .stroke(Theme.border, lineWidth: 1)
+            RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous)
+                .strokeBorder(
+                    isSelected ? Theme.accent : (isHovering ? Theme.borderStrong : Theme.borderSubtle),
+                    lineWidth: isSelected ? 2 : 1
+                )
         }
+        .shadow(color: isSelected ? Theme.accent.opacity(0.3) : (isHovering ? Color.black.opacity(0.3) : Color.clear), radius: isSelected ? 8 : 4, y: 2)
     }
 
     private var thumbnailPlaceholder: some View {
         ZStack {
+            Theme.overlay
             Image(systemName: source.kind == .window ? "macwindow" : source.kind == .area ? "rectangle.dashed" : "display")
                 .font(.system(size: isCompact ? 18 : 24, weight: .medium))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.fgSubtle)
         }
     }
-
 }
 
 struct SourceEmptyState: View {
@@ -496,35 +541,34 @@ struct SourceEmptyState: View {
     var onDrawArea: (() -> Void)?
 
     var body: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 12) {
             Image(systemName: sourceTab.symbolName)
-                .font(.system(size: 28))
-                .foregroundStyle(.secondary)
-                .frame(width: 64, height: 64)
-                .background(Theme.overlay, in: RoundedRectangle(cornerRadius: 14))
-            Text(sourceTab == .area ? "Draw a capture area" : "No sources available")
-                .font(.system(size: 15, weight: .semibold))
-            Text(sourceTab == .area ? "Select the part of the screen you want to capture." : "Try a different tab or make sure the source is visible.")
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
+                .font(.system(size: 32, weight: .medium))
+                .foregroundStyle(Theme.accent)
+
+            VStack(spacing: 4) {
+                Text(sourceTab == .area ? "Draw a capture area" : "No sources available")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Color.white)
+                Text(sourceTab == .area ? "Select the part of the screen you want to capture." : "Try a different tab or make sure the window is open.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.fgMuted)
+            }
+
             if sourceTab == .area {
-                StudioButton(hitTarget: .rounded(8)) {
+                StudioButton(hitTarget: .rectangle) {
                     onDrawArea?()
                 } label: {
                     Label("Draw Selection", systemImage: "rectangle.dashed")
                         .font(.system(size: 12, weight: .semibold))
-                        .frame(height: 34)
-                        .padding(.horizontal, 12)
-                        .background(Theme.accent, in: RoundedRectangle(cornerRadius: 8))
+                        .frame(height: Theme.btnHeightMd)
+                        .padding(.horizontal, 16)
+                        .background(Theme.accent, in: Rectangle())
                         .foregroundStyle(.white)
                 }
                 .padding(.top, 4)
             }
         }
-        .frame(maxWidth: .infinity, minHeight: 210)
-        .overlay {
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(Theme.border, style: StrokeStyle(lineWidth: 1, dash: [5, 5]))
-        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

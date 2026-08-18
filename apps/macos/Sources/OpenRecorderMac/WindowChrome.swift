@@ -10,6 +10,7 @@ enum NativeWindowRole {
     case sourceSelector
     case microphoneSelector
     case cameraSelector
+    case cameraBubble
     case areaSelector
     case studio
 }
@@ -46,6 +47,8 @@ struct WindowConfigurator: NSViewRepresentable {
 }
 
 final class WindowConfigurationView: NSView {
+    override var isFlipped: Bool { true }
+
     var role: NativeWindowRole = .studio {
         didSet {
             if role != oldValue {
@@ -116,6 +119,8 @@ final class WindowConfigurationView: NSView {
             configureMicrophoneSelector(window)
         case .cameraSelector:
             configureCameraSelector(window)
+        case .cameraBubble:
+            configureCameraBubble(window)
         case .areaSelector:
             configureAreaSelector(window)
         case .studio:
@@ -123,15 +128,42 @@ final class WindowConfigurationView: NSView {
         }
     }
 
+    private func configureCameraBubble(_ window: NSWindow) {
+        window.title = "Camera Preview"
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.hasShadow = false
+        window.level = .floating
+        window.collectionBehavior = [
+            .canJoinAllSpaces,
+            .fullScreenAuxiliary,
+            .stationary
+        ]
+        window.isMovableByWindowBackground = true
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        window.styleMask.insert([.fullSizeContentView, .resizable])
+        [.closeButton, .miniaturizeButton, .zoomButton].forEach { button in
+            window.standardWindowButton(button)?.isHidden = true
+        }
+        if window.frame.origin.y < 50 || window.frame.origin == .zero {
+            if let screen = window.screen ?? NSScreen.main {
+                let visibleFrame = screen.visibleFrame
+                let windowSize = window.frame.size
+                let origin = CGPoint(
+                    x: visibleFrame.maxX - windowSize.width - 32,
+                    y: visibleFrame.maxY - windowSize.height - 32
+                )
+                window.setFrameOrigin(origin)
+            }
+        }
+        window.orderFrontRegardless()
+    }
+
     private func configureHUD(_ window: NSWindow) {
-        let size = HUDWindowMetrics.clampedSize(
-            for: preferredSize ?? HUDWindowMetrics.defaultSize,
-            screen: window.screen ?? NSScreen.main
-        )
+        let size = HUDWindowMetrics.defaultSize
         window.title = "Open Recorder"
         window.setContentSize(size)
-        window.minSize = size
-        window.maxSize = size
         window.isOpaque = false
         window.backgroundColor = .clear
         window.hasShadow = false
@@ -145,7 +177,9 @@ final class WindowConfigurationView: NSView {
         [.closeButton, .miniaturizeButton, .zoomButton].forEach { button in
             window.standardWindowButton(button)?.isHidden = true
         }
-        positionBottomCenter(window, contentSize: size)
+        if window.frame.origin.y < 30 || window.frame.origin == .zero {
+            positionBottomCenter(window, contentSize: size)
+        }
         startSyncingHUDToActiveSpace(for: window)
         window.orderFrontRegardless()
     }
@@ -174,17 +208,21 @@ final class WindowConfigurationView: NSView {
 
     private func configureSourceSelector(_ window: NSWindow) {
         window.title = "Choose Source"
-        window.setContentSize(NSSize(width: SourceSelectorWindowMetrics.width, height: SourceSelectorWindowMetrics.compactHeight))
-        window.minSize = NSSize(width: SourceSelectorWindowMetrics.minWidth, height: SourceSelectorWindowMetrics.minHeight)
-        window.maxSize = NSSize(width: 1400, height: SourceSelectorWindowMetrics.maxHeight)
+        let size = NSSize(width: SourceSelectorWindowMetrics.width, height: SourceSelectorWindowMetrics.height)
+        window.setContentSize(size)
+        window.minSize = size
+        window.maxSize = size
         window.isOpaque = true
         window.backgroundColor = NSColor(red: 0.055, green: 0.055, blue: 0.070, alpha: 1)
         window.hasShadow = true
         window.level = .floating
         window.collectionBehavior = [.fullScreenAuxiliary]
-        window.isMovableByWindowBackground = false
-        window.titleVisibility = .visible
-        window.titlebarAppearsTransparent = false
+        window.isMovableByWindowBackground = true
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        window.styleMask = [.titled, .closable, .fullSizeContentView]
+        window.standardWindowButton(.miniaturizeButton)?.isHidden = true
+        window.standardWindowButton(.zoomButton)?.isHidden = true
         window.center()
     }
 
@@ -198,9 +236,12 @@ final class WindowConfigurationView: NSView {
         window.hasShadow = true
         window.level = .floating
         window.collectionBehavior = [.fullScreenAuxiliary]
-        window.isMovableByWindowBackground = false
-        window.titleVisibility = .visible
-        window.titlebarAppearsTransparent = false
+        window.isMovableByWindowBackground = true
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        window.styleMask.insert([.titled, .closable, .fullSizeContentView])
+        window.standardWindowButton(.miniaturizeButton)?.isHidden = true
+        window.standardWindowButton(.zoomButton)?.isHidden = true
         window.center()
     }
 
@@ -214,9 +255,12 @@ final class WindowConfigurationView: NSView {
         window.hasShadow = true
         window.level = .floating
         window.collectionBehavior = [.fullScreenAuxiliary]
-        window.isMovableByWindowBackground = false
-        window.titleVisibility = .visible
-        window.titlebarAppearsTransparent = false
+        window.isMovableByWindowBackground = true
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        window.styleMask.insert([.titled, .closable, .fullSizeContentView])
+        window.standardWindowButton(.miniaturizeButton)?.isHidden = true
+        window.standardWindowButton(.zoomButton)?.isHidden = true
         window.center()
     }
 
@@ -332,15 +376,16 @@ final class WindowConfigurationView: NSView {
 
 enum SourceSelectorWindowMetrics {
     static let width: CGFloat = 660
-    static let minWidth: CGFloat = 520
-    static let compactHeight: CGFloat = 454
-    static let minHeight: CGFloat = 360
-    static let maxHeight: CGFloat = 1200
+    static let height: CGFloat = 490
+    static let minWidth: CGFloat = 660
+    static let compactHeight: CGFloat = 490
+    static let minHeight: CGFloat = 490
+    static let maxHeight: CGFloat = 490
     static let outerPadding: CGFloat = 16
 }
 
 struct SourceSelectorCardHeightPreferenceKey: PreferenceKey {
-    static let defaultValue: CGFloat = SourceSelectorWindowMetrics.compactHeight - (SourceSelectorWindowMetrics.outerPadding * 2)
+    static let defaultValue: CGFloat = SourceSelectorWindowMetrics.height
 
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = nextValue()
@@ -363,6 +408,8 @@ struct SourceSelectorWindowSizer: NSViewRepresentable {
 }
 
 final class SourceSelectorWindowSizingView: NSView {
+    override var isFlipped: Bool { true }
+
     var preferredContentSize: CGSize = .zero
 
     override func viewDidMoveToWindow() {
@@ -371,14 +418,14 @@ final class SourceSelectorWindowSizingView: NSView {
     }
 
     func applyPreferredContentSize() {
-        guard let window, preferredContentSize.width > 0, preferredContentSize.height > 0 else { return }
+        guard let window else { return }
 
-        DispatchQueue.main.async { [weak self, weak window] in
-            guard let self, let window else { return }
+        DispatchQueue.main.async { [weak window] in
+            guard let window else { return }
 
             let targetContentSize = NSSize(
-                width: self.preferredContentSize.width,
-                height: min(max(self.preferredContentSize.height, SourceSelectorWindowMetrics.minHeight), SourceSelectorWindowMetrics.maxHeight)
+                width: SourceSelectorWindowMetrics.width,
+                height: SourceSelectorWindowMetrics.height
             )
             let currentContentSize = window.contentView?.bounds.size ?? window.contentRect(forFrameRect: window.frame).size
             guard abs(currentContentSize.width - targetContentSize.width) > 0.5 ||
@@ -464,11 +511,16 @@ struct WindowCommandBridge: View {
         case .showCameraSelector:
             NSApp.unhide(nil)
             openWindow(id: "camera-selector")
+        case .showCameraBubble:
+            openWindow(id: "camera-bubble")
+        case .closeCameraBubble:
+            dismissWindow(id: "camera-bubble")
         case .showAreaSelector:
             NSApp.unhide(nil)
             openWindow(id: "area-selector")
         case .showStudio:
             NSApp.unhide(nil)
+            dismissCaptureWindows()
             if let editorSession = command.editorSession {
                 openWindow(id: "editor", value: editorSession)
             } else {
@@ -495,6 +547,7 @@ struct WindowCommandBridge: View {
         dismissWindow(id: "area-selector")
         dismissWindow(id: "microphone-selector")
         dismissWindow(id: "camera-selector")
+        dismissWindow(id: "camera-bubble")
     }
 
     private func hideAppWindowsForCapture() {
@@ -507,12 +560,8 @@ struct HUDOverlayWindowView: View {
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
-        ZStack {
-            Color.clear
-
-            CaptureHUD(options: model.captureOptions)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 18)
+        CaptureHUD(options: model.captureOptions)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 18)
     }
 }

@@ -30,25 +30,26 @@ struct TimelineSelectionSidebar: View {
             Image(systemName: selectionSymbolName)
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(selectionAccent)
-                .frame(width: 30, height: 30)
-                .background(selectionAccent.opacity(0.12), in: RoundedRectangle(cornerRadius: 7))
+                .frame(width: 32, height: 32)
+                .background(selectionAccent.opacity(0.14), in: RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous))
 
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(selectionTitle)
                     .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Color.white)
                 Text(selectionSubtitle)
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.fgMuted)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
             Spacer(minLength: 0)
         }
-        .padding(10)
-        .background(Theme.overlay, in: RoundedRectangle(cornerRadius: 8))
+        .padding(12)
+        .background(Theme.surfaceRaised.opacity(0.85), in: RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Theme.overlay)
+            RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous)
+                .stroke(Theme.borderStrong.opacity(0.60), lineWidth: 1)
         }
     }
 
@@ -96,7 +97,7 @@ struct TimelineSelectionSidebar: View {
             }
         }
         .padding(12)
-        .background(Color.white.opacity(0.025))
+        .background(Theme.surface.opacity(0.60))
     }
 
     @ViewBuilder
@@ -420,18 +421,19 @@ private struct TimelineSelectionInfoRow: View {
     var body: some View {
         HStack {
             Text(title)
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(.secondary)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(Theme.fgMuted)
             Spacer()
             Text(value)
-                .font(.system(size: 10, weight: .medium, design: .monospaced))
-                .foregroundStyle(Color.secondary.opacity(0.78))
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .foregroundStyle(Theme.fg)
         }
-        .padding(10)
-        .background(Theme.overlay, in: RoundedRectangle(cornerRadius: 8))
+        .padding(.horizontal, 10)
+        .frame(height: 30)
+        .background(Theme.overlay, in: Rectangle())
         .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Theme.overlay)
+            Rectangle()
+                .stroke(Theme.borderSubtle, lineWidth: 1)
         }
     }
 }
@@ -442,21 +444,32 @@ private struct TimelineSelectionActionButton: View {
     var isDestructive = false
     var isEnabled = true
     var action: () -> Void
+    @State private var isHovering = false
 
     var body: some View {
-        StudioButton(hitTarget: .rounded(8), action: action) {
-            Label(title, systemImage: symbolName)
-                .font(.system(size: 11, weight: .semibold))
-                .frame(maxWidth: .infinity)
-                .frame(height: 34)
-                .foregroundStyle(isDestructive ? Color.red.opacity(isEnabled ? 0.92 : 0.36) : Color.secondary.opacity(isEnabled ? 1 : 0.45))
-                .background(Theme.overlay, in: RoundedRectangle(cornerRadius: 8))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(isDestructive ? Color.red.opacity(isEnabled ? 0.18 : 0.08) : Theme.overlay)
-                }
+        StudioButton(hitTarget: .rounded(Theme.radiusMd), action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: symbolName)
+                    .font(.system(size: 11, weight: .semibold))
+                Text(title)
+                    .font(.system(size: 11, weight: .medium))
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: Theme.btnHeightSm)
+            .foregroundStyle(isDestructive ? Color.red.opacity(isEnabled ? 0.95 : 0.36) : (isHovering ? Color.white : Theme.fgMuted))
+            .background(
+                isDestructive ? Color.red.opacity(isHovering ? 0.18 : 0.10) : (isHovering ? Color.white.opacity(0.08) : Theme.overlay),
+                in: RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous)
+                    .stroke(isDestructive ? Color.red.opacity(0.30) : (isHovering ? Theme.borderStrong : Theme.borderSubtle), lineWidth: 1)
+            }
         }
         .disabled(!isEnabled)
+        .onHover { hovering in
+            isHovering = hovering
+        }
     }
 }
 
@@ -467,7 +480,7 @@ private struct TimelineClipSpeedPicker: View {
         HStack(spacing: 6) {
             ForEach(TimelineClipSpeed.values, id: \.self) { value in
                 let isSelected = TimelineClipSpeed.normalized(speed) == value
-                StudioButton(hitTarget: .rounded(7)) {
+                StudioButton(hitTarget: .rounded(Theme.radiusSm)) {
                     speed = value
                 } label: {
                     Text(TimelineClipSpeed.label(value))
@@ -475,9 +488,9 @@ private struct TimelineClipSpeedPicker: View {
                         .frame(maxWidth: .infinity)
                         .frame(height: 30)
                         .foregroundStyle(isSelected ? Theme.timelineClipForeground : Color.secondary)
-                        .background(isSelected ? Theme.timelineHandle.opacity(0.92) : Theme.overlay, in: RoundedRectangle(cornerRadius: 7))
+                        .background(isSelected ? Theme.timelineHandle.opacity(0.92) : Theme.overlay, in: RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous))
                         .overlay {
-                            RoundedRectangle(cornerRadius: 7)
+                            RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous)
                                 .stroke(isSelected ? Theme.timelineClipBorder : Theme.overlay, lineWidth: isSelected ? 1.5 : 1)
                         }
                 }
@@ -496,34 +509,38 @@ private struct TimelineZoomDepthPicker: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("Depth")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Theme.fgMuted)
                 Spacer()
                 Text(TimelineZoomDepth.label(depth))
-                    .font(.system(size: 10, weight: .medium, design: .monospaced))
-                    .foregroundStyle(Color.secondary.opacity(0.78))
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(Color.white)
             }
 
-            HStack(spacing: 5) {
+            HStack(spacing: 4) {
                 ForEach(TimelineZoomDepth.values, id: \.self) { value in
                     let isSelected = abs(depth - value) < 0.001
-                    StudioButton(hitTarget: .rounded(7)) {
+                    StudioButton(hitTarget: .rounded(Theme.radiusSm)) {
                         if !isSelected {
                             depth = value
                         }
                     } label: {
                         Text(TimelineZoomDepth.label(value))
-                            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
                             .lineLimit(1)
                             .minimumScaleFactor(0.75)
                             .frame(maxWidth: .infinity)
-                            .frame(height: 30)
-                            .foregroundStyle(isSelected ? Color.primary : Color.secondary)
-                            .background(isSelected ? Theme.accent.opacity(0.18) : Theme.overlay, in: RoundedRectangle(cornerRadius: 7))
+                            .frame(height: 28)
+                            .foregroundStyle(isSelected ? Color.white : Theme.fgMuted)
+                            .background(
+                                isSelected ? Theme.accent : Color.white.opacity(0.04),
+                                in: RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous)
+                            )
                             .overlay {
-                                RoundedRectangle(cornerRadius: 7)
-                                    .stroke(isSelected ? Theme.accent.opacity(0.42) : Theme.overlay, lineWidth: isSelected ? 1.5 : 1)
+                                RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous)
+                                    .stroke(isSelected ? Theme.accent.opacity(0.80) : Theme.borderSubtle, lineWidth: 1)
                             }
+                            .shadow(color: isSelected ? Theme.accent.opacity(0.30) : Color.clear, radius: 4, y: 1)
                     }
                     .help("Set zoom depth to \(TimelineZoomDepth.label(value))")
                     .accessibilityLabel("Set zoom depth to \(TimelineZoomDepth.label(value))")
@@ -543,34 +560,38 @@ private struct TimelineZoomStylePicker: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("Style")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Theme.fgMuted)
                 Spacer()
                 Text(preset.title)
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(Color.secondary.opacity(0.78))
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color.white)
             }
 
-            HStack(spacing: 5) {
+            HStack(spacing: 4) {
                 ForEach(TimelineZoomAnimationPreset.allCases) { value in
                     let isSelected = preset == value
-                    StudioButton(hitTarget: .rounded(7)) {
+                    StudioButton(hitTarget: .rounded(Theme.radiusSm)) {
                         if !isSelected {
                             preset = value
                         }
                     } label: {
                         Text(value.shortTitle)
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.system(size: 11, weight: .semibold))
                             .lineLimit(1)
                             .minimumScaleFactor(0.65)
                             .frame(maxWidth: .infinity)
-                            .frame(height: 30)
-                            .foregroundStyle(isSelected ? Color.primary : Color.secondary)
-                            .background(isSelected ? Theme.accent.opacity(0.18) : Theme.overlay, in: RoundedRectangle(cornerRadius: 7))
+                            .frame(height: 28)
+                            .foregroundStyle(isSelected ? Color.white : Theme.fgMuted)
+                            .background(
+                                isSelected ? Theme.accent : Color.white.opacity(0.04),
+                                in: RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous)
+                            )
                             .overlay {
-                                RoundedRectangle(cornerRadius: 7)
-                                    .stroke(isSelected ? Theme.accent.opacity(0.42) : Theme.overlay, lineWidth: isSelected ? 1.5 : 1)
+                                RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous)
+                                    .stroke(isSelected ? Theme.accent.opacity(0.80) : Theme.borderSubtle, lineWidth: 1)
                             }
+                            .shadow(color: isSelected ? Theme.accent.opacity(0.30) : Color.clear, radius: 4, y: 1)
                     }
                     .help("Set zoom style to \(value.title)")
                     .accessibilityLabel("Set zoom style to \(value.title)")

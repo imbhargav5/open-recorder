@@ -237,7 +237,7 @@ private struct WorkspaceAutosaveFailureBanner: View {
 
             Spacer(minLength: 12)
 
-            StudioButton(hitTarget: .rounded(7), action: retry) {
+            StudioButton(hitTarget: .rectangle, action: retry) {
                 HStack(spacing: 6) {
                     if isRetrying {
                         ProgressView()
@@ -250,7 +250,7 @@ private struct WorkspaceAutosaveFailureBanner: View {
                     .font(.system(size: 11, weight: .semibold))
                     .padding(.horizontal, 10)
                     .frame(height: 28)
-                    .background(Theme.overlayStrong, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                    .background(Theme.overlayStrong, in: Rectangle())
             }
             .disabled(isRetrying)
         }
@@ -274,7 +274,7 @@ struct StudioNavBar: View {
     private let items: [AppSection] = [.editor, .projects]
 
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 12) {
             ForEach(items) { section in
                 StudioNavButton(
                     title: section.title,
@@ -285,24 +285,25 @@ struct StudioNavBar: View {
                 }
             }
 
-            StudioIconNavButton(title: "Help", symbolName: "questionmark.circle") {
+            Rectangle()
+                .fill(Theme.borderStrong.opacity(0.40))
+                .frame(width: 1, height: 14)
+                .padding(.horizontal, 2)
+
+            StudioIconNavButton(title: "Keyboard Shortcuts", symbolName: "questionmark") {
                 onToggleHelp()
             }
         }
-        .padding(4)
-        .background(Theme.overlayStrong.opacity(0.82), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(Theme.borderStrong.opacity(0.62), lineWidth: 1)
-        }
+        .padding(.horizontal, 4)
+        .frame(height: 32)
     }
 
     private func navSymbol(for section: AppSection) -> String {
         switch section {
-        case .editor: isScreenshotEditor ? "photo" : "video"
-        case .projects: "folder.badge.gearshape"
+        case .editor: isScreenshotEditor ? "photo.fill" : "video.fill"
+        case .projects: "folder.fill"
         case .capture: "record.circle"
-        case .settings: "gearshape"
+        case .settings: "gearshape.fill"
         }
     }
 }
@@ -312,35 +313,26 @@ struct StudioNavButton: View {
     var symbolName: String
     var isActive: Bool
     var action: () -> Void
+    @State private var isHovering = false
 
     var body: some View {
-        StudioButton(hitTarget: .rounded(7), help: title, action: action) {
-            HStack(spacing: 7) {
+        Button(action: action) {
+            HStack(spacing: 6) {
                 Image(systemName: symbolName)
-                    .font(.system(size: 14, weight: .semibold))
-                    .frame(width: 18, height: 18)
+                    .font(.system(size: Theme.iconSm, weight: isActive ? .semibold : .medium))
+                    .frame(width: 16, height: 16)
                 Text(title)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: 13, weight: isActive ? .semibold : .medium))
                     .lineLimit(1)
             }
-            .frame(height: 30)
-            .padding(.horizontal, 10)
-            .foregroundStyle(isActive ? Color.white : Color.secondary)
-            .background {
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(isActive ? Theme.accent : Color.clear)
-                    .overlay {
-                        if isActive {
-                            LinearGradient(
-                                colors: [Color.white.opacity(0.18), Color.clear],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                            .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
-                        }
-                    }
-            }
-            .shadow(color: isActive ? Theme.accent.opacity(0.28) : Color.clear, radius: 10, y: 4)
+            .foregroundStyle(isActive ? Theme.accent : (isHovering ? Color.white : Theme.fgMuted))
+            .animation(.snappy(duration: 0.16), value: isHovering)
+            .animation(.snappy(duration: 0.18), value: isActive)
+        }
+        .buttonStyle(.plain)
+        .help(title)
+        .onHover { hovering in
+            isHovering = hovering
         }
     }
 }
@@ -349,14 +341,19 @@ struct StudioIconNavButton: View {
     var title: String
     var symbolName: String
     var action: () -> Void
+    @State private var isHovering = false
 
     var body: some View {
-        StudioButton(hitTarget: .rounded(7), help: title, action: action) {
+        Button(action: action) {
             Image(systemName: symbolName)
-                .font(.system(size: 14, weight: .semibold))
-                .frame(width: 30, height: 30)
-                .foregroundStyle(Color.secondary)
-                .background(Color.white.opacity(0.001), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(isHovering ? Color.white : Theme.fgMuted)
+                .frame(width: 22, height: 22)
+        }
+        .buttonStyle(.plain)
+        .help(title)
+        .onHover { hovering in
+            isHovering = hovering
         }
     }
 }
@@ -368,14 +365,14 @@ struct EditorHistoryButton: View {
     var action: () -> Void
 
     var body: some View {
-        StudioButton(hitTarget: .rounded(6), help: title, action: action) {
+        StudioButton(hitTarget: .rounded(Theme.radiusSm), help: title, action: action) {
             Image(systemName: symbolName)
                 .font(.system(size: 12, weight: .semibold))
                 .frame(width: 28, height: 28)
                 .foregroundStyle(isEnabled ? Color.primary.opacity(0.86) : Color.secondary.opacity(0.38))
-                .background(isEnabled ? Theme.overlayStrong.opacity(0.82) : Color.clear, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                .background(isEnabled ? Theme.overlayStrong.opacity(0.82) : Color.clear, in: RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous))
                 .overlay {
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous)
                         .stroke(isEnabled ? Theme.borderSubtle : Color.clear, lineWidth: 1)
                 }
         }
@@ -446,7 +443,7 @@ struct StudioTitleBar: View {
     @ViewBuilder
     private var editorHistoryControls: some View {
         if workspace.state.selectedSection == .editor, editorMediaKind != nil {
-            HStack(spacing: 4) {
+            HStack(spacing: 2) {
                 EditorHistoryButton(title: "Undo", symbolName: "arrow.uturn.backward", isEnabled: canUndo) {
                     workspace.undoActiveEditor(kind: editorMediaKind)
                 }
@@ -455,9 +452,9 @@ struct StudioTitleBar: View {
                 }
             }
             .padding(3)
-            .background(Theme.overlay.opacity(0.88), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+            .background(Theme.overlay.opacity(0.88), in: RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous)
                     .stroke(Theme.borderSubtle, lineWidth: 1)
             }
         }
@@ -466,38 +463,44 @@ struct StudioTitleBar: View {
     @ViewBuilder
     private var exportButton: some View {
         if workspace.state.selectedSection == .editor, let videoURL {
-            StudioButton(hitTarget: .rounded(7)) {
+            StudioButton(hitTarget: .rounded(Theme.radiusMd)) {
                 workspace.send(.videoExportRequested(videoURL, editorSessionID: editorSession?.id))
             } label: {
-                Label("Export Video", systemImage: "arrow.down.circle")
-                    .font(.system(size: 12, weight: .semibold))
-                    .labelStyle(.titleAndIcon)
-                    .padding(.horizontal, 12)
-                    .frame(height: 32)
-                    .background(Theme.accent, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    .foregroundStyle(Color.white)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .stroke(Color.white.opacity(0.18), lineWidth: 1)
-                    }
-                    .shadow(color: Theme.accent.opacity(0.24), radius: 10, y: 4)
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.up.right.video.fill")
+                        .font(.system(size: Theme.iconSm, weight: .semibold))
+                    Text("Export Video")
+                        .font(.system(size: 12, weight: .semibold))
                 }
+                .padding(.horizontal, 14)
+                .frame(height: Theme.btnHeightMd)
+                .background(Theme.accent, in: RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous))
+                .foregroundStyle(Color.white)
+                .overlay {
+                    RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous)
+                        .stroke(Color.white.opacity(0.22), lineWidth: 1)
+                }
+                .shadow(color: Theme.accent.opacity(0.35), radius: 10, y: 3)
+            }
         } else if workspace.state.selectedSection == .editor, screenshotURL != nil {
-            StudioButton(hitTarget: .rounded(7)) {
+            StudioButton(hitTarget: .rounded(Theme.radiusMd)) {
                 workspace.send(.screenshotExportRequested(screenshotURL, editorSessionID: editorSession?.id))
             } label: {
-                Label("Export PNG", systemImage: "square.and.arrow.up")
-                    .font(.system(size: 12, weight: .semibold))
-                    .labelStyle(.titleAndIcon)
-                    .padding(.horizontal, 12)
-                    .frame(height: 32)
-                    .background(Theme.accent, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    .foregroundStyle(Color.white)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .stroke(Color.white.opacity(0.18), lineWidth: 1)
-                    }
-                    .shadow(color: Theme.accent.opacity(0.24), radius: 10, y: 4)
+                HStack(spacing: 6) {
+                    Image(systemName: "square.and.arrow.up.fill")
+                        .font(.system(size: Theme.iconSm, weight: .semibold))
+                    Text("Export PNG")
+                        .font(.system(size: 12, weight: .semibold))
+                }
+                .padding(.horizontal, 14)
+                .frame(height: Theme.btnHeightMd)
+                .background(Theme.accent, in: RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous))
+                .foregroundStyle(Color.white)
+                .overlay {
+                    RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous)
+                        .stroke(Color.white.opacity(0.22), lineWidth: 1)
+                }
+                .shadow(color: Theme.accent.opacity(0.35), radius: 10, y: 3)
             }
         }
     }
@@ -649,18 +652,40 @@ struct EditorShortcutsHelpDialog: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            HStack {
-                Text("Keyboard Shortcuts")
-                    .font(.system(size: 18, weight: .semibold))
-                Spacer()
-                StudioButton(hitTarget: .circle, help: "Close") {
+            HStack(spacing: 12) {
+                Image(systemName: "command")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Theme.accent)
+                    .frame(width: 32, height: 32)
+                    .background(Theme.accent.opacity(0.14), in: RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous)
+                            .stroke(Theme.accent.opacity(0.3), lineWidth: 1)
+                    }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Keyboard Shortcuts")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Color.white)
+                    Text("Speed up your workflow with hotkeys.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.fgMuted)
+                }
+
+                Spacer(minLength: 0)
+
+                StudioButton(hitTarget: .rounded(Theme.radiusSm), help: "Close") {
                     isPresented = false
                 } label: {
                     Image(systemName: "xmark")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.system(size: 11, weight: .bold))
                         .frame(width: 28, height: 28)
-                        .foregroundStyle(Color.secondary)
-                        .background(Theme.overlay, in: Circle())
+                        .foregroundStyle(Theme.fgMuted)
+                        .background(Theme.overlay, in: RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous)
+                                .stroke(Theme.borderSubtle, lineWidth: 1)
+                        }
                 }
             }
 
@@ -668,34 +693,48 @@ struct EditorShortcutsHelpDialog: View {
                 ForEach(shortcuts) { shortcut in
                     HStack(spacing: 14) {
                         Text(shortcut.keys)
-                            .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                            .foregroundStyle(Color.primary)
-                            .frame(width: 104, height: 30)
-                            .background(Theme.overlay, in: RoundedRectangle(cornerRadius: 7))
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .foregroundStyle(Color.white)
+                            .padding(.horizontal, 10)
+                            .frame(height: 26)
+                            .background(Theme.overlayStrong, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
                             .overlay {
-                                RoundedRectangle(cornerRadius: 7)
-                                    .stroke(Theme.border, lineWidth: 1)
+                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                    .stroke(Theme.borderStrong.opacity(0.7), lineWidth: 1)
                             }
+                            .shadow(color: Color.black.opacity(0.2), radius: 2, y: 1)
 
                         Text(shortcut.action)
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(Color.secondary)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(Theme.fg)
 
                         Spacer(minLength: 0)
                     }
-                    .padding(.vertical, 9)
+                    .padding(.vertical, 8)
 
                     if shortcut.id != shortcuts.last?.id {
                         Rectangle()
-                            .fill(Theme.border.opacity(0.8))
+                            .fill(Theme.borderSubtle.opacity(0.7))
                             .frame(height: 1)
                     }
                 }
             }
         }
-        .padding(22)
-        .frame(width: 430)
-        .background(Theme.surface)
+        .padding(20)
+        .frame(width: 440)
+        .background {
+            ZStack {
+                Rectangle()
+                    .fill(.ultraThinMaterial)
+                Rectangle()
+                    .fill(Theme.surface.opacity(0.96))
+                LinearGradient(
+                    colors: [Color.white.opacity(0.04), Color.clear],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            }
+        }
         .background {
             StudioKeyDownMonitor { event in
                 handleShortcut(event)

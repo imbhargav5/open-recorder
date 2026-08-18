@@ -2007,7 +2007,7 @@ final class AppModelStateTests: XCTestCase {
         XCTAssertTrue(actions.isInstalled)
         XCTAssertEqual(openedEditorSession, session)
         XCTAssertTrue(openedWindows.isEmpty)
-        XCTAssertTrue(dismissedWindows.isEmpty)
+        XCTAssertEqual(dismissedWindows, ["hud", "source-selector", "area-selector", "microphone-selector", "camera-selector", "camera-bubble"])
         XCTAssertTrue(didUnhideApp)
     }
 
@@ -2025,7 +2025,7 @@ final class AppModelStateTests: XCTestCase {
         actions.perform(NativeWindowCommand(action: .hideRecordingSetup))
 
         XCTAssertTrue(openedWindows.isEmpty)
-        XCTAssertEqual(dismissedWindows, ["hud", "source-selector", "area-selector", "microphone-selector", "camera-selector"])
+        XCTAssertEqual(dismissedWindows, ["hud", "source-selector", "area-selector", "microphone-selector", "camera-selector", "camera-bubble"])
     }
 
     func testAppWindowActionsHideAppWindowsForCapturePreservesEditorWindows() {
@@ -2049,7 +2049,8 @@ final class AppModelStateTests: XCTestCase {
             "source-selector",
             "area-selector",
             "microphone-selector",
-            "camera-selector"
+            "camera-selector",
+            "camera-bubble"
         ])
         XCTAssertTrue(didHideApp)
     }

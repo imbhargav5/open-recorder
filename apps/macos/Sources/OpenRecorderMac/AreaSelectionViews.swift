@@ -44,7 +44,11 @@ struct AreaSelectionWindowView: View {
                 }
                 .padding(.horizontal, 18)
                 .padding(.vertical, 14)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: Theme.radiusLg, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: Theme.radiusLg, style: .continuous)
+                        .stroke(Theme.borderStrong, lineWidth: 1)
+                }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                 .opacity(selectionRect == nil && !isFinishingSelection ? 1 : 0)
             }

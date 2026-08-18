@@ -757,7 +757,7 @@ final class CaptureController: ObservableObject {
             return nil
         }
 
-        return thumbnailData(from: image, maxSize: CGSize(width: 320, height: 180))
+        return thumbnailData(from: image, maxSize: CGSize(width: 1280, height: 720))
     }
 
     private func captureImage(contentFilter: SCContentFilter, configuration: SCStreamConfiguration) async throws -> CGImage {
@@ -775,7 +775,7 @@ final class CaptureController: ObservableObject {
     }
 
     private func thumbnailSize(sourceWidth: Int, sourceHeight: Int) -> CGSize {
-        let maxSize = CGSize(width: 320, height: 180)
+        let maxSize = CGSize(width: 1280, height: 720)
         let width = max(CGFloat(sourceWidth), 1)
         let height = max(CGFloat(sourceHeight), 1)
         let scale = min(maxSize.width / width, maxSize.height / height, 1)
@@ -800,6 +800,6 @@ final class CaptureController: ObservableObject {
               let bitmap = NSBitmapImageRep(data: tiff) else {
             return nil
         }
-        return bitmap.representation(using: .jpeg, properties: [.compressionFactor: 0.72])
+        return bitmap.representation(using: .jpeg, properties: [.compressionFactor: 0.88])
     }
 }

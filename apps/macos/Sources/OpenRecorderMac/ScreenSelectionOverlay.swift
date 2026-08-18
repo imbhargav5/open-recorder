@@ -174,10 +174,10 @@ private struct ScreenSelectionOverlayView: View {
                 .rectangularHitTarget()
                 .onTapGesture(perform: onCancel)
 
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
+            RoundedRectangle(cornerRadius: Theme.radiusXl, style: .continuous)
                 .fill(overlayColor.opacity(0.18))
                 .overlay {
-                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    RoundedRectangle(cornerRadius: Theme.radiusXl, style: .continuous)
                         .stroke(Color.white.opacity(0.74), lineWidth: 3)
                 }
                 .padding(18)
@@ -195,22 +195,22 @@ private struct ScreenSelectionOverlayView: View {
 
                 Button(action: onChoose) {
                     Label("Choose Screen", systemImage: "cursorarrow")
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.system(size: 13, weight: .semibold))
                         .lineLimit(1)
-                        .padding(.horizontal, 18)
-                        .frame(height: 42)
-                        .background(Color.white, in: Capsule())
-                        .foregroundStyle(Color(red: 0.08, green: 0.28, blue: 0.74))
+                        .padding(.horizontal, Theme.space5)
+                        .frame(height: Theme.btnHeightLg)
+                        .background(Color.white, in: RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous))
+                        .foregroundStyle(Theme.accent)
                         .shadow(color: Theme.scrim, radius: 18, y: 10)
                 }
                 .buttonStyle(.plain)
-                .capsuleHitTarget()
+                .roundedHitTarget(Theme.radiusMd)
             }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 20)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .padding(.horizontal, Theme.space6)
+            .padding(.vertical, Theme.space6)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: Theme.radiusLg, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                RoundedRectangle(cornerRadius: Theme.radiusLg, style: .continuous)
                     .stroke(Color.white.opacity(0.26), lineWidth: 1)
             }
         }
