@@ -7,87 +7,84 @@ struct ElasticSlider: View {
     @Binding var value: Double
     var range: ClosedRange<Double>
     var step: Double
+    var valueText: String? = nil
     var onEditingChanged: (Bool) -> Void = { _ in }
     var dragStep: Double?
-    var trackHeight: CGFloat = 16
-    var hitHeight: CGFloat = 32
-    var fillColor: Color = Color(red: 0.961, green: 0.961, blue: 0.961)
+    var trackHeight: CGFloat = 26
+    var hitHeight: CGFloat = 26
+    var fillColor: Color = Color.white.opacity(0.20)
     var dragFillColor: Color?
-    var thumbSize: CGFloat = 0
-    var thumbWidth: CGFloat?
-    var thumbHeight: CGFloat?
-    var thumbColor: Color = Color.white.opacity(0.98)
-    var setsValueFromPointerLocation = false
+    var thumbSize: CGFloat = 18
+    var thumbWidth: CGFloat? = 38
+    var thumbHeight: CGFloat? = 18
+    var thumbColor: Color = Color.white
+    var showStepDots: Bool = true
+    var showTooltip: Bool = true
+    var setsValueFromPointerLocation = true
 
     @State private var visualProgress: Double?
-    @State private var settlingCommittedProgress: Double?
     @State private var dragStartValue: Double = 0
     @State private var isDragging = false
     @State private var isHovering = false
     @State private var isPointingCursorActive = false
 
-    private let maxPull: CGFloat = 18
-    private let maxSquish = 0.92
-    private let maxStretch = 1.08
-
     var body: some View {
         GeometryReader { proxy in
             let width = max(proxy.size.width, 1)
-            let committedProgress = (
-                settlingCommittedProgress ?? normalized(isDragging ? dragStartValue : value)
-            ).clamped(to: 0...1)
-            let progress = visualProgress ?? normalized(value)
-            let clampedProgress = progress.clamped(to: 0...1)
-            let overpull = progress < 0 ? progress : max(0, progress - 1)
-            let pullAmount = min(abs(overpull), 1)
-            let offsetX = CGFloat(overpull.clamped(to: -1...1)) * maxPull
-            let scaleX = 1 + (maxStretch - 1) * pullAmount
-            let scaleY = 1 - (1 - maxSquish) * pullAmount
+            let currentNormalized = normalized(value).clamped(to: 0...1)
+            let progress = (visualProgress ?? currentNormalized).clamped(to: 0...1)
+
             let resolvedThumbWidth = thumbWidth ?? thumbSize
-            let resolvedThumbHeight = thumbHeight ?? thumbSize
-            let hasThumb = resolvedThumbWidth > 0 && resolvedThumbHeight > 0
-            let committedFillWidth = width * CGFloat(committedProgress)
-            let dragFillWidth = isDragging
-                ? width * CGFloat(clampedProgress)
-                : nil
-            let drawsDragFillAboveCommitted = isDragging && clampedProgress < committedProgress
-            let resolvedFillColor = drawsDragFillAboveCommitted ? effectiveDragFillColor : fillColor
-            let resolvedDragFillColor = drawsDragFillAboveCommitted ? fillColor : effectiveDragFillColor
-            let valueX = width * CGFloat(clampedProgress)
+            let resolvedThumbHeight = min(thumbHeight ?? (trackHeight - 8), trackHeight - 4)
+            let thumbRadius = resolvedThumbWidth / 2
+
+            let travelDistance = max(width - resolvedThumbWidth, 1)
+            let valueX = thumbRadius + travelDistance * CGFloat(progress)
 
             ZStack {
-                sliderTrack(
-                    width: width,
-                    fillWidth: committedFillWidth,
-                    fillColor: resolvedFillColor,
-                    dragFillWidth: dragFillWidth,
-                    dragFillColor: resolvedDragFillColor,
-                    drawsDragFillAboveCommitted: drawsDragFillAboveCommitted
-                )
-                    .scaleEffect(x: scaleX, y: scaleY)
-                    .offset(x: hasThumb ? 0 : offsetX)
-                    .animation(.easeOut(duration: 0.15), value: isEnabled)
-
-                if hasThumb {
-                    RoundedRectangle(cornerRadius: min(resolvedThumbWidth, resolvedThumbHeight) / 2, style: .continuous)
-                        .fill(thumbColor)
-                        .frame(width: resolvedThumbWidth, height: resolvedThumbHeight)
+                // Background Track Bar with fully rounded capsule container
+                ZStack(alignment: .leading) {
+                    // Outer track container: seamless dark dark grey (close to black)
+                    Capsule(style: .continuous)
+                        .fill(Color.black.opacity(0.38))
                         .overlay {
-                            RoundedRectangle(cornerRadius: min(resolvedThumbWidth, resolvedThumbHeight) / 2, style: .continuous)
-                                .stroke(Color.black.opacity(0.06), lineWidth: 1)
+                            Capsule(style: .continuous)
+                                .stroke(Color.white.opacity(isHovering || isDragging ? 0.16 : 0.08), lineWidth: 1)
                         }
-                        .shadow(color: Color.black.opacity(0.14), radius: 6, y: 2)
-                        .scaleEffect(isDragging ? 0.86 : 1)
-                        .position(x: valueX, y: hitHeight / 2)
-                        .animation(.interpolatingSpring(stiffness: 360, damping: 28), value: isDragging)
-                        .allowsHitTesting(false)
+
+                    // Step dots / Graduation markers (only on un-scrolled section to the right)
+                    if showStepDots && width > 80 {
+                        stepDots(width: width, thumbX: valueX, thumbWidth: resolvedThumbWidth)
+                    }
+                }
+                .frame(width: width, height: trackHeight)
+                .clipShape(Capsule(style: .continuous))
+
+                // Sliding Fully Rounded Pill Tab Handle
+                Capsule(style: .continuous)
+                    .fill(thumbColor)
+                    .frame(width: resolvedThumbWidth, height: resolvedThumbHeight)
+                    .overlay {
+                        Capsule(style: .continuous)
+                            .stroke(Color.black.opacity(0.12), lineWidth: 0.8)
+                    }
+                    .shadow(color: Color.black.opacity(0.38), radius: isDragging ? 4 : 2, y: 1)
+                    .scaleEffect(isDragging ? 1.05 : (isHovering ? 1.02 : 1.0))
+                    .position(x: valueX, y: trackHeight / 2)
+                    .animation(Theme.springFast, value: isDragging)
+                    .animation(Theme.springFast, value: isHovering)
+                    .allowsHitTesting(false)
+
+                // Floating translucent value tooltip badge while scrubbing
+                if showTooltip, isDragging, let valueText, !valueText.isEmpty {
+                    floatingValueTooltip(valueText: valueText, thumbX: valueX)
                 }
             }
-            .frame(width: width, height: hitHeight)
-            .contentShape(Rectangle())
-            .gesture(dragGesture(width: width))
+            .frame(width: width, height: trackHeight)
+            .contentShape(Capsule(style: .continuous))
+            .gesture(dragGesture(width: width, thumbWidth: resolvedThumbWidth))
         }
-        .frame(height: hitHeight)
+        .frame(height: trackHeight)
         .opacity(isEnabled ? 1 : 0.5)
         .onHover { hovering in
             isHovering = hovering
@@ -107,121 +104,102 @@ struct ElasticSlider: View {
         }
         .onChange(of: value) { _, nextValue in
             guard !isDragging else { return }
-            withAnimation(.easeOut(duration: 0.15)) {
+            withAnimation(.easeOut(duration: 0.08)) {
                 visualProgress = normalized(nextValue)
             }
         }
     }
 
-    private var effectiveDragFillColor: Color {
-        dragFillColor ?? fillColor
+    // Step dots spaced along track - only shown for un-scrolled area (to the right of the thumb)
+    private func stepDots(width: CGFloat, thumbX: CGFloat, thumbWidth: CGFloat) -> some View {
+        let dotCount = min(max(Int(width / 32), 3), 6)
+        let thumbRightThreshold = thumbX + (thumbWidth * 0.40)
+        let padding: CGFloat = 18
+        let availableWidth = max(width - (padding * 2), 1)
+
+        return ZStack(alignment: .leading) {
+            ForEach(0..<dotCount, id: \.self) { index in
+                let fraction = CGFloat(index) / CGFloat(max(dotCount - 1, 1))
+                let dotX = padding + fraction * availableWidth
+
+                if dotX > thumbRightThreshold {
+                    Circle()
+                        .fill(Color.white.opacity(0.24))
+                        .frame(width: 4, height: 4)
+                        .position(x: dotX, y: trackHeight / 2)
+                }
+            }
+        }
+        .frame(width: width, height: trackHeight)
+        .allowsHitTesting(false)
     }
 
-    private func sliderTrack(
-        width: CGFloat,
-        fillWidth: CGFloat,
-        fillColor: Color,
-        dragFillWidth: CGFloat? = nil,
-        dragFillColor: Color,
-        drawsDragFillAboveCommitted: Bool = false
-    ) -> some View {
-        Capsule()
-            .fill(Theme.border)
+    // Floating dynamic translucent badge while dragging
+    private func floatingValueTooltip(valueText: String, thumbX: CGFloat) -> some View {
+        Text(valueText)
+            .font(.system(size: 10, weight: .bold, design: .monospaced))
+            .monospacedDigit()
+            .foregroundStyle(Color.white)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(Color.black.opacity(0.85))
+            )
             .overlay {
-                LinearGradient(
-                    colors: [
-                        Theme.border,
-                        Color.clear,
-                        Theme.scrim
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .clipShape(Capsule())
-                .allowsHitTesting(false)
+                Capsule(style: .continuous)
+                    .stroke(Color.white.opacity(0.20), lineWidth: 1)
             }
-            .overlay(alignment: .leading) {
-                if let dragFillWidth, !drawsDragFillAboveCommitted {
-                    Rectangle()
-                        .fill(dragFillColor)
-                        .frame(width: dragFillWidth)
-                        .allowsHitTesting(false)
-                }
-            }
-            .overlay(alignment: .leading) {
-                if fillWidth > 0 {
-                    Rectangle()
-                        .fill(fillColor)
-                        .frame(width: fillWidth)
-                        .allowsHitTesting(false)
-                }
-            }
-            .overlay(alignment: .leading) {
-                if let dragFillWidth, drawsDragFillAboveCommitted {
-                    Rectangle()
-                        .fill(dragFillColor)
-                        .frame(width: dragFillWidth)
-                        .allowsHitTesting(false)
-                }
-            }
-            .clipShape(Capsule())
-            .overlay {
-                Capsule()
-                    .stroke(Theme.border, lineWidth: 1)
-            }
-            .frame(width: width, height: trackHeight)
+            .shadow(color: Color.black.opacity(0.35), radius: 6, y: 3)
+            .position(x: thumbX, y: -16)
+            .transition(.opacity.combined(with: .scale(scale: 0.9)))
+            .allowsHitTesting(false)
     }
 
-    private func dragGesture(width: CGFloat) -> some Gesture {
+    private func dragGesture(width: CGFloat, thumbWidth: CGFloat) -> some Gesture {
         DragGesture(minimumDistance: 0, coordinateSpace: .local)
             .onChanged { gesture in
                 guard isEnabled else { return }
 
                 if !isDragging {
                     isDragging = true
-                    settlingCommittedProgress = nil
                     dragStartValue = value
-                    performDragStartHaptic()
+                    performHaptic()
                     onEditingChanged(true)
                 }
 
-                let nextProgress = if setsValueFromPointerLocation {
-                    progress(for: gesture.location.x, width: width)
-                } else {
-                    normalized(dragStartValue) + Double(gesture.translation.width / width)
-                }
-                visualProgress = nextProgress
-                value = steppedValue(for: nextProgress.clamped(to: 0...1), step: dragStep ?? step)
+                let travelDistance = max(width - thumbWidth, 1)
+                let thumbRadius = thumbWidth / 2
+                let relativeX = gesture.location.x - thumbRadius
+                let progress = Double((relativeX / travelDistance).clamped(to: 0...1))
+                let nextValue = steppedValue(for: progress, step: dragStep ?? step)
+
+                visualProgress = progress
+                value = nextValue
             }
             .onEnded { _ in
                 guard isEnabled else { return }
-                let settledProgress = (visualProgress ?? normalized(value)).clamped(to: 0...1)
-                let dragStartProgress = normalized(dragStartValue).clamped(to: 0...1)
-
-                settlingCommittedProgress = dragStartProgress
                 isDragging = false
                 onEditingChanged(false)
 
-                withAnimation(.interpolatingSpring(stiffness: 230, damping: 22)) {
-                    settlingCommittedProgress = settledProgress
+                let settledProgress = normalized(value).clamped(to: 0...1)
+                withAnimation(.interpolatingSpring(stiffness: 300, damping: 26)) {
                     visualProgress = settledProgress
                 }
 
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                     guard !isDragging else { return }
                     visualProgress = nil
-                    settlingCommittedProgress = nil
                 }
             }
     }
 
-    private func performDragStartHaptic() {
+    private func performHaptic() {
         NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
     }
 
     private func handleMoveCommand(_ direction: MoveCommandDirection) {
         guard isEnabled else { return }
-
         switch direction {
         case .left, .down:
             stepValue(by: -step)
@@ -236,8 +214,8 @@ struct ElasticSlider: View {
         let proposedValue = (value + delta).clamped(to: range)
         let nextValue = steppedValue(for: normalized(proposedValue).clamped(to: 0...1), step: step)
         value = nextValue
-
-        withAnimation(.interpolatingSpring(stiffness: 200, damping: 60)) {
+        performHaptic()
+        withAnimation(.interpolatingSpring(stiffness: 240, damping: 28)) {
             visualProgress = normalized(nextValue)
         }
     }
@@ -265,10 +243,6 @@ struct ElasticSlider: View {
     private func normalized(_ input: Double) -> Double {
         guard range.upperBound != range.lowerBound else { return 0 }
         return (input - range.lowerBound) / (range.upperBound - range.lowerBound)
-    }
-
-    private func progress(for x: CGFloat, width: CGFloat) -> Double {
-        Double((x / max(width, 1)).clamped(to: 0...1))
     }
 
     private func steppedValue(for progress: Double, step: Double) -> Double {

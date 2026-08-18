@@ -6,9 +6,9 @@ import SwiftUI
 struct ScreenshotEditorState: Codable, Equatable, Hashable {
     var background: BackgroundStyle = BackgroundPresets.default
     var padding = 56.0
-    var backgroundRoundness = 28.0
+    var backgroundRoundness = 0.0
     var backgroundShadow = 0.0
-    var imageRoundness = 10.0
+    var imageRoundness = 0.0
     var imageShadow = 0.45
 
     static let `default` = ScreenshotEditorState()
@@ -16,9 +16,9 @@ struct ScreenshotEditorState: Codable, Equatable, Hashable {
     init(
         background: BackgroundStyle = BackgroundPresets.default,
         padding: Double = 56.0,
-        backgroundRoundness: Double = 28.0,
+        backgroundRoundness: Double = 0.0,
         backgroundShadow: Double = 0.0,
-        imageRoundness: Double = 10.0,
+        imageRoundness: Double = 0.0,
         imageShadow: Double = 0.45
     ) {
         self.background = background

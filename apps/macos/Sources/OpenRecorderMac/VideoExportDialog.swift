@@ -56,16 +56,16 @@ struct VideoExportDialog: View {
     }
 
     private var header: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: Theme.space4) {
             Image(systemName: headerSymbolName)
-                .font(.system(size: 17, weight: .semibold))
+                .font(.system(size: Theme.iconLg, weight: .semibold))
                 .foregroundStyle(Theme.accent)
                 .frame(width: 38, height: 38)
-                .background(Theme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+                .background(Theme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous))
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(headerTitle)
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.system(size: 16, weight: .semibold))
                 Text(headerSubtitle)
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
@@ -76,12 +76,12 @@ struct VideoExportDialog: View {
     }
 
     private var exportSummaryCard: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: Theme.space4) {
             Image(systemName: "film.stack")
-                .font(.system(size: 16, weight: .semibold))
+                .font(.system(size: Theme.iconMd, weight: .semibold))
                 .foregroundStyle(Theme.accent)
                 .frame(width: 38, height: 38)
-                .background(Theme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .background(Theme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous))
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(format == .gif ? "GIF export" : "Movie export")
@@ -94,16 +94,16 @@ struct VideoExportDialog: View {
 
             Spacer(minLength: 0)
 
-            HStack(spacing: 6) {
+            HStack(spacing: Theme.space2) {
                 ExportSummaryMetric(title: "Size", value: selectedSizeTitle)
                 ExportSummaryMetric(title: "Rate", value: frameRate.title)
                 ExportSummaryMetric(title: "Type", value: format.title)
             }
         }
-        .padding(11)
-        .background(Theme.overlay.opacity(0.82), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .padding(Theme.space4)
+        .background(Theme.overlay.opacity(0.82), in: RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 13, style: .continuous)
+            RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous)
                 .stroke(Theme.borderSubtle, lineWidth: 1)
         }
     }
@@ -140,10 +140,10 @@ struct VideoExportDialog: View {
                     .progressViewStyle(.linear)
                     .tint(Theme.accent)
             }
-            .padding(12)
-            .background(Theme.surfaceRaised.opacity(0.86), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .padding(Theme.space4)
+            .background(Theme.surfaceRaised.opacity(0.86), in: RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous)
                     .stroke(Theme.borderSubtle)
             }
 
@@ -234,9 +234,9 @@ struct VideoExportDialog: View {
                 movieSettings
             }
         }
-        .background(Theme.surfaceRaised.opacity(0.82), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .background(Theme.surfaceRaised.opacity(0.82), in: RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 13, style: .continuous)
+            RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous)
                 .stroke(Theme.borderStrong.opacity(0.56))
         }
     }
@@ -439,9 +439,9 @@ private struct ExportSummaryMetric: View {
         .frame(minWidth: 48)
         .padding(.horizontal, 7)
         .padding(.vertical, 6)
-        .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous)
                 .stroke(Theme.borderSubtle, lineWidth: 1)
         }
     }
@@ -462,7 +462,7 @@ private struct ExportPickerSettingRow<Option: Hashable & Identifiable>: View {
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(Theme.accent)
                 .frame(width: 30, height: 30)
-                .background(Theme.accent.opacity(0.10), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .background(Theme.accent.opacity(0.10), in: Rectangle())
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
@@ -504,7 +504,7 @@ private struct ExportStaticSettingRow: View {
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(Theme.accent)
                 .frame(width: 30, height: 30)
-                .background(Theme.accent.opacity(0.10), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .background(Theme.accent.opacity(0.10), in: Rectangle())
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
@@ -522,9 +522,9 @@ private struct ExportStaticSettingRow: View {
                 .frame(minWidth: 58)
                 .frame(height: 28)
                 .padding(.horizontal, 10)
-                .background(Theme.overlayStrong.opacity(0.82), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .background(Theme.overlayStrong.opacity(0.82), in: RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous))
                 .overlay {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous)
                         .stroke(Theme.borderSubtle)
                 }
         }
@@ -546,7 +546,7 @@ private struct ExportToggleSettingRow: View {
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(Theme.accent)
                 .frame(width: 30, height: 30)
-                .background(Theme.accent.opacity(0.10), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .background(Theme.accent.opacity(0.10), in: Rectangle())
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
@@ -634,10 +634,10 @@ private struct ExportDialogButton: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 8) {
+            HStack(spacing: Theme.space3) {
                 if let systemImage {
                     Image(systemName: systemImage)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.system(size: Theme.iconSm, weight: .semibold))
                 }
                 Text(title)
                     .lineLimit(1)
@@ -645,10 +645,10 @@ private struct ExportDialogButton: View {
             .font(.system(size: 12, weight: .semibold))
             .foregroundStyle(kind.foreground)
             .frame(minWidth: minWidth)
-            .frame(height: 40)
-            .padding(.horizontal, 12)
+            .frame(height: Theme.btnHeightMd)
+            .padding(.horizontal, Theme.space4)
             .background {
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous)
                     .fill(kind.background)
                     .overlay {
                         LinearGradient(
@@ -656,18 +656,18 @@ private struct ExportDialogButton: View {
                             startPoint: .top,
                             endPoint: .bottom
                         )
-                        .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                        .clipShape(RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous))
                     }
             }
             .overlay {
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous)
                     .stroke(kind.border)
             }
-            .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous))
             .scaleEffect(isHovering && !isDisabled ? 1.015 : 1)
             .brightness(isHovering && !isDisabled ? 0.035 : 0)
             .shadow(color: kind == .primary ? Theme.accent.opacity(0.22) : Color.clear, radius: 10, y: 4)
-            .animation(.snappy(duration: 0.16), value: isHovering)
+            .animation(Theme.springFast, value: isHovering)
         }
         .buttonStyle(.plain)
         .disabled(isDisabled)
@@ -689,7 +689,7 @@ private struct ExportMessageRow: View {
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(tint)
                 .frame(width: 24, height: 24)
-                .background(tint.opacity(0.12), in: Circle())
+                .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous))
             Text(message)
                 .font(.system(size: 12))
                 .foregroundStyle(.primary)
@@ -697,9 +697,9 @@ private struct ExportMessageRow: View {
             Spacer(minLength: 0)
         }
         .padding(11)
-        .background(tint.opacity(0.10), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(tint.opacity(0.10), in: RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
+            RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous)
                 .stroke(tint.opacity(0.24))
         }
     }

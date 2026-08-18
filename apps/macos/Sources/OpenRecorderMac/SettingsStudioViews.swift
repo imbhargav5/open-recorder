@@ -104,9 +104,9 @@ private struct SettingsZoomPresetPicker: View {
         .foregroundStyle(Theme.fgMuted)
         .accessibilityHint("Controls the timing and motion used for automatically created zooms")
         .padding(10)
-        .background(Theme.overlay, in: RoundedRectangle(cornerRadius: 8))
+        .background(Theme.overlay, in: RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous)
                 .stroke(Theme.overlay)
         }
     }
@@ -117,17 +117,17 @@ struct SettingsSection<Content: View>: View {
     @ViewBuilder var content: Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: Theme.space4) {
             Text(title)
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(Theme.fgMuted)
             content
         }
-        .padding(18)
-        .background(Theme.surface.opacity(0.78), in: RoundedRectangle(cornerRadius: 10))
+        .padding(Theme.space5)
+        .background(Theme.surface.opacity(0.78), in: RoundedRectangle(cornerRadius: Theme.radiusLg, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(Theme.border)
+            RoundedRectangle(cornerRadius: Theme.radiusLg, style: .continuous)
+                .stroke(Theme.borderStrong.opacity(0.7))
         }
     }
 }

@@ -8,7 +8,7 @@ enum HUDWindowMetrics {
     static let height: CGFloat = 155
     static let horizontalScreenMargin: CGFloat = 32
     static let minWidth: CGFloat = 360
-    static let defaultSize = CGSize(width: 620, height: height)
+    static let defaultSize = CGSize(width: 720, height: height)
 
     static func clampedSize(for measuredSize: CGSize, screen: NSScreen?) -> CGSize {
         clampedSize(for: measuredSize, visibleFrame: screen?.visibleFrame)
@@ -66,31 +66,11 @@ extension View {
 
     @ViewBuilder
     func studioEditorPaneChrome(clipContent: Bool = true) -> some View {
-        let chrome = background {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(Theme.surface.opacity(0.88))
-                    .overlay {
-                        LinearGradient(
-                            colors: [
-                                Color.white.opacity(0.055),
-                                Color.white.opacity(0.012),
-                                Color.black.opacity(0.045)
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    }
-            }
+        background(Theme.surface.opacity(0.88))
             .overlay {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(Theme.borderStrong.opacity(0.72), lineWidth: 1)
+                Rectangle()
+                    .stroke(Theme.borderStrong.opacity(0.44), lineWidth: 0.5)
             }
-
-        if clipContent {
-            chrome.clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        } else {
-            chrome
-        }
     }
 
     @ViewBuilder
@@ -371,7 +351,6 @@ struct StudioButton<Label: View>: View {
         let control = Button(action: action) {
             label()
                 .studioHitTarget(hitTarget)
-                .scaleEffect(isHovering && isEnabled ? 1.018 : 1)
                 .brightness(isHovering && isEnabled ? 0.035 : 0)
                 .animation(.snappy(duration: 0.16), value: isHovering)
         }
@@ -414,7 +393,6 @@ struct StudioMenu<Label: View, Content: View>: View {
         } label: {
             label()
                 .studioHitTarget(hitTarget)
-                .scaleEffect(isHovering && isEnabled ? 1.018 : 1)
                 .brightness(isHovering && isEnabled ? 0.035 : 0)
                 .animation(.snappy(duration: 0.16), value: isHovering)
         }
@@ -498,6 +476,8 @@ struct StudioKeyDownMonitor: NSViewRepresentable {
 }
 
 final class StudioKeyMonitorAttachmentView: NSView {
+    override var isFlipped: Bool { true }
+
     nonisolated let windowScope = StudioKeyWindowScopeCache()
     private weak var observedWindow: NSWindow?
 
@@ -609,41 +589,34 @@ enum StudioKeyEventScope {
 }
 
 
-// Top gradient stop for the recording-state HUD gradient.
-private let hudRecordingGradientTop = Color(red: 0.16, green: 0.10, blue: 0.11)
-
 struct HUDSurface<Content: View>: View {
     var isRecording = false
     @ViewBuilder var content: Content
 
     var body: some View {
         content
+            .environment(\.layoutDirection, .leftToRight)
+            .flipsForRightToLeftLayoutDirection(false)
             .padding(.horizontal, 9)
             .padding(.vertical, 7)
             .background {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    RoundedRectangle(cornerRadius: Theme.radiusLg, style: .continuous)
                         .fill(.ultraThinMaterial)
 
-                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    RoundedRectangle(cornerRadius: Theme.radiusLg, style: .continuous)
                         .fill(
                             LinearGradient(
-                                colors: isRecording
-                                    ? [hudRecordingGradientTop.opacity(0.96), Theme.appBg.opacity(0.94)]
-                                    : [Theme.surfaceRaised.opacity(0.94), Theme.appBg.opacity(0.96)],
+                                colors: [Theme.surfaceRaised.opacity(0.94), Theme.appBg.opacity(0.96)],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
                             )
                         )
 
-                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    RoundedRectangle(cornerRadius: Theme.radiusLg, style: .continuous)
                         .strokeBorder(
                             LinearGradient(
-                                colors: [
-                                    Color.white.opacity(isRecording ? 0.17 : 0.21),
-                                    (isRecording ? Theme.destructive : Theme.borderStrong).opacity(isRecording ? 0.30 : 0.18),
-                                    Color.black.opacity(0.20)
-                                ],
+                                colors: [Color.white.opacity(0.21), Theme.borderStrong.opacity(0.18), Color.black.opacity(0.20)],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
                             ),
@@ -651,6 +624,10 @@ struct HUDSurface<Content: View>: View {
                         )
                 }
             }
+            .clipShape(RoundedRectangle(cornerRadius: Theme.radiusLg, style: .continuous))
+            .shadow(color: Color.black.opacity(0.28), radius: 12, y: 6)
+            .environment(\.layoutDirection, .leftToRight)
+            .flipsForRightToLeftLayoutDirection(false)
     }
 }
 
@@ -659,17 +636,17 @@ struct DragHandle: View {
         VStack(spacing: 3) {
             ForEach(0..<3, id: \.self) { _ in
                 HStack(spacing: 3) {
-                    Circle()
+                    Rectangle()
                         .fill(Color.white.opacity(0.30))
                         .frame(width: 3.5, height: 3.5)
-                    Circle()
+                    Rectangle()
                         .fill(Color.white.opacity(0.22))
                         .frame(width: 3.5, height: 3.5)
                 }
             }
         }
         .frame(width: 28, height: 36)
-        .background(Color.white.opacity(0.001), in: Capsule())
+        .background(Color.white.opacity(0.001), in: Rectangle())
         .accessibilityLabel("Drag")
     }
 }
@@ -690,12 +667,6 @@ struct HUDControlGroup<Content: View>: View {
         HStack(spacing: 4) {
             content
         }
-        .padding(4)
-        .background(Theme.scrim, in: Capsule())
-        .overlay {
-            Capsule()
-                .stroke(Theme.borderSubtle, lineWidth: 1)
-        }
     }
 }
 
@@ -707,33 +678,35 @@ struct HUDPrimaryButton: View {
     var action: () -> Void
 
     var body: some View {
-        StudioButton(hitTarget: .capsule, action: action) {
-            HStack(spacing: 8) {
-                Label(title, systemImage: symbolName)
-                    .labelStyle(.titleAndIcon)
+        StudioButton(hitTarget: .rounded(Theme.radiusMd), action: action) {
+            HStack(alignment: .center, spacing: 6) {
+                Image(systemName: symbolName)
+                    .font(.system(size: 13, weight: .bold))
+                Text(title)
+                    .font(.system(size: 12, weight: .semibold))
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
 
                 if let shortcutText {
                     Text(shortcutText)
-                        .font(.system(size: 10, weight: .bold, design: .rounded))
-                        .padding(.horizontal, 6)
-                        .frame(height: 20)
-                        .background((isDestructive ? Theme.destructiveFg : Theme.actionPrimaryFg).opacity(0.14), in: Capsule())
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .padding(.horizontal, 5)
+                        .frame(height: 18)
+                        .background((isDestructive ? Theme.destructiveFg : Theme.actionPrimaryFg).opacity(0.16), in: RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous))
                 }
             }
-            .font(.system(size: 12, weight: .semibold))
-            .lineLimit(1)
             .fixedSize(horizontal: true, vertical: false)
-            .frame(minWidth: 116)
-            .frame(height: 40)
+            .frame(height: Theme.btnHeightLg)
             .padding(.horizontal, 14)
-            .background(isDestructive ? Theme.destructive : Theme.actionPrimary, in: Capsule())
+            .background(isDestructive ? Theme.destructive : Theme.actionPrimary, in: RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous))
             .foregroundStyle(isDestructive ? Theme.destructiveFg : Theme.actionPrimaryFg)
             .overlay {
-                Capsule()
+                RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous)
                     .stroke(Color.white.opacity(isDestructive ? 0.18 : 0.36), lineWidth: 1)
             }
-            .shadow(color: (isDestructive ? Theme.destructive : Theme.actionPrimary).opacity(0.22), radius: 12, y: 5)
+            .shadow(color: (isDestructive ? Theme.destructive : Theme.actionPrimary).opacity(0.24), radius: 8, y: 2)
         }
+        .layoutPriority(10)
     }
 }
 
@@ -744,17 +717,17 @@ struct HUDPrimaryIconButton: View {
     var action: () -> Void
 
     var body: some View {
-        StudioButton(hitTarget: .circle, help: title, action: action) {
+        StudioButton(hitTarget: .rounded(Theme.radiusMd), help: title, action: action) {
             Image(systemName: symbolName)
                 .font(.system(size: 14, weight: .semibold))
-                .frame(width: 42, height: 40)
-                .background(isDestructive ? Theme.destructive : Theme.actionPrimary, in: Circle())
+                .frame(width: Theme.btnHeightLg, height: Theme.btnHeightLg)
+                .background(isDestructive ? Theme.destructive : Theme.actionPrimary, in: RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous))
                 .foregroundStyle(isDestructive ? Theme.destructiveFg : Theme.actionPrimaryFg)
                 .overlay {
-                    Circle()
+                    RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous)
                         .stroke(Color.white.opacity(isDestructive ? 0.18 : 0.36), lineWidth: 1)
                 }
-                .shadow(color: (isDestructive ? Theme.destructive : Theme.actionPrimary).opacity(0.22), radius: 12, y: 5)
+                .shadow(color: (isDestructive ? Theme.destructive : Theme.actionPrimary).opacity(0.24), radius: 8, y: 2)
         }
     }
 }
@@ -766,14 +739,14 @@ struct HUDIconActionButton: View {
     var action: () -> Void
 
     var body: some View {
-        StudioButton(hitTarget: .circle, help: title, action: action) {
+        StudioButton(hitTarget: .rounded(Theme.radiusMd), help: title, action: action) {
             Image(systemName: symbolName)
-                .font(.system(size: 14, weight: .semibold))
-                .frame(width: 38, height: 38)
+                .font(.system(size: 13, weight: .semibold))
+                .frame(width: Theme.btnHeightLg, height: Theme.btnHeightLg)
                 .foregroundStyle(tint.opacity(0.95))
-                .background(tint.opacity(0.14), in: Circle())
+                .background(tint.opacity(0.14), in: RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous))
                 .overlay {
-                    Circle()
+                    RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous)
                         .stroke(tint.opacity(0.28), lineWidth: 1)
                 }
         }
@@ -792,24 +765,76 @@ struct HUDPermissionGroup: View {
                 .foregroundStyle(Theme.statusError.opacity(0.95))
                 .padding(.leading, 10)
 
-            StudioButton(hitTarget: .capsule, action: action) {
+            StudioButton(hitTarget: .rounded(Theme.radiusSm), action: action) {
                 Text("Settings")
                     .font(.system(size: 11, weight: .semibold))
                     .lineLimit(1)
                     .fixedSize(horizontal: true, vertical: false)
                     .padding(.horizontal, 10)
-                    .frame(height: 30)
-                    .background(Theme.statusError.opacity(0.18), in: Capsule())
+                    .frame(height: 28)
+                    .background(Theme.statusError.opacity(0.18), in: RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous))
                     .foregroundStyle(Theme.statusError.opacity(0.95))
             }
         }
-        .frame(height: 38)
+        .frame(height: Theme.btnHeightLg)
         .padding(.trailing, 4)
-        .background(Theme.statusError.opacity(0.10), in: Capsule())
+        .background(Theme.statusError.opacity(0.10), in: RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous))
         .overlay {
-            Capsule()
+            RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous)
                 .stroke(Theme.statusError.opacity(0.25), lineWidth: 1)
         }
+    }
+}
+
+struct HUDModeSwitcher: View {
+    @Binding var mode: CaptureMode
+    var isDisabled: Bool
+
+    var body: some View {
+        HStack(spacing: 3) {
+            modeButton(
+                mode: .recording,
+                symbolName: "video.fill",
+                help: "Record Video (⌘R)"
+            )
+            modeButton(
+                mode: .screenshot,
+                symbolName: "camera.fill",
+                help: "Capture Screenshot (⌘S)"
+            )
+        }
+        .padding(3)
+        .background(Theme.scrim, in: RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous)
+                .stroke(Theme.borderSubtle, lineWidth: 1)
+        }
+    }
+
+    private func modeButton(mode targetMode: CaptureMode, symbolName: String, help: String) -> some View {
+        let isSelected = mode == targetMode
+        return StudioButton(hitTarget: .rounded(Theme.radiusSm), help: help) {
+            withAnimation(Theme.springFast) {
+                mode = targetMode
+            }
+        } label: {
+            Image(systemName: symbolName)
+                .font(.system(size: 12, weight: .bold))
+                .frame(width: 30, height: 30)
+                .foregroundStyle(isSelected ? Color.white : Theme.fgMuted)
+                .background(
+                    isSelected ? Theme.accent : Color.clear,
+                    in: RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous)
+                )
+                .overlay {
+                    if isSelected {
+                        RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous)
+                            .stroke(Theme.accent.opacity(0.8), lineWidth: 1)
+                    }
+                }
+                .shadow(color: isSelected ? Theme.accent.opacity(0.35) : Color.clear, radius: 5, y: 1)
+        }
+        .disabled(isDisabled)
     }
 }
 
@@ -820,23 +845,23 @@ struct CaptureModeButton: View {
     var action: () -> Void
 
     var body: some View {
-        StudioButton(hitTarget: .capsule, action: action) {
+        StudioButton(hitTarget: .rounded(Theme.radiusMd), action: action) {
             HStack(spacing: 8) {
                 Image(systemName: symbolName)
                     .font(.system(size: 13, weight: .semibold))
                     .frame(width: 22, height: 22)
-                    .background(isActive ? Color.black.opacity(0.08) : Color.white.opacity(0.055), in: Circle())
+                    .background(isActive ? Color.black.opacity(0.08) : Color.white.opacity(0.055), in: RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous))
                 Text(title)
                     .font(.system(size: 12, weight: .semibold))
                     .lineLimit(1)
             }
             .fixedSize(horizontal: true, vertical: false)
-            .frame(minWidth: 118)
-            .frame(height: 40)
-            .padding(.horizontal, 13)
+            .frame(minWidth: 112)
+            .frame(height: Theme.btnHeightLg)
+            .padding(.horizontal, 12)
             .foregroundStyle(isActive ? Theme.actionPrimaryFg : Color.white.opacity(0.78))
             .background {
-                Capsule()
+                RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous)
                     .fill(isActive ? Theme.actionPrimary : Theme.overlayStrong)
                     .overlay {
                         LinearGradient(
@@ -844,11 +869,11 @@ struct CaptureModeButton: View {
                             startPoint: .top,
                             endPoint: .bottom
                         )
-                        .clipShape(Capsule())
+                        .clipShape(RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous))
                     }
             }
             .overlay {
-                Capsule()
+                RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous)
                     .stroke(isActive ? Color.white.opacity(0.24) : Theme.borderStrong.opacity(0.68), lineWidth: 1)
             }
         }
@@ -872,7 +897,7 @@ struct FlowLabel: View {
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(dotColor)
                 .frame(width: 24, height: 24)
-                .background(dotColor.opacity(0.14), in: Circle())
+                .background(dotColor.opacity(0.14), in: RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous))
             VStack(alignment: .leading, spacing: 1) {
                 Text(label.uppercased())
                     .font(.system(size: 9, weight: .bold))
@@ -886,10 +911,10 @@ struct FlowLabel: View {
         }
         .frame(width: 112, alignment: .leading)
         .padding(.horizontal, 9)
-        .frame(height: 38)
-        .background(Theme.scrim, in: Capsule())
+        .frame(height: Theme.btnHeightLg)
+        .background(Theme.scrim, in: RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous))
         .overlay {
-            Capsule()
+            RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous)
                 .stroke(Theme.borderSubtle, lineWidth: 1)
         }
     }
@@ -919,10 +944,10 @@ struct CompactFlowLabel: View {
         }
         .frame(width: 82, alignment: .leading)
         .padding(.horizontal, 8)
-        .frame(height: 38)
-        .background(Theme.scrim, in: Capsule())
+        .frame(height: Theme.btnHeightLg)
+        .background(Theme.scrim, in: RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous))
         .overlay {
-            Capsule()
+            RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous)
                 .stroke(Theme.borderSubtle, lineWidth: 1)
         }
     }
@@ -934,8 +959,8 @@ struct StatusDot: View {
     var body: some View {
         Circle()
             .fill(dotColor)
-            .frame(width: 8, height: 8)
-            .shadow(color: dotColor.opacity(0.65), radius: 7)
+            .frame(width: 7, height: 7)
+            .shadow(color: dotColor.opacity(0.65), radius: 4)
     }
 
     private var dotColor: Color {
@@ -951,32 +976,35 @@ struct StatusDot: View {
 struct SourceChip: View {
     var source: CaptureSource?
     var tone: FlowTone = .green
-    var minWidth: CGFloat = 132
-    var maxWidth: CGFloat = 198
+    var minWidth: CGFloat = 110
+    var maxWidth: CGFloat = 220
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 7) {
             StatusDot(tone: source == nil ? .amber : tone)
             Image(systemName: source?.kind == .window ? "macwindow" : source?.kind == .area ? "rectangle.dashed" : "display")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Theme.fgMuted)
-                .frame(width: 24, height: 24)
-                .background(Color.white.opacity(0.055), in: Circle())
-            Text(source?.name ?? "Choose source")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Theme.fg)
+                .frame(width: 22, height: 22)
+                .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous))
+            Text(source?.name ?? "Source")
                 .font(.system(size: 12, weight: .medium))
                 .lineLimit(1)
                 .truncationMode(.tail)
-                .frame(maxWidth: max(48, maxWidth - 58), alignment: .leading)
+                .frame(maxWidth: max(40, maxWidth - 60), alignment: .leading)
+            Image(systemName: "chevron.up.chevron.down")
+                .font(.system(size: 8, weight: .bold))
+                .foregroundStyle(Theme.fgSubtle)
         }
         .padding(.horizontal, 10)
         .frame(minWidth: minWidth, maxWidth: maxWidth, alignment: .leading)
-        .frame(height: 38)
-        .background(Theme.scrim.opacity(0.92), in: Capsule())
+        .frame(height: Theme.btnHeightLg)
+        .background(Theme.scrim.opacity(0.92), in: RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous))
         .overlay {
-            Capsule()
+            RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous)
                 .stroke(Theme.borderStrong.opacity(0.62), lineWidth: 1)
         }
-        .capsuleHitTarget()
+        .roundedHitTarget(Theme.radiusMd)
     }
 }
 
@@ -1000,7 +1028,7 @@ struct CaptureStatusChip: View {
         }
         .frame(maxWidth: maxWidth, alignment: .leading)
         .padding(.horizontal, 4)
-        .frame(height: 38)
+        .frame(height: Theme.btnHeightLg)
     }
 }
 
@@ -1010,20 +1038,31 @@ struct HUDToggle: View {
     var title: String
     var isDisabled = false
     var action: () -> Void
+    @State private var isHovering = false
 
     var body: some View {
-        StudioButton(hitTarget: .circle, help: title, action: action) {
+        StudioButton(hitTarget: .rounded(Theme.radiusSm), help: title, action: action) {
             Image(systemName: symbolName)
-                .font(.system(size: 14, weight: .medium))
-                .frame(width: 38, height: 38)
+                .font(.system(size: 13, weight: .semibold))
+                .frame(width: 32, height: 32)
                 .foregroundStyle(foregroundStyle)
-                .background(backgroundStyle, in: Circle())
+                .background(
+                    isActive
+                        ? Theme.accent.opacity(0.18)
+                        : (isHovering ? Color.white.opacity(0.08) : Color.clear),
+                    in: RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous)
+                )
                 .overlay {
-                    Circle()
-                        .stroke(strokeStyle, lineWidth: 1)
+                    if isActive {
+                        RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous)
+                            .stroke(Theme.accent.opacity(0.38), lineWidth: 1)
+                    }
                 }
         }
         .disabled(isDisabled)
+        .onHover { hovering in
+            isHovering = hovering
+        }
         .accessibilityLabel(title)
         .accessibilityValue(isActive ? "On" : "Off")
     }
@@ -1032,21 +1071,7 @@ struct HUDToggle: View {
         if isDisabled {
             return Theme.fgDisabled
         }
-        return isActive ? Theme.accent.opacity(0.95) : Color.white.opacity(0.55)
-    }
-
-    private var backgroundStyle: Color {
-        if isDisabled {
-            return Color.white.opacity(0.035)
-        }
-        return isActive ? Theme.accent.opacity(0.16) : Theme.overlay
-    }
-
-    private var strokeStyle: Color {
-        if isDisabled {
-            return Theme.overlay
-        }
-        return isActive ? Theme.accent.opacity(0.35) : Theme.border
+        return isActive ? Theme.accent : Color.white.opacity(0.60)
     }
 }
 
@@ -1068,6 +1093,38 @@ struct HUDToggle: View {
 // Prefer these over raw Color.white.opacity(N) or Color(red:...) literals.
 
 enum Theme {
+    // Corner Radii (Linear & Shadcn standard)
+    static let radiusSm: CGFloat   = 5
+    static let radiusMd: CGFloat   = 8
+    static let radiusLg: CGFloat   = 10
+    static let radiusXl: CGFloat   = 14
+    static let radiusPill: CGFloat = 999
+
+    // Spacing
+    static let space1: CGFloat  = 2
+    static let space2: CGFloat  = 4
+    static let space3: CGFloat  = 8
+    static let space4: CGFloat  = 12
+    static let space5: CGFloat  = 16
+    static let space6: CGFloat  = 20
+    static let space8: CGFloat  = 24
+    static let space10: CGFloat = 32
+
+    // Control Heights
+    static let btnHeightSm: CGFloat = 28
+    static let btnHeightMd: CGFloat = 36
+    static let btnHeightLg: CGFloat = 42
+
+    // Icon Sizes
+    static let iconSm: CGFloat = 12
+    static let iconMd: CGFloat = 14
+    static let iconLg: CGFloat = 18
+
+    // Butter-Smooth Motion Animations
+    static let springFast: Animation   = .spring(response: 0.22, dampingFraction: 0.84)
+    static let springSmooth: Animation = .spring(response: 0.32, dampingFraction: 0.80)
+    static let springBouncy: Animation = .spring(response: 0.38, dampingFraction: 0.74)
+
     // Surfaces
     static let appBg          = Color(red: 0.035, green: 0.035, blue: 0.043)
     static let appBgMuted     = Color(red: 0.055, green: 0.055, blue: 0.067)

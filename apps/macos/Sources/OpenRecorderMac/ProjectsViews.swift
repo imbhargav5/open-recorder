@@ -25,7 +25,7 @@ struct ProjectsStudioView: View {
                                 .foregroundStyle(.secondary)
                                 .padding(.horizontal, 7)
                                 .padding(.vertical, 4)
-                                .background(Theme.overlay, in: RoundedRectangle(cornerRadius: 6))
+                                .background(Theme.overlay, in: RoundedRectangle(cornerRadius: 4, style: .continuous))
                         }
                         Text("Open saved captures from this device.")
                             .font(.system(size: 13))
@@ -416,21 +416,21 @@ struct ProjectActionCard: View {
             Text(description)
                 .font(.system(size: 13))
                 .foregroundStyle(.secondary)
-            StudioButton(hitTarget: .rounded(8), action: action) {
+            StudioButton(hitTarget: .rounded(Theme.radiusMd), action: action) {
                 Label(buttonTitle, systemImage: symbolName)
                     .font(.system(size: 13, weight: .semibold))
                     .frame(maxWidth: .infinity)
-                    .frame(height: 36)
-                    .background(style == .primary ? Theme.accent : Theme.overlay, in: RoundedRectangle(cornerRadius: 8))
+                    .frame(height: Theme.btnHeightMd)
+                    .background(style == .primary ? Theme.accent : Theme.overlay, in: RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous))
                     .foregroundStyle(style == .primary ? Color.white : Color.primary)
             }
         }
-        .padding(20)
+        .padding(Theme.space5)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.surface.opacity(0.78), in: RoundedRectangle(cornerRadius: 10))
+        .background(Theme.surface.opacity(0.78), in: RoundedRectangle(cornerRadius: Theme.radiusLg, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(Theme.border)
+            RoundedRectangle(cornerRadius: Theme.radiusLg, style: .continuous)
+                .stroke(Theme.borderStrong.opacity(0.7))
         }
     }
 }
@@ -446,13 +446,13 @@ struct ProjectListRow: View {
                 model.openProject(project)
             }
         } label: {
-            HStack(spacing: 12) {
+            HStack(spacing: Theme.space4) {
                 Image(systemName: project.mediaKind.titleIconSystemName)
-                    .font(.system(size: 18, weight: .medium))
+                    .font(.system(size: Theme.iconLg, weight: .medium))
                     .frame(width: 40, height: 40)
-                    .background(Theme.accent.opacity(0.10), in: RoundedRectangle(cornerRadius: 7))
+                    .background(Theme.accent.opacity(0.10), in: RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous))
                     .overlay {
-                        RoundedRectangle(cornerRadius: 7)
+                        RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous)
                             .stroke(Theme.accent.opacity(0.22))
                     }
                     .foregroundStyle(Theme.accent)
@@ -469,7 +469,7 @@ struct ProjectListRow: View {
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 3)
                                 .overlay {
-                                    RoundedRectangle(cornerRadius: 5)
+                                    RoundedRectangle(cornerRadius: 3, style: .continuous)
                                         .stroke(Color.red.opacity(0.35))
                                 }
                         }
@@ -526,9 +526,9 @@ struct EmptyProjectsPanel: View {
             Text(tab == .screenRecordings ? "Screen recording projects will appear here after you save or open one." : "Screenshot projects will appear here after you capture or open one.")
         }
         .frame(maxWidth: .infinity, minHeight: 240)
-        .background(Theme.surface.opacity(0.60), in: RoundedRectangle(cornerRadius: 10))
+        .background(Theme.surface.opacity(0.60), in: RoundedRectangle(cornerRadius: Theme.radiusLg, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 10)
+            RoundedRectangle(cornerRadius: Theme.radiusLg, style: .continuous)
                 .stroke(Theme.border, style: StrokeStyle(lineWidth: 1, dash: [5, 5]))
         }
     }
@@ -597,7 +597,7 @@ private struct ProjectLibraryFailureBanner: View {
                 .disabled(false)
         }
         .padding(10)
-        .background(Theme.overlay, in: RoundedRectangle(cornerRadius: 8))
+        .background(Theme.overlay, in: RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous))
         .accessibilityElement(children: .contain)
     }
 }

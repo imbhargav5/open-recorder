@@ -181,51 +181,46 @@ struct VideoPreviewPanel: View {
     }
 
     private var previewControlRow: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 12) {
             cropButton
             Rectangle()
-                .fill(Theme.borderSubtle)
-                .frame(width: 1, height: 20)
+                .fill(Theme.borderStrong.opacity(0.40))
+                .frame(width: 1, height: 14)
             previewAspectMenu
         }
-        .padding(4)
-        .background(Theme.scrim.opacity(0.72), in: Capsule())
-        .overlay {
-            Capsule()
-                .stroke(Theme.borderSubtle, lineWidth: 1)
-        }
+        .frame(height: 32)
     }
 
     private var cropButton: some View {
-        StudioButton(hitTarget: .capsule, help: "Crop", action: onCropVideo) {
+        Button(action: onCropVideo) {
             Label("Crop", systemImage: "crop")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(Color.primary.opacity(0.86))
-                .padding(.horizontal, 11)
-                .frame(height: 30)
-                .background(Color.white.opacity(0.001), in: Capsule())
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Theme.fg)
+                .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .help("Crop video")
     }
 
     private var previewAspectMenu: some View {
-        StudioButton(hitTarget: .capsule, help: "Preview aspect ratio") {
+        Button {
             isPreviewAspectDropdownPresented.toggle()
         } label: {
-            HStack(spacing: 7) {
+            HStack(spacing: 6) {
                 PreviewAspectGlyph(preset: previewAspectPreset, isSelected: true)
-                    .frame(width: 17, height: 17)
+                    .frame(width: 15, height: 15)
                 Text(previewAspectPreset.ratioLabel)
+                    .font(.system(size: 12, weight: .semibold))
                     .lineLimit(1)
-                Image(systemName: "chevron.up")
-                    .font(.system(size: 8, weight: .semibold))
-                    .foregroundStyle(Color.primary.opacity(0.58))
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(Theme.fgSubtle)
             }
-            .font(.system(size: 11, weight: .semibold))
-            .foregroundStyle(Color.primary.opacity(0.86))
-            .padding(.horizontal, 11)
-            .frame(height: 30)
-            .background(Color.white.opacity(0.001), in: Capsule())
+            .foregroundStyle(Theme.fg)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .help("Preview aspect ratio")
         .popover(isPresented: $isPreviewAspectDropdownPresented, arrowEdge: .top) {
             PreviewAspectDropdown(
                 selection: $previewAspectPreset,
@@ -347,10 +342,10 @@ struct VideoPreviewPanel: View {
                 .font(.system(size: 11, weight: .semibold))
                 .padding(.horizontal, 10)
                 .padding(.vertical, 8)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .background(Color.black.opacity(0.38), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .background(.ultraThinMaterial, in: Rectangle())
+                .background(Color.black.opacity(0.38), in: Rectangle())
                 .overlay {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    Rectangle()
                         .stroke(Color.white.opacity(0.14), lineWidth: 1)
                 }
                 .foregroundStyle(Color.white)
@@ -643,9 +638,9 @@ struct EmptyEditorState: View {
                 .font(.system(size: 32))
                 .foregroundStyle(Theme.accent)
                 .frame(width: 66, height: 66)
-                .background(Theme.accent.opacity(0.10), in: RoundedRectangle(cornerRadius: 16))
+                .background(Theme.accent.opacity(0.10), in: RoundedRectangle(cornerRadius: Theme.radiusLg, style: .continuous))
                 .overlay {
-                    RoundedRectangle(cornerRadius: 16)
+                    RoundedRectangle(cornerRadius: Theme.radiusLg, style: .continuous)
                         .stroke(Theme.accent.opacity(0.22))
                 }
             Text("No Recording Open")
@@ -716,9 +711,9 @@ struct PlaybackPreview: View {
             .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
             .clipped()
             .background(letterboxFill.color)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .clipShape(RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous)
                     .stroke(Theme.border)
             }
         }
@@ -743,7 +738,7 @@ struct PlaybackPreview: View {
                     .foregroundStyle(.white)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 8)
-                    .background(Color.black.opacity(0.62), in: RoundedRectangle(cornerRadius: 10))
+                    .background(Color.black.opacity(0.62), in: RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous))
                     .position(x: annotation.x * size.width, y: annotation.y * size.height)
                     .shadow(color: .black.opacity(0.45), radius: 8, y: 4)
             }
@@ -957,15 +952,15 @@ private struct PreviewAspectDropdown: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .background(selection == option ? Color.white.opacity(0.10) : Color.clear, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .background(selection == option ? Color.white.opacity(0.10) : Color.clear, in: Rectangle())
             }
         }
         .padding(7)
         .frame(width: 224)
         .background(Theme.surfaceRaised)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .clipShape(Rectangle())
         .overlay {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            Rectangle()
                 .stroke(Theme.borderStrong, lineWidth: 1)
         }
     }
@@ -985,11 +980,11 @@ private struct PreviewAspectGlyph: View {
             let resolvedWidth = min(width, maxWidth)
             let resolvedHeight = min(height, maxHeight)
 
-            RoundedRectangle(cornerRadius: min(resolvedWidth, resolvedHeight) * 0.22, style: .continuous)
+            RoundedRectangle(cornerRadius: 2, style: .continuous)
                 .fill(preset == .auto ? Color.clear : (isSelected ? Color.white.opacity(0.94) : Color.white.opacity(0.22)))
                 .overlay {
                     if preset == .auto {
-                        RoundedRectangle(cornerRadius: min(resolvedWidth, resolvedHeight) * 0.22, style: .continuous)
+                        RoundedRectangle(cornerRadius: 2, style: .continuous)
                             .stroke(Color.white.opacity(isSelected ? 0.95 : 0.34), style: StrokeStyle(lineWidth: 1.2, dash: [3, 2]))
                     }
                 }

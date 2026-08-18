@@ -59,7 +59,7 @@ struct OnboardingView: View {
                 .frame(width: 500, height: 38)
                 .padding(.top, 20)
 
-            StudioButton(hitTarget: .rounded(8)) {
+            StudioButton(hitTarget: .rounded(Theme.radiusMd)) {
                 driver.send(.continueRequested)
             } label: {
                 Label("Continue", systemImage: "checkmark.circle.fill")
@@ -68,10 +68,10 @@ struct OnboardingView: View {
                     .foregroundStyle(driver.state.canContinue ? Color.white : Theme.fgSubtle)
                     .background(
                         driver.state.canContinue ? Theme.accent : Theme.surfaceControl,
-                        in: RoundedRectangle(cornerRadius: 8)
+                        in: RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous)
                     )
                     .overlay {
-                        RoundedRectangle(cornerRadius: 8)
+                        RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous)
                             .stroke(driver.state.canContinue ? Theme.accent.opacity(0.45) : Theme.border)
                     }
             }
@@ -200,7 +200,11 @@ private struct OnboardingPermissionRow: View {
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
-                        .background(Theme.overlay, in: Capsule())
+                        .background(Theme.overlay, in: RoundedRectangle(cornerRadius: 3, style: .continuous))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                                .stroke(Theme.borderSubtle, lineWidth: 1)
+                        }
                 }
 
                 Text(description)
@@ -214,7 +218,7 @@ private struct OnboardingPermissionRow: View {
             if buttonState == .enabled {
                 permissionStatusLabel
             } else {
-                StudioButton(hitTarget: .rounded(6), action: action) {
+                StudioButton(hitTarget: .rounded(Theme.radiusMd), action: action) {
                     permissionActionLabel
                 }
             }
@@ -229,9 +233,9 @@ private struct OnboardingPermissionRow: View {
             .minimumScaleFactor(0.82)
             .frame(width: 242, height: 36)
             .foregroundStyle(foregroundColor)
-            .background(backgroundColor, in: RoundedRectangle(cornerRadius: 5))
+            .background(backgroundColor, in: RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 5)
+                RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous)
                     .stroke(borderColor, lineWidth: 1)
             }
     }
@@ -243,9 +247,9 @@ private struct OnboardingPermissionRow: View {
             .minimumScaleFactor(0.82)
             .frame(width: 242, height: 36)
             .foregroundStyle(foregroundColor)
-            .background(backgroundColor, in: RoundedRectangle(cornerRadius: 5))
+            .background(backgroundColor, in: RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 5)
+                RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous)
                     .stroke(borderColor, lineWidth: 1)
             }
             .accessibilityLabel("\(buttonTitle), \(requirement.title)")

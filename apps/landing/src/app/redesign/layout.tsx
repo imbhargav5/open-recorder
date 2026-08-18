@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import type { ReactElement, ReactNode } from "react";
-import "./redesign/design-tokens.css";
-import "./redesign/redesign.css";
+import "./design-tokens.css";
+import "./redesign.css";
 
 export const metadata: Metadata = {
   title: "Open Recorder | Native macOS capture studio",
@@ -9,14 +9,9 @@ export const metadata: Metadata = {
     "Open Recorder is an open-source macOS screen recorder, screenshot tool, and native editor built with Swift and Rust.",
 };
 
-export default function RootLayout({
+export default function RedesignLayout({
   children,
-}: Readonly<{
-  children: ReactNode;
-}>): ReactElement {
-  return (
-    <html lang="en">
-      <body className="rd-root dark">{children}</body>
-    </html>
-  );
+}: Readonly<{ children: ReactNode }>): ReactElement {
+  // Force dark class so dark tokens are always active
+  return <div className="rd-root dark">{children}</div>;
 }

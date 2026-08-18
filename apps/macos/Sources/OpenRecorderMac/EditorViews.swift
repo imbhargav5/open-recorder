@@ -133,17 +133,25 @@ struct VideoEditorStudioView: View {
     private let timelineHeight = TimelineMetrics.compactPanelHeight
 
     var body: some View {
-        ResizableStudioSplitPane(
-            secondarySize: $sidebarWidth,
+        StudioSplitPane(
+            axis: .horizontal,
+            secondarySize: sidebarWidth,
             minPrimarySize: 520,
             minSecondarySize: 280,
-            maxSecondarySize: 440
+            maxSecondarySize: 440,
+            spacing: 0
         ) {
             editorColumn
         } secondary: {
             sidebarContent
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .background(Theme.surface.opacity(0.88), in: RoundedRectangle(cornerRadius: Theme.radiusLg, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: Theme.radiusLg, style: .continuous)
+                .stroke(Theme.borderStrong.opacity(0.65), lineWidth: 1)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: Theme.radiusLg, style: .continuous))
         .padding(16)
         .background(Theme.appBgMuted)
         .sheet(item: editor.activeSheetBinding(exportIsBusy: videoExport.state.phase.isBusy)) { sheet in
@@ -209,7 +217,8 @@ struct VideoEditorStudioView: View {
             secondarySize: timelineHeight,
             minPrimarySize: 260,
             minSecondarySize: TimelineMetrics.compactPanelHeight,
-            maxSecondarySize: TimelineMetrics.compactPanelHeight
+            maxSecondarySize: TimelineMetrics.compactPanelHeight,
+            spacing: 0
         ) {
             VideoPreviewPanel(
                 videoURL: videoURL,

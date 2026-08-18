@@ -300,7 +300,7 @@ struct ProjectVideoEditorState: Codable, Equatable, Hashable {
     init(
         background: BackgroundStyle = BackgroundPresets.default,
         padding: Double = 18,
-        borderRadius: Double = 12,
+        borderRadius: Double = 0,
         shadow: Double = 0.35,
         backgroundBlur: Double = 0,
         inset: Double = 0,
@@ -890,6 +890,8 @@ enum NativeWindowCommandAction: Equatable {
     case showMicrophoneSelector
     case showCameraSelector
     case showAreaSelector
+    case showCameraBubble
+    case closeCameraBubble
     case showStudio
     case closeCaptureSetup
     case closeSourceSelector

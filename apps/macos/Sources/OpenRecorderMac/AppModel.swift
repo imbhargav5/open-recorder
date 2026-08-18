@@ -128,7 +128,21 @@ final class AppModel: ObservableObject {
     }
     var includeCamera: Bool {
         get { captureOptions.state.includeCamera }
-        set { captureOptions.send(.cameraEnabledChanged(newValue)) }
+        set {
+            captureOptions.send(.cameraEnabledChanged(newValue))
+            if newValue {
+                prewarmSelectedFacecamIfNeeded()
+                requestWindow(.showCameraBubble)
+            } else {
+                requestWindow(.closeCameraBubble)
+            }
+        }
+    }
+    var cameraCaptureSession: AVCaptureSession? {
+        facecamRecorder.captureSession
+    }
+    func prepareCameraIfNeeded() {
+        prewarmSelectedFacecamIfNeeded()
     }
     var showCursor: Bool {
         get { captureOptions.state.showCursor }
@@ -202,6 +216,7 @@ final class AppModel: ObservableObject {
     private var mediaImportRequestIDsByPath: [String: UUID] = [:]
     @Published private(set) var isCapturePreflightRunning = false
     @Published private(set) var isTerminationPending = false
+    @Published private(set) var activeRecordingStartDate: Date? = nil
     private var displayFlashWindows: [NSWindow] = []
     private let countdownOverlayController = RecordingCountdownOverlayController()
     private let captureUIHideDelayNanoseconds: UInt64
@@ -1351,6 +1366,7 @@ final class AppModel: ObservableObject {
             let screenStartedAt = try await startRecordingCapture(selectedSource, outputURL, options)
             cursorTelemetryRecorder.alignStart(to: screenStartedAt)
             activeScreenStartedAt = screenStartedAt
+            activeRecordingStartDate = screenStartedAt
 
             currentVideoURL = outputURL
             currentScreenshotURL = nil
@@ -1382,6 +1398,7 @@ final class AppModel: ObservableObject {
             }
             _ = cursorTelemetryRecorder.stop(videoURL: nil)
             activeScreenStartedAt = nil
+            activeRecordingStartDate = nil
             activeFacecamStartedAt = nil
             activeFacecamURL = nil
             restoreRecordingSetup(source: selectedSource, message: error.localizedDescription)
@@ -1464,6 +1481,7 @@ final class AppModel: ObservableObject {
             }
         }
         activeScreenStartedAt = nil
+        activeRecordingStartDate = nil
         activeFacecamStartedAt = nil
         activeFacecamURL = nil
     }
@@ -2349,6 +2367,7 @@ final class AppModel: ObservableObject {
     func disableCamera() {
         captureOptions.send(.cameraDisabled)
         cancelFacecamPrewarm()
+        requestWindow(.closeCameraBubble)
     }
 
     var selectedMicrophoneDeviceName: String {
@@ -2574,7 +2593,7 @@ final class AppModel: ObservableObject {
 private struct DisplayFlashOverlay: View {
     var body: some View {
         let flashColor = Theme.accent
-        RoundedRectangle(cornerRadius: 16, style: .continuous)
+        Rectangle()
             .stroke(flashColor, lineWidth: 6)
             .padding(10)
             .background(flashColor.opacity(0.10))

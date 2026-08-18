@@ -16,11 +16,13 @@ struct ScreenshotEditorStudioView: View {
     @State private var sidebarWidth: CGFloat = 320
 
     var body: some View {
-        ResizableStudioSplitPane(
-            secondarySize: $sidebarWidth,
+        StudioSplitPane(
+            axis: .horizontal,
+            secondarySize: sidebarWidth,
             minPrimarySize: 520,
             minSecondarySize: 280,
-            maxSecondarySize: 440
+            maxSecondarySize: 440,
+            spacing: 0
         ) {
             ScreenshotCanvas(
                 image: image,
@@ -58,6 +60,12 @@ struct ScreenshotEditorStudioView: View {
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .background(Theme.surface.opacity(0.88), in: RoundedRectangle(cornerRadius: Theme.radiusLg, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: Theme.radiusLg, style: .continuous)
+                .stroke(Theme.borderStrong.opacity(0.65), lineWidth: 1)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: Theme.radiusLg, style: .continuous))
         .padding(16)
         .background(Theme.appBgMuted)
         .sheet(isPresented: editor.exportDialogBinding) {
@@ -234,7 +242,7 @@ struct ScreenshotExportDialog: View {
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(Theme.accent)
                 .frame(width: 38, height: 38)
-                .background(Theme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .background(Theme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous))
 
             VStack(alignment: .leading, spacing: 3) {
                 Text("Export PNG")
@@ -262,13 +270,13 @@ private struct ScreenshotExportActionCard: View {
     var action: () -> Void
 
     var body: some View {
-        StudioButton(hitTarget: .rounded(12), action: action) {
+        StudioButton(hitTarget: .rounded(Theme.radiusMd), action: action) {
             VStack(alignment: .leading, spacing: 10) {
                 Image(systemName: symbolName)
                     .font(.system(size: 15, weight: .semibold))
                     .frame(width: 30, height: 30)
                     .foregroundStyle(isPrimary ? Color.white : Theme.accent)
-                    .background(isPrimary ? Color.white.opacity(0.16) : Theme.accent.opacity(0.11), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .background(isPrimary ? Color.white.opacity(0.16) : Theme.accent.opacity(0.11), in: RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous))
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
@@ -285,7 +293,7 @@ private struct ScreenshotExportActionCard: View {
             .padding(.horizontal, 13)
             .foregroundStyle(isPrimary ? Color.white : Color.primary)
             .background {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous)
                     .fill(isPrimary ? Theme.accent : Theme.overlayStrong.opacity(0.72))
                     .overlay {
                         LinearGradient(
@@ -293,15 +301,15 @@ private struct ScreenshotExportActionCard: View {
                             startPoint: .top,
                             endPoint: .bottom
                         )
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .clipShape(RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous))
                     }
             }
             .overlay {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(isPrimary ? Color.white.opacity(0.20) : Theme.borderSubtle, lineWidth: 1)
+                RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous)
+                    .stroke(isPrimary ? Color.white.opacity(0.24) : Theme.borderStrong.opacity(0.72), lineWidth: 1)
             }
-            .shadow(color: isPrimary ? Theme.accent.opacity(0.24) : Color.clear, radius: 10, y: 4)
         }
+        .shadow(color: isPrimary ? Theme.accent.opacity(0.24) : Color.clear, radius: 10, y: 4)
     }
 }
 
@@ -464,7 +472,7 @@ struct ScreenshotSettingsPanel: View {
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(Theme.accent)
                 .frame(width: 30, height: 30)
-                .background(Theme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 7))
+                .background(Theme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous))
 
             VStack(alignment: .leading, spacing: 3) {
                 Text("Screenshot Settings")
@@ -478,9 +486,9 @@ struct ScreenshotSettingsPanel: View {
             Spacer(minLength: 0)
         }
         .padding(10)
-        .background(Theme.overlay, in: RoundedRectangle(cornerRadius: 8))
+        .background(Theme.overlay, in: RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous)
                 .stroke(Theme.overlay)
         }
     }
@@ -508,9 +516,9 @@ private struct ScreenshotExportMenu: View {
                 .frame(maxWidth: .infinity)
                 .frame(height: 30)
                 .foregroundStyle(Theme.fgMuted)
-                .background(Theme.overlay, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                .background(Theme.overlay, in: RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous))
                 .overlay {
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous)
                         .stroke(Theme.borderSubtle, lineWidth: 1)
                 }
         }

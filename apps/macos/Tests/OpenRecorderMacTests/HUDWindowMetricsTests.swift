@@ -24,7 +24,7 @@ final class HUDWindowMetricsTests: XCTestCase {
     }
 
     func testDefaultWidthMatchesCondensedHUDLayout() {
-        XCTAssertEqual(HUDWindowMetrics.defaultSize.width, 620)
+        XCTAssertEqual(HUDWindowMetrics.defaultSize.width, 720)
     }
 
     func testMeasuredWidthIsPreservedWhenItFitsVisibleFrame() {

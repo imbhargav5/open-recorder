@@ -27,6 +27,8 @@ struct StudioWindowCloseInterceptor: NSViewRepresentable {
 
 @MainActor
 final class StudioWindowCloseInterceptionView: NSView, NSWindowDelegate {
+    override var isFlipped: Bool { true }
+
     var onCloseRequest: StudioWindowCloseInterceptor.CloseRequestHandler = { true }
 
     private weak var interceptedWindow: NSWindow?

@@ -151,6 +151,16 @@ struct OpenRecorderApp: App {
         .defaultLaunchBehavior(.suppressed)
         .defaultSize(width: CaptureDeviceSelectorWindowMetrics.width, height: CaptureDeviceSelectorWindowMetrics.height)
 
+        Window("Camera Bubble", id: "camera-bubble") {
+            ContentView(role: .cameraBubble)
+                .environmentObject(model)
+                .background(AppWindowActionBridge(appDelegate: appDelegate))
+        }
+        .windowStyle(.hiddenTitleBar)
+        .windowResizability(.contentSize)
+        .defaultLaunchBehavior(.suppressed)
+        .restorationBehavior(.disabled)
+
         Window("Select Area", id: "area-selector") {
             ContentView(role: .areaSelector)
                 .environmentObject(model)
@@ -340,11 +350,16 @@ final class AppWindowActions {
         case .showCameraSelector:
             unhideApp()
             openWindow("camera-selector")
+        case .showCameraBubble:
+            openWindow("camera-bubble")
+        case .closeCameraBubble:
+            dismissWindow("camera-bubble")
         case .showAreaSelector:
             unhideApp()
             openWindow("area-selector")
         case .showStudio:
             unhideApp()
+            dismissCaptureWindows()
             if let editorSession = command.editorSession {
                 openEditor(editorSession)
             } else {
@@ -371,6 +386,7 @@ final class AppWindowActions {
         dismissWindow("area-selector")
         dismissWindow("microphone-selector")
         dismissWindow("camera-selector")
+        dismissWindow("camera-bubble")
     }
 
     private func hideAppWindowsForCapture() {

@@ -167,9 +167,9 @@ struct VideoCropDialog: View {
                 endPoint: .bottom
             )
         )
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .clipShape(Rectangle())
         .overlay {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            Rectangle()
                 .stroke(Theme.borderStrong, lineWidth: 1)
         }
         .interactiveDismissDisabled()
@@ -241,7 +241,7 @@ struct VideoCropDialog: View {
                     .font(.system(size: 12, weight: .semibold))
                     .frame(height: 36)
                     .padding(.horizontal, 12)
-                    .background(Theme.overlay, in: RoundedRectangle(cornerRadius: 7))
+                    .background(Theme.overlay, in: RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous))
             }
             .buttonStyle(.plain)
             .foregroundStyle(.white)
@@ -250,12 +250,12 @@ struct VideoCropDialog: View {
                 driver.send(.shortcutsPresented(!driver.state.isShortcutDropdownPresented))
             } label: {
                 Image(systemName: "keyboard")
-                    .font(.system(size: 14, weight: .semibold))
-                    .frame(width: 36, height: 36)
+                    .font(.system(size: Theme.iconMd, weight: .semibold))
+                    .frame(width: Theme.btnHeightMd, height: Theme.btnHeightMd)
                     .foregroundStyle(.white.opacity(0.88))
                     .background(
                         Color.white.opacity(driver.state.isShortcutDropdownPresented ? 0.13 : 0.07),
-                        in: RoundedRectangle(cornerRadius: 7)
+                        in: RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous)
                     )
             }
             .buttonStyle(.plain)
@@ -267,15 +267,15 @@ struct VideoCropDialog: View {
     }
 
     private var footer: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: Theme.space3) {
             Button {
                 driver.send(.confirmRequested)
             } label: {
                 Label("Confirm changes", systemImage: "return")
                     .font(.system(size: 13, weight: .semibold))
-                    .frame(height: 36)
-                    .padding(.horizontal, 12)
-                    .background(Color(red: 0.33, green: 0.20, blue: 1.0), in: RoundedRectangle(cornerRadius: 6))
+                    .frame(height: Theme.btnHeightMd)
+                    .padding(.horizontal, Theme.space4)
+                    .background(Theme.accent, in: RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous))
                     .foregroundStyle(.white)
             }
             .buttonStyle(.plain)
@@ -286,11 +286,11 @@ struct VideoCropDialog: View {
             } label: {
                 Text("Discard changes")
                     .font(.system(size: 13, weight: .medium))
-                    .frame(height: 36)
-                    .padding(.horizontal, 13)
-                    .background(Theme.overlay, in: RoundedRectangle(cornerRadius: 6))
+                    .frame(height: Theme.btnHeightMd)
+                    .padding(.horizontal, Theme.space4)
+                    .background(Theme.overlay, in: RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous))
                     .overlay {
-                        RoundedRectangle(cornerRadius: 6)
+                        RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous)
                             .stroke(Theme.border)
                     }
                     .foregroundStyle(.white.opacity(0.92))
@@ -367,13 +367,13 @@ private struct VideoCropKeyboardShortcutsDropdown: View {
             ForEach(shortcuts) { shortcut in
                 HStack(spacing: 12) {
                     Text(shortcut.keys)
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
                         .foregroundStyle(Color.white.opacity(0.92))
                         .lineLimit(1)
                         .frame(width: 54, height: 24)
-                        .background(Theme.border, in: RoundedRectangle(cornerRadius: 5))
+                        .background(Theme.border, in: RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous))
                         .overlay {
-                            RoundedRectangle(cornerRadius: 5)
+                            RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous)
                                 .stroke(Theme.border, lineWidth: 1)
                         }
 
@@ -389,12 +389,12 @@ private struct VideoCropKeyboardShortcutsDropdown: View {
         .padding(14)
         .frame(width: 260)
         .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(Color(red: 0.10, green: 0.13, blue: 0.16))
+            RoundedRectangle(cornerRadius: Theme.radiusLg, style: .continuous)
+                .fill(Theme.surfaceRaised)
         )
         .overlay {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(Theme.border, lineWidth: 1)
+            RoundedRectangle(cornerRadius: Theme.radiusLg, style: .continuous)
+                .stroke(Theme.borderStrong, lineWidth: 1)
         }
     }
 }
@@ -402,7 +402,6 @@ private struct VideoCropKeyboardShortcutsDropdown: View {
 private struct VideoCropShortcutHelpItem: Identifiable {
     var keys: String
     var action: String
-
     var id: String { keys }
 }
 
@@ -439,7 +438,7 @@ private struct VideoCropCanvas: View {
                 cropOverlay(displayRect: displayRect, videoFrame: videoFrame, sourceSize: safeSourceSize)
             }
         }
-        .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.radiusLg, style: .continuous))
     }
 
     private func drawHitArea(videoFrame: CGRect, sourceSize: CGSize) -> some View {
@@ -597,11 +596,15 @@ private struct CropNumberField: View {
     var body: some View {
         TextField("", value: $value, formatter: NumberFormatter.cropInteger)
             .textFieldStyle(.plain)
-            .font(.system(size: 12, weight: .semibold, design: .rounded))
+            .font(.system(size: 12, weight: .semibold, design: .monospaced))
             .foregroundStyle(.white)
             .multilineTextAlignment(.center)
             .frame(width: 64, height: 36)
-            .background(Theme.overlay, in: RoundedRectangle(cornerRadius: 7))
+            .background(Theme.overlay, in: RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous)
+                    .stroke(Theme.border, lineWidth: 1)
+            }
             .accessibilityLabel(label)
     }
 }
@@ -629,7 +632,6 @@ private struct CropHandleView: View {
                 Circle()
                     .stroke(Color.white, lineWidth: 1.4)
             }
-            .shadow(color: .black.opacity(0.35), radius: 3, y: 1)
     }
 }
 
