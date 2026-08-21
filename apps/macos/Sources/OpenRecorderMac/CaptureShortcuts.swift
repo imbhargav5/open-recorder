@@ -24,8 +24,8 @@ public enum CaptureShortcutAction: String, CaseIterable, Identifiable, Codable, 
         switch self {
         case .deviceScreenshot: "Capture full screen instantly"
         case .dragScreenshot: "Select and capture custom area"
-        case .deviceScreenRecord: "Record full screen with Open Recorder"
-        case .dragScreenRecord: "Drag area to record with Open Recorder"
+        case .deviceScreenRecord: "Open screen recorder with full screen selected"
+        case .dragScreenRecord: "Select area to record with Open Recorder"
         case .toggleRecording: "Start or stop active recording"
         }
     }

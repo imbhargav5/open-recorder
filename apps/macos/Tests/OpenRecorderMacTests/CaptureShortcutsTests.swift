@@ -96,11 +96,12 @@ final class CaptureShortcutsTests: XCTestCase {
         model.cancelCapture()
         model.triggerDeviceScreenRecord()
         XCTAssertEqual(model.captureMode, .recording)
+        XCTAssertEqual(model.selectedSource?.kind, .display)
 
         model.cancelCapture()
         model.triggerDragScreenRecord()
         XCTAssertEqual(model.captureMode, .recording)
-        XCTAssertTrue(model.isDragRecordingPending)
+        XCTAssertFalse(model.isDragRecordingPending)
 
         model.cancelCapture()
         XCTAssertFalse(model.isDragRecordingPending)

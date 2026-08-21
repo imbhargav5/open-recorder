@@ -133,11 +133,11 @@ final class WindowConfigurationView: NSView {
         window.isOpaque = false
         window.backgroundColor = .clear
         window.hasShadow = false
-        window.level = .floating
+        window.level = .statusBar
         window.collectionBehavior = [
             .canJoinAllSpaces,
             .fullScreenAuxiliary,
-            .stationary
+            .ignoresCycle
         ]
         window.isMovableByWindowBackground = true
         window.titleVisibility = .hidden
@@ -308,10 +308,7 @@ final class WindowConfigurationView: NSView {
     private func positionBottomCenter(_ window: NSWindow, contentSize: NSSize) {
         guard let screen = window.screen ?? NSScreen.main else { return }
         let visibleFrame = screen.visibleFrame
-        let origin = NSPoint(
-            x: visibleFrame.midX - contentSize.width / 2,
-            y: visibleFrame.minY + 26
-        )
+        let origin = HUDWindowMetrics.bottomCenterOrigin(for: contentSize, visibleFrame: visibleFrame)
         window.setFrame(NSRect(origin: origin, size: contentSize), display: true)
     }
 
@@ -364,6 +361,14 @@ final class WindowConfigurationView: NSView {
         guard role == .hud, window.isVisible else { return }
         window.collectionBehavior = HUDWindowChrome.collectionBehavior
         window.level = HUDWindowChrome.level
+        if let screen = window.screen ?? NSScreen.main {
+            let clamped = HUDWindowMetrics.clampedOrigin(
+                for: window.frame.size,
+                currentOrigin: window.frame.origin,
+                visibleFrame: screen.visibleFrame
+            )
+            window.setFrameOrigin(clamped)
+        }
         window.orderFrontRegardless()
     }
 }

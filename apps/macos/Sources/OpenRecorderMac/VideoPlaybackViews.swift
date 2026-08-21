@@ -290,7 +290,6 @@ struct VideoPreviewPanel: View {
                     )
                     .frame(width: recordingFrame.width, height: recordingFrame.height)
                     .offset(x: recordingFrame.minX, y: recordingFrame.minY)
-                    .transformEffect(facecamZoomTransform)
                 }
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
@@ -759,41 +758,58 @@ struct FacecamOverlayLayout {
         }
 
         let baseLength = min(containerSize.width, containerSize.height)
-        let side = max(1, min(baseLength * CGFloat(resolved.size / 100), baseLength))
+        let baseSide = max(1, min(baseLength * CGFloat(resolved.size / 100), baseLength))
+        let width: CGFloat
+        let height: CGFloat
+        if resolved.normalizedShape == "rectangle" {
+            width = min(containerSize.width, baseSide * 1.35)
+            height = width * (9.0 / 16.0)
+        } else {
+            width = baseSide
+            height = baseSide
+        }
+
         let margin = max(0, baseLength * CGFloat(resolved.margin / 100))
-        let halfSide = side / 2
+        let halfWidth = width / 2
+        let halfHeight = height / 2
         let x: CGFloat
         let y: CGFloat
 
         switch resolved.resolvedAnchor {
         case .topLeft, .left, .bottomLeft:
-            x = margin + halfSide
+            x = margin + halfWidth
         case .top, .center, .bottom:
             x = containerSize.width / 2
         case .topRight, .right, .bottomRight:
-            x = containerSize.width - margin - halfSide
+            x = containerSize.width - margin - halfWidth
         }
 
         switch resolved.resolvedAnchor {
         case .topLeft, .top, .topRight:
-            y = margin + halfSide
+            y = margin + halfHeight
         case .left, .center, .right:
             y = containerSize.height / 2
         case .bottomLeft, .bottom, .bottomRight:
-            y = containerSize.height - margin - halfSide
+            y = containerSize.height - margin - halfHeight
         }
 
-        let rawX = x - halfSide
-        let rawY = y - halfSide
+        let rawX = x - halfWidth
+        let rawY = y - halfHeight
         let safeMinX: CGFloat = 0
-        let safeMaxX = max(safeMinX, containerSize.width - side)
+        let safeMaxX = max(safeMinX, containerSize.width - width)
         let safeMinY: CGFloat = 0
-        let safeMaxY = max(safeMinY, containerSize.height - side)
+        let safeMaxY = max(safeMinY, containerSize.height - height)
 
         let clampedX = max(safeMinX, min(rawX, safeMaxX))
         let clampedY = max(safeMinY, min(rawY, safeMaxY))
 
-        return CGRect(x: clampedX, y: clampedY, width: side, height: side)
+        return CGRect(x: clampedX, y: clampedY, width: width, height: height)
+    }
+
+    static func normalizedRect(for settings: FacecamSettings) -> CGRect {
+        let dummySize = CGSize(width: 1000, height: 1000)
+        let f = frame(in: dummySize, settings: settings)
+        return CGRect(x: f.minX / 1000, y: f.minY / 1000, width: f.width / 1000, height: f.height / 1000)
     }
 }
 
@@ -1129,12 +1145,18 @@ final class PlayerLayerView: NSView {
         contentLayer.position = .zero
         contentLayer.isGeometryFlipped = true
 
-        playbackLayer.videoGravity = .resizeAspect
+        playbackLayer.videoGravity = videoGravity
         playbackLayer.backgroundColor = NSColor.clear.cgColor
 
         layer = rootLayer
         rootLayer.addSublayer(contentLayer)
         contentLayer.addSublayer(playbackLayer)
+    }
+
+    var videoGravity: AVLayerVideoGravity = .resizeAspect {
+        didSet {
+            playbackLayer.videoGravity = videoGravity
+        }
     }
 
     private func layoutPlayerLayers() {
@@ -1171,11 +1193,13 @@ struct NativeVideoPlayer: NSViewRepresentable {
 
     func makeNSView(context: Context) -> PlayerLayerView {
         let view = PlayerLayerView()
+        view.videoGravity = .resizeAspect
         view.update(player: playback.player, zoomTransform: zoomTransform)
         return view
     }
 
     func updateNSView(_ nsView: PlayerLayerView, context: Context) {
+        nsView.videoGravity = .resizeAspect
         nsView.update(player: playback.player, zoomTransform: zoomTransform)
     }
 
@@ -1189,11 +1213,13 @@ struct FacecamPlayerView: NSViewRepresentable {
 
     func makeNSView(context: Context) -> PlayerLayerView {
         let view = PlayerLayerView()
+        view.videoGravity = .resizeAspectFill
         view.update(player: player)
         return view
     }
 
     func updateNSView(_ nsView: PlayerLayerView, context: Context) {
+        nsView.videoGravity = .resizeAspectFill
         nsView.update(player: player)
     }
 

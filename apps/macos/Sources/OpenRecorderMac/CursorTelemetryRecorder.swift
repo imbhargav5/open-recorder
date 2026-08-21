@@ -95,6 +95,14 @@ struct CursorTelemetryTrack: Equatable {
         return point(at: seconds, loops: settings.loops, smoothing: settings.smoothing)
     }
 
+    func normalizedPoint(at seconds: Double, loops: Bool = false, smoothing: Double = 0) -> CGPoint? {
+        guard let p = point(at: seconds, loops: loops, smoothing: smoothing) else { return nil }
+        return CGPoint(
+            x: width > 0 ? p.x / CGFloat(width) : 0,
+            y: height > 0 ? p.y / CGFloat(height) : 0
+        )
+    }
+
     func point(at seconds: Double, loops: Bool, smoothing: Double) -> CGPoint? {
         guard !samples.isEmpty, seconds.isFinite else { return nil }
 

@@ -56,10 +56,10 @@ struct CaptureOptionsState: Equatable {
     var recordingOptions: RecordingCaptureOptions {
         RecordingCaptureOptions(
             includeMicrophone: includeMicrophone,
-            microphoneDeviceID: includeMicrophone ? selectedMicrophoneDeviceID : nil,
+            microphoneDeviceID: includeMicrophone && hasAvailableMicrophoneSelection ? selectedMicrophoneDeviceID : nil,
             includeSystemAudio: includeSystemAudio,
             includeCamera: includeCamera,
-            cameraDeviceID: includeCamera ? selectedCameraDeviceID : nil,
+            cameraDeviceID: includeCamera && hasAvailableCameraSelection ? selectedCameraDeviceID : nil,
             showCursor: showCursor,
             showClicks: showClicks
         )
@@ -72,6 +72,7 @@ enum CaptureOptionsEvent: Equatable {
     case systemAudioChanged(Bool)
     case cameraEnabledChanged(Bool)
     case deviceRefreshStarted
+    case refreshDevicesRequested
     case devicesRefreshed(microphones: [CaptureDeviceInfo], cameras: [CaptureDeviceInfo])
     case deviceRefreshFailed(String)
     case systemAudioToggled
@@ -116,11 +117,17 @@ extension CaptureOptionsState {
         case .cameraEnabledChanged(let isEnabled):
             guard canChangeOptions else { return lockedMutationEffects() }
             includeCamera = isEnabled
+            if isEnabled && selectedCameraDeviceID == nil {
+                selectedCameraDeviceID = cameraDevices.first?.id
+            }
             return []
 
         case .deviceRefreshStarted:
             deviceLoadPhase = .loading
             return []
+
+        case .refreshDevicesRequested:
+            return [.refreshDevices]
 
         case .devicesRefreshed(let microphones, let cameras):
             microphoneDevices = microphones

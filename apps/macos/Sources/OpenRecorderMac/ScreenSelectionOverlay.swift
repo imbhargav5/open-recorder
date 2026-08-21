@@ -121,7 +121,7 @@ final class ScreenSelectionOverlayController: ScreenSelectionPresenting {
         index: Int,
         in displaySources: [CaptureSource]
     ) -> CaptureSource? {
-        if let displayID = screen.displayID,
+        if let displayID = screen.captureDisplayID,
            let source = displaySources.first(where: { $0.displayID == displayID }) {
             return source
         }
@@ -223,8 +223,4 @@ private struct ScreenSelectionOverlayView: View {
     }
 }
 
-private extension NSScreen {
-    var displayID: UInt32? {
-        (deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value
-    }
-}
+

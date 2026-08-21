@@ -137,9 +137,15 @@ final class RecordingCountdownOverlayController {
         window.isOpaque = false
         window.backgroundColor = .clear
         window.hasShadow = false
+        window.hidesOnDeactivate = false
         window.ignoresMouseEvents = true
         window.level = .screenSaver
-        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+        window.collectionBehavior = [
+            .canJoinAllSpaces,
+            .fullScreenAuxiliary,
+            .stationary,
+            .ignoresCycle
+        ]
         window.contentView = NSHostingView(rootView: RecordingCountdownOverlay(state: state))
         self.window = window
         window.setFrame(frame, display: true)

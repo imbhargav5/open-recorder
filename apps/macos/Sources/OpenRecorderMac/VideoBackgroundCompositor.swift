@@ -397,11 +397,12 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
         if let cursor = makeCursorLayer(for: instruction, compositionTime: compositionTime, contentRect: contentRect) {
             composed = cursor.composited(over: composed)
         }
-        if let facecam = makeFacecamLayer(
-            facecam,
-            for: instruction,
-            compositionTime: compositionTime
-        ) {
+
+        // When fixedDuringZoom is false (default), composite the camera bubble before applying
+        // the zoom so it moves with the zoomed screen content.
+        let cameraIsFixed = instruction.facecamFallbackSettings?.fixedDuringZoom == true
+        if !cameraIsFixed,
+           let facecam = makeFacecamLayer(facecam, for: instruction, compositionTime: compositionTime) {
             composed = facecam.composited(over: composed)
         }
 
@@ -414,6 +415,13 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
             instruction: instruction,
             compositionTime: compositionTime
         )
+
+        // When fixedDuringZoom is true, composite the camera bubble AFTER the zoom so it
+        // stays pinned at its anchor corner regardless of the current zoom effect.
+        if cameraIsFixed,
+           let facecam = makeFacecamLayer(facecam, for: instruction, compositionTime: compositionTime) {
+            composed = facecam.composited(over: composed)
+        }
 
         return composed.cropped(to: renderRect)
     }
