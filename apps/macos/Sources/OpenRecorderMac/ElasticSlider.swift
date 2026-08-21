@@ -14,9 +14,9 @@ struct ElasticSlider: View {
     var hitHeight: CGFloat = 26
     var fillColor: Color = Color.white.opacity(0.20)
     var dragFillColor: Color?
-    var thumbSize: CGFloat = 18
-    var thumbWidth: CGFloat? = 38
-    var thumbHeight: CGFloat? = 18
+    var thumbSize: CGFloat = 16
+    var thumbWidth: CGFloat? = nil
+    var thumbHeight: CGFloat? = nil
     var thumbColor: Color = Color.white
     var showStepDots: Bool = true
     var showTooltip: Bool = true
@@ -34,17 +34,16 @@ struct ElasticSlider: View {
             let currentNormalized = normalized(value).clamped(to: 0...1)
             let progress = (visualProgress ?? currentNormalized).clamped(to: 0...1)
 
-            let resolvedThumbWidth = thumbWidth ?? thumbSize
-            let resolvedThumbHeight = min(thumbHeight ?? (trackHeight - 8), trackHeight - 4)
-            let thumbRadius = resolvedThumbWidth / 2
+            let resolvedThumbSize = thumbWidth ?? thumbSize
+            let thumbRadius = resolvedThumbSize / 2
 
-            let travelDistance = max(width - resolvedThumbWidth, 1)
+            let travelDistance = max(width - resolvedThumbSize, 1)
             let valueX = thumbRadius + travelDistance * CGFloat(progress)
 
             ZStack {
                 // Background Track Bar with fully rounded capsule container
                 ZStack(alignment: .leading) {
-                    // Outer track container: seamless dark dark grey (close to black)
+                    // Outer track container: seamless dark grey
                     Capsule(style: .continuous)
                         .fill(Color.black.opacity(0.38))
                         .overlay {
@@ -54,22 +53,22 @@ struct ElasticSlider: View {
 
                     // Step dots / Graduation markers (only on un-scrolled section to the right)
                     if showStepDots && width > 80 {
-                        stepDots(width: width, thumbX: valueX, thumbWidth: resolvedThumbWidth)
+                        stepDots(width: width, thumbX: valueX, thumbWidth: resolvedThumbSize)
                     }
                 }
                 .frame(width: width, height: trackHeight)
                 .clipShape(Capsule(style: .continuous))
 
-                // Sliding Fully Rounded Pill Tab Handle
-                Capsule(style: .continuous)
+                // Sliding Circular / Round Handle Knob
+                Circle()
                     .fill(thumbColor)
-                    .frame(width: resolvedThumbWidth, height: resolvedThumbHeight)
+                    .frame(width: resolvedThumbSize, height: resolvedThumbSize)
                     .overlay {
-                        Capsule(style: .continuous)
-                            .stroke(Color.black.opacity(0.12), lineWidth: 0.8)
+                        Circle()
+                            .stroke(Color.black.opacity(0.15), lineWidth: 0.8)
                     }
-                    .shadow(color: Color.black.opacity(0.38), radius: isDragging ? 4 : 2, y: 1)
-                    .scaleEffect(isDragging ? 1.05 : (isHovering ? 1.02 : 1.0))
+                    .shadow(color: Color.black.opacity(0.40), radius: isDragging ? 4 : 2, y: 1)
+                    .scaleEffect(isDragging ? 1.08 : (isHovering ? 1.04 : 1.0))
                     .position(x: valueX, y: trackHeight / 2)
                     .animation(Theme.springFast, value: isDragging)
                     .animation(Theme.springFast, value: isHovering)
@@ -82,7 +81,7 @@ struct ElasticSlider: View {
             }
             .frame(width: width, height: trackHeight)
             .contentShape(Capsule(style: .continuous))
-            .gesture(dragGesture(width: width, thumbWidth: resolvedThumbWidth))
+            .gesture(dragGesture(width: width, thumbWidth: resolvedThumbSize))
         }
         .frame(height: trackHeight)
         .opacity(isEnabled ? 1 : 0.5)
@@ -124,8 +123,8 @@ struct ElasticSlider: View {
 
                 if dotX > thumbRightThreshold {
                     Circle()
-                        .fill(Color.white.opacity(0.24))
-                        .frame(width: 4, height: 4)
+                        .fill(Color.white.opacity(0.14))
+                        .frame(width: 2.5, height: 2.5)
                         .position(x: dotX, y: trackHeight / 2)
                 }
             }

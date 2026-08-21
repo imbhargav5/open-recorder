@@ -288,7 +288,8 @@ struct VideoPreviewPanel: View {
                         offsetMs: recordingSession?.facecamOffsetMs,
                         settings: facecamSettings
                     )
-                    .frame(width: proxy.size.width, height: proxy.size.height)
+                    .frame(width: recordingFrame.width, height: recordingFrame.height)
+                    .offset(x: recordingFrame.minX, y: recordingFrame.minY)
                     .transformEffect(facecamZoomTransform)
                 }
             }
@@ -758,8 +759,8 @@ struct FacecamOverlayLayout {
         }
 
         let baseLength = min(containerSize.width, containerSize.height)
-        let side = max(1, baseLength * CGFloat(resolved.size / 100))
-        let margin = baseLength * CGFloat(resolved.margin / 100)
+        let side = max(1, min(baseLength * CGFloat(resolved.size / 100), baseLength))
+        let margin = max(0, baseLength * CGFloat(resolved.margin / 100))
         let halfSide = side / 2
         let x: CGFloat
         let y: CGFloat
@@ -782,7 +783,17 @@ struct FacecamOverlayLayout {
             y = containerSize.height - margin - halfSide
         }
 
-        return CGRect(x: x - halfSide, y: y - halfSide, width: side, height: side)
+        let rawX = x - halfSide
+        let rawY = y - halfSide
+        let safeMinX: CGFloat = 0
+        let safeMaxX = max(safeMinX, containerSize.width - side)
+        let safeMinY: CGFloat = 0
+        let safeMaxY = max(safeMinY, containerSize.height - side)
+
+        let clampedX = max(safeMinX, min(rawX, safeMaxX))
+        let clampedY = max(safeMinY, min(rawY, safeMaxY))
+
+        return CGRect(x: clampedX, y: clampedY, width: side, height: side)
     }
 }
 

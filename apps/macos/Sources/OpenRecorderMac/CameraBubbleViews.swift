@@ -90,7 +90,7 @@ struct CameraBubbleWindowView: View {
 
     @ViewBuilder
     private var videoContent: some View {
-        if let session = model.cameraCaptureSession, session.isRunning {
+        if let session = model.cameraCaptureSession {
             CameraVideoPreviewRepresentable(session: session, isMirrored: isMirrored)
         } else {
             cameraFallbackView

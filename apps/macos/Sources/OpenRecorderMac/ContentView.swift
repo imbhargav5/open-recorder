@@ -52,7 +52,7 @@ struct ContentView: View {
                     .background(WindowConfigurator(role: .studio))
             }
         }
-        .overlay(WindowCommandBridge(shell: model.appShell).allowsHitTesting(false))
+        .overlay(WindowCommandBridge(shell: model.appShell, isCameraEnabled: { model.includeCamera }).allowsHitTesting(false))
         .environmentObject(model)
         .preferredColorScheme(.dark)
         .onOpenURL { url in

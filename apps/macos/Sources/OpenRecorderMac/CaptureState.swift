@@ -733,7 +733,7 @@ struct CaptureState: Hashable {
             next.setPhase(.countingDownRecording(source))
             statusMessage = "Recording starts in 3..."
             effects.append(.dismissScreenSelection)
-            effects.append(.hideAppWindowsForCapture)
+            effects.append(.dismissCaptureWindows)
             effects.append(.runRecordingStart(source, outputURL))
 
         case .recordingFilePreparationFailed(_, let message):
@@ -745,7 +745,7 @@ struct CaptureState: Hashable {
             next.setPhase(.countingDownRecording(source))
             statusMessage = "Recording starts in 3..."
             effects.append(.dismissScreenSelection)
-            effects.append(.hideAppWindowsForCapture)
+            effects.append(.dismissCaptureWindows)
 
         case .recordingStarting(let source):
             next.selectedSource = source

@@ -317,7 +317,7 @@ final class CaptureStateReducerTests: XCTestCase {
 
         XCTAssertEqual(countdown.state.phase, .countingDownRecording(source))
         XCTAssertEqual(countdown.state.presentation, .hidden)
-        XCTAssertEqual(countdown.effects, [.dismissScreenSelection, .hideAppWindowsForCapture, .runRecordingStart(source, outputURL)])
+        XCTAssertEqual(countdown.effects, [.dismissScreenSelection, .dismissCaptureWindows, .runRecordingStart(source, outputURL)])
 
         let canceled = countdown.state.applying(.recordingStopRequested)
         XCTAssertEqual(canceled.state.phase, .setup(.recording))

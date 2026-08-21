@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 import CoreGraphics
 import Foundation
 import SwiftUI
@@ -78,13 +79,21 @@ struct WallpaperPreset: Identifiable, Equatable, Hashable, Codable {
     var label: String
     var fullAssetName: String
     var thumbAssetName: String
+    var customURL: URL? = nil
+    var isVideo: Bool = false
 
     var fullURL: URL? {
-        OpenRecorderResources.url(forResource: fullAssetName, withExtension: "jpg", subdirectory: "Wallpapers")
+        if let customURL { return customURL }
+        if isVideo, let videoURL = OpenRecorderResources.url(forResource: fullAssetName, withExtension: "mp4", subdirectory: "Wallpapers") {
+            return videoURL
+        }
+        return OpenRecorderResources.url(forResource: fullAssetName, withExtension: "jpg", subdirectory: "Wallpapers")
     }
 
     var thumbURL: URL? {
-        OpenRecorderResources.url(forResource: thumbAssetName, withExtension: "jpg", subdirectory: "Wallpapers/thumbs")
+        if let customURL { return customURL }
+        return OpenRecorderResources.url(forResource: thumbAssetName, withExtension: "jpg", subdirectory: "Wallpapers/thumbs")
+            ?? OpenRecorderResources.url(forResource: thumbAssetName, withExtension: "jpg", subdirectory: "Wallpapers")
     }
 }
 
@@ -102,28 +111,22 @@ enum BackgroundStyle: Equatable, Hashable, Codable {
 
 enum BackgroundPresets {
     static let solidColors: [SerializableColor] = [
-        SerializableColor(red: 0.055, green: 0.055, blue: 0.067),
-        SerializableColor(red: 0.95, green: 0.96, blue: 0.98),
-        SerializableColor(red: 0.10, green: 0.16, blue: 0.24),
-        SerializableColor(red: 0.13, green: 0.19, blue: 0.14),
-        SerializableColor(red: 0.24, green: 0.13, blue: 0.18),
-        SerializableColor(red: 0.23, green: 0.20, blue: 0.13),
-        SerializableColor(hex: "#FF0000"),
-        SerializableColor(hex: "#FFD700"),
-        SerializableColor(hex: "#00FF00"),
-        SerializableColor(hex: "#FFFFFF"),
-        SerializableColor(hex: "#0000FF"),
-        SerializableColor(hex: "#FF6B00"),
-        SerializableColor(hex: "#9B59B6"),
-        SerializableColor(hex: "#E91E63"),
-        SerializableColor(hex: "#00BCD4"),
-        SerializableColor(hex: "#FF5722"),
-        SerializableColor(hex: "#8BC34A"),
-        SerializableColor(hex: "#FFC107"),
-        SerializableColor(hex: "#2563EB"),
-        SerializableColor(hex: "#000000"),
-        SerializableColor(hex: "#607D8B"),
-        SerializableColor(hex: "#795548")
+        SerializableColor(hex: "#090A0F"), // Deep Black / Obsidian
+        SerializableColor(hex: "#12141C"), // Midnight Navy
+        SerializableColor(hex: "#18181B"), // Zinc Dark
+        SerializableColor(hex: "#0F172A"), // Slate Dark
+        SerializableColor(hex: "#1C1917"), // Stone Dark
+        SerializableColor(hex: "#022C22"), // Forest Dark
+        SerializableColor(hex: "#1E1B4B"), // Indigo Dark
+        SerializableColor(hex: "#2E1065"), // Purple Dark
+        SerializableColor(hex: "#2563EB"), // Blue
+        SerializableColor(hex: "#7C3AED"), // Violet
+        SerializableColor(hex: "#DB2777"), // Rose
+        SerializableColor(hex: "#EA580C"), // Orange
+        SerializableColor(hex: "#16A34A"), // Emerald
+        SerializableColor(hex: "#0D9488"), // Teal
+        SerializableColor(hex: "#FFFFFF"), // Pure White
+        SerializableColor(hex: "#64748B")  // Muted Slate
     ]
 
     static let gradients: [GradientPreset] = [
@@ -370,25 +373,44 @@ enum BackgroundPresets {
     ]
 
     static let wallpapers: [WallpaperPreset] = [
+        WallpaperPreset(id: "wallpaper-10", label: "Midnight Mountain", fullAssetName: "wallpaper10", thumbAssetName: "wallpaper10"),
+        WallpaperPreset(id: "mountaintrees", label: "Mountain Trees", fullAssetName: "mountaintrees", thumbAssetName: "mountaintrees"),
+        WallpaperPreset(id: "wallpaper-14", label: "Dark Flow", fullAssetName: "wallpaper14", thumbAssetName: "wallpaper14"),
+        WallpaperPreset(id: "wallpaper-13", label: "Midnight Swirl", fullAssetName: "wallpaper13", thumbAssetName: "wallpaper13"),
+        WallpaperPreset(id: "luisdelrio", label: "Deep Forest", fullAssetName: "luisdelrio", thumbAssetName: "luisdelrio"),
+        WallpaperPreset(id: "wallpaper-3", label: "Dusk Dunes", fullAssetName: "wallpaper3", thumbAssetName: "wallpaper3"),
+        WallpaperPreset(id: "wallpaper-1", label: "Dark Aurora", fullAssetName: "wallpaper1", thumbAssetName: "wallpaper1"),
+        WallpaperPreset(id: "wallpaper-7", label: "Night Sky", fullAssetName: "wallpaper7", thumbAssetName: "wallpaper7"),
+        WallpaperPreset(id: "wallpaper-8", label: "Crimson Night", fullAssetName: "wallpaper8", thumbAssetName: "wallpaper8"),
+        WallpaperPreset(id: "wallpaper-12", label: "Misty Horizon", fullAssetName: "wallpaper12", thumbAssetName: "wallpaper12"),
         WallpaperPreset(id: "cityscape", label: "Cityscape", fullAssetName: "cityscape", thumbAssetName: "cityscape"),
         WallpaperPreset(id: "farmvalley", label: "Farm Valley", fullAssetName: "farmvalley", thumbAssetName: "farmvalley"),
-        WallpaperPreset(id: "mountaintrees", label: "Mountain Trees", fullAssetName: "mountaintrees", thumbAssetName: "mountaintrees"),
-        WallpaperPreset(id: "luisdelrio", label: "Luis Del Rio", fullAssetName: "luisdelrio", thumbAssetName: "luisdelrio"),
-        WallpaperPreset(id: "levels", label: "Levels", fullAssetName: "levels", thumbAssetName: "levels")
-    ] + (1...18).map { index in
-        WallpaperPreset(
-            id: "wallpaper-\(index)",
-            label: "Wallpaper \(index)",
-            fullAssetName: "wallpaper\(index)",
-            thumbAssetName: "wallpaper\(index)"
-        )
-    }
+        WallpaperPreset(id: "levels", label: "Levels", fullAssetName: "levels", thumbAssetName: "levels"),
+        WallpaperPreset(id: "wallpaper-2", label: "Wallpaper 2", fullAssetName: "wallpaper2", thumbAssetName: "wallpaper2"),
+        WallpaperPreset(id: "wallpaper-4", label: "Wallpaper 4", fullAssetName: "wallpaper4", thumbAssetName: "wallpaper4"),
+        WallpaperPreset(id: "wallpaper-5", label: "Wallpaper 5", fullAssetName: "wallpaper5", thumbAssetName: "wallpaper5"),
+        WallpaperPreset(id: "wallpaper-6", label: "Wallpaper 6", fullAssetName: "wallpaper6", thumbAssetName: "wallpaper6"),
+        WallpaperPreset(id: "wallpaper-9", label: "Wallpaper 9", fullAssetName: "wallpaper9", thumbAssetName: "wallpaper9"),
+        WallpaperPreset(id: "wallpaper-11", label: "Wallpaper 11", fullAssetName: "wallpaper11", thumbAssetName: "wallpaper11"),
+        WallpaperPreset(id: "wallpaper-15", label: "Wallpaper 15", fullAssetName: "wallpaper15", thumbAssetName: "wallpaper15"),
+        WallpaperPreset(id: "wallpaper-16", label: "Wallpaper 16", fullAssetName: "wallpaper16", thumbAssetName: "wallpaper16"),
+        WallpaperPreset(id: "wallpaper-17", label: "Wallpaper 17", fullAssetName: "wallpaper17", thumbAssetName: "wallpaper17"),
+        WallpaperPreset(id: "wallpaper-18", label: "Wallpaper 18", fullAssetName: "wallpaper18", thumbAssetName: "wallpaper18")
+    ]
+
+    static let videoLoops: [WallpaperPreset] = [
+        WallpaperPreset(id: "loop-aurora", label: "Aurora", fullAssetName: "wallpaper1", thumbAssetName: "wallpaper1", isVideo: true),
+        WallpaperPreset(id: "loop-particles", label: "Particles", fullAssetName: "wallpaper2", thumbAssetName: "wallpaper2", isVideo: true),
+        WallpaperPreset(id: "loop-cyber", label: "Cyber Neon", fullAssetName: "wallpaper3", thumbAssetName: "wallpaper3", isVideo: true),
+        WallpaperPreset(id: "loop-mesh", label: "Gradient Mesh", fullAssetName: "wallpaper4", thumbAssetName: "wallpaper4", isVideo: true)
+    ]
 
     static let `default`: BackgroundStyle = .wallpaper(wallpapers[0])
 }
 
 enum BackgroundStylePresetKind: String, CaseIterable, Identifiable {
     case wallpaper
+    case video
     case color
     case gradient
     case transparent
@@ -397,19 +419,41 @@ enum BackgroundStylePresetKind: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .gradient: "Gradient"
-        case .color: "Solid"
         case .wallpaper: "Image"
-        case .transparent: "Transparent"
+        case .video: "Video"
+        case .color: "Color"
+        case .gradient: "Gradient"
+        case .transparent: "None"
+        }
+    }
+
+    var helpText: String {
+        switch self {
+        case .wallpaper: "Image Wallpapers"
+        case .video: "Video Loops"
+        case .color: "Solid Colors"
+        case .gradient: "Gradients"
+        case .transparent: "Transparent (No background)"
         }
     }
 
     var symbolName: String {
         switch self {
-        case .gradient: "circle.lefthalf.filled.righthalf.striped.horizontal"
-        case .color: "circle.fill"
         case .wallpaper: "photo"
+        case .video: "video.fill"
+        case .color: "paintpalette.fill"
+        case .gradient: "circle.lefthalf.filled.righthalf.striped.horizontal"
         case .transparent: "square.dashed"
+        }
+    }
+
+    var accentColor: Color {
+        switch self {
+        case .wallpaper: Color(red: 0.28, green: 0.58, blue: 1.00)  // Sky Blue
+        case .video: Color(red: 0.68, green: 0.42, blue: 1.00)      // Vivid Purple
+        case .color: Color(red: 1.00, green: 0.62, blue: 0.22)      // Amber Orange
+        case .gradient: Color(red: 1.00, green: 0.38, blue: 0.68)   // Rose Pink
+        case .transparent: Color(red: 0.70, green: 0.74, blue: 0.82) // Slate
         }
     }
 }
@@ -420,7 +464,7 @@ extension BackgroundStyle {
         case .transparent: .transparent
         case .solid: .color
         case .gradient: .gradient
-        case .wallpaper: .wallpaper
+        case let .wallpaper(preset): preset.isVideo ? .video : .wallpaper
         }
     }
 }
@@ -488,9 +532,19 @@ enum WallpaperImageCache {
         if let cached = storage.imageCache.object(forKey: key) {
             return cached
         }
-        guard let image = NSImage(contentsOf: url) else { return nil }
-        storage.imageCache.setObject(image, forKey: key)
-        return image
+        if let image = NSImage(contentsOf: url) {
+            storage.imageCache.setObject(image, forKey: key)
+            return image
+        }
+        let asset = AVURLAsset(url: url)
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        if let cg = try? generator.copyCGImage(at: .zero, actualTime: nil) {
+            let image = NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
+            storage.imageCache.setObject(image, forKey: key)
+            return image
+        }
+        return nil
     }
 
     static func cgImage(for url: URL) -> CGImage? {

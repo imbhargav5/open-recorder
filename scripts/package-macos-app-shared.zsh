@@ -141,7 +141,7 @@ if [[ "$install" == true ]]; then
 	rm -rf "$temp_bundle"
 	ditto "$bundle_dir" "$temp_bundle"
 	find "$temp_bundle" \( -name '._*' -o -name '.__CodeSignature' \) -delete
-	xattr -dr com.apple.quarantine "$temp_bundle" 2>/dev/null || true
+	xattr -r -d com.apple.quarantine "$temp_bundle" 2>/dev/null || true
 	rm -rf "$installed_bundle"
 	mv "$temp_bundle" "$installed_bundle"
 	/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$installed_bundle" 2>/dev/null || true
