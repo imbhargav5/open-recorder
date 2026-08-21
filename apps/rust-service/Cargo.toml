@@ -1,6 +1,6 @@
 [package]
 name = "open-recorder-service"
-version = "0.2.36"
+version = "0.2.37"
 edition = "2024"
 license = "Apache-2.0"
 
