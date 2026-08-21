@@ -18,6 +18,8 @@
 		"release:dispatch": "node scripts/dispatch-production-release-build.mjs",
 		"release:patch": "node scripts/dispatch-production-release-build.mjs --release-type patch",
 		"release:minor": "node scripts/dispatch-production-release-build.mjs --release-type minor",
-		"release:major": "node scripts/dispatch-production-release-build.mjs --release-type major"
+		"release:major": "node scripts/dispatch-production-release-build.mjs --release-type major",
+		"contributors:add": "all-contributors add",
+		"contributors:generate": "all-contributors generate"
 	}
 }
