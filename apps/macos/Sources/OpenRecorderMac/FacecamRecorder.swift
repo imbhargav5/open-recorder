@@ -55,19 +55,24 @@ final class FacecamRecorder: NSObject, AVCaptureFileOutputRecordingDelegate {
 
         cleanup()
         let (session, output) = try buildSession(cameraDeviceID: cameraDeviceID)
+
+        await Task.detached(priority: .userInitiated) {
+            session.startRunning()
+        }.value
+
         self.session = session
         self.movieOutput = output
         self.preparedCameraDeviceID = cameraDeviceID
         self.finishResult = nil
-
-        session.startRunning()
     }
 
     func start(outputURL: URL, cameraDeviceID: String?) async throws -> Date {
         if preparedCameraDeviceID != cameraDeviceID || session == nil || movieOutput == nil {
             try await prepare(cameraDeviceID: cameraDeviceID)
-        } else if session?.isRunning != true {
-            session?.startRunning()
+        } else if let session, !session.isRunning {
+            await Task.detached(priority: .userInitiated) {
+                session.startRunning()
+            }.value
         }
 
         guard let output = movieOutput else {
@@ -96,18 +101,22 @@ final class FacecamRecorder: NSObject, AVCaptureFileOutputRecordingDelegate {
         let device = try cameraDevice(cameraDeviceID)
         let input = try AVCaptureDeviceInput(device: device)
         let session = AVCaptureSession()
+        session.beginConfiguration()
         session.sessionPreset = .high
 
         guard session.canAddInput(input) else {
+            session.commitConfiguration()
             throw FacecamRecorderError.cannotAddCameraInput
         }
         session.addInput(input)
 
         let output = AVCaptureMovieFileOutput()
         guard session.canAddOutput(output) else {
+            session.commitConfiguration()
             throw FacecamRecorderError.cannotAddMovieOutput
         }
         session.addOutput(output)
+        session.commitConfiguration()
 
         return (session, output)
     }

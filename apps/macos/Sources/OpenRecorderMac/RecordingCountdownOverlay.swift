@@ -23,6 +23,10 @@ enum RecordingCountdownTargetResolver {
                let screen = screens.first(where: { $0.displayID == displayID }) {
                 return screen.frame
             }
+            if let displayIndex = source.displayIndex,
+               displayIndex > 0, displayIndex <= screens.count {
+                return screens[displayIndex - 1].frame
+            }
             return fallback
         case .area:
             guard let area = source.area else { return fallback }
@@ -52,7 +56,11 @@ enum RecordingCountdownTargetResolver {
     private static func fallbackFrame(for source: CaptureSource, screens: [RecordingOverlayScreen]) -> CGRect {
         if let displayID = source.displayID,
            let screen = screens.first(where: { $0.displayID == displayID }) {
-            return screen.frame
+                return screen.frame
+        }
+        if let displayIndex = source.displayIndex,
+           displayIndex > 0, displayIndex <= screens.count {
+            return screens[displayIndex - 1].frame
         }
         return screens.first?.frame ?? CGRect(x: 0, y: 0, width: 900, height: 600)
     }
@@ -135,7 +143,9 @@ final class RecordingCountdownOverlayController {
         window.contentView = NSHostingView(rootView: RecordingCountdownOverlay(state: state))
         self.window = window
         window.setFrame(frame, display: true)
+        window.makeKeyAndOrderFront(nil)
         window.orderFrontRegardless()
+        NSApp.activate(ignoringOtherApps: true)
     }
 }
 

@@ -667,6 +667,7 @@ final class OnboardingDriver {
 struct SettingsMachineState: Equatable {
     var createZoomsAutomatically: Bool
     var autoZoomAnimationPreset: TimelineZoomAnimationPreset = .balanced
+    var shortcuts: ShortcutPreferences = .defaultPreferences
     var statusMessage = ""
     var isRefreshingService = false
 }
@@ -680,6 +681,9 @@ enum SettingsEvent: Equatable {
     case autoZoomPreferenceChanged(Bool)
     case autoZoomAnimationPresetSynced(TimelineZoomAnimationPreset)
     case autoZoomAnimationPresetChanged(TimelineZoomAnimationPreset)
+    case shortcutsSynced(ShortcutPreferences)
+    case shortcutItemChanged(ShortcutItem)
+    case shortcutsResetToDefaults
     case folderOpenRequested(String?)
     case screenRecordingSettingsRequested
     case accessibilitySettingsRequested
@@ -690,6 +694,7 @@ enum SettingsEffect: Equatable {
     case refreshService
     case persistAutoZoomPreference(Bool)
     case persistAutoZoomAnimationPreset(TimelineZoomAnimationPreset)
+    case persistShortcuts(ShortcutPreferences)
     case openFolder(String)
     case openScreenRecordingSettings
     case openAccessibilitySettings
@@ -737,6 +742,18 @@ extension SettingsMachineState {
             autoZoomAnimationPreset = preset
             return [.persistAutoZoomAnimationPreset(preset)]
 
+        case .shortcutsSynced(let shortcuts):
+            self.shortcuts = shortcuts
+            return []
+
+        case .shortcutItemChanged(let item):
+            shortcuts.setItem(item)
+            return [.persistShortcuts(shortcuts)]
+
+        case .shortcutsResetToDefaults:
+            shortcuts = .defaultPreferences
+            return [.persistShortcuts(shortcuts)]
+
         case .folderOpenRequested(let path):
             guard let path else { return [] }
             return [.openFolder(path)]
@@ -761,16 +778,22 @@ final class SettingsDriver {
     @ObservationIgnored private var refreshService: () -> Void = {}
     @ObservationIgnored private var persistAutoZoomPreference: (Bool) -> Void = { _ in }
     @ObservationIgnored private var persistAutoZoomAnimationPreset: (TimelineZoomAnimationPreset) -> Void = { _ in }
+    @ObservationIgnored private var persistShortcuts: (ShortcutPreferences) -> Void = { _ in }
     @ObservationIgnored private var openFolder: (String) -> Void = { _ in }
     @ObservationIgnored private var openScreenRecordingSettings: () -> Void = {}
     @ObservationIgnored private var openAccessibilitySettings: () -> Void = {}
     @ObservationIgnored private var showOnboarding: () -> Void = {}
     @ObservationIgnored private var stateWillChange: () -> Void = {}
 
-    init(createZoomsAutomatically: Bool, autoZoomAnimationPreset: TimelineZoomAnimationPreset = .balanced) {
+    init(
+        createZoomsAutomatically: Bool,
+        autoZoomAnimationPreset: TimelineZoomAnimationPreset = .balanced,
+        shortcuts: ShortcutPreferences = .defaultPreferences
+    ) {
         state = SettingsMachineState(
             createZoomsAutomatically: createZoomsAutomatically,
-            autoZoomAnimationPreset: autoZoomAnimationPreset
+            autoZoomAnimationPreset: autoZoomAnimationPreset,
+            shortcuts: shortcuts
         )
     }
 
@@ -778,6 +801,7 @@ final class SettingsDriver {
         refreshService: @escaping () -> Void = {},
         persistAutoZoomPreference: @escaping (Bool) -> Void = { _ in },
         persistAutoZoomAnimationPreset: @escaping (TimelineZoomAnimationPreset) -> Void = { _ in },
+        persistShortcuts: @escaping (ShortcutPreferences) -> Void = { _ in },
         openFolder: @escaping (String) -> Void = { _ in },
         openScreenRecordingSettings: @escaping () -> Void = {},
         openAccessibilitySettings: @escaping () -> Void = {},
@@ -787,6 +811,7 @@ final class SettingsDriver {
         self.refreshService = refreshService
         self.persistAutoZoomPreference = persistAutoZoomPreference
         self.persistAutoZoomAnimationPreset = persistAutoZoomAnimationPreset
+        self.persistShortcuts = persistShortcuts
         self.openFolder = openFolder
         self.openScreenRecordingSettings = openScreenRecordingSettings
         self.openAccessibilitySettings = openAccessibilitySettings
@@ -818,6 +843,13 @@ final class SettingsDriver {
         )
     }
 
+    func shortcutBinding(for action: CaptureShortcutAction) -> Binding<ShortcutItem> {
+        Binding(
+            get: { self.state.shortcuts.item(for: action) },
+            set: { self.send(.shortcutItemChanged($0)) }
+        )
+    }
+
     private func perform(_ effects: [SettingsEffect]) {
         for effect in effects {
             switch effect {
@@ -827,6 +859,8 @@ final class SettingsDriver {
                 persistAutoZoomPreference(value)
             case .persistAutoZoomAnimationPreset(let preset):
                 persistAutoZoomAnimationPreset(preset)
+            case .persistShortcuts(let shortcuts):
+                persistShortcuts(shortcuts)
             case .openFolder(let path):
                 openFolder(path)
             case .openScreenRecordingSettings:

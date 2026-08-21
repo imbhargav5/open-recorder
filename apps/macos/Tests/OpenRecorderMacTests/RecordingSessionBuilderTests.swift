@@ -134,4 +134,46 @@ final class RecordingSessionBuilderTests: XCTestCase {
         session.facecamVideoPath = "/tmp/facecam.mov"
         XCTAssertTrue(session.hasRecordedCamera)
     }
+
+    func testFacecamAnchorFromRelativeScreenPosition() {
+        XCTAssertEqual(FacecamAnchor.from(relX: 0.5, relYFromTop: 0.5), .center)
+        XCTAssertEqual(FacecamAnchor.from(relX: 0.1, relYFromTop: 0.1), .topLeft)
+        XCTAssertEqual(FacecamAnchor.from(relX: 0.5, relYFromTop: 0.1), .top)
+        XCTAssertEqual(FacecamAnchor.from(relX: 0.9, relYFromTop: 0.1), .topRight)
+        XCTAssertEqual(FacecamAnchor.from(relX: 0.1, relYFromTop: 0.5), .left)
+        XCTAssertEqual(FacecamAnchor.from(relX: 0.9, relYFromTop: 0.5), .right)
+        XCTAssertEqual(FacecamAnchor.from(relX: 0.1, relYFromTop: 0.9), .bottomLeft)
+        XCTAssertEqual(FacecamAnchor.from(relX: 0.5, relYFromTop: 0.9), .bottom)
+        XCTAssertEqual(FacecamAnchor.from(relX: 0.9, relYFromTop: 0.9), .bottomRight)
+    }
+
+    func testBuildRecordingSessionPreservesCustomFacecamSettings() {
+        let screenURL = URL(fileURLWithPath: "/tmp/screen.mp4")
+        let facecamURL = URL(fileURLWithPath: "/tmp/facecam.mov")
+        let customSettings = FacecamSettings(
+            enabled: true,
+            shape: "square",
+            size: 28,
+            cornerRadius: 16,
+            borderWidth: 2,
+            borderColor: "#00FF00",
+            margin: 6,
+            anchor: "center"
+        )
+
+        let session = RecordingSessionBuilder.build(
+            screenVideoURL: screenURL,
+            facecamURL: facecamURL,
+            facecamSettings: customSettings,
+            sourceName: "Display 1",
+            showCursor: true,
+            cursorTelemetryURL: nil,
+            screenStartedAt: Date(),
+            facecamStartedAt: Date()
+        )
+
+        XCTAssertEqual(session.facecamSettings?.anchor, "center")
+        XCTAssertEqual(session.facecamSettings?.shape, "square")
+        XCTAssertEqual(session.facecamSettings?.size, 28)
+    }
 }

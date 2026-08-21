@@ -60,14 +60,7 @@ struct ScreenshotEditorStudioView: View {
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .background(Theme.surface.opacity(0.88), in: RoundedRectangle(cornerRadius: Theme.radiusLg, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: Theme.radiusLg, style: .continuous)
-                .stroke(Theme.borderStrong.opacity(0.65), lineWidth: 1)
-        }
-        .clipShape(RoundedRectangle(cornerRadius: Theme.radiusLg, style: .continuous))
-        .padding(16)
-        .background(Theme.appBgMuted)
+        .background(Theme.appBg)
         .sheet(isPresented: editor.exportDialogBinding) {
             ScreenshotExportDialog(
                 onSave: {
@@ -463,7 +456,7 @@ struct ScreenshotSettingsPanel: View {
             .padding(12)
             .background(Color.white.opacity(0.025))
         }
-        .studioEditorPaneChrome()
+        .studioEditorPaneChrome(bg: Theme.sidebarBg)
     }
 
     private var header: some View {

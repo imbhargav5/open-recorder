@@ -4,6 +4,7 @@ struct RecordingSessionBuilder {
     static func build(
         screenVideoURL: URL,
         facecamURL: URL?,
+        facecamSettings: FacecamSettings? = nil,
         sourceName: String?,
         showCursor: Bool,
         cursorTelemetryURL: URL?,
@@ -17,11 +18,13 @@ struct RecordingSessionBuilder {
             offsetMs = nil
         }
 
+        let initialSettings = (facecamSettings ?? defaultFacecamSettings(enabled: facecamURL != nil)).clamped
+
         return RecordingSession(
             screenVideoPath: screenVideoURL.path,
             facecamVideoPath: facecamURL?.path,
             facecamOffsetMs: offsetMs,
-            facecamSettings: defaultFacecamSettings(enabled: facecamURL != nil),
+            facecamSettings: initialSettings,
             sourceName: sourceName,
             showCursorOverlay: showCursor,
             cursorTelemetryPath: cursorTelemetryURL?.path

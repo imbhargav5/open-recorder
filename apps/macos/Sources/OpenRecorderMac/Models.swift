@@ -474,6 +474,39 @@ enum FacecamAnchor: String, CaseIterable, Identifiable, Codable, Hashable {
     static func resolve(_ rawValue: String) -> FacecamAnchor {
         FacecamAnchor(rawValue: rawValue) ?? .bottomRight
     }
+
+    static func from(relX: CGFloat, relYFromTop: CGFloat) -> FacecamAnchor {
+        let col: Int
+        if relX < 0.33 {
+            col = 0
+        } else if relX > 0.67 {
+            col = 2
+        } else {
+            col = 1
+        }
+
+        let row: Int
+        if relYFromTop < 0.33 {
+            row = 0
+        } else if relYFromTop > 0.67 {
+            row = 2
+        } else {
+            row = 1
+        }
+
+        switch (row, col) {
+        case (0, 0): return .topLeft
+        case (0, 1): return .top
+        case (0, 2): return .topRight
+        case (1, 0): return .left
+        case (1, 1): return .center
+        case (1, 2): return .right
+        case (2, 0): return .bottomLeft
+        case (2, 1): return .bottom
+        case (2, 2): return .bottomRight
+        default: return .bottomRight
+        }
+    }
 }
 
 struct FacecamSettings: Codable, Hashable {

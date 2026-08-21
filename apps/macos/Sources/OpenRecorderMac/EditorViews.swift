@@ -144,16 +144,9 @@ struct VideoEditorStudioView: View {
             editorColumn
         } secondary: {
             sidebarContent
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .background(Theme.surface.opacity(0.88), in: RoundedRectangle(cornerRadius: Theme.radiusLg, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: Theme.radiusLg, style: .continuous)
-                .stroke(Theme.borderStrong.opacity(0.65), lineWidth: 1)
-        }
-        .clipShape(RoundedRectangle(cornerRadius: Theme.radiusLg, style: .continuous))
-        .padding(16)
-        .background(Theme.appBgMuted)
+        .background(Theme.appBg)
         .sheet(item: editor.activeSheetBinding(exportIsBusy: videoExport.state.phase.isBusy)) { sheet in
             switch sheet {
             case .export:

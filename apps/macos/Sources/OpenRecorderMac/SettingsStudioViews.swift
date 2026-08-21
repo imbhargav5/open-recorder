@@ -16,17 +16,55 @@ struct SettingsStudioView: View {
                 Text("Settings")
                     .font(.system(size: 26, weight: .semibold))
                     .foregroundStyle(Theme.fg)
-                SettingsSection(title: "Service") {
-                    SettingsServiceStatusRow(state: resolvedServiceState)
-                    SettingsRow(title: "Platform", value: serviceHealth?.platform ?? "macOS")
-                    Button {
-                        driver.send(.serviceRefreshRequested)
-                    } label: {
-                        Label(resolvedServiceState.isChecking ? "Checking Service…" : "Check Service", systemImage: "bolt.horizontal")
+
+                SettingsSection(title: "Global Shortcuts") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Use Open Recorder's quick shortcuts from any application to capture screens and recordings.")
+                            .font(.system(size: 12))
+                            .foregroundStyle(Theme.fgMuted)
+                            .padding(.bottom, 4)
+
+                        SettingsShortcutRow(
+                            action: .deviceScreenshot,
+                            item: driver.shortcutBinding(for: .deviceScreenshot)
+                        )
+                        Divider().overlay(Color.white.opacity(0.06))
+                        SettingsShortcutRow(
+                            action: .dragScreenshot,
+                            item: driver.shortcutBinding(for: .dragScreenshot)
+                        )
+                        Divider().overlay(Color.white.opacity(0.06))
+                        SettingsShortcutRow(
+                            action: .deviceScreenRecord,
+                            item: driver.shortcutBinding(for: .deviceScreenRecord)
+                        )
+                        Divider().overlay(Color.white.opacity(0.06))
+                        SettingsShortcutRow(
+                            action: .dragScreenRecord,
+                            item: driver.shortcutBinding(for: .dragScreenRecord)
+                        )
+                        Divider().overlay(Color.white.opacity(0.06))
+                        SettingsShortcutRow(
+                            action: .toggleRecording,
+                            item: driver.shortcutBinding(for: .toggleRecording)
+                        )
+
+                        HStack {
+                            Spacer()
+                            Button("Restore Default Shortcuts") {
+                                driver.send(.shortcutsResetToDefaults)
+                            }
+                            .buttonStyle(.borderless)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(Theme.accent)
+                        }
+                        .padding(.top, 4)
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.regular)
-                    .disabled(resolvedServiceState.isChecking)
+                }
+
+                SettingsSection(title: "Recording") {
+                    SettingsToggleRow(title: "Create zooms automatically", isOn: driver.autoZoomBinding)
+                    SettingsZoomPresetPicker(selection: driver.autoZoomAnimationPresetBinding)
                 }
 
                 SettingsSection(title: "Folders") {
@@ -39,11 +77,6 @@ struct SettingsStudioView: View {
                     FolderRow(title: "Projects", path: paths?.projectsDir) {
                         driver.send(.folderOpenRequested($0))
                     }
-                }
-
-                SettingsSection(title: "Recording") {
-                    SettingsToggleRow(title: "Create zooms automatically", isOn: driver.autoZoomBinding)
-                    SettingsZoomPresetPicker(selection: driver.autoZoomAnimationPresetBinding)
                 }
 
                 SettingsSection(title: "Permissions") {
@@ -72,6 +105,19 @@ struct SettingsStudioView: View {
                         .controlSize(.regular)
                     }
                 }
+
+                SettingsSection(title: "Service") {
+                    SettingsServiceStatusRow(state: resolvedServiceState)
+                    SettingsRow(title: "Platform", value: serviceHealth?.platform ?? "macOS")
+                    Button {
+                        driver.send(.serviceRefreshRequested)
+                    } label: {
+                        Label(resolvedServiceState.isChecking ? "Checking Service…" : "Check Service", systemImage: "bolt.horizontal")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.regular)
+                    .disabled(resolvedServiceState.isChecking)
+                }
             }
             .frame(maxWidth: 760, alignment: .leading)
             .padding(32)
@@ -90,6 +136,68 @@ struct SettingsStudioView: View {
     }
 }
 
+private struct SettingsShortcutRow: View {
+    var action: CaptureShortcutAction
+    @Binding var item: ShortcutItem
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(action.title)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(item.isEnabled ? Theme.fg : Theme.fgMuted)
+                Text(action.subtitle)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.fgMuted.opacity(0.8))
+            }
+
+            Spacer(minLength: 8)
+
+            Menu {
+                ForEach(action.availablePresets) { preset in
+                    Button {
+                        item.keyCombination = preset
+                        item.isEnabled = true
+                    } label: {
+                        HStack {
+                            Text(preset.displayString)
+                            if item.keyCombination == preset {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 5) {
+                    Text(item.keyCombination.displayString)
+                        .font(.system(size: 12, weight: .bold, design: .monospaced))
+                        .foregroundStyle(item.isEnabled ? Color.white : Theme.fgMuted)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(Theme.fgMuted)
+                }
+                .padding(.horizontal, 9)
+                .padding(.vertical, 4)
+                .background(item.isEnabled ? Color.white.opacity(0.12) : Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .stroke(item.isEnabled ? Color.white.opacity(0.22) : Color.white.opacity(0.08), lineWidth: 1)
+                }
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .disabled(!item.isEnabled)
+
+            Toggle("", isOn: $item.isEnabled)
+                .toggleStyle(.switch)
+                .tint(Theme.accent)
+                .labelsHidden()
+                .controlSize(.small)
+        }
+        .padding(.vertical, 3)
+    }
+}
+
 private struct SettingsZoomPresetPicker: View {
     @Binding var selection: TimelineZoomAnimationPreset
 
@@ -98,7 +206,7 @@ private struct SettingsZoomPresetPicker: View {
             ForEach(TimelineZoomAnimationPreset.allCases) { preset in
                 Text(preset.title)
                     .tag(preset)
-                }
+            }
         }
         .pickerStyle(.menu)
         .foregroundStyle(Theme.fgMuted)
@@ -152,7 +260,7 @@ struct SettingsRow: View {
 
 private struct SettingsServiceStatusRow: View {
     var state: SettingsServicePresentationState
-
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             LabeledContent {

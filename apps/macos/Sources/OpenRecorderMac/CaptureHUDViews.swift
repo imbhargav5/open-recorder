@@ -17,12 +17,12 @@ struct CaptureHUD: View {
         HUDSurface(isRecording: isRecordingActive) {
             if isRecordingActive {
                 activeRecordingControls
-            } else if model.captureMode == .recording {
-                recordingControls
             } else {
-                screenshotControls
+                idleControls
             }
         }
+        .animation(.spring(response: 0.35, dampingFraction: 0.82), value: model.captureMode)
+        .animation(.spring(response: 0.35, dampingFraction: 0.82), value: isRecordingActive)
         .environment(\.layoutDirection, .leftToRight)
         .flipsForRightToLeftLayoutDirection(false)
     }
@@ -95,11 +95,7 @@ struct CaptureHUD: View {
         }
     }
 
-    private var recordingControls: some View {
-        fullRecordingControls
-    }
-
-    private var fullRecordingControls: some View {
+    private var idleControls: some View {
         HStack(spacing: 10) {
             sharedLeadingControls
 
@@ -111,100 +107,38 @@ struct CaptureHUD: View {
             HUDDivider()
 
             HStack(spacing: 6) {
-                recordingCaptureControlGroup
-
-                HUDPrimaryButton(
-                    title: model.capture.isRecording ? "Stop" : startStopTitle,
-                    symbolName: model.capture.isRecording ? "stop.fill" : "record.circle",
-                    isDestructive: model.capture.isRecording,
-                    shortcutText: nil
-                ) {
-                    toggleRecording()
+                if model.captureMode == .recording {
+                    recordingCaptureControlGroup
+                        .transition(.asymmetric(
+                            insertion: .scale(scale: 0.85).combined(with: .opacity).combined(with: .move(edge: .trailing)),
+                            removal: .scale(scale: 0.85).combined(with: .opacity).combined(with: .move(edge: .trailing))
+                        ))
                 }
-                .help(recordingShortcutHelpTitle)
-                .disabled(model.recordingPhase == .idle && !model.capture.isRecording && !captureReadiness.canCapture)
-            }
-        }
-    }
 
-    private var compactRecordingControls: some View {
-        HStack(spacing: 8) {
-            compactLeadingControls
-
-            HStack(spacing: 4) {
-                sourcePicker(minWidth: 115, maxWidth: 155)
-                compactPermissionControls
-            }
-
-            HStack(spacing: 6) {
-                recordingCaptureControlGroup
-
-                HUDPrimaryButton(
-                    title: model.capture.isRecording ? "Stop" : startStopTitle,
-                    symbolName: model.capture.isRecording ? "stop.fill" : "record.circle",
-                    isDestructive: model.capture.isRecording,
-                    shortcutText: nil
-                ) {
-                    toggleRecording()
+                if model.captureMode == .recording {
+                    HUDPrimaryButton(
+                        title: model.capture.isRecording ? "Stop" : startStopTitle,
+                        symbolName: model.capture.isRecording ? "stop.fill" : "record.circle",
+                        isDestructive: model.capture.isRecording,
+                        shortcutText: nil
+                    ) {
+                        toggleRecording()
+                    }
+                    .help(recordingShortcutHelpTitle)
+                    .disabled(model.recordingPhase == .idle && !model.capture.isRecording && !captureReadiness.canCapture)
+                    .transition(.identity)
+                } else {
+                    HUDPrimaryButton(
+                        title: "Capture",
+                        symbolName: "camera.fill",
+                        isDestructive: false
+                    ) {
+                        model.takeScreenshot()
+                    }
+                    .disabled(!captureReadiness.canCapture)
+                    .transition(.identity)
                 }
-                .help(recordingShortcutHelpTitle)
-                .disabled(model.recordingPhase == .idle && !model.capture.isRecording && !captureReadiness.canCapture)
             }
-        }
-    }
-
-    private var narrowRecordingControls: some View {
-        HStack(spacing: 6) {
-            HUDModeSwitcher(
-                mode: Binding(
-                    get: { model.captureMode },
-                    set: { model.beginCapture($0) }
-                ),
-                isDisabled: model.capture.isRecording || model.recordingPhase != .idle
-            )
-
-            sourcePicker(minWidth: 100, maxWidth: 130)
-
-            narrowCaptureOptionsMenu
-
-            HUDPrimaryIconButton(
-                title: recordingShortcutHelpTitle,
-                symbolName: model.capture.isRecording ? "stop.fill" : "record.circle",
-                isDestructive: model.capture.isRecording
-            ) {
-                toggleRecording()
-            }
-            .disabled(model.recordingPhase == .idle && !model.capture.isRecording && !captureReadiness.canCapture)
-        }
-    }
-
-    private var screenshotControls: some View {
-        ViewThatFits(in: .horizontal) {
-            fullScreenshotControls
-            compactScreenshotControls
-        }
-    }
-
-    private var fullScreenshotControls: some View {
-        HStack(spacing: 10) {
-            sharedLeadingControls
-
-            HStack(spacing: 4) {
-                sourcePicker()
-                    .layoutPriority(2)
-                permissionControls
-            }
-
-            HUDDivider()
-
-            HUDPrimaryButton(
-                title: "Capture",
-                symbolName: "camera.fill",
-                isDestructive: false
-            ) {
-                model.takeScreenshot()
-            }
-            .disabled(!captureReadiness.canCapture)
         }
     }
 
