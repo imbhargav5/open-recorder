@@ -30,7 +30,8 @@ final class OpenRecorderAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     var isCameraEnabled: Bool {
-        model?.includeCamera ?? false
+        guard let model else { return false }
+        return model.includeCamera || model.cameraCaptureSession != nil
     }
 
     func installWindowActions(

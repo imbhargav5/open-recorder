@@ -160,6 +160,16 @@ final class AppModel: ObservableObject {
         get { appShell.settings.state.autoZoomAnimationPreset }
         set { appShell.settings.send(.autoZoomAnimationPresetChanged(newValue)) }
     }
+    /// Whether to play a synthesised click sound on every mouse button press during recording.
+    var mouseClickSoundsEnabled: Bool {
+        get { recordingPreferences.load().mouseClickSoundsEnabled }
+        set { recordingPreferences.setMouseClickSoundsEnabled(newValue) }
+    }
+    /// Whether to play a soft tap sound on every key-down event during recording.
+    var keyboardSoundsEnabled: Bool {
+        get { recordingPreferences.load().keyboardSoundsEnabled }
+        set { recordingPreferences.setKeyboardSoundsEnabled(newValue) }
+    }
     var microphoneDevices: [CaptureDeviceInfo] {
         get { captureOptions.state.microphoneDevices }
         set {
@@ -252,6 +262,7 @@ final class AppModel: ObservableObject {
     private let cancelFacecamRecording: (@MainActor () -> Void)?
     private let facecamRecorder = FacecamRecorder()
     private let cursorTelemetryRecorder = CursorTelemetryRecorder()
+    private var cameraRecordingEvents: [CameraRecordingEvent] = []
     private let captureDeviceProvider = CaptureDeviceProvider()
     private var nativeWindowCommandHandler: (NativeWindowCommand) -> Void = { _ in }
     private var runRecordingCountdown: @MainActor (CaptureSource) async throws -> Void = { _ in }
@@ -483,6 +494,24 @@ final class AppModel: ObservableObject {
                 self?.objectWillChange.send()
             }
         )
+        NotificationCenter.default.addObserver(
+            forName: AVCaptureDevice.wasConnectedNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.captureOptions.send(.refreshDevicesRequested)
+            }
+        }
+        NotificationCenter.default.addObserver(
+            forName: AVCaptureDevice.wasDisconnectedNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.captureOptions.send(.refreshDevicesRequested)
+            }
+        }
         appShell.onboarding.configure(
             currentPermissions: { [weak self] in
                 guard let self else { return (.requestAvailable, .requestAvailable) }
@@ -552,6 +581,20 @@ final class AppModel: ObservableObject {
             nil,
             preferredSourceKind: storedCaptureSetup.preferredSourceKind
         ))
+        NotificationCenter.default.addObserver(
+            forName: AVCaptureDevice.wasConnectedNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.refreshCaptureDevices()
+        }
+        NotificationCenter.default.addObserver(
+            forName: AVCaptureDevice.wasDisconnectedNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.refreshCaptureDevices()
+        }
     }
 
     private func configureEditorWorkspace(_ workspace: EditorWorkspaceDriver) {
@@ -890,18 +933,25 @@ final class AppModel: ObservableObject {
 
         if let selectedSource {
             let resolved = resolveSelection(previous: selectedSource, in: capture.sources)
-            dispatch(.refreshSelectedSource(resolved ?? capture.sources.first(where: { $0.kind == .display })))
-        } else if let primaryDisplay = capture.sources.first(where: { $0.kind == .display }) {
+                ?? capture.sources.first(where: { $0.kind == .display })
+                ?? capture.sources.first
+            dispatch(.refreshSelectedSource(resolved))
+        } else if !hasAttemptedStoredCaptureSetupRestore {
+            hasAttemptedStoredCaptureSetupRestore = true
             let restoredSource = storedCaptureSetup.sourceReference?.resolve(
                 in: capture.sources,
                 displayFrames: NSScreen.captureDisplayFramesByID
-            ) ?? primaryDisplay
+            ) ?? capture.sources.first(where: { $0.kind == .display }) ?? capture.sources.first
             dispatch(.restoreSetup(
                 storedCaptureSetup.mode,
                 restoredSource,
                 preferredSourceKind: storedCaptureSetup.preferredSourceKind
             ))
-            dispatch(.selectSource(restoredSource))
+            if let restoredSource {
+                dispatch(.selectSource(restoredSource))
+            }
+        } else if let defaultSource = capture.sources.first(where: { $0.kind == .display }) ?? capture.sources.first {
+            dispatch(.selectSource(defaultSource))
         }
     }
 
@@ -1221,7 +1271,7 @@ final class AppModel: ObservableObject {
         dispatch(.beginCapture(.recording, runtimeIsRecording: false))
         dispatch(.selectSource(displaySource))
         persistCaptureSetup(source: displaySource)
-        startRecording()
+        showHUD()
     }
 
     @MainActor
@@ -1234,7 +1284,7 @@ final class AppModel: ObservableObject {
         guard ensureScreenRecordingPermissionForCapture() else { return }
 
         dispatch(.beginCapture(.recording, runtimeIsRecording: false))
-        isDragRecordingPending = true
+        isDragRecordingPending = false
         requestInteractiveAreaSelection()
     }
 
@@ -1452,10 +1502,22 @@ final class AppModel: ObservableObject {
             }
 
             cursorTelemetryRecorder.start(for: selectedSource)
+            // Start audio feedback (click/keyboard sounds) if user has enabled them.
+            let audioFeedback = CaptureAudioFeedback.shared
+            let latestPrefs = recordingPreferences.load()
+            audioFeedback.mouseClickSoundsEnabled = latestPrefs.mouseClickSoundsEnabled
+            audioFeedback.keyboardSoundsEnabled = latestPrefs.keyboardSoundsEnabled
+            audioFeedback.startMonitoring()
             let screenStartedAt = try await startRecordingCapture(selectedSource, outputURL, options)
             cursorTelemetryRecorder.alignStart(to: screenStartedAt)
             activeScreenStartedAt = screenStartedAt
             activeRecordingStartDate = screenStartedAt
+            cameraRecordingEvents = []
+            if options.includeCamera {
+                let initialSettings = resolveFacecamSettingsForRecording(source: selectedSource)
+                cameraRecordingEvents.append(CameraRecordingEvent(timestamp: 0.0, settings: initialSettings))
+                requestWindow(.showCameraBubble)
+            }
 
             currentVideoURL = outputURL
             currentScreenshotURL = nil
@@ -1519,15 +1581,22 @@ final class AppModel: ObservableObject {
         do {
             let capturedFacecamSettings = resolveFacecamSettingsForRecording(source: source)
             let outputURL = try await stopRecordingCapture()
+            CaptureAudioFeedback.shared.stopMonitoring()
             let stoppedFacecamURL = try? await stopFacecam()
             let cursorTelemetryURL = cursorTelemetryRecorder.stop(videoURL: outputURL)
             currentVideoURL = outputURL
             currentScreenshotURL = nil
 
             if FileManager.default.fileExists(atPath: outputURL.path) {
+                let totalDuration = await videoDuration(for: outputURL)
+                let cameraClips = (stoppedFacecamURL != nil || activeFacecamURL != nil)
+                    ? buildCameraClipsFromRecordingEvents(duration: totalDuration, fallback: capturedFacecamSettings)
+                    : []
                 let timelineEdits = await initialTimelineEdits(
                     videoURL: outputURL,
-                    cursorTelemetryURL: cursorTelemetryURL
+                    cursorTelemetryURL: cursorTelemetryURL,
+                    facecamSettings: capturedFacecamSettings,
+                    cameraClips: cameraClips
                 )
                 let sourceName = source?.name ?? selectedSource?.name
                 let recordingSession = RecordingSessionBuilder.build(
@@ -1564,6 +1633,7 @@ final class AppModel: ObservableObject {
                 dispatch(.recordingStopped(message: "Recording stopped before a file was written."))
             }
         } catch {
+            CaptureAudioFeedback.shared.stopMonitoring()
             _ = cursorTelemetryRecorder.stop(videoURL: nil)
             if let source {
                 dispatch(.recordingFailed(source, message: error.localizedDescription))
@@ -2216,14 +2286,58 @@ final class AppModel: ObservableObject {
         videoExport.clear()
     }
 
-    private func initialTimelineEdits(videoURL: URL, cursorTelemetryURL: URL?) async -> TimelineEditSnapshot {
-        guard createZoomsAutomatically, let cursorTelemetryURL else {
-            return .empty
+    private func initialTimelineEdits(
+        videoURL: URL,
+        cursorTelemetryURL: URL?,
+        facecamSettings: FacecamSettings? = nil,
+        cameraClips: [TimelineCameraClip] = []
+    ) async -> TimelineEditSnapshot {
+        let duration = await videoDuration(for: videoURL)
+        var zooms: [TimelineZoomRegion] = []
+        if createZoomsAutomatically, let cursorTelemetryURL {
+            zooms = AutoZoomGenerator.generate(
+                from: cursorTelemetryURL,
+                duration: duration,
+                preset: autoZoomAnimationPreset,
+                cameraSettings: facecamSettings
+            )
+        }
+        return TimelineEditSnapshot(
+            zoomRegions: zooms,
+            cameraClips: cameraClips
+        )
+    }
+
+    func recordCameraEventDuringRecording() {
+        guard capture.isRecording || recordingPhase == .recording,
+              let startedAt = activeScreenStartedAt else { return }
+        let elapsed = max(0, Date().timeIntervalSince(startedAt))
+        let settings = resolveFacecamSettingsForRecording(source: captureState.source)
+        if let last = cameraRecordingEvents.last, last.settings == settings { return }
+        cameraRecordingEvents.append(CameraRecordingEvent(timestamp: elapsed, settings: settings))
+    }
+
+    private func buildCameraClipsFromRecordingEvents(duration: Double, fallback: FacecamSettings) -> [TimelineCameraClip] {
+        guard duration.isFinite, duration > 0 else { return [] }
+        guard !cameraRecordingEvents.isEmpty else {
+            return [TimelineCameraClip(span: TimelineSpan(start: 0, end: duration), settings: fallback)]
         }
 
-        let duration = await videoDuration(for: videoURL)
-        let zooms = AutoZoomGenerator.generate(from: cursorTelemetryURL, duration: duration, preset: autoZoomAnimationPreset)
-        return TimelineEditSnapshot(zoomRegions: zooms)
+        var clips: [TimelineCameraClip] = []
+        for i in 0..<cameraRecordingEvents.count {
+            let event = cameraRecordingEvents[i]
+            let startTime = min(event.timestamp, duration)
+            let nextTime: Double = (i + 1 < cameraRecordingEvents.count)
+                ? min(cameraRecordingEvents[i + 1].timestamp, duration)
+                : duration
+            if nextTime - startTime > 0.05 {
+                clips.append(TimelineCameraClip(
+                    span: TimelineSpan(start: startTime, end: nextTime),
+                    settings: event.settings
+                ))
+            }
+        }
+        return clips.isEmpty ? [TimelineCameraClip(span: TimelineSpan(start: 0, end: duration), settings: fallback)] : clips
     }
 
     private func videoDuration(for url: URL) async -> Double {
@@ -2259,7 +2373,7 @@ final class AppModel: ObservableObject {
         }
 
         let screenLength = (NSScreen.main?.frame.height ?? 1080.0)
-        let sizePercent = max(14.0, min(36.0, (resolvedDiameter / screenLength) * 100.0))
+        let sizePercent = max(10.0, min(65.0, (resolvedDiameter / screenLength) * 100.0))
 
         return FacecamSettings(
             enabled: true,
@@ -2474,6 +2588,8 @@ final class AppModel: ObservableObject {
     func selectCameraDevice(_ deviceID: String?) {
         captureOptions.send(.cameraSelected(deviceID))
         prewarmSelectedFacecamIfNeeded()
+        requestWindow(.showCameraBubble)
+        requestWindow(.closeCameraSelector)
     }
 
     func selectNoMicrophoneInput() {
@@ -2493,6 +2609,9 @@ final class AppModel: ObservableObject {
     func toggleSystemAudio() {
         captureOptions.send(.availabilityChanged(canChangeRecordingOptions))
         captureOptions.send(.systemAudioToggled)
+        if captureOptions.state.includeSystemAudio && capture.screenRecordingPermissionState != .granted {
+            _ = requestScreenRecordingPermission()
+        }
     }
 
     func disableCamera() {
@@ -2618,11 +2737,6 @@ final class AppModel: ObservableObject {
 
     private func prewarmSelectedFacecamIfNeeded() {
         let options = currentCaptureOptions
-        guard options.includeCamera else {
-            cancelFacecamPrewarm()
-            return
-        }
-
         facecamPrewarmTask?.cancel()
         facecamPrewarmTask = Task { @MainActor [weak self] in
             guard let self else { return }

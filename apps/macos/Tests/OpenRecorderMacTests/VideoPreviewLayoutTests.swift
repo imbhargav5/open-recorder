@@ -378,11 +378,11 @@ final class VideoPreviewLayoutTests: XCTestCase {
         .clamped
 
         XCTAssertEqual(settings.shape, "circle")
-        XCTAssertEqual(settings.size, 40)
+        XCTAssertEqual(settings.size, 75)
         XCTAssertEqual(settings.cornerRadius, 100)
         XCTAssertEqual(settings.borderWidth, 0)
         XCTAssertEqual(settings.borderColor, "#FFFFFF")
-        XCTAssertEqual(settings.margin, 12)
+        XCTAssertEqual(settings.margin, 24)
         XCTAssertEqual(settings.resolvedAnchor, .bottomRight)
     }
 

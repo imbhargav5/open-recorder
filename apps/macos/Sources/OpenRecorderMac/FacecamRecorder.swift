@@ -47,9 +47,7 @@ final class FacecamRecorder: NSObject, AVCaptureFileOutputRecordingDelegate {
     func prepare(cameraDeviceID: String?) async throws {
         if preparedCameraDeviceID == cameraDeviceID,
            let session,
-           let movieOutput,
-           session.isRunning,
-           !movieOutput.isRecording {
+           session.isRunning {
             return
         }
 
@@ -102,21 +100,19 @@ final class FacecamRecorder: NSObject, AVCaptureFileOutputRecordingDelegate {
         let input = try AVCaptureDeviceInput(device: device)
         let session = AVCaptureSession()
         session.beginConfiguration()
+        defer { session.commitConfiguration() }
         session.sessionPreset = .high
 
         guard session.canAddInput(input) else {
-            session.commitConfiguration()
             throw FacecamRecorderError.cannotAddCameraInput
         }
         session.addInput(input)
 
         let output = AVCaptureMovieFileOutput()
         guard session.canAddOutput(output) else {
-            session.commitConfiguration()
             throw FacecamRecorderError.cannotAddMovieOutput
         }
         session.addOutput(output)
-        session.commitConfiguration()
 
         return (session, output)
     }

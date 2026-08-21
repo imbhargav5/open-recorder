@@ -100,6 +100,24 @@ final class WindowSourceFilterTests: XCTestCase {
         XCTAssertEqual(displayInfo?.subtitle, "Notes App")
     }
 
+    func testExcludesScreenCaptureAndHelperDaemons() {
+        XCTAssertNil(displayInfo(
+            title: "Screen Recording",
+            ownerName: "screencaptureui",
+            bundleIdentifier: "com.apple.screencaptureui"
+        ))
+        XCTAssertNil(displayInfo(
+            title: nil,
+            ownerName: "QuickLookUIService",
+            bundleIdentifier: "com.apple.quicklook.ui.helper"
+        ))
+        XCTAssertNil(displayInfo(
+            title: "Authentication",
+            ownerName: "CoreAuthUI",
+            bundleIdentifier: "com.apple.CoreAuthUI"
+        ))
+    }
+
     private func displayInfo(
         title: String?,
         ownerName: String?,

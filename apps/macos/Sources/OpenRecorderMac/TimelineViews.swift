@@ -188,15 +188,8 @@ struct TimelineTrackContent: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Button {
-                edits.clearSelection()
-            } label: {
-                TimelineRuler(viewport: viewport)
-                    .rectangularHitTarget()
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Clear timeline selection")
-            .accessibilityHint("Clears the selected timeline item.")
+            TimelineRuler(viewport: viewport, onSeek: playback.seek(to:))
+                .rectangularHitTarget()
             TimelineClipRow(videoURL: videoURL, duration: playback.duration, currentTime: playback.currentTime, viewport: viewport, splitTimes: edits.clipSplitTimes, trimRegions: edits.trimRegions, clipSpeeds: edits.clipSpeeds, selectedClipIndex: edits.selectedClipIndex, seek: playback.seek(to:), edits: edits)
             TimelineLayerRow(kind: .zoom, duration: playback.duration, viewport: viewport, regions: edits.zoomRegions.map(TimelineRegionRenderData.zoom), selectedID: edits.selectedKind == .zoom ? edits.selectedID : nil, edits: edits)
             TimelineCameraLayerRow(
@@ -212,12 +205,13 @@ struct TimelineTrackContent: View {
         }
         .overlay(alignment: .topLeading) {
             ZStack(alignment: .topLeading) {
-                TimelinePlayhead(viewport: viewport, currentTime: playback.currentTime)
+                TimelinePlayhead(viewport: viewport, currentTime: playback.currentTime, onSeek: playback.seek(to:))
                 if let hoverTime {
                     TimelineHoverIndicator(viewport: viewport, time: hoverTime)
                 }
             }
         }
+        .coordinateSpace(name: "TimelineTrackCoordinateSpace")
         .readSize { timelineSize = $0 }
         .rectangularHitTarget()
         .onContinuousHover(coordinateSpace: .local) { phase in
@@ -615,6 +609,7 @@ struct TimelineViewport: Equatable {
 
 struct TimelineRuler: View {
     var viewport: TimelineViewport
+    var onSeek: ((Double) -> Void)? = nil
 
     var body: some View {
         GeometryReader { proxy in
@@ -641,6 +636,15 @@ struct TimelineRuler: View {
                     }
                 }
             }
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0, coordinateSpace: .named("TimelineTrackCoordinateSpace"))
+                    .onChanged { value in
+                        if let time = viewport.time(forX: value.location.x, width: proxy.size.width) {
+                            onSeek?(time)
+                        }
+                    }
+            )
         }
         .frame(height: TimelineMetrics.rulerHeight)
     }
@@ -657,24 +661,50 @@ struct TimelineRuler: View {
 struct TimelinePlayhead: View {
     var viewport: TimelineViewport
     var currentTime: Double
+    var onSeek: ((Double) -> Void)? = nil
+
+    @State private var isDragging = false
 
     var body: some View {
         GeometryReader { proxy in
             let x = viewport.x(for: currentTime, width: proxy.size.width, clamped: true) ?? 0
             ZStack(alignment: .top) {
+                // Playhead line
                 Rectangle()
                     .fill(Color.white)
                     .frame(width: 1.5, height: proxy.size.height)
 
-                Circle()
-                    .fill(Color.white)
-                    .frame(width: 10, height: 10)
-                    .shadow(color: Color.black.opacity(0.40), radius: 3, y: 1)
-                    .offset(y: -4)
+                // White Playhead Pin Knob with generous touch target
+                ZStack {
+                    Circle()
+                        .fill(Color.white)
+                        .frame(width: 11, height: 11)
+                        .overlay {
+                            Circle()
+                                .strokeBorder(Color.black.opacity(0.25), lineWidth: 0.8)
+                        }
+                        .shadow(color: Color.black.opacity(0.45), radius: 4, y: 1.5)
+                        .scaleEffect(isDragging ? 1.3 : 1.0)
+                        .animation(.spring(response: 0.2, dampingFraction: 0.7), value: isDragging)
+                }
+                .frame(width: 28, height: 28)
+                .contentShape(Rectangle())
+                .offset(y: -5)
             }
             .offset(x: x - 0.75)
+            .gesture(
+                DragGesture(minimumDistance: 0, coordinateSpace: .named("TimelineTrackCoordinateSpace"))
+                    .onChanged { value in
+                        isDragging = true
+                        if let time = viewport.time(forX: value.location.x, width: proxy.size.width) {
+                            onSeek?(time)
+                        }
+                    }
+                    .onEnded { _ in
+                        isDragging = false
+                    }
+            )
         }
-        .allowsHitTesting(false)
     }
 }
 
@@ -1383,8 +1413,28 @@ private struct TimelineCameraClipItem: View {
     var fallbackSettings: FacecamSettings?
     var edits: TimelineEditDriver
 
-    private var greenColor: Color {
-        Color(red: 0.22, green: 0.85, blue: 0.46)
+    private var accentColor: Color {
+        Color(red: 0.18, green: 0.82, blue: 0.48)
+    }
+
+    private var shapeTitle: String {
+        guard clip.settings.clamped.enabled else { return "Hidden" }
+        switch clip.settings.clamped.normalizedShape {
+        case "circle": return "Circle"
+        case "square": return "Square"
+        case "rectangle": return "Rectangle"
+        default: return "Camera"
+        }
+    }
+
+    private var shapeSymbolName: String {
+        guard clip.settings.clamped.enabled else { return "camera.slash.fill" }
+        switch clip.settings.clamped.normalizedShape {
+        case "circle": return "circle.fill"
+        case "square": return "square.fill"
+        case "rectangle": return "rectangle.fill"
+        default: return "camera.fill"
+        }
     }
 
     var body: some View {
@@ -1394,19 +1444,30 @@ private struct TimelineCameraClipItem: View {
         Button {
             edits.selectCameraClip(id: clip.id)
         } label: {
-            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                .fill(clip.settings.clamped.enabled ? (isSelected ? greenColor.opacity(0.24) : greenColor.opacity(0.08)) : Color.secondary.opacity(0.08))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .stroke(
-                            clip.settings.clamped.enabled
-                                ? (isSelected ? greenColor : greenColor.opacity(0.65))
-                                : Color.secondary.opacity(0.40),
-                            lineWidth: isSelected ? 1.8 : 1.0
-                        )
+            ZStack {
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(
+                        clip.settings.clamped.enabled
+                            ? (isSelected ? accentColor.opacity(0.18) : accentColor.opacity(0.07))
+                            : Color.secondary.opacity(0.06)
+                    )
+
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .strokeBorder(
+                        clip.settings.clamped.enabled
+                            ? (isSelected ? accentColor.opacity(0.90) : accentColor.opacity(0.25))
+                            : Color.secondary.opacity(0.20),
+                        lineWidth: isSelected ? 1.5 : 0.8
+                    )
+
+                if isSelected {
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        .stroke(accentColor.opacity(0.35), lineWidth: 3)
+                        .blur(radius: 2)
                 }
-                .shadow(color: isSelected && clip.settings.clamped.enabled ? greenColor.opacity(0.35) : Color.clear, radius: 4)
-                .overlay { label(width: itemWidth) }
+
+                label(width: itemWidth)
+            }
         }
         .buttonStyle(.plain)
         .frame(width: itemWidth, height: TimelineMetrics.regionItemHeight)
@@ -1432,19 +1493,35 @@ private struct TimelineCameraClipItem: View {
         }
     }
 
+    @ViewBuilder
     private func label(width: CGFloat) -> some View {
-        HStack(spacing: 5) {
-            Image(systemName: clip.settings.clamped.enabled ? "camera.fill" : "camera.slash.fill")
-                .font(.system(size: 9, weight: .semibold))
-            Text(clip.settings.clamped.enabled ? "Camera" : "Hidden")
-                .font(.system(size: 10, weight: .bold))
-                .lineLimit(1)
+        if width > 58 {
+            HStack(spacing: 4.5) {
+                Image(systemName: shapeSymbolName)
+                    .font(.system(size: 8.5, weight: .medium))
+                Text(shapeTitle)
+                    .font(.system(size: 10, weight: .semibold))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(
+                clip.settings.clamped.enabled
+                    ? (isSelected ? Color.white : accentColor.opacity(0.92))
+                    : Color.secondary.opacity(0.70)
+            )
+            .minimumScaleFactor(0.75)
+            .padding(.horizontal, 6)
+            .frame(maxWidth: max(1, width))
+            .allowsHitTesting(false)
+        } else if width > 22 {
+            Image(systemName: shapeSymbolName)
+                .font(.system(size: 8.5, weight: .medium))
+                .foregroundStyle(
+                    clip.settings.clamped.enabled
+                        ? (isSelected ? Color.white : accentColor.opacity(0.92))
+                        : Color.secondary.opacity(0.70)
+                )
+                .allowsHitTesting(false)
         }
-        .foregroundStyle(clip.settings.clamped.enabled ? (isSelected ? greenColor : greenColor.opacity(0.90)) : Color.secondary.opacity(0.70))
-        .minimumScaleFactor(0.72)
-        .padding(.horizontal, 8)
-        .frame(maxWidth: max(1, width))
-        .allowsHitTesting(false)
     }
 
     private func x(for time: Double) -> CGFloat {

@@ -92,6 +92,8 @@ final class NativeScreenRecorder: NSObject {
         configuration.queueDepth = 8
         // Record without cursor capture here; playback and export reapply the saved cursor preference after capture.
         configuration.showsCursor = false
+        // Standardize audio capture to dual-channel stereo at 48kHz when active;
+        // disable audio streams when neither system audio nor microphone is requested to guard against silent tracks.
         configuration.capturesAudio = options.includeSystemAudio
         configuration.sampleRate = 48_000
         configuration.channelCount = 2

@@ -69,4 +69,21 @@ final class CursorTelemetryTrackTests: XCTestCase {
         XCTAssertEqual(point?.x ?? -1, 25, accuracy: 0.001)
         XCTAssertEqual(point?.y ?? -1, 20, accuracy: 0.001)
     }
+
+    func testNormalizedPointComputesUnitCoordinates() {
+        let track = CursorTelemetryTrack(payload: CursorTelemetryPayload(
+            width: 200,
+            height: 100,
+            samples: [
+                CursorTelemetrySample(x: 50, y: 25, timestamp: 0, cursorType: "arrow"),
+                CursorTelemetrySample(x: 150, y: 75, timestamp: 1_000, cursorType: "arrow")
+            ],
+            clicks: []
+        ))
+
+        let point = track.normalizedPoint(at: 0.5, loops: false, smoothing: 0)
+
+        XCTAssertEqual(point?.x ?? -1, 0.5, accuracy: 0.001)
+        XCTAssertEqual(point?.y ?? -1, 0.5, accuracy: 0.001)
+    }
 }

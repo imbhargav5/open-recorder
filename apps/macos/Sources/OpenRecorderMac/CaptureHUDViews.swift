@@ -53,7 +53,7 @@ struct CaptureHUD: View {
                 source: model.captureState.source,
                 tone: .red,
                 minWidth: 110,
-                maxWidth: 200
+                maxWidth: 240
             )
 
             // Audio & Mic Indicators (Modular, borderless)
@@ -147,7 +147,7 @@ struct CaptureHUD: View {
             compactLeadingControls
 
             HStack(spacing: 4) {
-                sourcePicker(minWidth: 128, maxWidth: 172)
+                sourcePicker(minWidth: 128, maxWidth: 230)
                 compactPermissionControls
             }
 
@@ -189,7 +189,7 @@ struct CaptureHUD: View {
         }
     }
 
-    private func sourcePicker(minWidth: CGFloat = 120, maxWidth: CGFloat = 175) -> some View {
+    private func sourcePicker(minWidth: CGFloat = 120, maxWidth: CGFloat = 240) -> some View {
         StudioButton(hitTarget: .rounded(8), help: "Choose Source") {
             model.requestSourceSelector()
         } label: {
@@ -262,10 +262,8 @@ struct CaptureHUD: View {
         ) {
             if options.state.includeCamera {
                 model.disableCamera()
-            } else if options.state.hasAvailableCameraSelection {
-                model.includeCamera = true
             } else {
-                openCameraSelector()
+                model.includeCamera = true
             }
         }
 
