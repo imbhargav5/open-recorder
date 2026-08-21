@@ -36,8 +36,8 @@ struct CameraBubbleWindowView: View {
     @State private var isHovering = false
     @State private var isResizing = false
 
-    private let minDiameter: Double = 130.0
-    private let maxDiameter: Double = 460.0
+    private let minDiameter: Double = 100.0
+    private let maxDiameter: Double = 600.0
 
     private var currentDimensions: CGSize {
         let clamped = max(minDiameter, min(liveDiameter, maxDiameter))
@@ -81,10 +81,27 @@ struct CameraBubbleWindowView: View {
                 isHovering = hovering
             }
         }
-        .animation(.spring(response: 0.28, dampingFraction: 0.85), value: selectedShape)
         .onAppear {
             liveDiameter = max(minDiameter, min(storedDiameter, maxDiameter))
             model.prepareCameraIfNeeded()
+            updateWindowFrame(newDimensions: currentDimensions)
+        }
+        .onChange(of: currentDimensions) { _, newDims in
+            updateWindowFrame(newDimensions: newDims)
+        }
+    }
+
+    private func updateWindowFrame(newDimensions: CGSize) {
+        DispatchQueue.main.async {
+            guard let window = NSApp.windows.first(where: { $0.title == "Camera Preview" || $0.title == "Camera Bubble" }) else { return }
+            let totalWidth = newDimensions.width + 28
+            let totalHeight = newDimensions.height + 70
+            var frame = window.frame
+            let oldHeight = frame.height
+            frame.size = CGSize(width: totalWidth, height: totalHeight)
+            frame.origin.y += (oldHeight - totalHeight)
+            window.setFrame(frame, display: true, animate: false)
+            window.orderFrontRegardless()
         }
     }
 
@@ -94,6 +111,17 @@ struct CameraBubbleWindowView: View {
             CameraVideoPreviewRepresentable(session: session, isMirrored: isMirrored)
         } else {
             cameraFallbackView
+        }
+    }
+
+    private var activeCornerRadius: CGFloat {
+        switch selectedShape {
+        case .circle:
+            return min(currentDimensions.width, currentDimensions.height) / 2
+        case .square:
+            return min(32.0, currentDimensions.width * 0.18)
+        case .rectangle:
+            return min(24.0, currentDimensions.height * 0.16)
         }
     }
 
@@ -109,31 +137,14 @@ struct CameraBubbleWindowView: View {
             endPoint: .bottomTrailing
         )
 
-        switch selectedShape {
-        case .circle:
-            videoContent
-                .clipShape(Circle())
-                .overlay {
-                    Circle()
-                        .strokeBorder(borderStroke, lineWidth: 1.2)
-                }
-        case .square:
-            let radius = min(32.0, currentDimensions.width * 0.18)
-            videoContent
-                .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: radius, style: .continuous)
-                        .strokeBorder(borderStroke, lineWidth: 1.2)
-                }
-        case .rectangle:
-            let radius = min(24.0, currentDimensions.height * 0.16)
-            videoContent
-                .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: radius, style: .continuous)
-                        .strokeBorder(borderStroke, lineWidth: 1.2)
-                }
-        }
+        let radius = activeCornerRadius
+
+        videoContent
+            .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: radius, style: .continuous)
+                    .strokeBorder(borderStroke, lineWidth: 1.2)
+            }
     }
 
     private var cameraFallbackView: some View {
@@ -158,6 +169,9 @@ struct CameraBubbleWindowView: View {
                     let isSelected = selectedShape == shape
                     Button {
                         selectedShape = shape
+                        UserDefaults.standard.set(shape.rawValue, forKey: "camera_bubble_shape")
+                        updateWindowFrame(newDimensions: currentDimensions)
+                        model.recordCameraEventDuringRecording()
                     } label: {
                         Image(systemName: shape.symbolName)
                             .font(.system(size: 11, weight: .semibold))
@@ -230,11 +244,16 @@ struct CameraBubbleWindowView: View {
             CameraResizeGripRepresentable(
                 onResizeDelta: { delta in
                     isResizing = true
-                    liveDiameter = max(minDiameter, min(liveDiameter + delta, maxDiameter))
+                    let newDiameter = max(minDiameter, min(liveDiameter + delta, maxDiameter))
+                    liveDiameter = newDiameter
+                    storedDiameter = newDiameter
+                    UserDefaults.standard.set(newDiameter, forKey: "camera_bubble_diameter")
                 },
                 onResizeEnded: {
                     isResizing = false
                     storedDiameter = liveDiameter
+                    UserDefaults.standard.set(liveDiameter, forKey: "camera_bubble_diameter")
+                    model.recordCameraEventDuringRecording()
                 }
             )
 
@@ -342,6 +361,14 @@ final class CameraPreviewNSView: NSView {
         wantsLayer = true
         previewLayer.videoGravity = .resizeAspectFill
         layer?.addSublayer(previewLayer)
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        previewLayer.frame = CGRect(origin: .zero, size: newSize)
+        CATransaction.commit()
     }
 
     override func layout() {

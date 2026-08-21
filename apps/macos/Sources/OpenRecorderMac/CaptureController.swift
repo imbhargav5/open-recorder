@@ -92,7 +92,7 @@ enum ScreencaptureRegionMapper {
     private static func primaryDisplayFrame() -> CGRect {
         NSScreen.screens.first { screen in
             screen.frame.origin == .zero
-        }?.frame ?? NSScreen.main?.frame ?? NSScreen.screens.first?.frame ?? .zero
+        }?.frame ?? NSScreen.main?.frame ?? NSScreen.screens.first?.frame ?? CGRect(x: 0, y: 0, width: 1920, height: 1080)
     }
 }
 
@@ -161,13 +161,22 @@ enum WindowSourceFilter {
     }
 
     private static let blockedOwnerNames: Set<String> = [
+        "airplay",
+        "airplayxpchelper",
         "control center",
+        "coreauthui",
         "dock",
         "loginwindow",
         "notification center",
+        "quicklookuiservice",
+        "screencapture",
+        "screencaptured",
+        "screencaptureui",
         "spotlight",
         "systemuiserver",
+        "talagent",
         "textinputmenuagent",
+        "universalaccessd",
         "wallpaper",
         "window server"
     ]
@@ -180,9 +189,13 @@ enum WindowSourceFilter {
 
     private static let blockedBundlePrefixes: [String] = [
         "com.apple.controlcenter",
+        "com.apple.coreauthui",
         "com.apple.dock",
         "com.apple.loginwindow",
         "com.apple.notificationcenterui",
+        "com.apple.quicklook.ui.helper",
+        "com.apple.screencapture",
+        "com.apple.screencaptureui",
         "com.apple.spotlight",
         "com.apple.systemuiserver",
         "com.apple.textinputmenuagent",

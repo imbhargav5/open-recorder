@@ -24,6 +24,7 @@ struct SettingsInspector: View {
     @Binding var cursorSize: Double
     @Binding var cursorSmoothing: Double
     @Binding var cursorStyleID: CursorStyleID
+    var cameraSettings: Binding<FacecamSettings?>? = nil
     var recordingSession: RecordingSession?
 
     @Namespace private var tabRailAnimation
@@ -31,6 +32,8 @@ struct SettingsInspector: View {
     @State private var hoveredTab: InspectorTab?
     @State private var isInsetBalanceExpanded = false
     @State private var removeCameraBackground = false
+    @AppStorage("recording.mouseClickSoundsEnabled") private var mouseClickSoundsEnabled: Bool = false
+    @AppStorage("recording.keyboardSoundsEnabled") private var keyboardSoundsEnabled: Bool = false
     private let insetBalanceScrollID = "inset-balance-accordion"
 
     private var hasRecordedCamera: Bool {
@@ -230,13 +233,70 @@ struct SettingsInspector: View {
                 InspectorSlider(title: "Size", valueText: String(format: "%.2fx", cursorSize), value: $cursorSize, range: 1...8, step: 0.05, defaultValue: 1, leadingSymbolName: "cursorarrow", trailingSymbolName: "cursorarrow.rays")
                 InspectorSlider(title: "Smoothing", valueText: String(format: "%.2f", cursorSmoothing), value: $cursorSmoothing, range: 0...2, step: 0.01, defaultValue: 0.45, leadingSymbolName: "point.topleft.down.curvedto.point.bottomright.up", trailingSymbolName: "waveform.path.ecg")
             }
+            InspectorGroup(
+                title: "Audio Feedback",
+                symbolName: "waveform",
+                onReset: {
+                    withAnimation(.snappy(duration: 0.28)) {
+                        mouseClickSoundsEnabled = false
+                        keyboardSoundsEnabled = false
+                    }
+                }
+            ) {
+                InspectorSwitch(title: "Mouse Click Sounds", isOn: $mouseClickSoundsEnabled)
+                InspectorSwitch(title: "Typing Keystroke Sounds", isOn: $keyboardSoundsEnabled)
+            }
         case .camera:
-            InspectorGroup(title: "Facecam", symbolName: "camera", showsTopDivider: false) {
-                Text(hasRecordedCamera ? "Timeline camera layer active" : "No facecam recorded")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                InspectorSwitch(title: "Remove camera background", isOn: $removeCameraBackground)
+            if hasRecordedCamera, cameraSettings != nil {
+                InspectorGroup(title: "Facecam", symbolName: "camera.fill", showsTopDivider: false) {
+                    InspectorSwitch(title: "Show Facecam", isOn: cameraEnabledBinding)
+                }
+
+                InspectorGroup(title: "Position", symbolName: "square.grid.3x3") {
+                    PositionGrid(selection: cameraAnchorBinding)
+                }
+
+                InspectorGroup(title: "Style", symbolName: "slider.horizontal.3") {
+                    InspectorSlider(
+                        title: "Size",
+                        valueText: "\(Int(cameraSizeBinding.wrappedValue.rounded()))%",
+                        value: cameraSizeBinding,
+                        range: 8...75,
+                        step: 1
+                    )
+                    InspectorSlider(
+                        title: "Corner Radius",
+                        valueText: "\(Int(cameraCornerRadiusBinding.wrappedValue.rounded()))px",
+                        value: cameraCornerRadiusBinding,
+                        range: 0...100,
+                        step: 1
+                    )
+                    InspectorSlider(
+                        title: "Margin",
+                        valueText: "\(Int(cameraMarginBinding.wrappedValue.rounded()))%",
+                        value: cameraMarginBinding,
+                        range: 0...24,
+                        step: 1
+                    )
+                    InspectorSlider(
+                        title: "Border",
+                        valueText: "\(Int(cameraBorderWidthBinding.wrappedValue.rounded()))px",
+                        value: cameraBorderWidthBinding,
+                        range: 0...16,
+                        step: 1
+                    )
+                }
+
+                InspectorGroup(title: "Background", symbolName: "sparkles") {
+                    InspectorSwitch(title: "Remove camera background", isOn: $removeCameraBackground)
+                }
+            } else {
+                InspectorGroup(title: "Facecam", symbolName: "camera", showsTopDivider: false) {
+                    Text("No facecam recorded with this video.")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .padding(.vertical, 8)
+                }
             }
             if let path = recordingSession?.facecamVideoPath {
                 SessionAssetRow(title: "Facecam File", path: path)
@@ -264,6 +324,72 @@ struct SettingsInspector: View {
                 SessionAssetRow(title: "Source", path: sourceName)
             }
         }
+    }
+
+    private var cameraEnabledBinding: Binding<Bool> {
+        Binding(
+            get: { cameraSettings?.wrappedValue?.enabled ?? true },
+            set: { enabled in
+                var current = cameraSettings?.wrappedValue ?? defaultFacecamSettings(enabled: true)
+                current.enabled = enabled
+                cameraSettings?.wrappedValue = current
+            }
+        )
+    }
+
+    private var cameraAnchorBinding: Binding<String> {
+        Binding(
+            get: { cameraSettings?.wrappedValue?.anchor ?? FacecamAnchor.bottomRight.rawValue },
+            set: { anchor in
+                var current = cameraSettings?.wrappedValue ?? defaultFacecamSettings(enabled: true)
+                current.anchor = anchor
+                cameraSettings?.wrappedValue = current
+            }
+        )
+    }
+
+    private var cameraSizeBinding: Binding<Double> {
+        Binding(
+            get: { cameraSettings?.wrappedValue?.size ?? 22 },
+            set: { size in
+                var current = cameraSettings?.wrappedValue ?? defaultFacecamSettings(enabled: true)
+                current.size = size
+                cameraSettings?.wrappedValue = current
+            }
+        )
+    }
+
+    private var cameraCornerRadiusBinding: Binding<Double> {
+        Binding(
+            get: { cameraSettings?.wrappedValue?.cornerRadius ?? 100 },
+            set: { radius in
+                var current = cameraSettings?.wrappedValue ?? defaultFacecamSettings(enabled: true)
+                current.cornerRadius = radius
+                cameraSettings?.wrappedValue = current
+            }
+        )
+    }
+
+    private var cameraMarginBinding: Binding<Double> {
+        Binding(
+            get: { cameraSettings?.wrappedValue?.margin ?? 4 },
+            set: { margin in
+                var current = cameraSettings?.wrappedValue ?? defaultFacecamSettings(enabled: true)
+                current.margin = margin
+                cameraSettings?.wrappedValue = current
+            }
+        )
+    }
+
+    private var cameraBorderWidthBinding: Binding<Double> {
+        Binding(
+            get: { cameraSettings?.wrappedValue?.borderWidth ?? 0 },
+            set: { width in
+                var current = cameraSettings?.wrappedValue ?? defaultFacecamSettings(enabled: true)
+                current.borderWidth = width
+                cameraSettings?.wrappedValue = current
+            }
+        )
     }
 
     private var insetAdvancedControls: some View {

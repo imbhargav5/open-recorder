@@ -149,7 +149,7 @@ struct TimelineSelectionSidebar: View {
                 title: "Size",
                 valueText: "\(Int(clip.settings.clamped.size.rounded()))%",
                 value: cameraSizeBinding(id: clip.id),
-                range: 12...40,
+                range: 8...75,
                 step: 1,
                 onEditingChanged: handleUndoTransaction
             )
@@ -165,7 +165,7 @@ struct TimelineSelectionSidebar: View {
                 title: "Margin",
                 valueText: "\(Int(clip.settings.clamped.margin.rounded()))%",
                 value: cameraMarginBinding(id: clip.id),
-                range: 0...12,
+                range: 0...24,
                 step: 1,
                 onEditingChanged: handleUndoTransaction
             )

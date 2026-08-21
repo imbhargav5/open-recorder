@@ -12,17 +12,30 @@ enum AutoZoomGenerator {
     static func generate(
         from telemetry: CursorTelemetryPayload,
         duration: Double,
-        preset: TimelineZoomAnimationPreset = .balanced
+        preset: TimelineZoomAnimationPreset = .balanced,
+        cameraSettings: FacecamSettings? = nil
     ) -> [TimelineZoomRegion] {
         guard duration.isFinite, duration > 0 else { return [] }
         guard telemetry.width > 0, telemetry.height > 0 else { return [] }
 
+        let width = Double(max(telemetry.width, 1))
+        let height = Double(max(telemetry.height, 1))
+
+        let isInsideCamera: (Int, Int) -> Bool = { x, y in
+            guard let camera = cameraSettings, camera.enabled else { return false }
+            let normX = Double(x) / width
+            let normY = Double(y) / height
+            let cameraRect = FacecamOverlayLayout.normalizedRect(for: camera)
+            let expandedRect = cameraRect.insetBy(dx: -0.06, dy: -0.06)
+            return expandedRect.contains(CGPoint(x: normX, y: normY))
+        }
+
         let config = preset.configuration
         let sortedClicks = telemetry.clicks
-            .filter { $0.timestamp >= 0 }
+            .filter { $0.timestamp >= 0 && !isInsideCamera($0.x, $0.y) }
             .sorted { $0.timestamp < $1.timestamp }
         let sortedSamples = telemetry.samples
-            .filter { $0.timestamp >= 0 }
+            .filter { $0.timestamp >= 0 && !isInsideCamera($0.x, $0.y) }
             .sorted { $0.timestamp < $1.timestamp }
 
         let clickCandidates = clusteredClicks(sortedClicks, mergeThresholdSeconds: config.mergeThresholdSeconds)
@@ -73,10 +86,11 @@ enum AutoZoomGenerator {
     static func generate(
         from telemetryURL: URL,
         duration: Double,
-        preset: TimelineZoomAnimationPreset = .balanced
+        preset: TimelineZoomAnimationPreset = .balanced,
+        cameraSettings: FacecamSettings? = nil
     ) -> [TimelineZoomRegion] {
         guard let telemetry = try? CursorTelemetryPayload.load(from: telemetryURL) else { return [] }
-        return generate(from: telemetry, duration: duration, preset: preset)
+        return generate(from: telemetry, duration: duration, preset: preset, cameraSettings: cameraSettings)
     }
 
     private static func clusteredClicks(_ clicks: [CursorTelemetryClick], mergeThresholdSeconds: Double) -> [[CursorTelemetryClick]] {

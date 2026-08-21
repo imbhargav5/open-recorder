@@ -4,15 +4,23 @@ struct RecordingPreferences: Equatable {
     var createsZoomsAutomatically: Bool
     var autoZoomAnimationPreset: TimelineZoomAnimationPreset
     var shortcuts: ShortcutPreferences = .defaultPreferences
+    /// Play a synthesised click sound on every mouse button press during recording.
+    var mouseClickSoundsEnabled: Bool
+    /// Play a soft tap sound on every key-down event during recording.
+    var keyboardSoundsEnabled: Bool
 
     init(
         createsZoomsAutomatically: Bool = true,
         autoZoomAnimationPreset: TimelineZoomAnimationPreset = .balanced,
-        shortcuts: ShortcutPreferences = .defaultPreferences
+        shortcuts: ShortcutPreferences = .defaultPreferences,
+        mouseClickSoundsEnabled: Bool = false,
+        keyboardSoundsEnabled: Bool = false
     ) {
         self.createsZoomsAutomatically = createsZoomsAutomatically
         self.autoZoomAnimationPreset = autoZoomAnimationPreset
         self.shortcuts = shortcuts
+        self.mouseClickSoundsEnabled = mouseClickSoundsEnabled
+        self.keyboardSoundsEnabled = keyboardSoundsEnabled
     }
 }
 
@@ -21,6 +29,8 @@ struct RecordingPreferencesStore {
     private static let createsZoomsAutomaticallyKey = "recording.createZoomsAutomatically"
     private static let autoZoomAnimationPresetKey = "recording.autoZoomAnimationPreset"
     private static let shortcutsKey = "recording.shortcuts"
+    private static let mouseClickSoundsKey = "recording.mouseClickSoundsEnabled"
+    private static let keyboardSoundsKey = "recording.keyboardSoundsEnabled"
 
     private let defaults: UserDefaults
 
@@ -42,7 +52,9 @@ struct RecordingPreferencesStore {
             autoZoomAnimationPreset: TimelineZoomAnimationPreset.storedValue(
                 defaults.string(forKey: Self.autoZoomAnimationPresetKey)
             ),
-            shortcuts: shortcuts
+            shortcuts: shortcuts,
+            mouseClickSoundsEnabled: defaults.object(forKey: Self.mouseClickSoundsKey) as? Bool ?? false,
+            keyboardSoundsEnabled: defaults.object(forKey: Self.keyboardSoundsKey) as? Bool ?? false
         )
     }
 
@@ -59,4 +71,13 @@ struct RecordingPreferencesStore {
             defaults.set(data, forKey: Self.shortcutsKey)
         }
     }
+
+    func setMouseClickSoundsEnabled(_ value: Bool) {
+        defaults.set(value, forKey: Self.mouseClickSoundsKey)
+    }
+
+    func setKeyboardSoundsEnabled(_ value: Bool) {
+        defaults.set(value, forKey: Self.keyboardSoundsKey)
+    }
 }
+

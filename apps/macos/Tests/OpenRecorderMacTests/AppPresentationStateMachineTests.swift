@@ -1312,6 +1312,33 @@ final class CaptureOptionsStateMachineTests: XCTestCase {
         XCTAssertTrue(state.hasAvailableCameraSelection)
     }
 
+    func testRecordingOptionsFallbacksToSystemDefaultWhenHardwareIsDisconnected() {
+        var state = CaptureOptionsState(
+            includeMicrophone: true,
+            includeCamera: true,
+            microphoneDevices: [CaptureDeviceInfo(id: "mic-live", name: "Internal Mic", isDefault: true)],
+            cameraDevices: [CaptureDeviceInfo(id: "cam-live", name: "FaceTime Camera", isDefault: true)],
+            selectedMicrophoneDeviceID: "mic-unplugged",
+            selectedCameraDeviceID: "cam-unplugged"
+        )
+
+        // Since the selected IDs are not in available devices, recordingOptions must gracefully fallback to nil (system default)
+        XCTAssertFalse(state.hasAvailableMicrophoneSelection)
+        XCTAssertFalse(state.hasAvailableCameraSelection)
+        XCTAssertNil(state.recordingOptions.microphoneDeviceID)
+        XCTAssertNil(state.recordingOptions.cameraDeviceID)
+        XCTAssertTrue(state.recordingOptions.includeMicrophone)
+        XCTAssertTrue(state.recordingOptions.includeCamera)
+
+        // When valid devices are selected, recordingOptions passes the IDs
+        state.selectedMicrophoneDeviceID = "mic-live"
+        state.selectedCameraDeviceID = "cam-live"
+        XCTAssertTrue(state.hasAvailableMicrophoneSelection)
+        XCTAssertTrue(state.hasAvailableCameraSelection)
+        XCTAssertEqual(state.recordingOptions.microphoneDeviceID, "mic-live")
+        XCTAssertEqual(state.recordingOptions.cameraDeviceID, "cam-live")
+    }
+
     func testOpeningDeviceSelectorsDoesNotEnumerateDevicesTwice() {
         var state = CaptureOptionsState(
             microphoneDevices: [CaptureDeviceInfo(id: "mic-1", name: "Mic", isDefault: true)],

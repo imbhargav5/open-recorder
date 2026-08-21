@@ -8,7 +8,7 @@ enum HUDWindowMetrics {
     static let height: CGFloat = 155
     static let horizontalScreenMargin: CGFloat = 32
     static let minWidth: CGFloat = 360
-    static let defaultSize = CGSize(width: 720, height: height)
+    static let defaultSize = CGSize(width: 760, height: height)
 
     static func clampedSize(for measuredSize: CGSize, screen: NSScreen?) -> CGSize {
         clampedSize(for: measuredSize, visibleFrame: screen?.visibleFrame)
@@ -24,6 +24,34 @@ enum HUDWindowMetrics {
         let width = min(max(measuredWidth, minWidth), maximumWidth)
 
         return CGSize(width: width.rounded(.up), height: height)
+    }
+
+    static func bottomCenterOrigin(for contentSize: CGSize, visibleFrame: CGRect, bottomMargin: CGFloat = 26) -> CGPoint {
+        CGPoint(
+            x: visibleFrame.midX - contentSize.width / 2,
+            y: visibleFrame.minY + bottomMargin
+        )
+    }
+
+    static func clampedOrigin(
+        for windowSize: CGSize,
+        currentOrigin: CGPoint,
+        visibleFrame: CGRect,
+        bottomMargin: CGFloat = 26
+    ) -> CGPoint {
+        guard visibleFrame.width > 0, visibleFrame.height > 0 else { return currentOrigin }
+        let minX = visibleFrame.minX + horizontalScreenMargin
+        let maxX = max(minX, visibleFrame.maxX - windowSize.width - horizontalScreenMargin)
+        let minY = visibleFrame.minY + bottomMargin
+        let maxY = max(minY, visibleFrame.maxY - windowSize.height - bottomMargin)
+
+        if currentOrigin.y < minY || currentOrigin == .zero {
+            return bottomCenterOrigin(for: windowSize, visibleFrame: visibleFrame, bottomMargin: bottomMargin)
+        }
+
+        let clampedX = max(minX, min(currentOrigin.x, maxX))
+        let clampedY = max(minY, min(currentOrigin.y, maxY))
+        return CGPoint(x: clampedX, y: clampedY)
     }
 }
 
@@ -976,7 +1004,7 @@ struct SourceChip: View {
     var source: CaptureSource?
     var tone: FlowTone = .green
     var minWidth: CGFloat = 110
-    var maxWidth: CGFloat = 220
+    var maxWidth: CGFloat = 240
 
     var body: some View {
         HStack(spacing: 7) {
@@ -990,7 +1018,7 @@ struct SourceChip: View {
                 .font(.system(size: 12, weight: .medium))
                 .lineLimit(1)
                 .truncationMode(.tail)
-                .frame(maxWidth: max(40, maxWidth - 60), alignment: .leading)
+                .frame(maxWidth: max(40, maxWidth - 56), alignment: .leading)
             Image(systemName: "chevron.up.chevron.down")
                 .font(.system(size: 8, weight: .bold))
                 .foregroundStyle(Theme.fgSubtle)
