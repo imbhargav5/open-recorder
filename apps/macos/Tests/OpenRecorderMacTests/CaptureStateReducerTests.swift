@@ -22,6 +22,20 @@ final class CaptureStateReducerTests: XCTestCase {
         XCTAssertEqual(transition.statusMessage, "Finish or cancel the current capture before starting another.")
     }
 
+    func testSetCaptureModeFromReadyStateSwitchesModeAndKeepsSource() {
+        // In production, saved-preference restore typically lands in .ready(mode, source).
+        // The mode switcher (screenshot ↔ recording) on the HUD uses setCaptureMode —
+        // it updates the mode while preserving the selected source.
+        let source = makeSource(kind: .window)
+        let state = CaptureState.ready(.recording, source)
+
+        let transition = state.applying(.setCaptureMode(.screenshot))
+
+        XCTAssertEqual(transition.state.phase, .ready(.screenshot, source))
+        XCTAssertTrue(transition.effects.contains(.showHUD))
+        XCTAssertNil(transition.statusMessage)
+    }
+
     func testRecordingHotKeyRegistersOnlyForRecordingReadyAndActiveStates() {
         let source = makeSource()
 

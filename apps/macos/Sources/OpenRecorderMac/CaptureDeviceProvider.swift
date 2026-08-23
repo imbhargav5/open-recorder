@@ -4,7 +4,7 @@ import Foundation
 struct CaptureDeviceProvider: Sendable {
     func devices(for mediaType: AVMediaType) -> [CaptureDeviceInfo] {
         let deviceTypes: [AVCaptureDevice.DeviceType] = mediaType == .video
-            ? [.builtInWideAngleCamera, .external]
+            ? [.builtInWideAngleCamera, .external, .continuityCamera, .deskViewCamera]
             : [.microphone]
         let discovery = AVCaptureDevice.DiscoverySession(
             deviceTypes: deviceTypes,

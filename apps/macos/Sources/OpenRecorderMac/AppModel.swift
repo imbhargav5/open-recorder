@@ -134,6 +134,7 @@ final class AppModel: ObservableObject {
                 prewarmSelectedFacecamIfNeeded()
                 requestWindow(.showCameraBubble)
             } else {
+                cancelFacecamPrewarm()
                 requestWindow(.closeCameraBubble)
             }
         }
@@ -1068,6 +1069,13 @@ final class AppModel: ObservableObject {
         saveCaptureSetupPreferences()
     }
 
+    func setCaptureMode(_ mode: CaptureMode) {
+        guard !rejectActionWhileTerminationIsPending() else { return }
+        dispatch(.setCaptureMode(mode))
+        storedCaptureSetup.mode = mode
+        saveCaptureSetupPreferences()
+    }
+
     func selectSource(_ source: CaptureSource) {
         let shouldCaptureImmediately = captureMode == .screenshot
         dispatch(.selectSource(source))
@@ -1589,7 +1597,8 @@ final class AppModel: ObservableObject {
 
             if FileManager.default.fileExists(atPath: outputURL.path) {
                 let totalDuration = await videoDuration(for: outputURL)
-                let cameraClips = (stoppedFacecamURL != nil || activeFacecamURL != nil)
+                let facecamURL = stoppedFacecamURL ?? activeFacecamURL
+                let cameraClips = (facecamURL != nil)
                     ? buildCameraClipsFromRecordingEvents(duration: totalDuration, fallback: capturedFacecamSettings)
                     : []
                 let timelineEdits = await initialTimelineEdits(
@@ -1601,7 +1610,7 @@ final class AppModel: ObservableObject {
                 let sourceName = source?.name ?? selectedSource?.name
                 let recordingSession = RecordingSessionBuilder.build(
                     screenVideoURL: outputURL,
-                    facecamURL: stoppedFacecamURL ?? activeFacecamURL,
+                    facecamURL: facecamURL,
                     facecamSettings: capturedFacecamSettings,
                     sourceName: sourceName,
                     showCursor: showCursor,
