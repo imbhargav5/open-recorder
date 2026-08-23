@@ -1,6 +1,6 @@
 {
-  "tagName": "v0.2.38",
-  "releaseName": "Open Recorder v0.2.38",
-  "releaseNotes": "## Commits since v0.2.37\n\n- cfb9e24 Merge pull request #1016 from Arushi-Gupta13/feat/readme-ui-screenshot-and-contributors\n- 52c1486 feat: add project UI screenshot to README and integrate all-contributors for automated contributor management\n- 39226c7 Update appcast for v0.2.37",
+  "tagName": "v0.2.39",
+  "releaseName": "Open Recorder v0.2.39",
+  "releaseNotes": "## Commits since v0.2.38\n\n- 679fd3c Merge pull request #1020 from imbhargav5/codex/fix-hud-display-source-picker\n- 5a60f37 fix(macos): unify display source selection\n- 7b6cb86 Update appcast for v0.2.38",
   "makeLatest": true
 }
