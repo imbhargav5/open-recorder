@@ -776,5 +776,20 @@
 ]]></description>
             <enclosure url="https://github.com/imbhargav5/open-recorder/releases/download/v0.2.38/open-recorder-macos.zip" sparkle:edSignature="31CGHwM8qH6NA14oeGq6T1Gp3J7nQvaD45ULVSGImxC5IgJI/vjGbp/arHYmluaimycvSd2r9dvOQZwgY1dGBQ==" length="43435672" type="application/octet-stream"/>
         </item>
+        <item>
+            <title>Version 0.2.39</title>
+            <pubDate>Sun, 23 Aug 2026 10:54:42 GMT</pubDate>
+            <sparkle:version>0.2.39</sparkle:version>
+            <sparkle:shortVersionString>0.2.39</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+## Commits since v0.2.38
+
+- 679fd3c Merge pull request #1020 from imbhargav5/codex/fix-hud-display-source-picker
+- 5a60f37 fix(macos): unify display source selection
+- 7b6cb86 Update appcast for v0.2.38
+]]></description>
+            <enclosure url="https://github.com/imbhargav5/open-recorder/releases/download/v0.2.39/open-recorder-macos.zip" sparkle:edSignature="e4IY/IW77hS1Hzq+1+yYQvfeeNxZxOy3Nd6T/U4vJeFomD5Yfx5hs3JOFNUIyjXFZRisW6f6IJLxusYhLkxIBw==" length="43437174" type="application/octet-stream"/>
+        </item>
     </channel>
 </rss>
