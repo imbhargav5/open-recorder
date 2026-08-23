@@ -1239,14 +1239,8 @@ final class AppModel: ObservableObject {
         }
         guard ensureScreenRecordingPermissionForCapture() else { return }
 
-        let displaySource = capture.sources.first(where: { $0.kind == .display })
-            ?? selectedSource
-            ?? CaptureSource(id: "display:primary", kind: .display, name: "Entire Screen", subtitle: "", displayIndex: nil, displayID: nil, windowID: nil, area: nil, thumbnailData: nil)
-
         dispatch(.beginCapture(.screenshot, runtimeIsRecording: false))
-        dispatch(.selectSource(displaySource))
-        persistCaptureSetup(source: displaySource)
-        takeScreenshot()
+        requestSourceSelector(kind: .display)
     }
 
     @MainActor
@@ -1272,14 +1266,8 @@ final class AppModel: ObservableObject {
         }
         guard ensureScreenRecordingPermissionForCapture() else { return }
 
-        let displaySource = capture.sources.first(where: { $0.kind == .display })
-            ?? selectedSource
-            ?? CaptureSource(id: "display:primary", kind: .display, name: "Entire Screen", subtitle: "", displayIndex: nil, displayID: nil, windowID: nil, area: nil, thumbnailData: nil)
-
         dispatch(.beginCapture(.recording, runtimeIsRecording: false))
-        dispatch(.selectSource(displaySource))
-        persistCaptureSetup(source: displaySource)
-        showHUD()
+        requestSourceSelector(kind: .display)
     }
 
     @MainActor
@@ -1292,7 +1280,7 @@ final class AppModel: ObservableObject {
         guard ensureScreenRecordingPermissionForCapture() else { return }
 
         dispatch(.beginCapture(.recording, runtimeIsRecording: false))
-        isDragRecordingPending = false
+        isDragRecordingPending = true
         requestInteractiveAreaSelection()
     }
 
