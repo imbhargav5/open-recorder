@@ -65,9 +65,9 @@ final class CaptureStateReducerTests: XCTestCase {
 
     func testChoosingSourceTypesMovesToDeclarativeSelectionStates() {
         let screen = CaptureState.choosingSourceType(.screenshot).applying(.chooseSourceType(.screen))
-        XCTAssertEqual(screen.state.phase, .screenSelecting(.screenshot))
+        XCTAssertEqual(screen.state.phase, .selectingSource(.screenshot))
         XCTAssertEqual(screen.state.preferredSourceKind, .display)
-        XCTAssertEqual(screen.effects, [.dismissScreenSelection])
+        XCTAssertEqual(screen.effects, [.showSourceSelector])
 
         let window = CaptureState.choosingSourceType(.recording).applying(.chooseSourceType(.window))
         XCTAssertEqual(window.state.phase, .selectingSource(.recording))
