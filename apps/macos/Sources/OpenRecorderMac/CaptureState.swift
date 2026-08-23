@@ -210,6 +210,7 @@ typealias HUDPhase = CapturePhase
 
 enum CaptureEvent: Hashable {
     case beginCapture(CaptureMode, runtimeIsRecording: Bool)
+    case setCaptureMode(CaptureMode)
     case chooseSourceType(CaptureSourceType)
     case requestSourceSelector(CaptureSourceKind?)
     case cancelSourceSelection
@@ -588,6 +589,25 @@ struct CaptureState: Hashable {
             next.preferredSourceKind = next.selectedSource?.kind ?? next.preferredSourceKind ?? .display
             statusMessage = next.selectedSource == nil ? "Choose a source." : nil
             effects.append(.dismissScreenSelection)
+            effects.append(.showHUD)
+
+        case .setCaptureMode(let mode):
+            guard canChangeRecordingOptions(runtimeIsRecording: false) else {
+                return finish(self)
+            }
+            if case .ready(_, let source) = next.phase {
+                next.setPhase(.ready(mode, source))
+            } else if case .setup = next.phase {
+                next.setPhase(.setup(mode), clearSource: false)
+            } else if case .sourceSelecting = next.phase {
+                next.setPhase(.sourceSelecting(mode), clearSource: false)
+            } else if case .screenSelecting = next.phase {
+                next.setPhase(.screenSelecting(mode), clearSource: false)
+            } else if case .areaSelecting = next.phase {
+                next.setPhase(.areaSelecting(mode), clearSource: false)
+            } else {
+                next.setPhase(.setup(mode), clearSource: false)
+            }
             effects.append(.showHUD)
 
         case .chooseSourceType(let sourceType):

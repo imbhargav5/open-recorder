@@ -215,12 +215,19 @@ final class WindowConfigurationView: NSView {
         window.isOpaque = true
         window.backgroundColor = NSColor(red: 0.055, green: 0.055, blue: 0.070, alpha: 1)
         window.hasShadow = true
-        window.level = .floating
-        window.collectionBehavior = [.fullScreenAuxiliary]
+        // Use .screenSaver so the selector appears above the HUD (which also lives at
+        // .screenSaver). At .floating the HUD would intercept scroll and click events.
+        window.level = .screenSaver
+        // .managed ensures macOS routes focus to this window in a production app bundle.
+        window.collectionBehavior = [.fullScreenAuxiliary, .managed]
         window.isMovableByWindowBackground = true
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
-        window.styleMask = [.titled, .closable, .fullSizeContentView]
+        // Do NOT include .fullSizeContentView: with a transparent titlebar the content
+        // would extend into the titlebar area, creating an invisible hit-testing dead zone
+        // over the header (refresh/cancel buttons). Without it, content starts below the
+        // titlebar frame, leaving the buttons fully interactive.
+        window.styleMask = [.titled, .closable]
         window.standardWindowButton(.miniaturizeButton)?.isHidden = true
         window.standardWindowButton(.zoomButton)?.isHidden = true
         window.center()

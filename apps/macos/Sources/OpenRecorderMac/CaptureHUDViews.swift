@@ -168,7 +168,7 @@ struct CaptureHUD: View {
             HUDModeSwitcher(
                 mode: Binding(
                     get: { model.captureMode },
-                    set: { model.beginCapture($0) }
+                    set: { model.setCaptureMode($0) }
                 ),
                 isDisabled: model.capture.isRecording || model.recordingPhase != .idle
             )
@@ -182,7 +182,7 @@ struct CaptureHUD: View {
             HUDModeSwitcher(
                 mode: Binding(
                     get: { model.captureMode },
-                    set: { model.beginCapture($0) }
+                    set: { model.setCaptureMode($0) }
                 ),
                 isDisabled: model.capture.isRecording || model.recordingPhase != .idle
             )
