@@ -594,10 +594,10 @@ struct CaptureState: Hashable {
             let mode = modeForSelection()
             switch sourceType {
             case .screen:
-                next.setPhase(.screenSelecting(mode), clearSource: false)
+                next.setPhase(.selectingSource(mode), clearSource: false)
                 next.preferredSourceKind = .display
-                statusMessage = "Choose a screen."
-                effects.append(.dismissScreenSelection)
+                statusMessage = "Choose what to capture."
+                effects.append(.showSourceSelector)
             case .window:
                 next.setPhase(.selectingSource(mode), clearSource: false)
                 next.preferredSourceKind = .window
