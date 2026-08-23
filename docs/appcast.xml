@@ -761,5 +761,20 @@
 ]]></description>
             <enclosure url="https://github.com/imbhargav5/open-recorder/releases/download/v0.2.37/open-recorder-macos.zip" sparkle:edSignature="6CDZlDotjZaqYRAw1IrgPozE/Ao85m+Mh9+LiMMlTCGYGB1BYWEKJB4QDpFZqqOwCArqZzFtD/VmdWSNCzfNDw==" length="43435966" type="application/octet-stream"/>
         </item>
+        <item>
+            <title>Version 0.2.38</title>
+            <pubDate>Sun, 23 Aug 2026 09:53:36 GMT</pubDate>
+            <sparkle:version>0.2.38</sparkle:version>
+            <sparkle:shortVersionString>0.2.38</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+## Commits since v0.2.37
+
+- cfb9e24 Merge pull request #1016 from Arushi-Gupta13/feat/readme-ui-screenshot-and-contributors
+- 52c1486 feat: add project UI screenshot to README and integrate all-contributors for automated contributor management
+- 39226c7 Update appcast for v0.2.37
+]]></description>
+            <enclosure url="https://github.com/imbhargav5/open-recorder/releases/download/v0.2.38/open-recorder-macos.zip" sparkle:edSignature="31CGHwM8qH6NA14oeGq6T1Gp3J7nQvaD45ULVSGImxC5IgJI/vjGbp/arHYmluaimycvSd2r9dvOQZwgY1dGBQ==" length="43435672" type="application/octet-stream"/>
+        </item>
     </channel>
 </rss>
