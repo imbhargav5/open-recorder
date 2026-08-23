@@ -372,17 +372,13 @@ struct SourceGrid: View {
     var body: some View {
         if sourceTab == .screens && sources.count == 1, let singleSource = sources.first {
             singleScreenLayout(singleSource)
-        } else if sourceTab == .windows || (sourceTab == .screens && sources.count > 2) {
+        } else {
             ScrollView(.vertical, showsIndicators: true) {
                 grid
                     .padding(.horizontal, 2)
                     .padding(.vertical, 4)
             }
             .frame(maxHeight: .infinity)
-        } else {
-            grid
-                .padding(.horizontal, 2)
-                .frame(maxHeight: .infinity, alignment: .center)
         }
     }
 

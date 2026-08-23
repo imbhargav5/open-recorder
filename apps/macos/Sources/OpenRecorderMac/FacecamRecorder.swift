@@ -101,7 +101,9 @@ final class FacecamRecorder: NSObject, AVCaptureFileOutputRecordingDelegate {
         let session = AVCaptureSession()
         session.beginConfiguration()
         defer { session.commitConfiguration() }
-        session.sessionPreset = .high
+        if session.canSetSessionPreset(.high) {
+            session.sessionPreset = .high
+        }
 
         guard session.canAddInput(input) else {
             throw FacecamRecorderError.cannotAddCameraInput
@@ -170,8 +172,22 @@ final class FacecamRecorder: NSObject, AVCaptureFileOutputRecordingDelegate {
     }
 
     private func finishRecording(outputFileURL: URL, error: Error?) {
+        let isSuccess: Bool
+        if let error = error as NSError? {
+            let successfullyFinished = error.userInfo[AVErrorRecordingSuccessfullyFinishedKey] as? Bool
+                ?? (error.userInfo[AVErrorRecordingSuccessfullyFinishedKey] as? NSNumber)?.boolValue
+                ?? false
+            let fileExists = FileManager.default.fileExists(atPath: outputFileURL.path)
+            let fileSize = (try? FileManager.default.attributesOfItem(atPath: outputFileURL.path)[.size] as? Int64) ?? 0
+            isSuccess = successfullyFinished || (fileExists && fileSize > 0)
+        } else {
+            isSuccess = true
+        }
+
         let result: Result<URL?, Error>
-        if let error {
+        if isSuccess {
+            result = .success(outputFileURL)
+        } else if let error {
             result = .failure(FacecamRecorderError.recordingFailed(error.localizedDescription))
         } else {
             result = .success(outputFileURL)
@@ -190,7 +206,7 @@ final class FacecamRecorder: NSObject, AVCaptureFileOutputRecordingDelegate {
 
     private func cameraDevice(_ deviceID: String?) throws -> AVCaptureDevice {
         let discovery = AVCaptureDevice.DiscoverySession(
-            deviceTypes: [.builtInWideAngleCamera, .external],
+            deviceTypes: [.builtInWideAngleCamera, .external, .continuityCamera, .deskViewCamera],
             mediaType: .video,
             position: .unspecified
         )
