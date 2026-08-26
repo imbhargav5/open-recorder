@@ -10,7 +10,7 @@ final class HUDWindowMetricsTests: XCTestCase {
         XCTAssertTrue(behavior.contains(.fullScreenAuxiliary))
         XCTAssertTrue(behavior.contains(.ignoresCycle))
         XCTAssertFalse(behavior.contains(.stationary))
-        XCTAssertEqual(HUDWindowChrome.level, .screenSaver)
+        XCTAssertGreaterThan(HUDWindowChrome.level.rawValue, NSWindow.Level.screenSaver.rawValue)
     }
 
     func testScreenSelectionOverlayChromeCanCoverFullscreenSpaces() {
@@ -33,6 +33,16 @@ final class HUDWindowMetricsTests: XCTestCase {
         XCTAssertTrue(behavior.contains(.ignoresCycle))
         XCTAssertFalse(behavior.contains(.stationary))
         XCTAssertGreaterThan(AreaSelectionOverlayChrome.level.rawValue, NSWindow.Level.screenSaver.rawValue)
+    }
+
+    func testRecordingCountdownOverlayChromeCanCoverFullscreenSpaces() {
+        let behavior = RecordingCountdownOverlayChrome.collectionBehavior
+
+        XCTAssertTrue(behavior.contains(.canJoinAllSpaces))
+        XCTAssertTrue(behavior.contains(.fullScreenAuxiliary))
+        XCTAssertTrue(behavior.contains(.ignoresCycle))
+        XCTAssertFalse(behavior.contains(.stationary))
+        XCTAssertGreaterThan(RecordingCountdownOverlayChrome.level.rawValue, NSWindow.Level.screenSaver.rawValue)
     }
 
     func testDefaultWidthMatchesCondensedHUDLayout() {
