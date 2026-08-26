@@ -1,3 +1,8 @@
+---
+title: "Open Recorder: native macOS screen recorder and editor"
+description: "Record your screen, capture screenshots, and edit videos on macOS with Open Recorder, an open source Swift and Rust screen recording app."
+---
+
 # Open Recorder
 
 <p align="center">
