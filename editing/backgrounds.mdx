@@ -1,0 +1,38 @@
+---
+title: "Background presets and custom image or video uploads"
+description: "Choose wallpaper, video loop, solid color, or gradient backgrounds in the Open Recorder editor, or upload your own image or video file."
+---
+
+Open Recorder composites your recording or screenshot on top of a background layer. Pick a background in the **Appearance** tab of the video editor inspector. The screenshot editor uses the same background picker.
+
+## Choose a background
+
+The **Background** section shows a row of tabs. Each tab switches the grid below it to a different preset category:
+
+| Tab | Contents |
+| --- | --- |
+| **Image** | Bundled wallpaper images |
+| **Video** | Bundled looping video backgrounds: Aurora, Particles, Cyber Neon, and Gradient Mesh |
+| **Color** | Solid color swatches, plus a **Custom Solid Color** picker for any color |
+| **Gradient** | Linear and radial gradient presets |
+| **None** | Transparent background |
+
+Click a tile to apply it. The editor preview updates immediately. Click **Reset** to return to the default wallpaper.
+
+## Upload a custom image or video
+
+Click the **+** button next to the background tabs to use your own file as the background. In the file dialog, choose:
+
+- An image in PNG or JPEG format
+- A video in MP4, MOV, or M4V format
+
+Open Recorder applies the file as the background right away and switches to the **Image** or **Video** tab to match the file type. The upload appears with its filename as the label.
+
+Custom backgrounds are referenced from their original location on disk. They are not copied into the app. If you move or delete the file, the background can no longer load, so keep the file in place until you finish exporting.
+
+## Preview and export behavior
+
+- Backgrounds scale to fill the stage. Files that do not match the stage aspect ratio are cropped, not letterboxed.
+- Video backgrounds, both bundled loops and custom uploads, play on a continuous loop in the editor preview.
+- Exported videos and screenshots render video backgrounds as a still frame taken from the start of the clip.
+- Background blur, stage padding, shadow, and corner roundness from the **Frame** controls apply on top of whichever background you choose, including custom uploads.

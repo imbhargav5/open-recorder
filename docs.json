@@ -17,8 +17,16 @@
         "pages": ["recording/screen-recording", "recording/capture-sources"]
       },
       {
+        "group": "Editing",
+        "pages": ["editing/backgrounds"]
+      },
+      {
         "group": "Reference",
-        "pages": ["reference/faq"]
+        "pages": ["reference/faq", "reference/keyboard-shortcuts"]
+      },
+      {
+        "group": "Updates",
+        "pages": ["changelog"]
       }
     ]
   }
