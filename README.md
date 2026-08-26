@@ -23,6 +23,7 @@ The product uses a small native stack: Swift owns the macOS experience, capture 
 - Record a display, window, or interactive selected area on macOS
 - Capture screenshots from displays, windows, or selected areas
 - Choose microphone input, system audio, camera capture, cursor visibility, and click recording before capture
+- Record a facecam overlay from built-in cameras, external cameras, iPhone Continuity Camera, or Desk View cameras, and switch devices with **Change Camera...** in the capture HUD
 - Save recordings under `~/Movies/Open Recorder`
 - Save screenshots under `~/Pictures/Open Recorder`
 - Automatically create `.openrecorder` project metadata
