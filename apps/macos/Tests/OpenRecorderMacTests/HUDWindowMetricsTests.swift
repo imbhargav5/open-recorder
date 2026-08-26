@@ -8,7 +8,8 @@ final class HUDWindowMetricsTests: XCTestCase {
 
         XCTAssertTrue(behavior.contains(.canJoinAllSpaces))
         XCTAssertTrue(behavior.contains(.fullScreenAuxiliary))
-        XCTAssertTrue(behavior.contains(.stationary))
+        XCTAssertTrue(behavior.contains(.ignoresCycle))
+        XCTAssertFalse(behavior.contains(.stationary))
         XCTAssertEqual(HUDWindowChrome.level, .screenSaver)
     }
 
@@ -18,9 +19,20 @@ final class HUDWindowMetricsTests: XCTestCase {
         XCTAssertTrue(ScreenSelectionOverlayChrome.styleMask.contains(.nonactivatingPanel))
         XCTAssertTrue(behavior.contains(.canJoinAllSpaces))
         XCTAssertTrue(behavior.contains(.fullScreenAuxiliary))
-        XCTAssertTrue(behavior.contains(.stationary))
         XCTAssertTrue(behavior.contains(.ignoresCycle))
+        XCTAssertFalse(behavior.contains(.stationary))
         XCTAssertGreaterThan(ScreenSelectionOverlayChrome.level.rawValue, NSWindow.Level.screenSaver.rawValue)
+    }
+
+    func testAreaSelectionOverlayChromeCanCoverFullscreenSpaces() {
+        let behavior = AreaSelectionOverlayChrome.collectionBehavior
+
+        XCTAssertTrue(AreaSelectionOverlayChrome.styleMask.contains(.nonactivatingPanel))
+        XCTAssertTrue(behavior.contains(.canJoinAllSpaces))
+        XCTAssertTrue(behavior.contains(.fullScreenAuxiliary))
+        XCTAssertTrue(behavior.contains(.ignoresCycle))
+        XCTAssertFalse(behavior.contains(.stationary))
+        XCTAssertGreaterThan(AreaSelectionOverlayChrome.level.rawValue, NSWindow.Level.screenSaver.rawValue)
     }
 
     func testDefaultWidthMatchesCondensedHUDLayout() {
