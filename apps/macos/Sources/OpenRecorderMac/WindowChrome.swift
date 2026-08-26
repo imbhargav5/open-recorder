@@ -19,7 +19,7 @@ enum HUDWindowChrome {
     static let collectionBehavior: NSWindow.CollectionBehavior = [
         .canJoinAllSpaces,
         .fullScreenAuxiliary,
-        .stationary
+        .ignoresCycle
     ]
     static let level: NSWindow.Level = .screenSaver
     static let activeSpaceSyncDelay: TimeInterval = 0.18
@@ -167,6 +167,7 @@ final class WindowConfigurationView: NSView {
         window.isOpaque = false
         window.backgroundColor = .clear
         window.hasShadow = false
+        window.hidesOnDeactivate = false
         window.level = HUDWindowChrome.level
         window.collectionBehavior = HUDWindowChrome.collectionBehavior
         window.isMovableByWindowBackground = true
@@ -368,6 +369,7 @@ final class WindowConfigurationView: NSView {
         guard role == .hud, window.isVisible else { return }
         window.collectionBehavior = HUDWindowChrome.collectionBehavior
         window.level = HUDWindowChrome.level
+        window.hidesOnDeactivate = false
         if let screen = window.screen ?? NSScreen.main {
             let clamped = HUDWindowMetrics.clampedOrigin(
                 for: window.frame.size,

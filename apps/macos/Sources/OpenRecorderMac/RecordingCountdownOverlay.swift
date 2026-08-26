@@ -143,7 +143,6 @@ final class RecordingCountdownOverlayController {
         window.collectionBehavior = [
             .canJoinAllSpaces,
             .fullScreenAuxiliary,
-            .stationary,
             .ignoresCycle
         ]
         window.contentView = NSHostingView(rootView: RecordingCountdownOverlay(state: state))

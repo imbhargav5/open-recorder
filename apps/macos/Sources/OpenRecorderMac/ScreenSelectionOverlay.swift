@@ -8,7 +8,6 @@ enum ScreenSelectionOverlayChrome {
     static let collectionBehavior: NSWindow.CollectionBehavior = [
         .canJoinAllSpaces,
         .fullScreenAuxiliary,
-        .stationary,
         .ignoresCycle
     ]
 }
