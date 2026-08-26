@@ -2772,8 +2772,18 @@ final class AppModel: ObservableObject {
     }
 
     private func prepareFacecam(cameraDeviceID: String?) async throws {
-        facecamPrewarmTask?.cancel()
-        facecamPrewarmTask = nil
+        if let prewarmTask = facecamPrewarmTask {
+            facecamPrewarmTask = nil
+            prewarmTask.cancel()
+            // Task.cancel() is cooperative and FacecamRecorder.prepare() never checks
+            // isCancelled, so the prewarm's in-flight prepare() call keeps running. Wait
+            // for it to actually finish before calling prepare() again below, otherwise
+            // the two calls race on FacecamRecorder's session/movieOutput: each builds its
+            // own AVCaptureSession, and whichever assignment lands last silently orphans
+            // the other (still-running) session — leaving the camera light stuck on and
+            // recording through a session that may never have been fully wired up.
+            await prewarmTask.value
+        }
         if let prepareFacecamRecording {
             try await prepareFacecamRecording(cameraDeviceID)
         } else {

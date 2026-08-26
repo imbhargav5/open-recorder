@@ -31,6 +31,7 @@ final class FacecamRecorder: NSObject, AVCaptureFileOutputRecordingDelegate {
     private var startContinuation: CheckedContinuation<Date, Error>?
     private var finishContinuation: CheckedContinuation<URL?, Error>?
     private var finishResult: Result<URL?, Error>?
+    private var preparationGeneration = 0
 
     var isRecording: Bool {
         movieOutput?.isRecording == true
@@ -52,11 +53,20 @@ final class FacecamRecorder: NSObject, AVCaptureFileOutputRecordingDelegate {
         }
 
         cleanup()
+        let generation = preparationGeneration
         let (session, output) = try buildSession(cameraDeviceID: cameraDeviceID)
 
         await Task.detached(priority: .userInitiated) {
             session.startRunning()
         }.value
+
+        guard generation == preparationGeneration else {
+            // A newer prepare()/cleanup() call superseded this one while we were
+            // suspended on startRunning() — stop the now-orphaned session instead of
+            // letting it silently overwrite (and outlive) the current one.
+            session.stopRunning()
+            return
+        }
 
         self.session = session
         self.movieOutput = output
@@ -221,6 +231,7 @@ final class FacecamRecorder: NSObject, AVCaptureFileOutputRecordingDelegate {
     }
 
     private func cleanup(keepOutputURL: Bool = false) {
+        preparationGeneration += 1
         if let session, session.isRunning {
             session.stopRunning()
         }
