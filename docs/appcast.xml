@@ -810,5 +810,35 @@
 ]]></description>
             <enclosure url="https://github.com/imbhargav5/open-recorder/releases/download/v0.2.40/open-recorder-macos.zip" sparkle:edSignature="LPcweJv5nXNUKDAoqXIgZdHo27by/WEoVng0t33qOoTKYSjgCKMBMtSO/bqlYPlM2CqCbX6hWFxTSEsDLqULCQ==" length="43497619" type="application/octet-stream"/>
         </item>
+        <item>
+            <title>Version 0.2.41</title>
+            <pubDate>Wed, 26 Aug 2026 21:30:39 GMT</pubDate>
+            <sparkle:version>0.2.41</sparkle:version>
+            <sparkle:shortVersionString>0.2.41</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+## Commits since v0.2.40
+
+- 7db2bb9 Merge pull request #1039 from imbhargav5/fix/fullscreen-hud-countdown-overlay
+- 524e44d Merge branch 'main' into fix/fullscreen-hud-countdown-overlay
+- 973f299 Fix camera turning on during recording without the HUD toggle enabled
+- f9af4e4 Draft changelog: add v0.2.40 release notes (#1037)
+- dac2796 Stop leaking the camera bubble/session on facecam start failure; add diagnostics
+- 9c0dc4b Fix facecam session race between camera prewarm and recording start
+- f6ce552 Raise HUD and countdown overlay to CGShieldingWindowLevel
+- 6851eaf Update from code changes: document global capture shortcuts and HUD (#1036)
+- c9a4469 Update from code changes: document custom background uploads (#1035)
+- fbb6edd Fix Mintlify documentation home page
+- d2e34e3 Merge pull request #1033 from imbhargav5/mintlify/22c1dab6
+- 659fa17 Merge branch 'main' into mintlify/22c1dab6
+- 625d5f4 docs: document multi-monitor area selection, full-screen HUD, and unified source picker
+- e4d76ab Merge pull request #1030 from imbhargav5/mintlify/142bb824
+- eeb2a7b docs: add SEO title and description frontmatter to README
+- b186213 docs: document Continuity Camera and Desk View camera support
+- f027529 Add Mintlify documentation configuration
+- f86efcd Update appcast for v0.2.40
+]]></description>
+            <enclosure url="https://github.com/imbhargav5/open-recorder/releases/download/v0.2.41/open-recorder-macos.zip" sparkle:edSignature="INGGfi8iSqLWxXptYWhH7dPj+rHbBk55fetSzYHU4l0unDo0ib/SVjLHxWNWvNeWKNbVMUUJHl/5N60aFyN4Cg==" length="43579009" type="application/octet-stream"/>
+        </item>
     </channel>
 </rss>
