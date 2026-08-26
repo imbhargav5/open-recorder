@@ -11,6 +11,10 @@
       {
         "group": "Overview",
         "pages": ["README"]
+      },
+      {
+        "group": "Editing",
+        "pages": ["editing/backgrounds"]
       }
     ]
   }
