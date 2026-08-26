@@ -1,0 +1,24 @@
+---
+title: "FAQ"
+description: "Answers to common questions about Open Recorder."
+---
+
+## Does Open Recorder support multiple monitors?
+
+Yes. Multi-monitor setups are supported across the capture flow:
+
+- The **Screens** tab of the **Choose Source** picker lists every connected display. The grid scrolls when you have more than two displays.
+- Area selection spans all connected displays. When you start an area capture, Open Recorder shows the drag overlay on every screen, and you can drag the capture region on any of them.
+- If you connect or disconnect a display during area selection, Open Recorder rebuilds the overlay to match the new layout.
+
+## Can I record while an app is in full screen?
+
+Yes. The recording HUD displays over full-screen macOS apps and stays interactive when you swipe between Spaces. The area selection overlay also appears over full-screen apps, so you can drag a capture region inside them.
+
+## Why is my capture blocked after granting Screen Recording permission?
+
+macOS only refreshes an app's Screen Recording permission state after the app relaunches. Restart Open Recorder after granting access.
+
+## Where are my captures saved?
+
+Screenshots are saved under `~/Pictures/Open Recorder`. Recordings are registered as projects that you can reopen in the built-in editor.
