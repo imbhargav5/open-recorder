@@ -11,6 +11,14 @@
       {
         "group": "Overview",
         "pages": ["README"]
+      },
+      {
+        "group": "Recording",
+        "pages": ["recording/screen-recording", "recording/capture-sources"]
+      },
+      {
+        "group": "Reference",
+        "pages": ["reference/faq"]
       }
     ]
   }
