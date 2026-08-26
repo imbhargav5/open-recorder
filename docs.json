@@ -23,6 +23,10 @@
       {
         "group": "Reference",
         "pages": ["reference/faq", "reference/keyboard-shortcuts"]
+      },
+      {
+        "group": "Updates",
+        "pages": ["changelog"]
       }
     ]
   }
