@@ -22,7 +22,7 @@
       },
       {
         "group": "Reference",
-        "pages": ["reference/faq"]
+        "pages": ["reference/faq", "reference/keyboard-shortcuts"]
       }
     ]
   }
