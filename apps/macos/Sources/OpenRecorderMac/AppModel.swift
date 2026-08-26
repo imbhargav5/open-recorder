@@ -1480,6 +1480,16 @@ final class AppModel: ObservableObject {
             pendingRecordingOptions = nil
             facecamLog.notice("runRecordingStartFlow: options.includeCamera=\(options.includeCamera, privacy: .public) deviceID=\(options.cameraDeviceID ?? "default", privacy: .public)")
 
+            if !options.includeCamera, facecamRecorder.isPrepared || facecamRecorder.isRecording {
+                // The camera toggle is off for this recording, but something else already
+                // spun up a live session (a stray prewarm, a leftover from a previous
+                // recording, etc). Never let a recording without includeCamera carry a
+                // running camera session or a visible bubble into it.
+                facecamLog.error("runRecordingStartFlow: camera was running despite includeCamera=false; forcing it off")
+                cancelFacecam()
+                requestWindow(.closeCameraBubble)
+            }
+
             if options.includeCamera {
                 do {
                     try await prepareFacecam(cameraDeviceID: options.cameraDeviceID)
@@ -1500,6 +1510,15 @@ final class AppModel: ObservableObject {
 
             try await runRecordingCountdown(selectedSource)
             guard !Task.isCancelled else { return }
+
+            if !options.includeCamera, facecamRecorder.isPrepared || facecamRecorder.isRecording {
+                // Same guard as above, repeated post-countdown: whatever is turning the
+                // camera on without includeCamera has shown up mid-countdown before, so a
+                // single check before the countdown isn't enough.
+                facecamLog.error("post-countdown: camera was running despite includeCamera=false; forcing it off")
+                cancelFacecam()
+                requestWindow(.closeCameraBubble)
+            }
 
             dispatch(.recordingStarting(selectedSource))
 
@@ -2621,6 +2640,7 @@ final class AppModel: ObservableObject {
     }
 
     func selectCameraDevice(_ deviceID: String?) {
+        facecamLog.notice("selectCameraDevice(\(deviceID ?? "default", privacy: .public)) called")
         captureOptions.send(.cameraSelected(deviceID))
         prewarmSelectedFacecamIfNeeded()
         requestWindow(.showCameraBubble)
