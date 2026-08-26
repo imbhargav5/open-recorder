@@ -10,7 +10,7 @@
     "groups": [
       {
         "group": "Overview",
-        "pages": ["README"]
+        "pages": ["index"]
       },
       {
         "group": "Recording",
