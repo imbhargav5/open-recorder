@@ -1,0 +1,17 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "Open Recorder",
+  "description": "A native macOS screen recorder, screenshot tool, and lightweight editor.",
+  "colors": {
+    "primary": "#2563EB"
+  },
+  "navigation": {
+    "groups": [
+      {
+        "group": "Overview",
+        "pages": ["README"]
+      }
+    ]
+  }
+}
