@@ -1,5 +1,8 @@
 @preconcurrency import AVFoundation
 import Foundation
+import os
+
+let facecamLog = Logger(subsystem: "dev.openrecorder.app", category: "facecam")
 
 enum FacecamRecorderError: LocalizedError {
     case cameraUnavailable
@@ -55,6 +58,7 @@ final class FacecamRecorder: NSObject, AVCaptureFileOutputRecordingDelegate {
         cleanup()
         let generation = preparationGeneration
         let (session, output) = try buildSession(cameraDeviceID: cameraDeviceID)
+        facecamLog.notice("prepare(gen=\(generation)) building session for device=\(cameraDeviceID ?? "default", privacy: .public)")
 
         await Task.detached(priority: .userInitiated) {
             session.startRunning()
@@ -64,6 +68,7 @@ final class FacecamRecorder: NSObject, AVCaptureFileOutputRecordingDelegate {
             // A newer prepare()/cleanup() call superseded this one while we were
             // suspended on startRunning() — stop the now-orphaned session instead of
             // letting it silently overwrite (and outlive) the current one.
+            facecamLog.notice("prepare(gen=\(generation)) superseded by gen=\(self.preparationGeneration); stopping orphaned session")
             session.stopRunning()
             return
         }
@@ -72,9 +77,11 @@ final class FacecamRecorder: NSObject, AVCaptureFileOutputRecordingDelegate {
         self.movieOutput = output
         self.preparedCameraDeviceID = cameraDeviceID
         self.finishResult = nil
+        facecamLog.notice("prepare(gen=\(generation)) completed, session running=\(session.isRunning, privacy: .public)")
     }
 
     func start(outputURL: URL, cameraDeviceID: String?) async throws -> Date {
+        facecamLog.notice("start() requested for device=\(cameraDeviceID ?? "default", privacy: .public), isPrepared=\(self.isPrepared, privacy: .public)")
         if preparedCameraDeviceID != cameraDeviceID || session == nil || movieOutput == nil {
             try await prepare(cameraDeviceID: cameraDeviceID)
         } else if let session, !session.isRunning {
@@ -84,10 +91,12 @@ final class FacecamRecorder: NSObject, AVCaptureFileOutputRecordingDelegate {
         }
 
         guard let output = movieOutput else {
+            facecamLog.error("start() aborting: movieOutput is nil after prepare()")
             throw FacecamRecorderError.cannotAddMovieOutput
         }
 
         if output.isRecording, let startedAt {
+            facecamLog.notice("start() already recording since \(startedAt.description, privacy: .public)")
             return startedAt
         }
 
@@ -131,6 +140,7 @@ final class FacecamRecorder: NSObject, AVCaptureFileOutputRecordingDelegate {
 
     func stop() async throws -> URL? {
         guard let output = movieOutput, output.isRecording else {
+            facecamLog.notice("stop() called while not recording (movieOutput=\(self.movieOutput != nil, privacy: .public)); returning outputURL=\(self.outputURL?.lastPathComponent ?? "nil", privacy: .public)")
             let url = outputURL
             cleanup()
             return url
@@ -202,6 +212,9 @@ final class FacecamRecorder: NSObject, AVCaptureFileOutputRecordingDelegate {
         } else {
             result = .success(outputFileURL)
         }
+
+        let fileSize = (try? FileManager.default.attributesOfItem(atPath: outputFileURL.path)[.size] as? Int64) ?? -1
+        facecamLog.notice("finishRecording url=\(outputFileURL.lastPathComponent, privacy: .public) isSuccess=\(isSuccess, privacy: .public) fileSize=\(fileSize, privacy: .public) error=\(error?.localizedDescription ?? "none", privacy: .public)")
 
         finishResult = result
         switch result {

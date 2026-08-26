@@ -1478,12 +1478,20 @@ final class AppModel: ObservableObject {
         do {
             var options = pendingRecordingOptions ?? currentCaptureOptions
             pendingRecordingOptions = nil
+            facecamLog.notice("runRecordingStartFlow: options.includeCamera=\(options.includeCamera, privacy: .public) deviceID=\(options.cameraDeviceID ?? "default", privacy: .public)")
 
             if options.includeCamera {
                 do {
                     try await prepareFacecam(cameraDeviceID: options.cameraDeviceID)
                 } catch {
+                    facecamLog.error("prepareFacecam threw: \(error.localizedDescription, privacy: .public)")
                     captureOptions.send(.cameraDisabledForCaptureFailure)
+                    // .cameraDisabledForCaptureFailure only flips the includeCamera flag —
+                    // it doesn't tear down the camera session or close the bubble, so
+                    // without this the camera light and preview stay on for a recording
+                    // that silently has no facecam in it.
+                    cancelFacecam()
+                    requestWindow(.closeCameraBubble)
                     options.includeCamera = false
                     options.cameraDeviceID = nil
                     statusMessage = "Recording without facecam: \(error.localizedDescription)"
@@ -1506,8 +1514,12 @@ final class AppModel: ObservableObject {
                 do {
                     activeFacecamStartedAt = try await startFacecam(outputURL: url, cameraDeviceID: cameraDeviceID)
                     activeFacecamURL = url
+                    facecamLog.notice("startFacecam succeeded, url=\(url.lastPathComponent, privacy: .public)")
                 } catch {
+                    facecamLog.error("startFacecam threw: \(error.localizedDescription, privacy: .public)")
                     captureOptions.send(.cameraDisabledForCaptureFailure)
+                    cancelFacecam()
+                    requestWindow(.closeCameraBubble)
                     options.includeCamera = false
                     options.cameraDeviceID = nil
                     try? FileManager.default.removeItem(at: url)
@@ -1598,7 +1610,12 @@ final class AppModel: ObservableObject {
             let capturedFacecamSettings = resolveFacecamSettingsForRecording(source: source)
             let outputURL = try await stopRecordingCapture()
             CaptureAudioFeedback.shared.stopMonitoring()
-            let stoppedFacecamURL = try? await stopFacecam()
+            var stoppedFacecamURL: URL?
+            do {
+                stoppedFacecamURL = try await stopFacecam()
+            } catch {
+                facecamLog.error("stopFacecam threw: \(error.localizedDescription, privacy: .public)")
+            }
             let cursorTelemetryURL = cursorTelemetryRecorder.stop(videoURL: outputURL)
             currentVideoURL = outputURL
             currentScreenshotURL = nil
@@ -1606,6 +1623,7 @@ final class AppModel: ObservableObject {
             if FileManager.default.fileExists(atPath: outputURL.path) {
                 let totalDuration = await videoDuration(for: outputURL)
                 let facecamURL = stoppedFacecamURL ?? activeFacecamURL
+                facecamLog.notice("runRecordingStopFlow: stoppedFacecamURL=\(stoppedFacecamURL?.lastPathComponent ?? "nil", privacy: .public) activeFacecamURL=\(self.activeFacecamURL?.lastPathComponent ?? "nil", privacy: .public) resolved=\(facecamURL?.lastPathComponent ?? "nil", privacy: .public)")
                 let cameraClips = (facecamURL != nil)
                     ? buildCameraClipsFromRecordingEvents(duration: totalDuration, fallback: capturedFacecamSettings)
                     : []
