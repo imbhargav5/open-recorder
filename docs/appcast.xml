@@ -791,5 +791,24 @@
 ]]></description>
             <enclosure url="https://github.com/imbhargav5/open-recorder/releases/download/v0.2.39/open-recorder-macos.zip" sparkle:edSignature="e4IY/IW77hS1Hzq+1+yYQvfeeNxZxOy3Nd6T/U4vJeFomD5Yfx5hs3JOFNUIyjXFZRisW6f6IJLxusYhLkxIBw==" length="43437174" type="application/octet-stream"/>
         </item>
+        <item>
+            <title>Version 0.2.40</title>
+            <pubDate>Wed, 26 Aug 2026 17:31:09 GMT</pubDate>
+            <sparkle:version>0.2.40</sparkle:version>
+            <sparkle:shortVersionString>0.2.40</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+## Commits since v0.2.39
+
+- f595991 Merge pull request #1026 from Arushi-Gupta13/feat/fullscreen-hud-and-multimonitor-area-drag
+- fed5f48 Merge branch 'main' into feat/fullscreen-hud-and-multimonitor-area-drag
+- 807f463 feat: show HUD over full screen apps and support multi-monitor area dragging
+- 0f3162c refactor: switch screen recording triggers to use source selector and update drag recording state logic
+- 81eb6bc Merge pull request #1022 from Arushi-Gupta13/feat/readme-ui-screenshot-and-contributors
+- a5f0559 feat: add support for continuity and desk view cameras, improve capture mode switching, and refine recording success validation and window chrome.
+- 866b406 Update appcast for v0.2.39
+]]></description>
+            <enclosure url="https://github.com/imbhargav5/open-recorder/releases/download/v0.2.40/open-recorder-macos.zip" sparkle:edSignature="LPcweJv5nXNUKDAoqXIgZdHo27by/WEoVng0t33qOoTKYSjgCKMBMtSO/bqlYPlM2CqCbX6hWFxTSEsDLqULCQ==" length="43497619" type="application/octet-stream"/>
+        </item>
     </channel>
 </rss>
