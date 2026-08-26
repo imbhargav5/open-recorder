@@ -702,6 +702,49 @@ final class AppModelStateTests: XCTestCase {
         XCTAssertEqual(presenter.dismissCallCount, 1)
     }
 
+    func testRequestingInteractiveAreaSelectionPresentsMultiScreenAreaPresenter() {
+        let presenter = AreaSelectionPresenterSpy()
+        let model = AppModel(areaSelectionPresenter: presenter)
+
+        model.beginCapture(.recording)
+        model.requestInteractiveAreaSelection()
+
+        XCTAssertEqual(presenter.presentCallCount, 1)
+        XCTAssertEqual(presenter.presentedMode, .recording)
+        XCTAssertEqual(model.hudState.phase, .areaSelecting(.recording))
+        XCTAssertTrue(model.isAreaSelectionActive)
+    }
+
+    func testCompletingInteractiveAreaSelectionDismissesAreaPresenter() {
+        let presenter = AreaSelectionPresenterSpy()
+        let model = AppModel(areaSelectionPresenter: presenter)
+
+        model.beginCapture(.recording)
+        model.requestInteractiveAreaSelection()
+        XCTAssertEqual(presenter.presentCallCount, 1)
+
+        let area = CaptureArea(x: 100, y: 200, width: 640, height: 360, displayID: 1)
+        model.completeInteractiveAreaSelection(area)
+
+        XCTAssertEqual(presenter.dismissCallCount, 1)
+        XCTAssertFalse(model.isAreaSelectionActive)
+        XCTAssertEqual(model.selectedSource?.area, area)
+    }
+
+    func testCancelingInteractiveAreaSelectionDismissesAreaPresenter() {
+        let presenter = AreaSelectionPresenterSpy()
+        let model = AppModel(areaSelectionPresenter: presenter)
+
+        model.beginCapture(.recording)
+        model.requestInteractiveAreaSelection()
+        XCTAssertEqual(presenter.presentCallCount, 1)
+
+        model.cancelInteractiveAreaSelection()
+
+        XCTAssertEqual(presenter.dismissCallCount, 1)
+        XCTAssertFalse(model.isAreaSelectionActive)
+    }
+
     func testScreenshotEditorReleasesCaptureSlot() {
         let model = AppModel()
         let url = URL(fileURLWithPath: "/tmp/example-screenshot.png")
@@ -2218,6 +2261,38 @@ private final class ScreenSelectionPresenterSpy: ScreenSelectionPresenting {
 
     func select(_ source: CaptureSource) {
         onSelect?(source)
+    }
+
+    func cancel() {
+        onCancel?()
+    }
+}
+
+@MainActor
+private final class AreaSelectionPresenterSpy: AreaSelectionPresenting {
+    var presentedMode: CaptureMode?
+    var presentCallCount = 0
+    var dismissCallCount = 0
+    var onSelect: ((CaptureArea) -> Void)?
+    var onCancel: (() -> Void)?
+
+    func present(
+        mode: CaptureMode,
+        onSelect: @escaping (CaptureArea) -> Void,
+        onCancel: @escaping () -> Void
+    ) {
+        presentCallCount += 1
+        presentedMode = mode
+        self.onSelect = onSelect
+        self.onCancel = onCancel
+    }
+
+    func dismiss() {
+        dismissCallCount += 1
+    }
+
+    func select(_ area: CaptureArea) {
+        onSelect?(area)
     }
 
     func cancel() {

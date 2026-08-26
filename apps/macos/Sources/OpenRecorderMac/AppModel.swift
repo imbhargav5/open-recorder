@@ -246,6 +246,7 @@ final class AppModel: ObservableObject {
     private let recordingPreferences: RecordingPreferencesStore
     private let captureSetupPreferencesStore: CaptureSetupPreferencesStore
     private let screenSelectionPresenter: ScreenSelectionPresenting
+    private let areaSelectionPresenter: AreaSelectionPresenting
     private let screenshotCapture: @MainActor (CaptureSource, URL) throws -> Void
     private let startRecordingCapture: @MainActor (CaptureSource, URL, RecordingCaptureOptions) async throws -> Date
     private let stopRecordingCapture: @MainActor () async throws -> URL
@@ -276,6 +277,7 @@ final class AppModel: ObservableObject {
         recordingPreferences: RecordingPreferencesStore = RecordingPreferencesStore(),
         captureSetupPreferencesStore: CaptureSetupPreferencesStore = .ephemeral(),
         screenSelectionPresenter: ScreenSelectionPresenting = ScreenSelectionOverlayController(),
+        areaSelectionPresenter: AreaSelectionPresenting = AreaSelectionOverlayController(),
         captureUIHideDelayNanoseconds: UInt64 = 180_000_000,
         screenshotCapture: (@MainActor (CaptureSource, URL) throws -> Void)? = nil,
         startRecordingCapture: (@MainActor (CaptureSource, URL, RecordingCaptureOptions) async throws -> Date)? = nil,
@@ -305,6 +307,7 @@ final class AppModel: ObservableObject {
         self.captureSetupPreferencesStore = captureSetupPreferencesStore
         self.storedCaptureSetup = captureSetupPreferencesStore.load()
         self.screenSelectionPresenter = screenSelectionPresenter
+        self.areaSelectionPresenter = areaSelectionPresenter
         self.captureUIHideDelayNanoseconds = captureUIHideDelayNanoseconds
         self.capture = capture
         self.screenshotCapture = screenshotCapture ?? { source, outputURL in
@@ -452,6 +455,7 @@ final class AppModel: ObservableObject {
                     self?.requestWindow(.hideRecordingSetup)
                 },
                 hideAppWindowsForCapture: { [weak self] in
+                    self?.areaSelectionPresenter.dismiss()
                     self?.requestWindow(.hideAppWindowsForCapture)
                 },
                 focusActiveCaptureWindow: { [weak self] in
@@ -1185,9 +1189,23 @@ final class AppModel: ObservableObject {
             return
         }
         dispatch(.requestInteractiveAreaSelection)
+        presentInteractiveAreaSelection()
+    }
+
+    private func presentInteractiveAreaSelection() {
+        areaSelectionPresenter.present(
+            mode: captureMode,
+            onSelect: { [weak self] area in
+                self?.completeInteractiveAreaSelection(area)
+            },
+            onCancel: { [weak self] in
+                self?.cancelInteractiveAreaSelection()
+            }
+        )
     }
 
     func completeInteractiveAreaSelection(_ area: CaptureArea) {
+        areaSelectionPresenter.dismiss()
         guard !rejectActionWhileTerminationIsPending() else { return }
         let source = interactiveAreaSource(area: area)
         let shouldCaptureScreenshotImmediately = captureMode == .screenshot
@@ -1212,11 +1230,13 @@ final class AppModel: ObservableObject {
     }
 
     func cancelInteractiveAreaSelection() {
+        areaSelectionPresenter.dismiss()
         isDragRecordingPending = false
         dispatch(.cancelInteractiveAreaSelection)
     }
 
     func cancelCapture() {
+        areaSelectionPresenter.dismiss()
         isDragRecordingPending = false
         capturePreflightGeneration += 1
         capturePreflightTask?.cancel()
@@ -1239,14 +1259,8 @@ final class AppModel: ObservableObject {
         }
         guard ensureScreenRecordingPermissionForCapture() else { return }
 
-        let displaySource = capture.sources.first(where: { $0.kind == .display })
-            ?? selectedSource
-            ?? CaptureSource(id: "display:primary", kind: .display, name: "Entire Screen", subtitle: "", displayIndex: nil, displayID: nil, windowID: nil, area: nil, thumbnailData: nil)
-
         dispatch(.beginCapture(.screenshot, runtimeIsRecording: false))
-        dispatch(.selectSource(displaySource))
-        persistCaptureSetup(source: displaySource)
-        takeScreenshot()
+        requestSourceSelector(kind: .display)
     }
 
     @MainActor
@@ -1272,14 +1286,8 @@ final class AppModel: ObservableObject {
         }
         guard ensureScreenRecordingPermissionForCapture() else { return }
 
-        let displaySource = capture.sources.first(where: { $0.kind == .display })
-            ?? selectedSource
-            ?? CaptureSource(id: "display:primary", kind: .display, name: "Entire Screen", subtitle: "", displayIndex: nil, displayID: nil, windowID: nil, area: nil, thumbnailData: nil)
-
         dispatch(.beginCapture(.recording, runtimeIsRecording: false))
-        dispatch(.selectSource(displaySource))
-        persistCaptureSetup(source: displaySource)
-        showHUD()
+        requestSourceSelector(kind: .display)
     }
 
     @MainActor
@@ -1292,7 +1300,7 @@ final class AppModel: ObservableObject {
         guard ensureScreenRecordingPermissionForCapture() else { return }
 
         dispatch(.beginCapture(.recording, runtimeIsRecording: false))
-        isDragRecordingPending = false
+        isDragRecordingPending = true
         requestInteractiveAreaSelection()
     }
 
