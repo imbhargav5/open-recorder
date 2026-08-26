@@ -82,6 +82,16 @@ struct CameraBubbleWindowView: View {
             }
         }
         .onAppear {
+            // NSApp.unhide(nil)/activate calls made elsewhere operate on the whole app and
+            // can bring this window on screen (SwiftUI can instantiate a Window(id:) scene's
+            // content ahead of any explicit openWindow call, suppressed launch behavior only
+            // stops the *initial* show) without ever going through requestWindow(.showCameraBubble).
+            // Refuse to arm the camera — and get out of the way immediately — unless the
+            // user actually turned it on.
+            guard model.includeCamera else {
+                model.requestWindow(.closeCameraBubble)
+                return
+            }
             liveDiameter = max(minDiameter, min(storedDiameter, maxDiameter))
             model.prepareCameraIfNeeded()
             updateWindowFrame(newDimensions: currentDimensions)

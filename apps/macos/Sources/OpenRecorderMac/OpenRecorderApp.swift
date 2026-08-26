@@ -236,6 +236,13 @@ struct OpenRecorderApp: App {
                 }
                 .keyboardShortcut("2", modifiers: [.command])
             }
+
+            // Without this, SwiftUI auto-populates the "Window" menu with every declared
+            // Window scene by title, including internal tool windows like "Camera Bubble",
+            // "Select Area", and the capture selectors. Selecting one from that menu (or
+            // triggering it via Mission Control/window cycling) opens it directly, bypassing
+            // requestWindow()'s includeCamera gating entirely.
+            CommandGroup(replacing: .windowList) {}
         }
 
         Settings {

@@ -1478,12 +1478,30 @@ final class AppModel: ObservableObject {
         do {
             var options = pendingRecordingOptions ?? currentCaptureOptions
             pendingRecordingOptions = nil
+            facecamLog.notice("runRecordingStartFlow: options.includeCamera=\(options.includeCamera, privacy: .public) deviceID=\(options.cameraDeviceID ?? "default", privacy: .public)")
+
+            if !options.includeCamera, facecamRecorder.isPrepared || facecamRecorder.isRecording {
+                // The camera toggle is off for this recording, but something else already
+                // spun up a live session (a stray prewarm, a leftover from a previous
+                // recording, etc). Never let a recording without includeCamera carry a
+                // running camera session or a visible bubble into it.
+                facecamLog.error("runRecordingStartFlow: camera was running despite includeCamera=false; forcing it off")
+                cancelFacecam()
+                requestWindow(.closeCameraBubble)
+            }
 
             if options.includeCamera {
                 do {
                     try await prepareFacecam(cameraDeviceID: options.cameraDeviceID)
                 } catch {
+                    facecamLog.error("prepareFacecam threw: \(error.localizedDescription, privacy: .public)")
                     captureOptions.send(.cameraDisabledForCaptureFailure)
+                    // .cameraDisabledForCaptureFailure only flips the includeCamera flag —
+                    // it doesn't tear down the camera session or close the bubble, so
+                    // without this the camera light and preview stay on for a recording
+                    // that silently has no facecam in it.
+                    cancelFacecam()
+                    requestWindow(.closeCameraBubble)
                     options.includeCamera = false
                     options.cameraDeviceID = nil
                     statusMessage = "Recording without facecam: \(error.localizedDescription)"
@@ -1492,6 +1510,15 @@ final class AppModel: ObservableObject {
 
             try await runRecordingCountdown(selectedSource)
             guard !Task.isCancelled else { return }
+
+            if !options.includeCamera, facecamRecorder.isPrepared || facecamRecorder.isRecording {
+                // Same guard as above, repeated post-countdown: whatever is turning the
+                // camera on without includeCamera has shown up mid-countdown before, so a
+                // single check before the countdown isn't enough.
+                facecamLog.error("post-countdown: camera was running despite includeCamera=false; forcing it off")
+                cancelFacecam()
+                requestWindow(.closeCameraBubble)
+            }
 
             dispatch(.recordingStarting(selectedSource))
 
@@ -1506,8 +1533,12 @@ final class AppModel: ObservableObject {
                 do {
                     activeFacecamStartedAt = try await startFacecam(outputURL: url, cameraDeviceID: cameraDeviceID)
                     activeFacecamURL = url
+                    facecamLog.notice("startFacecam succeeded, url=\(url.lastPathComponent, privacy: .public)")
                 } catch {
+                    facecamLog.error("startFacecam threw: \(error.localizedDescription, privacy: .public)")
                     captureOptions.send(.cameraDisabledForCaptureFailure)
+                    cancelFacecam()
+                    requestWindow(.closeCameraBubble)
                     options.includeCamera = false
                     options.cameraDeviceID = nil
                     try? FileManager.default.removeItem(at: url)
@@ -1598,7 +1629,12 @@ final class AppModel: ObservableObject {
             let capturedFacecamSettings = resolveFacecamSettingsForRecording(source: source)
             let outputURL = try await stopRecordingCapture()
             CaptureAudioFeedback.shared.stopMonitoring()
-            let stoppedFacecamURL = try? await stopFacecam()
+            var stoppedFacecamURL: URL?
+            do {
+                stoppedFacecamURL = try await stopFacecam()
+            } catch {
+                facecamLog.error("stopFacecam threw: \(error.localizedDescription, privacy: .public)")
+            }
             let cursorTelemetryURL = cursorTelemetryRecorder.stop(videoURL: outputURL)
             currentVideoURL = outputURL
             currentScreenshotURL = nil
@@ -1606,6 +1642,7 @@ final class AppModel: ObservableObject {
             if FileManager.default.fileExists(atPath: outputURL.path) {
                 let totalDuration = await videoDuration(for: outputURL)
                 let facecamURL = stoppedFacecamURL ?? activeFacecamURL
+                facecamLog.notice("runRecordingStopFlow: stoppedFacecamURL=\(stoppedFacecamURL?.lastPathComponent ?? "nil", privacy: .public) activeFacecamURL=\(self.activeFacecamURL?.lastPathComponent ?? "nil", privacy: .public) resolved=\(facecamURL?.lastPathComponent ?? "nil", privacy: .public)")
                 let cameraClips = (facecamURL != nil)
                     ? buildCameraClipsFromRecordingEvents(duration: totalDuration, fallback: capturedFacecamSettings)
                     : []
@@ -2603,6 +2640,7 @@ final class AppModel: ObservableObject {
     }
 
     func selectCameraDevice(_ deviceID: String?) {
+        facecamLog.notice("selectCameraDevice(\(deviceID ?? "default", privacy: .public)) called")
         captureOptions.send(.cameraSelected(deviceID))
         prewarmSelectedFacecamIfNeeded()
         requestWindow(.showCameraBubble)
@@ -2772,8 +2810,18 @@ final class AppModel: ObservableObject {
     }
 
     private func prepareFacecam(cameraDeviceID: String?) async throws {
-        facecamPrewarmTask?.cancel()
-        facecamPrewarmTask = nil
+        if let prewarmTask = facecamPrewarmTask {
+            facecamPrewarmTask = nil
+            prewarmTask.cancel()
+            // Task.cancel() is cooperative and FacecamRecorder.prepare() never checks
+            // isCancelled, so the prewarm's in-flight prepare() call keeps running. Wait
+            // for it to actually finish before calling prepare() again below, otherwise
+            // the two calls race on FacecamRecorder's session/movieOutput: each builds its
+            // own AVCaptureSession, and whichever assignment lands last silently orphans
+            // the other (still-running) session — leaving the camera light stuck on and
+            // recording through a session that may never have been fully wired up.
+            await prewarmTask.value
+        }
         if let prepareFacecamRecording {
             try await prepareFacecamRecording(cameraDeviceID)
         } else {

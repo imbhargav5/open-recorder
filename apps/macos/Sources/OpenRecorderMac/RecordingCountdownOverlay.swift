@@ -4,6 +4,17 @@ import SwiftUI
 
 private typealias CGWindowInfoDictionary = [String: Any]
 
+enum RecordingCountdownOverlayChrome {
+    // CGShieldingWindowLevel matches HUDWindowChrome/AreaSelectionOverlayChrome:
+    // .screenSaver sits too low to reliably beat another app's full-screen Space.
+    static let level = NSWindow.Level(rawValue: Int(CGShieldingWindowLevel()))
+    static let collectionBehavior: NSWindow.CollectionBehavior = [
+        .canJoinAllSpaces,
+        .fullScreenAuxiliary,
+        .ignoresCycle
+    ]
+}
+
 struct RecordingOverlayScreen: Equatable {
     var frame: CGRect
     var displayID: UInt32?
@@ -139,12 +150,8 @@ final class RecordingCountdownOverlayController {
         window.hasShadow = false
         window.hidesOnDeactivate = false
         window.ignoresMouseEvents = true
-        window.level = .screenSaver
-        window.collectionBehavior = [
-            .canJoinAllSpaces,
-            .fullScreenAuxiliary,
-            .ignoresCycle
-        ]
+        window.level = RecordingCountdownOverlayChrome.level
+        window.collectionBehavior = RecordingCountdownOverlayChrome.collectionBehavior
         window.contentView = NSHostingView(rootView: RecordingCountdownOverlay(state: state))
         self.window = window
         window.setFrame(frame, display: true)

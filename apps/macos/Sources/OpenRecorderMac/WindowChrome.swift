@@ -21,7 +21,9 @@ enum HUDWindowChrome {
         .fullScreenAuxiliary,
         .ignoresCycle
     ]
-    static let level: NSWindow.Level = .screenSaver
+    // CGShieldingWindowLevel matches AreaSelectionOverlayChrome/ScreenSelectionOverlayChrome:
+    // .screenSaver sits too low to reliably beat another app's full-screen Space.
+    static let level = NSWindow.Level(rawValue: Int(CGShieldingWindowLevel()))
     static let activeSpaceSyncDelay: TimeInterval = 0.18
 }
 
@@ -216,11 +218,12 @@ final class WindowConfigurationView: NSView {
         window.isOpaque = true
         window.backgroundColor = NSColor(red: 0.055, green: 0.055, blue: 0.070, alpha: 1)
         window.hasShadow = true
-        // Use .screenSaver so the selector appears above the HUD (which also lives at
-        // .screenSaver). At .floating the HUD would intercept scroll and click events.
-        window.level = .screenSaver
+        // Match HUDWindowChrome.level so the selector appears above the HUD (which now
+        // lives at CGShieldingWindowLevel to beat other apps' full-screen Spaces). At
+        // .floating the HUD would intercept scroll and click events.
+        window.level = NSWindow.Level(rawValue: HUDWindowChrome.level.rawValue + 1)
         // .managed ensures macOS routes focus to this window in a production app bundle.
-        window.collectionBehavior = [.fullScreenAuxiliary, .managed]
+        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .managed]
         window.isMovableByWindowBackground = true
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
