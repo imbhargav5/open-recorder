@@ -10,11 +10,19 @@
     "groups": [
       {
         "group": "Overview",
-        "pages": ["README"]
+        "pages": ["index"]
+      },
+      {
+        "group": "Recording",
+        "pages": ["recording/screen-recording", "recording/capture-sources"]
+      },
+      {
+        "group": "Editing",
+        "pages": ["editing/backgrounds"]
       },
       {
         "group": "Reference",
-        "pages": ["reference/keyboard-shortcuts"]
+        "pages": ["reference/faq", "reference/keyboard-shortcuts"]
       }
     ]
   }

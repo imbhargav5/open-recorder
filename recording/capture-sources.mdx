@@ -1,0 +1,37 @@
+---
+title: "Capture sources"
+description: "Choose a screen, window, or dragged area as the source for recordings and screenshots."
+---
+
+Open Recorder captures from three kinds of sources: screens, windows, and areas. All three live in the unified **Choose Source** picker. Open it by clicking the source chip in the recording HUD, or by starting any capture that needs a source.
+
+## The Choose Source picker
+
+The picker shows a **Choose what to capture** grid with three tabs:
+
+- **Screens**: every connected display, with a thumbnail for each.
+- **Windows**: open app windows you can capture individually.
+- **Area**: a free-form region you drag out on any display.
+
+Selecting a source stores it on the HUD source chip. Open Recorder remembers your setup for the next capture.
+
+### Screens
+
+The **Screens** tab lists all connected displays. With a single display, the picker shows one large preview. With more than two displays, the grid scrolls so every screen stays reachable.
+
+Entire-screen captures started from shortcuts also route through this tab, so you always confirm which display gets captured before the recording or screenshot begins.
+
+### Windows
+
+The **Windows** tab lists open windows with their app name and title. Pick one to capture just that window.
+
+### Area capture
+
+The **Area** tab starts an interactive drag selection. Open Recorder dims every connected display and shows a **Drag to select an area** overlay on each one.
+
+- Drag on any display to define the capture region. Area selection is not bound to a single screen.
+- A badge below the selection shows the live size in pixels, for example `1280 × 720 px`.
+- Release the mouse to set the area. In screenshot mode, Open Recorder captures immediately. In recording mode started from a drag-record shortcut, recording starts as soon as you release.
+- Press <kbd>Esc</kbd> on any display to cancel the selection.
+
+The selection overlay displays over full-screen apps and follows Space changes, so you can select an area inside a full-screen app. If you connect or disconnect a display while selecting, Open Recorder rebuilds the overlay to match the new display layout.
