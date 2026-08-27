@@ -1,6 +1,5 @@
 import AVFoundation
 import AppKit
-import CoreGraphics
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -15,16 +14,198 @@ enum NativeWindowRole {
     case studio
 }
 
-enum HUDWindowChrome {
+enum CaptureOverlayWindowChrome {
     static let collectionBehavior: NSWindow.CollectionBehavior = [
+        .canJoinAllApplications,
         .canJoinAllSpaces,
         .fullScreenAuxiliary,
         .ignoresCycle
     ]
-    // CGShieldingWindowLevel matches AreaSelectionOverlayChrome/ScreenSelectionOverlayChrome:
-    // .screenSaver sits too low to reliably beat another app's full-screen Space.
-    static let level = NSWindow.Level(rawValue: Int(CGShieldingWindowLevel()))
+    static let level: NSWindow.Level = .screenSaver
+}
+
+enum HUDWindowChrome {
+    static let styleMask: NSWindow.StyleMask = [.borderless, .nonactivatingPanel]
+    static let collectionBehavior = CaptureOverlayWindowChrome.collectionBehavior
+    static let level = CaptureOverlayWindowChrome.level
     static let activeSpaceSyncDelay: TimeInterval = 0.18
+
+    @MainActor
+    static func apply(to window: NSWindow) {
+        if let panel = window as? NSPanel {
+            panel.isFloatingPanel = true
+            panel.becomesKeyOnlyIfNeeded = true
+        }
+
+        window.level = level
+        window.collectionBehavior = collectionBehavior
+        window.hidesOnDeactivate = false
+    }
+
+    @MainActor
+    static func prepareForActiveSpace(_ window: NSWindow) {
+        window.orderOut(nil)
+        apply(to: window)
+    }
+}
+
+final class HUDOverlayPanel: NSPanel {
+    override var canBecomeKey: Bool { false }
+    override var canBecomeMain: Bool { false }
+}
+
+@MainActor
+final class HUDPanelController {
+    private var panel: HUDOverlayPanel?
+    private weak var model: AppModel?
+    private var isPresented = false
+    private var activeSpaceObserver: NSObjectProtocol?
+    private var pendingActiveSpaceSync: DispatchWorkItem?
+
+    init() {
+        activeSpaceObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.activeSpaceDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.syncToActiveSpace()
+                self?.scheduleActiveSpaceSync()
+            }
+        }
+    }
+
+    func attach(model: AppModel) {
+        guard self.model !== model || panel == nil else {
+            if model.isHUDVisible {
+                show()
+            }
+            return
+        }
+
+        panel?.close()
+        self.model = model
+        panel = makePanel(model: model)
+        if model.isHUDVisible {
+            show()
+        }
+    }
+
+    func show() {
+        guard let panel else { return }
+        isPresented = true
+        HUDWindowChrome.apply(to: panel)
+        panel.orderFrontRegardless()
+    }
+
+    func hide() {
+        isPresented = false
+        pendingActiveSpaceSync?.cancel()
+        pendingActiveSpaceSync = nil
+        panel?.orderOut(nil)
+    }
+
+    private func makePanel(model: AppModel) -> HUDOverlayPanel {
+        let size = HUDWindowMetrics.defaultSize
+        let panel = HUDOverlayPanel(
+            contentRect: NSRect(origin: .zero, size: size),
+            styleMask: HUDWindowChrome.styleMask,
+            backing: .buffered,
+            defer: false
+        )
+        panel.title = "Open Recorder"
+        panel.identifier = NSUserInterfaceItemIdentifier("hud")
+        panel.isReleasedWhenClosed = false
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = false
+        panel.ignoresMouseEvents = false
+        panel.acceptsMouseMovedEvents = true
+        panel.isMovableByWindowBackground = true
+        panel.animationBehavior = .none
+        HUDWindowChrome.apply(to: panel)
+        let hostingView = NSHostingView(
+            rootView: HUDOverlayWindowView()
+                .environmentObject(model)
+                .preferredColorScheme(.dark)
+        )
+        hostingView.sizingOptions = []
+        hostingView.frame = NSRect(origin: .zero, size: size)
+        hostingView.autoresizingMask = [.width, .height]
+        panel.contentView = hostingView
+        panel.setContentSize(size)
+        positionBottomCenter(panel, contentSize: size)
+        return panel
+    }
+
+    private func syncToActiveSpace() {
+        guard isPresented, let panel else { return }
+        HUDWindowChrome.prepareForActiveSpace(panel)
+        if let screen = panel.screen ?? NSScreen.main {
+            let origin = HUDWindowMetrics.clampedOrigin(
+                for: panel.frame.size,
+                currentOrigin: panel.frame.origin,
+                visibleFrame: screen.visibleFrame
+            )
+            panel.setFrameOrigin(origin)
+        }
+        panel.orderFrontRegardless()
+    }
+
+    private func scheduleActiveSpaceSync() {
+        pendingActiveSpaceSync?.cancel()
+        let workItem = DispatchWorkItem { [weak self] in
+            Task { @MainActor in
+                self?.syncToActiveSpace()
+            }
+        }
+        pendingActiveSpaceSync = workItem
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + HUDWindowChrome.activeSpaceSyncDelay,
+            execute: workItem
+        )
+    }
+
+    private func positionBottomCenter(_ panel: NSPanel, contentSize: CGSize) {
+        guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
+        let origin = HUDWindowMetrics.bottomCenterOrigin(
+            for: contentSize,
+            visibleFrame: screen.visibleFrame
+        )
+        panel.setFrame(NSRect(origin: origin, size: contentSize), display: false)
+    }
+}
+
+struct HUDHostWindowHider: NSViewRepresentable {
+    func makeNSView(context: Context) -> HUDHostWindowHidingView {
+        HUDHostWindowHidingView()
+    }
+
+    func updateNSView(_ nsView: HUDHostWindowHidingView, context: Context) {
+        nsView.hideHostWindow()
+    }
+}
+
+final class HUDHostWindowHidingView: NSView {
+    private var hasScheduledHide = false
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        hideHostWindow()
+    }
+
+    func hideHostWindow() {
+        guard let window, !hasScheduledHide else { return }
+        hasScheduledHide = true
+        window.alphaValue = 0
+        window.ignoresMouseEvents = true
+        window.isExcludedFromWindowsMenu = true
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak window] in
+            window?.isExcludedFromWindowsMenu = true
+            window?.orderOut(nil)
+        }
+    }
 }
 
 struct WindowConfigurator: NSViewRepresentable {
@@ -169,9 +350,7 @@ final class WindowConfigurationView: NSView {
         window.isOpaque = false
         window.backgroundColor = .clear
         window.hasShadow = false
-        window.hidesOnDeactivate = false
-        window.level = HUDWindowChrome.level
-        window.collectionBehavior = HUDWindowChrome.collectionBehavior
+        HUDWindowChrome.prepareForActiveSpace(window)
         window.isMovableByWindowBackground = true
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
@@ -218,9 +397,8 @@ final class WindowConfigurationView: NSView {
         window.isOpaque = true
         window.backgroundColor = NSColor(red: 0.055, green: 0.055, blue: 0.070, alpha: 1)
         window.hasShadow = true
-        // Match HUDWindowChrome.level so the selector appears above the HUD (which now
-        // lives at CGShieldingWindowLevel to beat other apps' full-screen Spaces). At
-        // .floating the HUD would intercept scroll and click events.
+        // Keep the selector above the HUD so the HUD cannot intercept its scroll and
+        // click events while capture setup is open.
         window.level = NSWindow.Level(rawValue: HUDWindowChrome.level.rawValue + 1)
         // .managed ensures macOS routes focus to this window in a production app bundle.
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .managed]
@@ -368,11 +546,9 @@ final class WindowConfigurationView: NSView {
         )
     }
 
-    private func syncHUDToActiveSpace(_ window: NSWindow) {
-        guard role == .hud, window.isVisible else { return }
-        window.collectionBehavior = HUDWindowChrome.collectionBehavior
-        window.level = HUDWindowChrome.level
-        window.hidesOnDeactivate = false
+    func syncHUDToActiveSpace(_ window: NSWindow) {
+        guard role == .hud else { return }
+        HUDWindowChrome.prepareForActiveSpace(window)
         if let screen = window.screen ?? NSScreen.main {
             let clamped = HUDWindowMetrics.clampedOrigin(
                 for: window.frame.size,

@@ -4,20 +4,15 @@ import SwiftUI
 
 private typealias CGWindowInfoDictionary = [String: Any]
 
-enum RecordingCountdownOverlayChrome {
-    // CGShieldingWindowLevel matches HUDWindowChrome/AreaSelectionOverlayChrome:
-    // .screenSaver sits too low to reliably beat another app's full-screen Space.
-    static let level = NSWindow.Level(rawValue: Int(CGShieldingWindowLevel()))
-    static let collectionBehavior: NSWindow.CollectionBehavior = [
-        .canJoinAllSpaces,
-        .fullScreenAuxiliary,
-        .ignoresCycle
-    ]
-}
-
 struct RecordingOverlayScreen: Equatable {
     var frame: CGRect
     var displayID: UInt32?
+}
+
+enum RecordingCountdownOverlayChrome {
+    static let styleMask: NSWindow.StyleMask = [.borderless, .nonactivatingPanel]
+    static let collectionBehavior = CaptureOverlayWindowChrome.collectionBehavior
+    static let level = CaptureOverlayWindowChrome.level
 }
 
 enum RecordingCountdownTargetResolver {
@@ -109,7 +104,7 @@ enum RecordingCountdownTargetResolver {
 
 @MainActor
 final class RecordingCountdownOverlayController {
-    private var window: NSWindow?
+    private var window: RecordingCountdownOverlayPanel?
     private var state: RecordingCountdownState?
 
     func run(for source: CaptureSource) async throws {
@@ -138,9 +133,9 @@ final class RecordingCountdownOverlayController {
     private func showWindow(for source: CaptureSource, state: RecordingCountdownState) {
         dismiss()
         let frame = RecordingCountdownTargetResolver.currentFrame(for: source)
-        let window = NSWindow(
+        let window = RecordingCountdownOverlayPanel(
             contentRect: frame,
-            styleMask: [.borderless],
+            styleMask: RecordingCountdownOverlayChrome.styleMask,
             backing: .buffered,
             defer: false
         )
@@ -150,15 +145,19 @@ final class RecordingCountdownOverlayController {
         window.hasShadow = false
         window.hidesOnDeactivate = false
         window.ignoresMouseEvents = true
+        window.isFloatingPanel = true
         window.level = RecordingCountdownOverlayChrome.level
         window.collectionBehavior = RecordingCountdownOverlayChrome.collectionBehavior
         window.contentView = NSHostingView(rootView: RecordingCountdownOverlay(state: state))
         self.window = window
         window.setFrame(frame, display: true)
-        window.makeKeyAndOrderFront(nil)
         window.orderFrontRegardless()
-        NSApp.activate(ignoringOtherApps: true)
     }
+}
+
+final class RecordingCountdownOverlayPanel: NSPanel {
+    override var canBecomeKey: Bool { false }
+    override var canBecomeMain: Bool { false }
 }
 
 @MainActor
