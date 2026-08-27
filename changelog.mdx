@@ -3,6 +3,22 @@ title: "Open Recorder changelog: releases, features, and fixes"
 description: "Release notes for Open Recorder on macOS. Track new screen recording features, capture improvements, and bug fixes in each version update."
 ---
 
+<Update label="August 27, 2026" description="v0.2.41" tags={["macOS"]}>
+## Bug fixes
+
+### HUD and countdown overlay over full-screen apps
+
+The recording HUD and the countdown overlay now reliably appear on top of other apps' full-screen Spaces. Previously, either could stay hidden behind a full-screen app, leaving you without recording controls or a visible countdown. See [Screen recording](/recording/screen-recording) for how the HUD behaves during capture.
+
+### Camera stays off when the HUD toggle is off
+
+The camera no longer turns on during a recording when the HUD camera toggle is off. The camera bubble now only arms itself when you have enabled the camera in the HUD.
+
+### Facecam start reliability
+
+Fixed a race between camera prewarm and recording start that could break the facecam session, and stopped leaking the camera bubble and capture session when facecam recording failed to start.
+</Update>
+
 <Update label="August 26, 2026" description="v0.2.40" tags={["macOS"]}>
 ## New features
 
