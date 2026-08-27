@@ -1,6 +1,6 @@
 {
-  "tagName": "v0.2.42",
-  "releaseName": "Open Recorder v0.2.42",
-  "releaseNotes": "## Commits since v0.2.41\n\n- 2a8b228 Merge pull request #1045 from imbhargav5/codex/fix-fullscreen-hud-overlays\n- 1096dbd fix(macos): keep capture overlays above fullscreen apps\n- c7135c2 Merge pull request #1043 from imbhargav5/mintlify/61c90d96\n- f96c5fd docs: add v0.2.41 changelog entry\n- 1f51dc7 Update appcast for v0.2.41",
+  "tagName": "v0.2.43",
+  "releaseName": "Open Recorder v0.2.43",
+  "releaseNotes": "## Commits since v0.2.42\n\n- 3f5f6de Merge pull request #1052 from imbhargav5/fix/hud-visibility-during-recording-and-editor\n- bed8267 Fix recording HUD visibility: hidden during recording, stuck visible in editor\n- 2ca38e3 Merge pull request #1050 from imbhargav5/feat/more-background-media\n- 6eda568 Add 12 new photo wallpapers and fix the broken video-loop feature\n- df2ef31 Merge pull request #1048 from imbhargav5/feat/auto-zoom-and-backgrounds\n- cd282b9 Enable cursor-activity auto-zoom for all presets; add more gradients/colors\n- 4464fa1 Update appcast for v0.2.42",
   "makeLatest": true
 }
