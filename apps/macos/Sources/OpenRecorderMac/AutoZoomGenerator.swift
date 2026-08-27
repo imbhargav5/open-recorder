@@ -44,8 +44,7 @@ enum AutoZoomGenerator {
             samples: sortedSamples,
             clicks: sortedClicks,
             telemetry: telemetry,
-            config: config,
-            preset: preset
+            config: config
         )
         let candidates = (clickCandidates + cursorCandidates)
             .filter { $0.confidence >= config.minimumConfidence }
@@ -155,10 +154,9 @@ enum AutoZoomGenerator {
         samples: [CursorTelemetrySample],
         clicks: [CursorTelemetryClick],
         telemetry: CursorTelemetryPayload,
-        config: TimelineZoomAnimationConfiguration,
-        preset: TimelineZoomAnimationPreset
+        config: TimelineZoomAnimationConfiguration
     ) -> [ZoomCandidate] {
-        guard preset == .guided, samples.count >= 8 else { return [] }
+        guard samples.count >= 8 else { return [] }
 
         let width = Double(max(telemetry.width, 1))
         let height = Double(max(telemetry.height, 1))
