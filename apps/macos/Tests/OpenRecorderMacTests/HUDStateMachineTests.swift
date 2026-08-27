@@ -244,7 +244,9 @@ final class HUDStateMachineTests: XCTestCase {
         recordingModel.setCaptureStateForTesting(.stoppingRecording(source))
         recordingModel.showEditor(for: videoSession)
 
-        XCTAssertEqual(recordingModel.hudState, .setup(.recording, source: source))
+        XCTAssertEqual(recordingModel.hudState.phase, .setup(.recording))
+        XCTAssertEqual(recordingModel.hudState.selectedSource, source)
+        XCTAssertEqual(recordingModel.hudState.presentation, .hidden)
         XCTAssertTrue(recordingModel.canStartNewCapture)
         XCTAssertEqual(recordingModel.windowCommand?.action, .showStudio)
 
@@ -252,7 +254,9 @@ final class HUDStateMachineTests: XCTestCase {
         screenshotModel.setCaptureStateForTesting(.capturingScreenshot(source))
         screenshotModel.showEditor(for: screenshotSession)
 
-        XCTAssertEqual(screenshotModel.hudState, .setup(.screenshot, source: source))
+        XCTAssertEqual(screenshotModel.hudState.phase, .setup(.screenshot))
+        XCTAssertEqual(screenshotModel.hudState.selectedSource, source)
+        XCTAssertEqual(screenshotModel.hudState.presentation, .hidden)
         XCTAssertTrue(screenshotModel.canStartNewCapture)
         XCTAssertEqual(screenshotModel.windowCommand?.action, .showStudio)
     }

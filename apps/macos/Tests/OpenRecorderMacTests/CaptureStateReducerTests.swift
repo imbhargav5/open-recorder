@@ -296,12 +296,22 @@ final class CaptureStateReducerTests: XCTestCase {
         let source = makeSource(id: "window:1", kind: .window)
         let capturing = CaptureState.capturingScreenshot(source)
 
-        for event in [CaptureEvent.screenshotSucceeded, .screenshotCanceled, .showEditor] {
+        for event in [CaptureEvent.screenshotSucceeded, .screenshotCanceled] {
             let transition = capturing.applying(event)
             XCTAssertEqual(transition.state, .setup(.screenshot, source: source))
             XCTAssertEqual(transition.state.presentation, .visible)
             XCTAssertTrue(transition.effects.contains(.cancelScreenshotCapture))
         }
+
+        // .showEditor deliberately hides the capture HUD instead: the user is heading
+        // into the editor, not back to a ready-to-capture-again state, so the recording
+        // HUD (and its "re-show on every scene re-render if visible" behavior) should
+        // not keep reappearing over the editor.
+        let editorTransition = capturing.applying(.showEditor)
+        XCTAssertEqual(editorTransition.state.phase, .setup(.screenshot))
+        XCTAssertEqual(editorTransition.state.selectedSource, source)
+        XCTAssertEqual(editorTransition.state.presentation, .hidden)
+        XCTAssertTrue(editorTransition.effects.contains(.cancelScreenshotCapture))
     }
 
     func testCancelingScreenSelectionPreservesPreviousSourceAndCustomMessage() {

@@ -654,6 +654,9 @@ struct WindowCommandBridge: View {
     }
 
     private func handle(_ command: NativeWindowCommand?) {
+        if command?.action == .showStudio {
+            facecamLog.notice("WindowCommandBridge.handle(.showStudio) incomingID=\(String(describing: command?.id), privacy: .public) currentID=\(String(describing: self.shell.state.windowCommand?.id), privacy: .public)")
+        }
         guard let command, shell.state.windowCommand?.id == command.id else { return }
         shell.send(.windowCommandConsumed(command.id))
 
@@ -707,7 +710,9 @@ struct WindowCommandBridge: View {
             NSApp.unhide(nil)
             openWindow(id: "area-selector")
         case .showStudio:
+            facecamLog.notice("WindowCommandBridge.handle(.showStudio) hasSession=\(command.editorSession != nil, privacy: .public)")
             NSApp.unhide(nil)
+            dismissWindow(id: "hud")
             dismissCaptureWindows(alwaysDismissCameraBubble: true)
             if let editorSession = command.editorSession {
                 openWindow(id: "editor", value: editorSession)
@@ -730,7 +735,12 @@ struct WindowCommandBridge: View {
     }
 
     private func dismissCaptureWindows(alwaysDismissCameraBubble: Bool = false) {
-        dismissWindow(id: "hud")
+        // Deliberately does NOT dismiss "hud" — see callers. .hideRecordingSetup fires
+        // the moment the recording countdown starts (recordingCountdownStarted), well
+        // before recording actually begins; dismissing the HUD here hid it for the
+        // entire countdown + recording, with no way back short of the ⌘R global hotkey.
+        // Callers that genuinely need the HUD gone (e.g. .showStudio, once recording is
+        // fully over) dismiss it explicitly themselves.
         dismissWindow(id: "source-selector")
         dismissWindow(id: "area-selector")
         dismissWindow(id: "microphone-selector")
@@ -741,10 +751,15 @@ struct WindowCommandBridge: View {
     }
 
     private func hideAppWindowsForCapture() {
+        // NativeScreenRecorder already excludes this app's own process from the
+        // ScreenCaptureKit filter (excludingApplications:), so the app's windows never
+        // appear in the recorded output regardless of on-screen visibility — no need to
+        // hide anything at the OS level (NSApp.hide) for that. dismissCaptureWindows()
+        // leaves "hud" alone, which matters here: this fires on both
+        // .recordingStarting and .recordingStarted, so it must not take down the
+        // recording HUD (Stop button, timer) the user needs for the rest of the
+        // recording.
         dismissCaptureWindows()
-        if !isCameraEnabled() {
-            NSApp.hide(nil)
-        }
     }
 }
 
