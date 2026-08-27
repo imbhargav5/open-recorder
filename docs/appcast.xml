@@ -857,5 +857,24 @@
 ]]></description>
             <enclosure url="https://github.com/imbhargav5/open-recorder/releases/download/v0.2.42/open-recorder-macos.zip" sparkle:edSignature="aZUXTwCw8maTYPaZKx1DxmflnwinGJKFD6fRSd9EiT72SQUb1oZbtyp17uxVvRvNqjEAE2CqqCYPlcWdy60zCw==" length="43612530" type="application/octet-stream"/>
         </item>
+        <item>
+            <title>Version 0.2.43</title>
+            <pubDate>Thu, 27 Aug 2026 19:02:20 GMT</pubDate>
+            <sparkle:version>0.2.43</sparkle:version>
+            <sparkle:shortVersionString>0.2.43</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+## Commits since v0.2.42
+
+- 3f5f6de Merge pull request #1052 from imbhargav5/fix/hud-visibility-during-recording-and-editor
+- bed8267 Fix recording HUD visibility: hidden during recording, stuck visible in editor
+- 2ca38e3 Merge pull request #1050 from imbhargav5/feat/more-background-media
+- 6eda568 Add 12 new photo wallpapers and fix the broken video-loop feature
+- df2ef31 Merge pull request #1048 from imbhargav5/feat/auto-zoom-and-backgrounds
+- cd282b9 Enable cursor-activity auto-zoom for all presets; add more gradients/colors
+- 4464fa1 Update appcast for v0.2.42
+]]></description>
+            <enclosure url="https://github.com/imbhargav5/open-recorder/releases/download/v0.2.43/open-recorder-macos.zip" sparkle:edSignature="kDNLP2e2+GSc40l8+E1582ven15DWjCjjWfjyAeiF5zkyEYflk0/xKjuV4bVX+XCbYYB2m7EWCSN7XiNtVsODg==" length="73121951" type="application/octet-stream"/>
+        </item>
     </channel>
 </rss>
