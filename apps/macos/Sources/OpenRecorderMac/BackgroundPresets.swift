@@ -126,7 +126,13 @@ enum BackgroundPresets {
         SerializableColor(hex: "#16A34A"), // Emerald
         SerializableColor(hex: "#0D9488"), // Teal
         SerializableColor(hex: "#FFFFFF"), // Pure White
-        SerializableColor(hex: "#64748B")  // Muted Slate
+        SerializableColor(hex: "#64748B"), // Muted Slate
+        SerializableColor(hex: "#B91C1C"), // Crimson
+        SerializableColor(hex: "#CA8A04"), // Amber Gold
+        SerializableColor(hex: "#0369A1"), // Ocean Blue
+        SerializableColor(hex: "#4D7C0F"), // Olive Green
+        SerializableColor(hex: "#9D174D"), // Magenta Wine
+        SerializableColor(hex: "#292524")  // Espresso Brown
     ]
 
     static let gradients: [GradientPreset] = [
@@ -368,6 +374,107 @@ enum BackgroundPresets {
             stops: [
                 GradientStop(color: SerializableColor(hex: "#0acffe"), position: 0),
                 GradientStop(color: SerializableColor(hex: "#495aff"), position: 1)
+            ]
+        ),
+        GradientPreset(
+            id: "graphite-fade",
+            kind: .linear(angleDegrees: 135),
+            stops: [
+                GradientStop(color: SerializableColor(hex: "#3A3A3C"), position: 0),
+                GradientStop(color: SerializableColor(hex: "#0B0B0D"), position: 1)
+            ]
+        ),
+        GradientPreset(
+            id: "champagne-gold",
+            kind: .linear(angleDegrees: 120),
+            stops: [
+                GradientStop(color: SerializableColor(hex: "#F7E7CE"), position: 0),
+                GradientStop(color: SerializableColor(hex: "#C08A3E"), position: 1)
+            ]
+        ),
+        GradientPreset(
+            id: "arctic-frost",
+            kind: .linear(angleDegrees: 100),
+            stops: [
+                GradientStop(color: SerializableColor(hex: "#E0EAFC"), position: 0),
+                GradientStop(color: SerializableColor(hex: "#CFDEF3"), position: 1)
+            ]
+        ),
+        GradientPreset(
+            id: "wine-dusk",
+            kind: .linear(angleDegrees: 140),
+            stops: [
+                GradientStop(color: SerializableColor(hex: "#3A0519"), position: 0),
+                GradientStop(color: SerializableColor(hex: "#7A0C2E"), position: 0.55),
+                GradientStop(color: SerializableColor(hex: "#1A0308"), position: 1)
+            ]
+        ),
+        GradientPreset(
+            id: "cyber-fade",
+            kind: .linear(angleDegrees: 105),
+            stops: [
+                GradientStop(color: SerializableColor(hex: "#00F5FF"), position: 0),
+                GradientStop(color: SerializableColor(hex: "#8A2BE2"), position: 0.55),
+                GradientStop(color: SerializableColor(hex: "#0A0014"), position: 1)
+            ]
+        ),
+        GradientPreset(
+            id: "sunset-boulevard",
+            kind: .linear(angleDegrees: 100),
+            stops: [
+                GradientStop(color: SerializableColor(hex: "#FF6B6B"), position: 0),
+                GradientStop(color: SerializableColor(hex: "#C44FDB"), position: 0.5),
+                GradientStop(color: SerializableColor(hex: "#3A1C71"), position: 1)
+            ]
+        ),
+        GradientPreset(
+            id: "espresso",
+            kind: .linear(angleDegrees: 135),
+            stops: [
+                GradientStop(color: SerializableColor(hex: "#4E342E"), position: 0),
+                GradientStop(color: SerializableColor(hex: "#1B0F0C"), position: 1)
+            ]
+        ),
+        GradientPreset(
+            id: "steel-blue",
+            kind: .linear(angleDegrees: 115),
+            stops: [
+                GradientStop(color: SerializableColor(hex: "#334155"), position: 0),
+                GradientStop(color: SerializableColor(hex: "#0F1B2D"), position: 1)
+            ]
+        ),
+        GradientPreset(
+            id: "lilac-mist",
+            kind: .linear(angleDegrees: 100),
+            stops: [
+                GradientStop(color: SerializableColor(hex: "#E6D6FF"), position: 0),
+                GradientStop(color: SerializableColor(hex: "#C3AEEB"), position: 1)
+            ]
+        ),
+        GradientPreset(
+            id: "volcanic-glow",
+            kind: .radial(centerX: 0.5, centerY: 0.85),
+            stops: [
+                GradientStop(color: SerializableColor(hex: "#FF4500"), position: 0),
+                GradientStop(color: SerializableColor(hex: "#3A0A02"), position: 0.55),
+                GradientStop(color: SerializableColor(hex: "#050101"), position: 1)
+            ]
+        ),
+        GradientPreset(
+            id: "emerald-noir",
+            kind: .linear(angleDegrees: 135),
+            stops: [
+                GradientStop(color: SerializableColor(hex: "#0F3D2E"), position: 0),
+                GradientStop(color: SerializableColor(hex: "#020705"), position: 1)
+            ]
+        ),
+        GradientPreset(
+            id: "aurora-teal",
+            kind: .radial(centerX: 0.22, centerY: 0.15),
+            stops: [
+                GradientStop(color: SerializableColor(hex: "#7CF9D6"), position: 0),
+                GradientStop(color: SerializableColor(hex: "#1B7A6E"), position: 0.5),
+                GradientStop(color: SerializableColor(hex: "#031315"), position: 1)
             ]
         )
     ]
