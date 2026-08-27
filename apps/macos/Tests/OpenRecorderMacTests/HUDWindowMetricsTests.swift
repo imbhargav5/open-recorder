@@ -6,11 +6,96 @@ final class HUDWindowMetricsTests: XCTestCase {
     func testHUDWindowBehaviorFollowsActiveMacOSSpace() {
         let behavior = HUDWindowChrome.collectionBehavior
 
+        XCTAssertTrue(behavior.contains(.canJoinAllApplications))
         XCTAssertTrue(behavior.contains(.canJoinAllSpaces))
         XCTAssertTrue(behavior.contains(.fullScreenAuxiliary))
         XCTAssertTrue(behavior.contains(.ignoresCycle))
+        XCTAssertFalse(behavior.contains(.primary))
+        XCTAssertFalse(behavior.contains(.auxiliary))
         XCTAssertFalse(behavior.contains(.stationary))
-        XCTAssertGreaterThan(HUDWindowChrome.level.rawValue, NSWindow.Level.screenSaver.rawValue)
+        XCTAssertEqual(HUDWindowChrome.level, .screenSaver)
+        XCTAssertEqual(behavior, CaptureOverlayWindowChrome.collectionBehavior)
+    }
+
+    @MainActor
+    func testHUDPanelFloatsAndRemainsVisibleWhenApplicationIsInactive() {
+        let panel = HUDOverlayPanel(
+            contentRect: .zero,
+            styleMask: HUDWindowChrome.styleMask,
+            backing: .buffered,
+            defer: false
+        )
+
+        HUDWindowChrome.apply(to: panel)
+
+        XCTAssertTrue(panel.isFloatingPanel)
+        XCTAssertTrue(panel.becomesKeyOnlyIfNeeded)
+        XCTAssertFalse(panel.hidesOnDeactivate)
+        XCTAssertTrue(HUDWindowChrome.styleMask.contains(.borderless))
+        XCTAssertTrue(panel.styleMask.contains(.nonactivatingPanel))
+        XCTAssertFalse(panel.canBecomeKey)
+        XCTAssertFalse(panel.canBecomeMain)
+        XCTAssertEqual(panel.level, HUDWindowChrome.level)
+        XCTAssertEqual(panel.collectionBehavior, HUDWindowChrome.collectionBehavior)
+    }
+
+    @MainActor
+    func testHUDHostWindowIsMadeInvisibleBeforeItIsOrderedOut() {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 240, height: 120),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        let hider = HUDHostWindowHidingView()
+        window.contentView = hider
+
+        hider.hideHostWindow()
+
+        XCTAssertEqual(window.alphaValue, 0)
+        XCTAssertTrue(window.ignoresMouseEvents)
+        XCTAssertTrue(window.isExcludedFromWindowsMenu)
+    }
+
+    @MainActor
+    func testHUDIsReorderedWhenItIsNotVisibleAfterActiveSpaceChanges() {
+        let configurator = WindowConfigurationView()
+        configurator.role = .hud
+        let window = HUDOrderTrackingWindow(
+            contentRect: NSRect(origin: .zero, size: HUDWindowMetrics.defaultSize),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        XCTAssertFalse(window.isVisible)
+
+        configurator.syncHUDToActiveSpace(window)
+
+        XCTAssertEqual(window.orderingActions, [.out, .frontRegardless])
+    }
+
+    @MainActor
+    func testRecordingCountdownUsesNonactivatingFullscreenOverlayPanel() {
+        let behavior = RecordingCountdownOverlayChrome.collectionBehavior
+        let panel = RecordingCountdownOverlayPanel(
+            contentRect: .zero,
+            styleMask: RecordingCountdownOverlayChrome.styleMask,
+            backing: .buffered,
+            defer: false
+        )
+
+        XCTAssertTrue(RecordingCountdownOverlayChrome.styleMask.contains(.nonactivatingPanel))
+        XCTAssertTrue(behavior.contains(.canJoinAllApplications))
+        XCTAssertTrue(behavior.contains(.canJoinAllSpaces))
+        XCTAssertTrue(behavior.contains(.fullScreenAuxiliary))
+        XCTAssertTrue(behavior.contains(.ignoresCycle))
+        XCTAssertFalse(behavior.contains(.primary))
+        XCTAssertFalse(behavior.contains(.auxiliary))
+        XCTAssertFalse(behavior.contains(.stationary))
+        XCTAssertEqual(RecordingCountdownOverlayChrome.level, .screenSaver)
+        XCTAssertEqual(behavior, CaptureOverlayWindowChrome.collectionBehavior)
+        XCTAssertFalse(panel.canBecomeKey)
+        XCTAssertFalse(panel.canBecomeMain)
     }
 
     func testScreenSelectionOverlayChromeCanCoverFullscreenSpaces() {
@@ -38,11 +123,15 @@ final class HUDWindowMetricsTests: XCTestCase {
     func testRecordingCountdownOverlayChromeCanCoverFullscreenSpaces() {
         let behavior = RecordingCountdownOverlayChrome.collectionBehavior
 
+        XCTAssertTrue(behavior.contains(.canJoinAllApplications))
         XCTAssertTrue(behavior.contains(.canJoinAllSpaces))
         XCTAssertTrue(behavior.contains(.fullScreenAuxiliary))
         XCTAssertTrue(behavior.contains(.ignoresCycle))
+        XCTAssertFalse(behavior.contains(.primary))
+        XCTAssertFalse(behavior.contains(.auxiliary))
         XCTAssertFalse(behavior.contains(.stationary))
-        XCTAssertGreaterThan(RecordingCountdownOverlayChrome.level.rawValue, NSWindow.Level.screenSaver.rawValue)
+        XCTAssertEqual(RecordingCountdownOverlayChrome.level, .screenSaver)
+        XCTAssertEqual(behavior, CaptureOverlayWindowChrome.collectionBehavior)
     }
 
     func testDefaultWidthMatchesCondensedHUDLayout() {
@@ -121,5 +210,22 @@ final class HUDWindowMetricsTests: XCTestCase {
             bottomMargin: 26
         )
         XCTAssertEqual(clampedLeft.x, HUDWindowMetrics.horizontalScreenMargin)
+    }
+}
+
+private final class HUDOrderTrackingWindow: NSWindow {
+    enum OrderingAction: Equatable {
+        case out
+        case frontRegardless
+    }
+
+    private(set) var orderingActions: [OrderingAction] = []
+
+    override func orderOut(_ sender: Any?) {
+        orderingActions.append(.out)
+    }
+
+    override func orderFrontRegardless() {
+        orderingActions.append(.frontRegardless)
     }
 }

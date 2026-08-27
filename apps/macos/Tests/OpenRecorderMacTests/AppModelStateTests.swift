@@ -2116,6 +2116,26 @@ final class AppModelStateTests: XCTestCase {
         XCTAssertFalse(openedWindows.contains("source-selector"))
     }
 
+    func testAppWindowActionsShowHUDDoesNotActivateApplication() {
+        let actions = AppWindowActions()
+        var openedWindows: [String] = []
+        var didActivateApp = false
+        var didUnhideApp = false
+
+        actions.install(
+            openWindow: { openedWindows.append($0) },
+            openEditor: { _ in },
+            dismissWindow: { _ in },
+            activateApp: { didActivateApp = true },
+            unhideApp: { didUnhideApp = true }
+        )
+        actions.perform(NativeWindowCommand(action: .showHUD))
+
+        XCTAssertEqual(openedWindows, ["hud"])
+        XCTAssertTrue(didUnhideApp)
+        XCTAssertFalse(didActivateApp)
+    }
+
     func testAppWindowActionsCloseCaptureSetupClosesSelectorsWithoutHUD() {
         let actions = AppWindowActions()
         var openedWindows: [String] = []

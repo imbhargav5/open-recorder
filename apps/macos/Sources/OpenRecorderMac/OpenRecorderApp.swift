@@ -8,14 +8,17 @@ final class OpenRecorderAppDelegate: NSObject, NSApplicationDelegate {
     private weak var model: AppModel?
     private var pendingFileURLs: [URL] = []
     private let windowActions = AppWindowActions()
+    private let hudPanelController = HUDPanelController()
     private let statusItemController = OpenRecorderStatusItemController()
     private let hotKeyController = GlobalRecordingHotKeyController()
     private let updateChecker = UpdateChecker.shared
     private var terminationTask: Task<Void, Never>?
+    private var didBootstrapModel = false
 
     func attach(model: AppModel) {
         if self.model !== model {
             self.model = model
+            hudPanelController.attach(model: model)
             statusItemController.attach(model: model, windowActions: windowActions)
             hotKeyController.attach(model: model)
             model.installNativeWindowCommandHandler { [weak self] command in
@@ -23,10 +26,15 @@ final class OpenRecorderAppDelegate: NSObject, NSApplicationDelegate {
             }
         } else {
             self.model = model
+            hudPanelController.attach(model: model)
         }
         pendingFileURLs.append(contentsOf: launchArgumentFileURLs())
         flushPendingFileURLs()
         handleWindowCommand(model.windowCommand)
+        if !didBootstrapModel {
+            didBootstrapModel = true
+            model.bootstrap()
+        }
     }
 
     var isCameraEnabled: Bool {
@@ -41,9 +49,21 @@ final class OpenRecorderAppDelegate: NSObject, NSApplicationDelegate {
         shouldKeepCameraBubble: @escaping () -> Bool = { false }
     ) {
         windowActions.install(
-            openWindow: openWindow,
+            openWindow: { [weak self] id in
+                if id == "hud" {
+                    self?.hudPanelController.show()
+                } else {
+                    openWindow(id)
+                }
+            },
             openEditor: openEditor,
-            dismissWindow: dismissWindow,
+            dismissWindow: { [weak self] id in
+                if id == "hud" {
+                    self?.hudPanelController.hide()
+                } else {
+                    dismissWindow(id)
+                }
+            },
             shouldKeepCameraBubble: shouldKeepCameraBubble
         )
         handleWindowCommand(model?.windowCommand)
@@ -110,20 +130,18 @@ struct OpenRecorderApp: App {
     @StateObject private var model = AppModel(captureSetupPreferencesStore: .live)
 
     var body: some Scene {
-        Window("Open Recorder", id: "hud") {
-            ContentView(role: .hud)
-                .environmentObject(model)
-                .onAppear {
-                    appDelegate.attach(model: model)
-                }
+        let _ = appDelegate.attach(model: model)
+
+        WindowGroup("Open Recorder Host", id: "hud-host") {
+            Color.clear
+                .frame(width: 240, height: 120)
                 .background(AppWindowActionBridge(appDelegate: appDelegate))
-                .task {
-                    model.bootstrap()
-                }
+                .background(HUDHostWindowHider())
         }
         .windowStyle(.hiddenTitleBar)
-        .windowResizability(.contentMinSize)
-        .defaultSize(width: HUDWindowMetrics.defaultSize.width, height: HUDWindowMetrics.defaultSize.height)
+        .defaultLaunchBehavior(.presented)
+        .restorationBehavior(.disabled)
+        .defaultSize(width: 240, height: 120)
 
         Window("Open Recorder Setup", id: "onboarding") {
             ContentView(role: .onboarding)
@@ -338,7 +356,6 @@ final class AppWindowActions {
         case .showHUD:
             unhideApp()
             openWindow("hud")
-            activateApp()
         case .hideHUD:
             dismissWindow("hud")
         case .showOnboarding:
@@ -362,7 +379,6 @@ final class AppWindowActions {
             dismissWindow("source-selector")
             dismissWindow("area-selector")
             openWindow("hud")
-            activateApp()
         case .hideRecordingSetup:
             dismissCaptureWindows()
         case .hideAppWindowsForCapture:
@@ -571,7 +587,6 @@ private final class OpenRecorderStatusItemController: NSObject {
             model.showHUD()
             NSApp.unhide(nil)
             windowActions.open("hud")
-            NSApp.activate(ignoringOtherApps: true)
         }
     }
 
@@ -598,7 +613,6 @@ private final class OpenRecorderStatusItemController: NSObject {
         model.showHUD()
         NSApp.unhide(nil)
         windowActions.open("hud")
-        NSApp.activate(ignoringOtherApps: true)
     }
 }
 
