@@ -731,7 +731,23 @@ struct CaptureState: Hashable {
             next.presentation = .hidden
             effects.append(.hideHUD)
 
-        case .showEditor, .screenshotSucceeded, .screenshotCanceled:
+        case .showEditor:
+            next.setPhase(.setup(modeForSelection()), clearSource: false)
+            // setPhase() only recalculates presentation when the capture-hidden-ness of
+            // the phase itself changes. By the time this fires, .recordingStopped has
+            // already moved the phase from .stoppingRecording (hidden) to
+            // .setup(.recording) (visible) — a real transition, so presentation already
+            // flipped back to .visible there. This event's own setPhase() call goes
+            // setup -> setup, which setPhase() treats as a no-op for presentation, so
+            // without this the capture HUD stayed marked visible for the entire time
+            // the user is in the editor, and every subsequent SwiftUI scene re-render
+            // re-showed the HUD panel on top of it.
+            next.presentation = .hidden
+            effects.append(.dismissScreenSelection)
+            effects.append(.cancelRecordingStart)
+            effects.append(.cancelScreenshotCapture)
+
+        case .screenshotSucceeded, .screenshotCanceled:
             next.setPhase(.setup(modeForSelection()), clearSource: false)
             effects.append(.dismissScreenSelection)
             effects.append(.cancelRecordingStart)

@@ -1338,6 +1338,7 @@ final class AppModel: ObservableObject {
     }
 
     func showEditor(for session: EditorSession) {
+        facecamLog.notice("showEditor(for:) called url=\(session.url.lastPathComponent, privacy: .public)")
         dispatch(.showEditor)
         sendAppShell(.editorSessionShown(session))
     }
