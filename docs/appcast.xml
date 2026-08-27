@@ -840,5 +840,22 @@
 ]]></description>
             <enclosure url="https://github.com/imbhargav5/open-recorder/releases/download/v0.2.41/open-recorder-macos.zip" sparkle:edSignature="INGGfi8iSqLWxXptYWhH7dPj+rHbBk55fetSzYHU4l0unDo0ib/SVjLHxWNWvNeWKNbVMUUJHl/5N60aFyN4Cg==" length="43579009" type="application/octet-stream"/>
         </item>
+        <item>
+            <title>Version 0.2.42</title>
+            <pubDate>Thu, 27 Aug 2026 08:52:48 GMT</pubDate>
+            <sparkle:version>0.2.42</sparkle:version>
+            <sparkle:shortVersionString>0.2.42</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+## Commits since v0.2.41
+
+- 2a8b228 Merge pull request #1045 from imbhargav5/codex/fix-fullscreen-hud-overlays
+- 1096dbd fix(macos): keep capture overlays above fullscreen apps
+- c7135c2 Merge pull request #1043 from imbhargav5/mintlify/61c90d96
+- f96c5fd docs: add v0.2.41 changelog entry
+- 1f51dc7 Update appcast for v0.2.41
+]]></description>
+            <enclosure url="https://github.com/imbhargav5/open-recorder/releases/download/v0.2.42/open-recorder-macos.zip" sparkle:edSignature="aZUXTwCw8maTYPaZKx1DxmflnwinGJKFD6fRSd9EiT72SQUb1oZbtyp17uxVvRvNqjEAE2CqqCYPlcWdy60zCw==" length="43612530" type="application/octet-stream"/>
+        </item>
     </channel>
 </rss>
