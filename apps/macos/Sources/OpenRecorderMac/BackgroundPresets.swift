@@ -502,7 +502,19 @@ enum BackgroundPresets {
         WallpaperPreset(id: "wallpaper-15", label: "Wallpaper 15", fullAssetName: "wallpaper15", thumbAssetName: "wallpaper15"),
         WallpaperPreset(id: "wallpaper-16", label: "Wallpaper 16", fullAssetName: "wallpaper16", thumbAssetName: "wallpaper16"),
         WallpaperPreset(id: "wallpaper-17", label: "Wallpaper 17", fullAssetName: "wallpaper17", thumbAssetName: "wallpaper17"),
-        WallpaperPreset(id: "wallpaper-18", label: "Wallpaper 18", fullAssetName: "wallpaper18", thumbAssetName: "wallpaper18")
+        WallpaperPreset(id: "wallpaper-18", label: "Wallpaper 18", fullAssetName: "wallpaper18", thumbAssetName: "wallpaper18"),
+        WallpaperPreset(id: "aurora-lights", label: "Aurora Lights", fullAssetName: "aurora-lights", thumbAssetName: "aurora-lights"),
+        WallpaperPreset(id: "ocean-waves", label: "Ocean Waves", fullAssetName: "ocean-waves", thumbAssetName: "ocean-waves"),
+        WallpaperPreset(id: "starry-night", label: "Starry Night", fullAssetName: "starry-night", thumbAssetName: "starry-night"),
+        WallpaperPreset(id: "autumn-forest", label: "Autumn Forest", fullAssetName: "autumn-forest", thumbAssetName: "autumn-forest"),
+        WallpaperPreset(id: "desert-dunes", label: "Desert Dunes", fullAssetName: "desert-dunes", thumbAssetName: "desert-dunes"),
+        WallpaperPreset(id: "tropical-beach", label: "Tropical Beach", fullAssetName: "tropical-beach", thumbAssetName: "tropical-beach"),
+        WallpaperPreset(id: "snowy-peaks", label: "Snowy Peaks", fullAssetName: "snowy-peaks", thumbAssetName: "snowy-peaks"),
+        WallpaperPreset(id: "cloud-sea", label: "Cloud Sea", fullAssetName: "cloud-sea", thumbAssetName: "cloud-sea"),
+        WallpaperPreset(id: "minimal-space", label: "Minimal Space", fullAssetName: "minimal-space", thumbAssetName: "minimal-space"),
+        WallpaperPreset(id: "lavender-field", label: "Lavender Field", fullAssetName: "lavender-field", thumbAssetName: "lavender-field"),
+        WallpaperPreset(id: "waterfall-forest", label: "Waterfall Forest", fullAssetName: "waterfall-forest", thumbAssetName: "waterfall-forest"),
+        WallpaperPreset(id: "geometric-abstract", label: "Geometric Abstract", fullAssetName: "geometric-abstract", thumbAssetName: "geometric-abstract")
     ]
 
     static let videoLoops: [WallpaperPreset] = [
