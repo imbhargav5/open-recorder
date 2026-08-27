@@ -215,7 +215,11 @@ final class AutoZoomGeneratorTests: XCTestCase {
         XCTAssertGreaterThan(zooms[0].span.duration, 3.0)
     }
 
-    func testGuidedPresetCreatesCursorOnlyDwellRegion() {
+    func testCursorOnlyDwellRegionIsNotLimitedToGuidedPreset() {
+        // Cursor-activity (hover/dropdown) detection used to be gated to the .guided
+        // preset only; every other preset only zoomed on clicks. It's now evaluated for
+        // every preset and gated purely by each preset's own minimumConfidence, same as
+        // click-based candidates already were.
         let payload = CursorTelemetryPayload(
             width: 1000,
             height: 1000,
@@ -234,13 +238,22 @@ final class AutoZoomGeneratorTests: XCTestCase {
 
         let guided = AutoZoomGenerator.generate(from: payload, duration: 5, preset: .guided)
         let balanced = AutoZoomGenerator.generate(from: payload, duration: 5, preset: .balanced)
+        let subtle = AutoZoomGenerator.generate(from: payload, duration: 5, preset: .subtle)
 
         XCTAssertEqual(guided.count, 1)
         XCTAssertEqual(guided[0].animationPreset, .guided)
         XCTAssertNil(guided[0].sourceClickTimestamp)
         XCTAssertEqual(guided[0].focusX, 0.509, accuracy: 0.001)
         XCTAssertEqual(guided[0].focusY, 0.590, accuracy: 0.001)
-        XCTAssertTrue(balanced.isEmpty)
+
+        XCTAssertEqual(balanced.count, 1)
+        XCTAssertEqual(balanced[0].animationPreset, .balanced)
+        XCTAssertNil(balanced[0].sourceClickTimestamp)
+
+        // subtle's minimumConfidence (0.72) is stricter than this dwell's confidence
+        // (~0.665), so it should still filter it out — confirming the behavior change
+        // is "no longer guided-only" and not "no longer gated at all".
+        XCTAssertTrue(subtle.isEmpty)
     }
 
     func testGuidedPresetSkipsIdleCursorOnlySamples() {
