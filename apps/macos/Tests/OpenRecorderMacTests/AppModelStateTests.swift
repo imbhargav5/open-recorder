@@ -474,7 +474,8 @@ final class AppModelStateTests: XCTestCase {
         XCTAssertEqual(model.selectedSection, .editor)
         XCTAssertEqual(model.lastEditorSession, session)
         XCTAssertEqual(model.captureFlow, .recordingSetup)
-        XCTAssertEqual(model.hudState, .setup(.recording))
+        XCTAssertEqual(model.hudState.phase, .setup(.recording))
+        XCTAssertEqual(model.hudState.presentation, .hidden)
         XCTAssertTrue(model.canStartNewCapture)
         XCTAssertEqual(model.windowCommand?.action, .showStudio)
         XCTAssertEqual(model.windowCommand?.editorSession, session)
@@ -753,7 +754,8 @@ final class AppModelStateTests: XCTestCase {
         model.beginCapture(.screenshot)
         model.showEditor(for: session)
 
-        XCTAssertEqual(model.hudState, .setup(.screenshot))
+        XCTAssertEqual(model.hudState.phase, .setup(.screenshot))
+        XCTAssertEqual(model.hudState.presentation, .hidden)
         XCTAssertEqual(model.captureFlow, .screenshotSetup)
         XCTAssertTrue(model.canStartNewCapture)
     }
@@ -1139,7 +1141,9 @@ final class AppModelStateTests: XCTestCase {
         let editorSession = try XCTUnwrap(model.windowCommand?.editorSession)
         let screenshotURL = try XCTUnwrap(model.currentScreenshotURL)
         XCTAssertEqual(capturedSources.first?.area, area)
-        XCTAssertEqual(model.hudState, .setup(.screenshot, source: capturedSources[0]))
+        XCTAssertEqual(model.hudState.phase, .setup(.screenshot))
+        XCTAssertEqual(model.hudState.selectedSource, capturedSources[0])
+        XCTAssertEqual(model.hudState.presentation, .hidden)
         XCTAssertEqual(model.captureFlow, .screenshotSetup)
         XCTAssertTrue(model.canStartNewCapture)
         XCTAssertEqual(model.selectedSection, .editor)
@@ -1204,7 +1208,9 @@ final class AppModelStateTests: XCTestCase {
         await waitForCondition {
             model.windowCommand?.action == .showStudio
         }
-        XCTAssertEqual(model.hudState, .setup(.screenshot, source: source))
+        XCTAssertEqual(model.hudState.phase, .setup(.screenshot))
+        XCTAssertEqual(model.hudState.selectedSource, source)
+        XCTAssertEqual(model.hudState.presentation, .hidden)
         XCTAssertEqual(model.windowCommand?.action, .showStudio)
     }
 
@@ -1251,7 +1257,9 @@ final class AppModelStateTests: XCTestCase {
         XCTAssertTrue(handledCommands.contains { $0.action == .hideAppWindowsForCapture })
         let editorCommand = try XCTUnwrap(handledCommands.last { $0.action == .showStudio })
         XCTAssertEqual(editorCommand.editorSession?.kind, .screenshot)
-        XCTAssertEqual(model.hudState, .setup(.screenshot, source: source))
+        XCTAssertEqual(model.hudState.phase, .setup(.screenshot))
+        XCTAssertEqual(model.hudState.selectedSource, source)
+        XCTAssertEqual(model.hudState.presentation, .hidden)
         XCTAssertEqual(model.selectedSection, .editor)
         XCTAssertNil(model.windowCommand)
     }
@@ -1372,7 +1380,9 @@ final class AppModelStateTests: XCTestCase {
         )
         XCTAssertEqual(document.recordingPath, outputURL.path)
         XCTAssertEqual(document.recordingSession, editorSession.recordingSession)
-        XCTAssertEqual(model.hudState, .setup(.recording, source: source))
+        XCTAssertEqual(model.hudState.phase, .setup(.recording))
+        XCTAssertEqual(model.hudState.selectedSource, source)
+        XCTAssertEqual(model.hudState.presentation, .hidden)
         XCTAssertTrue(model.canStartNewCapture)
     }
 
@@ -1406,7 +1416,9 @@ final class AppModelStateTests: XCTestCase {
         let editorCommand = try XCTUnwrap(handledCommands.last { $0.action == .showStudio })
         XCTAssertEqual(editorCommand.editorSession?.kind, .video)
         XCTAssertEqual(editorCommand.editorSession?.url, outputURL)
-        XCTAssertEqual(model.hudState, .setup(.recording, source: source))
+        XCTAssertEqual(model.hudState.phase, .setup(.recording))
+        XCTAssertEqual(model.hudState.selectedSource, source)
+        XCTAssertEqual(model.hudState.presentation, .hidden)
         XCTAssertEqual(model.selectedSection, .editor)
         XCTAssertNil(model.windowCommand)
     }
@@ -2054,7 +2066,11 @@ final class AppModelStateTests: XCTestCase {
         XCTAssertTrue(didUnhideApp)
     }
 
-    func testAppWindowActionsHideRecordingSetupDismissesCaptureWindows() {
+    func testAppWindowActionsHideRecordingSetupDismissesCaptureWindowsButNotHUD() {
+        // .hideRecordingSetup fires from .recordingCountdownStarted — the moment the
+        // user clicks Record, well before recording actually begins. Dismissing "hud"
+        // here hid the recording HUD (Stop button, timer) for the entire countdown and
+        // recording, leaving the ⌘R global hotkey as the only way to stop.
         let actions = AppWindowActions()
         var openedWindows: [String] = []
         var dismissedWindows: [String] = []
@@ -2068,10 +2084,25 @@ final class AppModelStateTests: XCTestCase {
         actions.perform(NativeWindowCommand(action: .hideRecordingSetup))
 
         XCTAssertTrue(openedWindows.isEmpty)
-        XCTAssertEqual(dismissedWindows, ["hud", "source-selector", "area-selector", "microphone-selector", "camera-selector", "camera-bubble"])
+        XCTAssertFalse(dismissedWindows.contains("hud"))
+        XCTAssertEqual(dismissedWindows, ["source-selector", "area-selector", "microphone-selector", "camera-selector", "camera-bubble"])
     }
 
-    func testAppWindowActionsHideAppWindowsForCapturePreservesEditorWindows() {
+    func testAppWindowActionsHideAppWindowsForCaptureDoesNotHideTheWholeAppOrTheHUD() {
+        // hideAppWindowsForCapture() used to also call hideApp() (NSApp.hide(nil)) when
+        // the camera was off, hiding the whole application — including the recording
+        // HUD panel, which is deliberately kept always-on-top so the user has a way to
+        // stop the recording. NativeScreenRecorder already excludes this app's own
+        // process from the ScreenCaptureKit filter (excludingApplications:), so the
+        // app's windows never appear in the recorded output regardless of on-screen
+        // visibility — hiding the whole app was redundant and left recordings with no
+        // visible UI and no way to reach Stop.
+        //
+        // Separately, it also routed through dismissCaptureWindows(), which dismisses
+        // "hud" too — and this effect fires on both .recordingStarting and
+        // .recordingStarted, so it hid the recording HUD itself the instant recording
+        // began, every single time, leaving the ⌘R global hotkey as the only way to
+        // stop. The HUD must never be dismissed here.
         let actions = AppWindowActions()
         var openedWindows: [String] = []
         var dismissedWindows: [String] = []
@@ -2087,15 +2118,15 @@ final class AppModelStateTests: XCTestCase {
         actions.perform(NativeWindowCommand(action: .hideAppWindowsForCapture))
 
         XCTAssertTrue(openedWindows.isEmpty)
+        XCTAssertFalse(dismissedWindows.contains("hud"))
         XCTAssertEqual(dismissedWindows, [
-            "hud",
             "source-selector",
             "area-selector",
             "microphone-selector",
             "camera-selector",
             "camera-bubble"
         ])
-        XCTAssertTrue(didHideApp)
+        XCTAssertFalse(didHideApp)
     }
 
     func testAppWindowActionsShowScreenRecordingSetupDoesNotOpenSourceSelector() {

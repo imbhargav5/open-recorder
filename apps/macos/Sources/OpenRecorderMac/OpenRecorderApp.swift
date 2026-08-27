@@ -98,6 +98,9 @@ final class OpenRecorderAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func handleWindowCommand(_ command: NativeWindowCommand?) {
+        if let action = command?.action, action == .showStudio {
+            facecamLog.notice("AppDelegate.handleWindowCommand(.showStudio) isInstalled=\(self.windowActions.isInstalled, privacy: .public) modelPresent=\(self.model != nil, privacy: .public)")
+        }
         guard windowActions.isInstalled,
               let model,
               let command = model.consumeWindowCommand(command) else {
@@ -400,7 +403,9 @@ final class AppWindowActions {
             unhideApp()
             openWindow("area-selector")
         case .showStudio:
+            facecamLog.notice("AppWindowActions.perform(.showStudio) hasSession=\(command.editorSession != nil, privacy: .public)")
             unhideApp()
+            dismissWindow("hud")
             dismissCaptureWindows(alwaysDismissCameraBubble: true)
             if let editorSession = command.editorSession {
                 openEditor(editorSession)
@@ -423,7 +428,12 @@ final class AppWindowActions {
     }
 
     private func dismissCaptureWindows(alwaysDismissCameraBubble: Bool = false) {
-        dismissWindow("hud")
+        // Deliberately does NOT dismiss "hud" — see callers. .hideRecordingSetup fires
+        // the moment the recording countdown starts (recordingCountdownStarted), well
+        // before recording actually begins; dismissing the HUD here hid it for the
+        // entire countdown + recording, with no way back short of the ⌘R global hotkey.
+        // Callers that genuinely need the HUD gone (e.g. .showStudio, once recording is
+        // fully over) dismiss it explicitly themselves.
         dismissWindow("source-selector")
         dismissWindow("area-selector")
         dismissWindow("microphone-selector")
@@ -434,10 +444,15 @@ final class AppWindowActions {
     }
 
     private func hideAppWindowsForCapture() {
+        // NativeScreenRecorder already excludes this app's own process from the
+        // ScreenCaptureKit filter (excludingApplications:), so the app's windows never
+        // appear in the recorded output regardless of on-screen visibility — no need to
+        // hide anything at the OS level (hideApp) for that. dismissCaptureWindows()
+        // leaves "hud" alone, which matters here: this fires on both
+        // .recordingStarting and .recordingStarted, so it must not take down the
+        // recording HUD (Stop button, timer) the user needs for the rest of the
+        // recording.
         dismissCaptureWindows()
-        if !shouldKeepCameraBubble() {
-            hideApp()
-        }
     }
 }
 
