@@ -3,6 +3,40 @@ title: "Open Recorder changelog: releases, features, and fixes"
 description: "Release notes for Open Recorder on macOS. Track new screen recording features, capture improvements, and bug fixes in each version update."
 ---
 
+<Update label="August 28, 2026" description="v0.2.43" tags={["macOS"]}>
+## New features
+
+### Auto-zoom follows cursor activity in every preset
+
+Auto-zoom now reacts to cursor activity, such as hovering over a menu or dropdown, in every zoom preset instead of only the Guided preset. Each preset applies its own confidence threshold, so subtler presets still filter out low-confidence moments.
+
+### 12 new photo wallpapers
+
+The **Image** background tab adds 12 new wallpapers, including aurora, ocean waves, starry night, autumn forest, desert dunes, tropical beach, snowy peaks, and lavender field. See [Backgrounds](/editing/backgrounds) for how to apply them.
+
+### More gradients and solid colors
+
+The background picker adds 12 new gradients and 6 new solid colors, covering families like gold, wine, steel blue, espresso, and aurora teal.
+
+## Bug fixes
+
+### Video-loop backgrounds now animate
+
+The **Video** background tab's loops (Aurora, Particles, Cyber Neon, and Gradient Mesh) previously rendered as still images. Each loop now plays a real animated video.
+
+### Recording HUD stays visible while recording
+
+The recording HUD, with the Stop button and timer, no longer disappears when the countdown starts. Previously it could stay hidden for the entire recording, leaving the <kbd>⌘R</kbd> hotkey as the only way to stop. The HUD also no longer reappears on top of the editor after you finish a recording. See [Screen recording](/recording/screen-recording) for HUD behavior.
+</Update>
+
+<Update label="August 27, 2026" description="v0.2.42" tags={["macOS"]}>
+## Bug fixes
+
+### Capture overlays stay above full-screen apps
+
+Additional fixes keep the recording HUD and countdown overlay on top of full-screen apps, resolving remaining cases where they could still drop behind a full-screen Space.
+</Update>
+
 <Update label="August 27, 2026" description="v0.2.41" tags={["macOS"]}>
 ## Bug fixes
 
