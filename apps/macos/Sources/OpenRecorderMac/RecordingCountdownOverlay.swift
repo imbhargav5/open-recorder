@@ -1,4 +1,5 @@
 import AppKit
+import Carbon.HIToolbox
 import CoreGraphics
 import SwiftUI
 
@@ -13,6 +14,76 @@ enum RecordingCountdownOverlayChrome {
     static let styleMask: NSWindow.StyleMask = [.borderless, .nonactivatingPanel]
     static let collectionBehavior = CaptureOverlayWindowChrome.collectionBehavior
     static let level = CaptureOverlayWindowChrome.level
+}
+
+@MainActor
+struct RecordingCountdownEventMonitorClient {
+    var addLocalKeyDownMonitor: (@escaping (NSEvent) -> NSEvent?) -> Any?
+    var addGlobalKeyDownMonitor: (@escaping (NSEvent) -> Void) -> Any?
+    var removeMonitor: (Any) -> Void
+
+    static let live = RecordingCountdownEventMonitorClient(
+        addLocalKeyDownMonitor: { handler in
+            NSEvent.addLocalMonitorForEvents(matching: .keyDown, handler: handler)
+        },
+        addGlobalKeyDownMonitor: { handler in
+            NSEvent.addGlobalMonitorForEvents(matching: .keyDown, handler: handler)
+        },
+        removeMonitor: { monitor in
+            NSEvent.removeMonitor(monitor)
+        }
+    )
+}
+
+@MainActor
+final class RecordingCountdownEscapeMonitor {
+    private let eventMonitorClient: RecordingCountdownEventMonitorClient
+    private var localKeyMonitor: Any?
+    private var globalKeyMonitor: Any?
+    private var onEscape: (() -> Void)?
+
+    init(eventMonitorClient: RecordingCountdownEventMonitorClient = .live) {
+        self.eventMonitorClient = eventMonitorClient
+    }
+
+    func install(onEscape: @escaping () -> Void) {
+        remove()
+        self.onEscape = onEscape
+
+        localKeyMonitor = eventMonitorClient.addLocalKeyDownMonitor { [weak self] event in
+            guard Self.isEscapeKey(event) else { return event }
+            self?.handleEscape()
+            return nil
+        }
+        globalKeyMonitor = eventMonitorClient.addGlobalKeyDownMonitor { [weak self] event in
+            guard Self.isEscapeKey(event) else { return }
+            Task { @MainActor [weak self] in
+                self?.handleEscape()
+            }
+        }
+    }
+
+    func remove() {
+        if let localKeyMonitor {
+            eventMonitorClient.removeMonitor(localKeyMonitor)
+        }
+        if let globalKeyMonitor {
+            eventMonitorClient.removeMonitor(globalKeyMonitor)
+        }
+        localKeyMonitor = nil
+        globalKeyMonitor = nil
+        onEscape = nil
+    }
+
+    private func handleEscape() {
+        guard let onEscape else { return }
+        remove()
+        onEscape()
+    }
+
+    private static func isEscapeKey(_ event: NSEvent) -> Bool {
+        event.keyCode == UInt16(kVK_Escape) || event.charactersIgnoringModifiers == "\u{1B}"
+    }
 }
 
 enum RecordingCountdownTargetResolver {
@@ -106,11 +177,19 @@ enum RecordingCountdownTargetResolver {
 final class RecordingCountdownOverlayController {
     private var window: RecordingCountdownOverlayPanel?
     private var state: RecordingCountdownState?
+    private let escapeMonitor: RecordingCountdownEscapeMonitor
+    var onCancel: () -> Void = {}
+
+    init(eventMonitorClient: RecordingCountdownEventMonitorClient = .live) {
+        escapeMonitor = RecordingCountdownEscapeMonitor(eventMonitorClient: eventMonitorClient)
+    }
 
     func run(for source: CaptureSource) async throws {
         let state = RecordingCountdownState(sourceName: source.name)
-        self.state = state
         showWindow(for: source, state: state)
+        escapeMonitor.install { [weak self] in
+            self?.onCancel()
+        }
 
         defer {
             dismiss()
@@ -125,6 +204,7 @@ final class RecordingCountdownOverlayController {
     }
 
     func dismiss() {
+        escapeMonitor.remove()
         window?.close()
         window = nil
         state = nil
@@ -132,6 +212,7 @@ final class RecordingCountdownOverlayController {
 
     private func showWindow(for source: CaptureSource, state: RecordingCountdownState) {
         dismiss()
+        self.state = state
         let frame = RecordingCountdownTargetResolver.currentFrame(for: source)
         let window = RecordingCountdownOverlayPanel(
             contentRect: frame,
