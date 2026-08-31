@@ -67,7 +67,7 @@ Supported flags come from `scripts/dispatch-release-build.mjs`:
 2. Check the preconditions above.
 3. Run the matching root package script.
 4. Report that the release PR workflow was dispatched and explain that GitHub Actions will calculate the next version and open or update the release PR.
-5. If the user asks how the release process works or something fails, read [references/release-process.md](references/release-process.md).
+5. If the user asks how the release process works or something fails, read `references/release-process.md`.
 
 ## Important behaviors
 
