@@ -5,6 +5,27 @@ import XCTest
 
 @MainActor
 final class NativeScreenRecorderConfigurationTests: XCTestCase {
+    func testStreamConfigurationRoundsOddVideoDimensionsUpToEvenValues() {
+        let configuration = NativeScreenRecorder.makeStreamConfiguration(
+            width: 873,
+            height: 581,
+            sourceRect: CGRect(x: 436, y: 364, width: 873, height: 581),
+            options: RecordingCaptureOptions(
+                includeMicrophone: false,
+                microphoneDeviceID: nil,
+                includeSystemAudio: false,
+                includeCamera: false,
+                cameraDeviceID: nil,
+                showCursor: false,
+                showClicks: false
+            )
+        )
+
+        XCTAssertEqual(configuration.width, 874)
+        XCTAssertEqual(configuration.height, 582)
+        XCTAssertEqual(configuration.sourceRect, CGRect(x: 436, y: 364, width: 873, height: 581))
+    }
+
     func testStreamConfigurationCapturesSystemAudioWhenEnabled() {
         let configuration = NativeScreenRecorder.makeStreamConfiguration(
             width: 1920,

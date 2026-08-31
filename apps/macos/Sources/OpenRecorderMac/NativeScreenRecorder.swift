@@ -86,8 +86,8 @@ final class NativeScreenRecorder: NSObject {
         options: RecordingCaptureOptions
     ) -> SCStreamConfiguration {
         let configuration = SCStreamConfiguration()
-        configuration.width = width
-        configuration.height = height
+        configuration.width = evenVideoDimension(width)
+        configuration.height = evenVideoDimension(height)
         configuration.minimumFrameInterval = CMTime(value: 1, timescale: 60)
         configuration.queueDepth = 8
         // Record without cursor capture here; playback and export reapply the saved cursor preference after capture.
@@ -107,6 +107,11 @@ final class NativeScreenRecorder: NSObject {
             configuration.sourceRect = sourceRect
         }
         return configuration
+    }
+
+    private static func evenVideoDimension(_ value: Int) -> Int {
+        let clamped = max(value, 2)
+        return clamped.isMultiple(of: 2) ? clamped : clamped + 1
     }
 
     func stop() async throws {

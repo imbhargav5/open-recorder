@@ -218,7 +218,7 @@ struct AreaSelectionScreenOverlayView: View {
                         .fill(Color.clear)
                         .overlay {
                             Rectangle()
-                                .stroke(Color.white, lineWidth: 2)
+                                .strokeBorder(Color.white, lineWidth: 2)
                                 .shadow(color: Color.black.opacity(0.4), radius: 2)
                         }
                         .background(Theme.border.opacity(0.12))
@@ -271,12 +271,7 @@ struct AreaSelectionScreenOverlayView: View {
 
     private var selectionRect: CGRect? {
         guard let dragStart, let dragCurrent else { return nil }
-        return CGRect(
-            x: min(dragStart.x, dragCurrent.x),
-            y: min(dragStart.y, dragCurrent.y),
-            width: abs(dragCurrent.x - dragStart.x),
-            height: abs(dragCurrent.y - dragStart.y)
-        )
+        return AreaSelectionGeometry.alignedSelectionRect(between: dragStart, and: dragCurrent)
     }
 
     @ViewBuilder
@@ -339,11 +334,9 @@ struct AreaSelectionScreenOverlayView: View {
     private func captureArea(for rect: CGRect) -> CaptureArea {
         let screenFrame = screen.frame
         let displayID = (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value
-        return CaptureArea(
-            x: Int((screenFrame.minX + rect.minX).rounded()),
-            y: Int((screenFrame.maxY - rect.maxY).rounded()),
-            width: max(Int(rect.width.rounded()), 1),
-            height: max(Int(rect.height.rounded()), 1),
+        return AreaSelectionGeometry.captureArea(
+            for: rect,
+            on: screenFrame,
             displayID: displayID
         )
     }
