@@ -1,0 +1,2 @@
+# Application source is deployed separately and must not be processed as docs assets.
+apps/
