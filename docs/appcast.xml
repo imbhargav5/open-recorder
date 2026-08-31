@@ -876,5 +876,27 @@
 ]]></description>
             <enclosure url="https://github.com/imbhargav5/open-recorder/releases/download/v0.2.43/open-recorder-macos.zip" sparkle:edSignature="kDNLP2e2+GSc40l8+E1582ven15DWjCjjWfjyAeiF5zkyEYflk0/xKjuV4bVX+XCbYYB2m7EWCSN7XiNtVsODg==" length="73121951" type="application/octet-stream"/>
         </item>
+        <item>
+            <title>Version 0.2.44</title>
+            <pubDate>Mon, 31 Aug 2026 22:20:09 GMT</pubDate>
+            <sparkle:version>0.2.44</sparkle:version>
+            <sparkle:shortVersionString>0.2.44</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+## Commits since v0.2.43
+
+- 1b0e956 Merge pull request #1064 from imbhargav5/codex/fix-area-selection-geometry
+- f1cc51f fix(macos): align dragged area captures
+- 8fb424b Merge pull request #1062 from imbhargav5/codex/fix-mintlify-css-leak
+- d5897d7 docs: isolate Mintlify from application CSS
+- ee2c42b Merge pull request #1060 from imbhargav5/codex/cancel-recording-countdown-with-escape
+- b2c5d74 fix(macos): cancel recording countdown with Escape
+- 539160b docs: fix broken relative link in publish-github-release skill (#1059)
+- 7608c41 docs: improve SEO titles and descriptions on four pages (#1058)
+- 33ff55d docs: add changelog entries for v0.2.42 and v0.2.43 (#1056)
+- 7778237 Update appcast for v0.2.43
+]]></description>
+            <enclosure url="https://github.com/imbhargav5/open-recorder/releases/download/v0.2.44/open-recorder-macos.zip" sparkle:edSignature="bcKtmlFG+UrN0F+LSr/a6gklgdWz4/+sKuJhuWt5txwUCShqqkFrs/rCst8Ys1zmH0kpycnIbewgO2GqA3p6CQ==" length="73147398" type="application/octet-stream"/>
+        </item>
     </channel>
 </rss>
