@@ -231,7 +231,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var shortcutPreferences: ShortcutPreferences = .defaultPreferences
     @Published private(set) var isDragRecordingPending = false
     private var displayFlashWindows: [NSWindow] = []
-    private let countdownOverlayController = RecordingCountdownOverlayController()
+    private let countdownOverlayController: RecordingCountdownOverlayController
     private let captureUIHideDelayNanoseconds: UInt64
 
     let service: RustServiceClient
@@ -310,6 +310,7 @@ final class AppModel: ObservableObject {
         self.areaSelectionPresenter = areaSelectionPresenter
         self.captureUIHideDelayNanoseconds = captureUIHideDelayNanoseconds
         self.capture = capture
+        self.countdownOverlayController = RecordingCountdownOverlayController()
         self.screenshotCapture = screenshotCapture ?? { source, outputURL in
             try capture.takeScreenshot(source: source, outputURL: outputURL)
         }
@@ -410,6 +411,9 @@ final class AppModel: ObservableObject {
         }
         self.runRecordingCountdown = runRecordingCountdown ?? { [countdownOverlayController] source in
             try await countdownOverlayController.run(for: source)
+        }
+        self.countdownOverlayController.onCancel = { [weak self] in
+            self?.cancelCountdownRecording()
         }
         appShell.configure(
             refreshBackend: { [weak self] in
