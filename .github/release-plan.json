@@ -1,6 +1,6 @@
 {
-  "tagName": "v0.2.43",
-  "releaseName": "Open Recorder v0.2.43",
-  "releaseNotes": "## Commits since v0.2.42\n\n- 3f5f6de Merge pull request #1052 from imbhargav5/fix/hud-visibility-during-recording-and-editor\n- bed8267 Fix recording HUD visibility: hidden during recording, stuck visible in editor\n- 2ca38e3 Merge pull request #1050 from imbhargav5/feat/more-background-media\n- 6eda568 Add 12 new photo wallpapers and fix the broken video-loop feature\n- df2ef31 Merge pull request #1048 from imbhargav5/feat/auto-zoom-and-backgrounds\n- cd282b9 Enable cursor-activity auto-zoom for all presets; add more gradients/colors\n- 4464fa1 Update appcast for v0.2.42",
+  "tagName": "v0.2.44",
+  "releaseName": "Open Recorder v0.2.44",
+  "releaseNotes": "## Commits since v0.2.43\n\n- 1b0e956 Merge pull request #1064 from imbhargav5/codex/fix-area-selection-geometry\n- f1cc51f fix(macos): align dragged area captures\n- 8fb424b Merge pull request #1062 from imbhargav5/codex/fix-mintlify-css-leak\n- d5897d7 docs: isolate Mintlify from application CSS\n- ee2c42b Merge pull request #1060 from imbhargav5/codex/cancel-recording-countdown-with-escape\n- b2c5d74 fix(macos): cancel recording countdown with Escape\n- 539160b docs: fix broken relative link in publish-github-release skill (#1059)\n- 7608c41 docs: improve SEO titles and descriptions on four pages (#1058)\n- 33ff55d docs: add changelog entries for v0.2.42 and v0.2.43 (#1056)\n- 7778237 Update appcast for v0.2.43",
   "makeLatest": true
 }
