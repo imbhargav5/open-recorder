@@ -3,6 +3,18 @@ title: "Open Recorder changelog: releases, features, and fixes"
 description: "Release notes for Open Recorder on macOS. Track new screen recording features, capture improvements, and bug fixes in each version update."
 ---
 
+<Update label="September 1, 2026" description="v0.2.44" tags={["macOS"]}>
+## Bug fixes
+
+### Escape cancels the recording countdown
+
+Pressing <kbd>Esc</kbd> during the recording countdown now cancels the recording before capture begins. The countdown overlay closes and the HUD returns to its ready state, so you can adjust the setup and start again. Previously, <kbd>Esc</kbd> only canceled area selection, and the countdown always ran to completion. See [Screen recording](/recording/screen-recording) for countdown behavior.
+
+### Dragged area captures match the selection outline
+
+Screenshots and recordings of a dragged area now capture exactly the region inside the selection outline. Previously, the captured area could be offset from the visible selection by a pixel, most noticeably with odd-sized selections. Recording dimensions are still rounded to even values as required by the video encoder.
+</Update>
+
 <Update label="August 28, 2026" description="v0.2.43" tags={["macOS"]}>
 ## New features
 
