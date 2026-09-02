@@ -22,6 +22,7 @@ protocol AreaSelectionPresenting: AnyObject {
         onSelect: @escaping (CaptureArea) -> Void,
         onCancel: @escaping () -> Void
     )
+    func focus()
     func dismiss()
 }
 
@@ -35,6 +36,12 @@ final class AreaSelectionOverlayController: AreaSelectionPresenting {
     private var onSelect: ((CaptureArea) -> Void)?
     private var onCancel: (() -> Void)?
     private var mode: CaptureMode = .recording
+    private var presentationGeneration = 0
+
+#if DEBUG
+    var presentedWindowCountForTesting: Int { windows.count }
+    var presentedWindowsForTesting: [NSWindow] { windows }
+#endif
 
     func present(
         mode: CaptureMode,
@@ -47,11 +54,20 @@ final class AreaSelectionOverlayController: AreaSelectionPresenting {
         self.onCancel = onCancel
 
         installKeyMonitor()
-        installSpaceAndScreenObservers()
+        installSpaceAndScreenObservers(generation: presentationGeneration)
         rebuildWindows()
     }
 
+    func focus() {
+        NSApp.activate(ignoringOtherApps: true)
+        windows.forEach { $0.orderFrontRegardless() }
+        if let mainScreenWindow = windows.first(where: { $0.screen == NSScreen.main }) ?? windows.first {
+            mainScreenWindow.makeKeyAndOrderFront(nil)
+        }
+    }
+
     func dismiss() {
+        presentationGeneration += 1
         if let keyMonitor {
             NSEvent.removeMonitor(keyMonitor)
         }
@@ -114,10 +130,7 @@ final class AreaSelectionOverlayController: AreaSelectionPresenting {
             window.orderFrontRegardless()
         }
 
-        if let mainScreenWindow = windows.first(where: { $0.screen == NSScreen.main }) ?? windows.first {
-            mainScreenWindow.makeKeyAndOrderFront(nil)
-        }
-        NSApp.activate(ignoringOtherApps: true)
+        focus()
     }
 
     private func handleSelect(_ area: CaptureArea) {
@@ -132,13 +145,14 @@ final class AreaSelectionOverlayController: AreaSelectionPresenting {
         callback?()
     }
 
-    private func installSpaceAndScreenObservers() {
+    private func installSpaceAndScreenObservers(generation: Int) {
         spaceObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.activeSpaceDidChangeNotification,
             object: nil,
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
+                guard self?.presentationGeneration == generation else { return }
                 self?.windows.forEach { $0.orderFrontRegardless() }
             }
         }
@@ -148,6 +162,7 @@ final class AreaSelectionOverlayController: AreaSelectionPresenting {
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
+                guard self?.presentationGeneration == generation else { return }
                 self?.rebuildWindows()
             }
         }
@@ -339,44 +354,5 @@ struct AreaSelectionScreenOverlayView: View {
             on: screenFrame,
             displayID: displayID
         )
-    }
-}
-
-struct AreaSelectionWindowView: View {
-    @EnvironmentObject private var model: AppModel
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.dismissWindow) private var dismissWindow
-    @State private var dragStart: CGPoint?
-    @State private var dragCurrent: CGPoint?
-    @State private var isFinishingSelection = false
-    @FocusState private var selectionHasFocus: Bool
-
-    var body: some View {
-        AreaSelectionScreenOverlayView(
-            screen: NSApp.keyWindow?.screen ?? NSScreen.main ?? NSScreen.screens.first ?? NSScreen(),
-            mode: model.captureMode,
-            onSelect: { area in
-                dismiss()
-                dismissWindow(id: "area-selector")
-                model.completeInteractiveAreaSelection(area)
-            },
-            onCancel: {
-                model.cancelInteractiveAreaSelection()
-                dismiss()
-                dismissWindow(id: "area-selector")
-            }
-        )
-        .focusedValue(\.areaSelectionIsFocused, true)
-    }
-}
-
-struct AreaSelectionFocusKey: FocusedValueKey {
-    typealias Value = Bool
-}
-
-extension FocusedValues {
-    var areaSelectionIsFocused: Bool? {
-        get { self[AreaSelectionFocusKey.self] }
-        set { self[AreaSelectionFocusKey.self] = newValue }
     }
 }

@@ -446,9 +446,6 @@ final class AppModel: ObservableObject {
                 showSourceSelector: { [weak self] in
                     self?.requestWindow(.showSourceSelector)
                 },
-                showAreaSelector: { [weak self] in
-                    self?.requestWindow(.showAreaSelector)
-                },
                 showRecordingSetup: { [weak self] kind in
                     self?.requestWindow(kind == .display ? .showScreenRecordingSetup : .showRecordingSetup)
                 },
@@ -738,10 +735,6 @@ final class AppModel: ObservableObject {
 
     var recordingPhase: RecordingPhase {
         captureState.recordingPhase
-    }
-
-    var isAreaSelectionActive: Bool {
-        captureState.isAreaSelectionActive
     }
 
     func setCaptureStateForTesting(_ state: CaptureState) {
@@ -1370,7 +1363,7 @@ final class AppModel: ObservableObject {
                 requestWindow(.showSourceSelector)
             }
         case .areaSelecting:
-            requestWindow(.showAreaSelector)
+            areaSelectionPresenter.focus()
         case .choosingSourceType:
             showHUD()
         case .screenSelecting:

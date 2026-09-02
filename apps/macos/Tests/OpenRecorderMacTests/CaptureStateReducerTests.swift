@@ -219,7 +219,7 @@ final class CaptureStateReducerTests: XCTestCase {
 
         XCTAssertEqual(requested.state.phase, .areaSelecting(.screenshot))
         XCTAssertTrue(requested.state.isAreaSelectionActive)
-        XCTAssertEqual(requested.effects, [.showAreaSelector])
+        XCTAssertTrue(requested.effects.isEmpty)
 
         let completed = requested.state.applying(.completeInteractiveAreaSelection(areaSource))
         XCTAssertEqual(completed.state.phase, .setup(.screenshot))

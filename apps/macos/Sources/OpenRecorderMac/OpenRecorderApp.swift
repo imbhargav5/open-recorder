@@ -197,16 +197,6 @@ struct OpenRecorderApp: App {
         .defaultLaunchBehavior(.suppressed)
         .restorationBehavior(.disabled)
 
-        Window("Select Area", id: "area-selector") {
-            ContentView(role: .areaSelector)
-                .environmentObject(model)
-                .background(AppWindowActionBridge(appDelegate: appDelegate))
-        }
-        .windowStyle(.hiddenTitleBar)
-        .defaultLaunchBehavior(.suppressed)
-        .restorationBehavior(.disabled)
-        .defaultSize(width: 900, height: 600)
-
         Window("Open Recorder Editor", id: "studio") {
             ContentView(role: .studio)
                 .environmentObject(model)
@@ -261,8 +251,8 @@ struct OpenRecorderApp: App {
             }
 
             // Without this, SwiftUI auto-populates the "Window" menu with every declared
-            // Window scene by title, including internal tool windows like "Camera Bubble",
-            // "Select Area", and the capture selectors. Selecting one from that menu (or
+            // Window scene by title, including internal tool windows like "Camera Bubble"
+            // and the capture selectors. Selecting one from that menu (or
             // triggering it via Mission Control/window cycling) opens it directly, bypassing
             // requestWindow()'s includeCamera gating entirely.
             CommandGroup(replacing: .windowList) {}
@@ -393,7 +383,6 @@ final class AppWindowActions {
         case .showScreenRecordingSetup:
             unhideApp()
             dismissWindow("source-selector")
-            dismissWindow("area-selector")
             openWindow("hud")
         case .hideRecordingSetup:
             dismissCaptureWindows()
@@ -412,9 +401,6 @@ final class AppWindowActions {
             openWindow("camera-bubble")
         case .closeCameraBubble:
             dismissWindow("camera-bubble")
-        case .showAreaSelector:
-            unhideApp()
-            openWindow("area-selector")
         case .showStudio:
             facecamLog.notice("AppWindowActions.perform(.showStudio) hasSession=\(command.editorSession != nil, privacy: .public)")
             unhideApp()
@@ -428,15 +414,12 @@ final class AppWindowActions {
             activateApp()
         case .closeCaptureSetup:
             dismissWindow("source-selector")
-            dismissWindow("area-selector")
         case .closeSourceSelector:
             dismissWindow("source-selector")
         case .closeMicrophoneSelector:
             dismissWindow("microphone-selector")
         case .closeCameraSelector:
             dismissWindow("camera-selector")
-        case .closeAreaSelector:
-            dismissWindow("area-selector")
         }
     }
 
@@ -448,7 +431,6 @@ final class AppWindowActions {
         // Callers that genuinely need the HUD gone (e.g. .showStudio, once recording is
         // fully over) dismiss it explicitly themselves.
         dismissWindow("source-selector")
-        dismissWindow("area-selector")
         dismissWindow("microphone-selector")
         dismissWindow("camera-selector")
         if alwaysDismissCameraBubble || !shouldKeepCameraBubble() {
