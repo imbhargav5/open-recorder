@@ -120,6 +120,43 @@ final class HUDWindowMetricsTests: XCTestCase {
         XCTAssertGreaterThan(AreaSelectionOverlayChrome.level.rawValue, NSWindow.Level.screenSaver.rawValue)
     }
 
+    @MainActor
+    func testDismissedAreaSelectionIgnoresQueuedScreenRebuild() async throws {
+        guard !NSScreen.screens.isEmpty else {
+            throw XCTSkip("Area overlay lifecycle requires an attached display.")
+        }
+        let controller = AreaSelectionOverlayController()
+        defer { controller.dismiss() }
+
+        controller.present(mode: .screenshot, onSelect: { _ in }, onCancel: {})
+        XCTAssertGreaterThan(controller.presentedWindowCountForTesting, 0)
+
+        NotificationCenter.default.post(name: NSApplication.didChangeScreenParametersNotification, object: nil)
+        controller.dismiss()
+        await Task.yield()
+        await Task.yield()
+
+        XCTAssertEqual(controller.presentedWindowCountForTesting, 0)
+    }
+
+    @MainActor
+    func testAreaSelectionFocusRestoresEveryOverlay() throws {
+        guard !NSScreen.screens.isEmpty else {
+            throw XCTSkip("Area overlay focus requires an attached display.")
+        }
+        let controller = AreaSelectionOverlayController()
+        defer { controller.dismiss() }
+
+        controller.present(mode: .screenshot, onSelect: { _ in }, onCancel: {})
+        let windows = controller.presentedWindowsForTesting
+        windows.forEach { $0.orderOut(nil) }
+        XCTAssertTrue(windows.allSatisfy { !$0.isVisible })
+
+        controller.focus()
+
+        XCTAssertTrue(windows.allSatisfy(\.isVisible))
+    }
+
     func testRecordingCountdownOverlayChromeCanCoverFullscreenSpaces() {
         let behavior = RecordingCountdownOverlayChrome.collectionBehavior
 

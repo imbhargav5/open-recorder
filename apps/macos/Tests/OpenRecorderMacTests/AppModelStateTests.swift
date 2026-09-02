@@ -238,7 +238,7 @@ final class AppModelStateTests: XCTestCase {
         model.requestInteractiveAreaSelection()
 
         XCTAssertEqual(model.hudState, .setup(.screenshot))
-        XCTAssertFalse(model.isAreaSelectionActive)
+        XCTAssertFalse(model.captureState.isAreaSelectionActive)
         XCTAssertEqual(model.statusMessage, CaptureBlocker.screenRecordingPermissionNeedsRestart.message)
         XCTAssertEqual(model.windowCommand?.action, .showHUD)
     }
@@ -345,7 +345,7 @@ final class AppModelStateTests: XCTestCase {
 
         XCTAssertEqual(model.hudState, .setup(.recording))
         XCTAssertEqual(model.captureFlow, .recordingSetup)
-        XCTAssertFalse(model.isAreaSelectionActive)
+        XCTAssertFalse(model.captureState.isAreaSelectionActive)
         XCTAssertEqual(model.windowCommand?.action, .showHUD)
     }
 
@@ -357,11 +357,11 @@ final class AppModelStateTests: XCTestCase {
 
         XCTAssertEqual(model.hudState, .setup(.screenshot))
         XCTAssertEqual(model.captureFlow, .screenshotSetup)
-        XCTAssertFalse(model.isAreaSelectionActive)
+        XCTAssertFalse(model.captureState.isAreaSelectionActive)
         XCTAssertEqual(model.windowCommand?.action, .showHUD)
     }
 
-    func testCancelReadySetupDoesNotLeaveSelectorOrAreaCloseCommand() {
+    func testCancelReadySetupDoesNotLeaveSelectorCloseCommand() {
         let model = AppModel()
         let source = makeSource()
         model.setCaptureStateForTesting(CaptureState(phase: .choosingMode, selectedSource: source))
@@ -372,7 +372,6 @@ final class AppModelStateTests: XCTestCase {
         XCTAssertEqual(model.hudState, .setup(.recording, source: source))
         XCTAssertEqual(model.captureFlow, .recordingSetup)
         XCTAssertNotEqual(model.windowCommand?.action, .showSourceSelector)
-        XCTAssertNotEqual(model.windowCommand?.action, .closeAreaSelector)
         XCTAssertEqual(model.windowCommand?.action, .showHUD)
     }
 
@@ -704,7 +703,7 @@ final class AppModelStateTests: XCTestCase {
         XCTAssertEqual(presenter.dismissCallCount, 1)
     }
 
-    func testRequestingInteractiveAreaSelectionPresentsMultiScreenAreaPresenter() {
+    func testInteractiveAreaSelectionUsesOnlyMultiScreenPresenterAndRefocusesIt() {
         let presenter = AreaSelectionPresenterSpy()
         let model = AppModel(areaSelectionPresenter: presenter)
 
@@ -714,7 +713,15 @@ final class AppModelStateTests: XCTestCase {
         XCTAssertEqual(presenter.presentCallCount, 1)
         XCTAssertEqual(presenter.presentedMode, .recording)
         XCTAssertEqual(model.hudState.phase, .areaSelecting(.recording))
-        XCTAssertTrue(model.isAreaSelectionActive)
+        XCTAssertTrue(model.captureState.isAreaSelectionActive)
+        XCTAssertEqual(model.windowCommand?.action, .showHUD)
+
+        let windowCommandID = model.windowCommand?.id
+        model.beginCapture(.screenshot)
+
+        XCTAssertEqual(presenter.focusCallCount, 1)
+        XCTAssertEqual(model.windowCommand?.id, windowCommandID)
+        XCTAssertEqual(model.hudState.phase, .areaSelecting(.recording))
     }
 
     func testCompletingInteractiveAreaSelectionDismissesAreaPresenter() {
@@ -729,7 +736,7 @@ final class AppModelStateTests: XCTestCase {
         model.completeInteractiveAreaSelection(area)
 
         XCTAssertEqual(presenter.dismissCallCount, 1)
-        XCTAssertFalse(model.isAreaSelectionActive)
+        XCTAssertFalse(model.captureState.isAreaSelectionActive)
         XCTAssertEqual(model.selectedSource?.area, area)
     }
 
@@ -744,7 +751,7 @@ final class AppModelStateTests: XCTestCase {
         model.cancelInteractiveAreaSelection()
 
         XCTAssertEqual(presenter.dismissCallCount, 1)
-        XCTAssertFalse(model.isAreaSelectionActive)
+        XCTAssertFalse(model.captureState.isAreaSelectionActive)
     }
 
     func testScreenshotEditorReleasesCaptureSlot() {
@@ -2063,7 +2070,7 @@ final class AppModelStateTests: XCTestCase {
         XCTAssertTrue(actions.isInstalled)
         XCTAssertEqual(openedEditorSession, session)
         XCTAssertTrue(openedWindows.isEmpty)
-        XCTAssertEqual(dismissedWindows, ["hud", "source-selector", "area-selector", "microphone-selector", "camera-selector", "camera-bubble"])
+        XCTAssertEqual(dismissedWindows, ["hud", "source-selector", "microphone-selector", "camera-selector", "camera-bubble"])
         XCTAssertTrue(didUnhideApp)
     }
 
@@ -2164,7 +2171,7 @@ final class AppModelStateTests: XCTestCase {
 
         XCTAssertTrue(openedWindows.isEmpty)
         XCTAssertFalse(dismissedWindows.contains("hud"))
-        XCTAssertEqual(dismissedWindows, ["source-selector", "area-selector", "microphone-selector", "camera-selector", "camera-bubble"])
+        XCTAssertEqual(dismissedWindows, ["source-selector", "microphone-selector", "camera-selector", "camera-bubble"])
     }
 
     func testAppWindowActionsHideAppWindowsForCaptureDoesNotHideTheWholeAppOrTheHUD() {
@@ -2200,7 +2207,6 @@ final class AppModelStateTests: XCTestCase {
         XCTAssertFalse(dismissedWindows.contains("hud"))
         XCTAssertEqual(dismissedWindows, [
             "source-selector",
-            "area-selector",
             "microphone-selector",
             "camera-selector",
             "camera-bubble"
@@ -2222,7 +2228,7 @@ final class AppModelStateTests: XCTestCase {
         actions.perform(NativeWindowCommand(action: .showScreenRecordingSetup))
 
         XCTAssertEqual(openedWindows, ["hud"])
-        XCTAssertEqual(dismissedWindows, ["source-selector", "area-selector"])
+        XCTAssertEqual(dismissedWindows, ["source-selector"])
         XCTAssertFalse(openedWindows.contains("source-selector"))
     }
 
@@ -2260,7 +2266,7 @@ final class AppModelStateTests: XCTestCase {
         actions.perform(NativeWindowCommand(action: .closeCaptureSetup))
 
         XCTAssertTrue(openedWindows.isEmpty)
-        XCTAssertEqual(dismissedWindows, ["source-selector", "area-selector"])
+        XCTAssertEqual(dismissedWindows, ["source-selector"])
         XCTAssertFalse(dismissedWindows.contains("hud"))
     }
 
@@ -2402,6 +2408,7 @@ private final class ScreenSelectionPresenterSpy: ScreenSelectionPresenting {
 private final class AreaSelectionPresenterSpy: AreaSelectionPresenting {
     var presentedMode: CaptureMode?
     var presentCallCount = 0
+    var focusCallCount = 0
     var dismissCallCount = 0
     var onSelect: ((CaptureArea) -> Void)?
     var onCancel: (() -> Void)?
@@ -2415,6 +2422,10 @@ private final class AreaSelectionPresenterSpy: AreaSelectionPresenting {
         presentedMode = mode
         self.onSelect = onSelect
         self.onCancel = onCancel
+    }
+
+    func focus() {
+        focusCallCount += 1
     }
 
     func dismiss() {
