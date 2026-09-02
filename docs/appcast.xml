@@ -898,5 +898,24 @@
 ]]></description>
             <enclosure url="https://github.com/imbhargav5/open-recorder/releases/download/v0.2.44/open-recorder-macos.zip" sparkle:edSignature="bcKtmlFG+UrN0F+LSr/a6gklgdWz4/+sKuJhuWt5txwUCShqqkFrs/rCst8Ys1zmH0kpycnIbewgO2GqA3p6CQ==" length="73147398" type="application/octet-stream"/>
         </item>
+        <item>
+            <title>Version 0.2.45</title>
+            <pubDate>Wed, 02 Sep 2026 22:11:16 GMT</pubDate>
+            <sparkle:version>0.2.45</sparkle:version>
+            <sparkle:shortVersionString>0.2.45</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+## Commits since v0.2.44
+
+- eb309c5 Merge pull request #1072 from imbhargav5/codex/fix-duplicate-area-selection
+- 238e728 fix(macos): prevent duplicate area selection overlay
+- 66fcf5b Merge pull request #1070 from imbhargav5/codex/add-settings-menu-item
+- 97adcd8 feat(macos): add settings to menu bar menu
+- 95cba01 Merge pull request #1068 from imbhargav5/mintlify/6c4108fe
+- ec2d1f5 docs: add v0.2.44 changelog and Escape-cancels-countdown behavior
+- 5f19fb3 Update appcast for v0.2.44
+]]></description>
+            <enclosure url="https://github.com/imbhargav5/open-recorder/releases/download/v0.2.45/open-recorder-macos.zip" sparkle:edSignature="Jp3mfdLT34XmcZaRn7O2dh9H0F7QGcIkShXQAMAKN4Ql+pgU6GiLb3uYfJzwc8wO3ttSyoi1khXieB7uY/jWCA==" length="73119723" type="application/octet-stream"/>
+        </item>
     </channel>
 </rss>
