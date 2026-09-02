@@ -46,6 +46,7 @@ final class OpenRecorderAppDelegate: NSObject, NSApplicationDelegate {
         openWindow: @escaping (String) -> Void,
         openEditor: @escaping (EditorSession) -> Void,
         dismissWindow: @escaping (String) -> Void,
+        openSettings: @escaping () -> Void,
         shouldKeepCameraBubble: @escaping () -> Bool = { false }
     ) {
         windowActions.install(
@@ -64,6 +65,7 @@ final class OpenRecorderAppDelegate: NSObject, NSApplicationDelegate {
                     dismissWindow(id)
                 }
             },
+            openSettings: openSettings,
             shouldKeepCameraBubble: shouldKeepCameraBubble
         )
         handleWindowCommand(model?.windowCommand)
@@ -282,6 +284,7 @@ struct OpenRecorderApp: App {
 private struct AppWindowActionBridge: View {
     @Environment(\.openWindow) private var openWindow
     @Environment(\.dismissWindow) private var dismissWindow
+    @Environment(\.openSettings) private var openSettings
     let appDelegate: OpenRecorderAppDelegate
 
     var body: some View {
@@ -292,6 +295,7 @@ private struct AppWindowActionBridge: View {
                     openWindow: { id in openWindow(id: id) },
                     openEditor: { session in openWindow(id: "editor", value: session) },
                     dismissWindow: { id in dismissWindow(id: id) },
+                    openSettings: { openSettings() },
                     shouldKeepCameraBubble: { [weak appDelegate] in
                         appDelegate?.isCameraEnabled ?? false
                     }
@@ -306,6 +310,7 @@ final class AppWindowActions {
     private var openWindow: (String) -> Void = { _ in }
     private var openEditor: (EditorSession) -> Void = { _ in }
     private var dismissWindow: (String) -> Void = { _ in }
+    private var openSettings: () -> Void = {}
     private var shouldKeepCameraBubble: () -> Bool = { false }
     private var hideApp: () -> Void = {
         NSApplication.shared.hide(nil)
@@ -321,6 +326,7 @@ final class AppWindowActions {
         openWindow: @escaping (String) -> Void,
         openEditor: @escaping (EditorSession) -> Void,
         dismissWindow: @escaping (String) -> Void,
+        openSettings: @escaping () -> Void = {},
         shouldKeepCameraBubble: @escaping () -> Bool = { false },
         activateApp: @escaping () -> Void = {
             NSApplication.shared.activate(ignoringOtherApps: true)
@@ -335,6 +341,7 @@ final class AppWindowActions {
         self.openWindow = openWindow
         self.openEditor = openEditor
         self.dismissWindow = dismissWindow
+        self.openSettings = openSettings
         self.shouldKeepCameraBubble = shouldKeepCameraBubble
         self.activateApp = activateApp
         self.hideApp = hideApp
@@ -352,6 +359,12 @@ final class AppWindowActions {
 
     func openEditorSession(_ session: EditorSession) {
         openEditor(session)
+    }
+
+    func showSettings() {
+        unhideApp()
+        openSettings()
+        activateApp()
     }
 
     func perform(_ command: NativeWindowCommand) {
@@ -457,11 +470,17 @@ final class AppWindowActions {
 }
 
 @MainActor
-private final class OpenRecorderStatusItemController: NSObject {
+final class OpenRecorderStatusItemController: NSObject {
     private var statusItem: NSStatusItem?
     private weak var model: AppModel?
     private var windowActions: AppWindowActions?
     private var cancellables: Set<AnyCancellable> = []
+
+    init(model: AppModel? = nil, windowActions: AppWindowActions? = nil) {
+        self.model = model
+        self.windowActions = windowActions
+        super.init()
+    }
 
     func attach(model: AppModel, windowActions: AppWindowActions) {
         self.model = model
@@ -521,6 +540,14 @@ private final class OpenRecorderStatusItemController: NSObject {
 
     private func showMenu() {
         guard let statusItem else { return }
+        let menu = makeMenu()
+
+        statusItem.menu = menu
+        statusItem.button?.performClick(nil)
+        statusItem.menu = nil
+    }
+
+    func makeMenu(updateChecksEnabled: Bool = UpdateChecker.shared.isEnabled) -> NSMenu {
         let menu = NSMenu()
 
         if isDirectStopState {
@@ -556,7 +583,13 @@ private final class OpenRecorderStatusItemController: NSObject {
 
         menu.addItem(.separator())
 
-        if UpdateChecker.shared.isEnabled {
+        let settingsItem = NSMenuItem(title: "Settings…", action: #selector(showSettings), keyEquivalent: ",")
+        settingsItem.keyEquivalentModifierMask = [.command]
+        settingsItem.target = self
+        settingsItem.isEnabled = windowActions?.isInstalled == true && (model?.canStartNewCapture ?? false)
+        menu.addItem(settingsItem)
+
+        if updateChecksEnabled {
             let checkForUpdatesItem = NSMenuItem(
                 title: "Check for Updates…",
                 action: #selector(checkForUpdates),
@@ -564,18 +597,16 @@ private final class OpenRecorderStatusItemController: NSObject {
             )
             checkForUpdatesItem.target = self
             menu.addItem(checkForUpdatesItem)
-
-            menu.addItem(.separator())
         }
+
+        menu.addItem(.separator())
 
         let quitItem = NSMenuItem(title: "Quit Open Recorder", action: #selector(quit), keyEquivalent: "q")
         quitItem.keyEquivalentModifierMask = [.command]
         quitItem.target = self
         menu.addItem(quitItem)
 
-        statusItem.menu = menu
-        statusItem.button?.performClick(nil)
-        statusItem.menu = nil
+        return menu
     }
 
     @objc private func stopRecording() {
@@ -611,6 +642,10 @@ private final class OpenRecorderStatusItemController: NSObject {
         NSApp.unhide(nil)
         windowActions.openEditorSession(session)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    @objc func showSettings() {
+        windowActions?.showSettings()
     }
 
     @objc private func checkForUpdates() {

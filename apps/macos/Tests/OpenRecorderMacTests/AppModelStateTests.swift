@@ -1,3 +1,4 @@
+import AppKit
 import Combine
 import Darwin
 import Observation
@@ -2064,6 +2065,84 @@ final class AppModelStateTests: XCTestCase {
         XCTAssertTrue(openedWindows.isEmpty)
         XCTAssertEqual(dismissedWindows, ["hud", "source-selector", "area-selector", "microphone-selector", "camera-selector", "camera-bubble"])
         XCTAssertTrue(didUnhideApp)
+    }
+
+    func testStatusMenuSettingsItemUsesShortcutAndOpensSettingsWhenCaptureIsIdle() throws {
+        let model = AppModel()
+        let actions = AppWindowActions()
+        var events: [String] = []
+
+        actions.install(
+            openWindow: { _ in },
+            openEditor: { _ in },
+            dismissWindow: { _ in },
+            openSettings: { events.append("open settings") },
+            activateApp: { events.append("activate app") },
+            unhideApp: { events.append("unhide app") }
+        )
+        let controller = OpenRecorderStatusItemController(model: model, windowActions: actions)
+        let menu = controller.makeMenu(updateChecksEnabled: false)
+        let settingsItem = try XCTUnwrap(menu.items.first { $0.title == "Settings…" })
+
+        XCTAssertTrue(settingsItem.isEnabled)
+        XCTAssertEqual(settingsItem.keyEquivalent, ",")
+        XCTAssertEqual(settingsItem.keyEquivalentModifierMask, [.command])
+        XCTAssertTrue(settingsItem.target === controller)
+        XCTAssertEqual(NSStringFromSelector(try XCTUnwrap(settingsItem.action)), "showSettings")
+        controller.showSettings()
+
+        XCTAssertEqual(events, ["unhide app", "open settings", "activate app"])
+    }
+
+    func testStatusMenuSettingsItemIsDisabledUntilActionsAreInstalledAndDuringCapture() throws {
+        let model = AppModel()
+        let actions = AppWindowActions()
+        let controller = OpenRecorderStatusItemController(model: model, windowActions: actions)
+
+        var settingsItem = try XCTUnwrap(
+            controller.makeMenu(updateChecksEnabled: false).items.first { $0.title == "Settings…" }
+        )
+        XCTAssertFalse(settingsItem.isEnabled)
+
+        actions.install(
+            openWindow: { _ in },
+            openEditor: { _ in },
+            dismissWindow: { _ in },
+            openSettings: {}
+        )
+        model.setCaptureStateForTesting(.areaSelecting(.screenshot))
+        settingsItem = try XCTUnwrap(
+            controller.makeMenu(updateChecksEnabled: false).items.first { $0.title == "Settings…" }
+        )
+        XCTAssertFalse(settingsItem.isEnabled)
+    }
+
+    func testStatusMenuSettingsPlacementIsStableWithAndWithoutUpdates() {
+        let model = AppModel()
+        let actions = AppWindowActions()
+        actions.install(
+            openWindow: { _ in },
+            openEditor: { _ in },
+            dismissWindow: { _ in },
+            openSettings: {}
+        )
+        let controller = OpenRecorderStatusItemController(model: model, windowActions: actions)
+
+        func titles(in menu: NSMenu) -> [String] {
+            menu.items.map { $0.isSeparatorItem ? "-" : $0.title }
+        }
+
+        XCTAssertEqual(
+            titles(in: controller.makeMenu(updateChecksEnabled: false)),
+            ["New Recording", "New Screenshot", "-", "Hide Recorder", "-", "Settings…", "-", "Quit Open Recorder"]
+        )
+        XCTAssertEqual(
+            titles(in: controller.makeMenu(updateChecksEnabled: true)),
+            [
+                "New Recording", "New Screenshot", "-", "Hide Recorder", "-", "Settings…",
+                "Check for Updates…", "-", "Quit Open Recorder",
+            ]
+        )
     }
 
     func testAppWindowActionsHideRecordingSetupDismissesCaptureWindowsButNotHUD() {
