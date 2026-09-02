@@ -929,7 +929,6 @@ enum NativeWindowCommandAction: Equatable {
     case showSourceSelector
     case showMicrophoneSelector
     case showCameraSelector
-    case showAreaSelector
     case showCameraBubble
     case closeCameraBubble
     case showStudio
@@ -937,7 +936,6 @@ enum NativeWindowCommandAction: Equatable {
     case closeSourceSelector
     case closeMicrophoneSelector
     case closeCameraSelector
-    case closeAreaSelector
 }
 
 struct NativeWindowCommand: Identifiable {

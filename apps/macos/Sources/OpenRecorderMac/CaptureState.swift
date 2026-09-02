@@ -250,7 +250,6 @@ enum CaptureEffect: Hashable {
     case hideHUD
     case closeCaptureSetup
     case showSourceSelector
-    case showAreaSelector
     case showRecordingSetup(CaptureSourceKind)
     case dismissScreenSelection
     case dismissCaptureWindows
@@ -685,7 +684,7 @@ struct CaptureState: Hashable {
             next.setPhase(.areaSelecting(modeForSelection()), clearSource: false)
             next.preferredSourceKind = .area
             statusMessage = "Draw an area to capture."
-            effects.append(.showAreaSelector)
+            // AppModel owns the multi-screen overlay presentation directly.
 
         case .completeInteractiveAreaSelection(let source):
             next.selectedSource = source

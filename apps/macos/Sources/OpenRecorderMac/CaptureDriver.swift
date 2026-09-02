@@ -6,7 +6,6 @@ struct CaptureEffectHandlers {
     var hideHUD: () -> Void = {}
     var closeCaptureSetup: () -> Void = {}
     var showSourceSelector: () -> Void = {}
-    var showAreaSelector: () -> Void = {}
     var showRecordingSetup: (CaptureSourceKind) -> Void = { _ in }
     var dismissScreenSelection: () -> Void = {}
     var dismissCaptureWindows: () -> Void = {}
@@ -74,8 +73,6 @@ final class CaptureDriver {
                 effectHandlers.closeCaptureSetup()
             case .showSourceSelector:
                 effectHandlers.showSourceSelector()
-            case .showAreaSelector:
-                effectHandlers.showAreaSelector()
             case .showRecordingSetup(let kind):
                 effectHandlers.showRecordingSetup(kind)
             case .dismissScreenSelection:

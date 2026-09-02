@@ -215,7 +215,7 @@ final class HUDStateMachineTests: XCTestCase {
 
         XCTAssertEqual(model.hudState.phase, .areaSelecting(.screenshot))
         XCTAssertNil(model.selectedSource)
-        XCTAssertTrue(model.isAreaSelectionActive)
+        XCTAssertTrue(model.captureState.isAreaSelectionActive)
         XCTAssertFalse(model.canStartNewCapture)
 
         model.beginCapture(.recording)
@@ -223,15 +223,14 @@ final class HUDStateMachineTests: XCTestCase {
         XCTAssertEqual(model.hudState.phase, .areaSelecting(.screenshot))
         XCTAssertNil(model.selectedSource)
         XCTAssertEqual(model.captureMode, .screenshot)
-        XCTAssertEqual(model.windowCommand?.action, .showAreaSelector)
+        XCTAssertEqual(model.windowCommand?.action, .showHUD)
 
         model.cancelInteractiveAreaSelection()
 
         XCTAssertEqual(model.hudState, .setup(.screenshot, preferredSourceKind: .area))
-        XCTAssertFalse(model.isAreaSelectionActive)
+        XCTAssertFalse(model.captureState.isAreaSelectionActive)
         XCTAssertTrue(model.canStartNewCapture)
         XCTAssertNotEqual(model.windowCommand?.action, .showSourceSelector)
-        XCTAssertNotEqual(model.windowCommand?.action, .closeAreaSelector)
         XCTAssertEqual(model.windowCommand?.action, .showHUD)
     }
 

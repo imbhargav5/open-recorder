@@ -10,7 +10,6 @@ enum AppWindowRole {
     case microphoneSelector
     case cameraSelector
     case cameraBubble
-    case areaSelector
     case studio
 }
 
@@ -44,9 +43,6 @@ struct ContentView: View {
             case .cameraBubble:
                 CameraBubbleWindowView()
                     .background(WindowConfigurator(role: .cameraBubble))
-            case .areaSelector:
-                AreaSelectionWindowView()
-                    .background(WindowConfigurator(role: .areaSelector, isPresented: model.isAreaSelectionActive))
             case .studio:
                 StudioWindowView(editorSession: editorSession)
                     .background(WindowConfigurator(role: .studio))

@@ -10,7 +10,6 @@ enum NativeWindowRole {
     case microphoneSelector
     case cameraSelector
     case cameraBubble
-    case areaSelector
     case studio
 }
 
@@ -211,20 +210,17 @@ final class HUDHostWindowHidingView: NSView {
 struct WindowConfigurator: NSViewRepresentable {
     var role: NativeWindowRole
     var preferredSize: CGSize?
-    var isPresented = true
 
     func makeNSView(context: Context) -> WindowConfigurationView {
         let view = WindowConfigurationView()
         view.role = role
         view.preferredSize = preferredSize
-        view.isPresented = isPresented
         return view
     }
 
     func updateNSView(_ nsView: WindowConfigurationView, context: Context) {
         nsView.role = role
         nsView.preferredSize = preferredSize
-        nsView.isPresented = isPresented
         nsView.configureWindow()
     }
 }
@@ -246,8 +242,6 @@ final class WindowConfigurationView: NSView {
             }
         }
     }
-    var isPresented = true
-
     private var configuredRole: NativeWindowRole?
     private weak var configuredWindow: NSWindow?
     private weak var hudSpaceSyncWindow: NSWindow?
@@ -272,17 +266,6 @@ final class WindowConfigurationView: NSView {
             stopSyncingHUDToActiveSpace()
             return
         }
-        if role == .areaSelector {
-            guard isPresented else {
-                window.close()
-                return
-            }
-            configuredRole = role
-            configuredWindow = window
-            stopSyncingHUDToActiveSpace()
-            configureAreaSelector(window)
-            return
-        }
         guard configuredRole != role || configuredWindow !== window else { return }
         configuredRole = role
         configuredWindow = window
@@ -304,8 +287,6 @@ final class WindowConfigurationView: NSView {
             configureCameraSelector(window)
         case .cameraBubble:
             configureCameraBubble(window)
-        case .areaSelector:
-            configureAreaSelector(window)
         case .studio:
             configureStudio(window)
         }
@@ -453,29 +434,6 @@ final class WindowConfigurationView: NSView {
         window.standardWindowButton(.miniaturizeButton)?.isHidden = true
         window.standardWindowButton(.zoomButton)?.isHidden = true
         window.center()
-    }
-
-    private func configureAreaSelector(_ window: NSWindow) {
-        let screenFrame = (window.screen ?? NSScreen.main ?? NSScreen.screens.first)?.frame ?? NSRect(x: 0, y: 0, width: 900, height: 600)
-        window.title = "Select Area"
-        window.setFrame(screenFrame, display: true)
-        window.minSize = screenFrame.size
-        window.maxSize = screenFrame.size
-        window.isOpaque = false
-        window.backgroundColor = .clear
-        window.hasShadow = false
-        window.level = .screenSaver
-        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        window.isMovableByWindowBackground = false
-        window.titleVisibility = .hidden
-        window.titlebarAppearsTransparent = true
-        window.styleMask = [.titled, .fullSizeContentView]
-        [.closeButton, .miniaturizeButton, .zoomButton].forEach { button in
-            window.standardWindowButton(button)?.isHidden = true
-        }
-        window.makeKeyAndOrderFront(nil)
-        window.orderFrontRegardless()
-        NSApp.activate(ignoringOtherApps: true)
     }
 
     private func configureStudio(_ window: NSWindow) {
@@ -686,7 +644,6 @@ struct WindowCommandBridge: View {
         case .showScreenRecordingSetup:
             NSApp.unhide(nil)
             dismissWindow(id: "source-selector")
-            dismissWindow(id: "area-selector")
             openWindow(id: "hud")
             NSApp.activate(ignoringOtherApps: true)
         case .hideRecordingSetup:
@@ -706,9 +663,6 @@ struct WindowCommandBridge: View {
             openWindow(id: "camera-bubble")
         case .closeCameraBubble:
             dismissWindow(id: "camera-bubble")
-        case .showAreaSelector:
-            NSApp.unhide(nil)
-            openWindow(id: "area-selector")
         case .showStudio:
             facecamLog.notice("WindowCommandBridge.handle(.showStudio) hasSession=\(command.editorSession != nil, privacy: .public)")
             NSApp.unhide(nil)
@@ -722,15 +676,12 @@ struct WindowCommandBridge: View {
             NSApp.activate(ignoringOtherApps: true)
         case .closeCaptureSetup:
             dismissWindow(id: "source-selector")
-            dismissWindow(id: "area-selector")
         case .closeSourceSelector:
             dismissWindow(id: "source-selector")
         case .closeMicrophoneSelector:
             dismissWindow(id: "microphone-selector")
         case .closeCameraSelector:
             dismissWindow(id: "camera-selector")
-        case .closeAreaSelector:
-            dismissWindow(id: "area-selector")
         }
     }
 
@@ -742,7 +693,6 @@ struct WindowCommandBridge: View {
         // Callers that genuinely need the HUD gone (e.g. .showStudio, once recording is
         // fully over) dismiss it explicitly themselves.
         dismissWindow(id: "source-selector")
-        dismissWindow(id: "area-selector")
         dismissWindow(id: "microphone-selector")
         dismissWindow(id: "camera-selector")
         if alwaysDismissCameraBubble || !isCameraEnabled() {
