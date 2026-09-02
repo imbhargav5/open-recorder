@@ -1,6 +1,6 @@
 {
-  "tagName": "v0.2.44",
-  "releaseName": "Open Recorder v0.2.44",
-  "releaseNotes": "## Commits since v0.2.43\n\n- 1b0e956 Merge pull request #1064 from imbhargav5/codex/fix-area-selection-geometry\n- f1cc51f fix(macos): align dragged area captures\n- 8fb424b Merge pull request #1062 from imbhargav5/codex/fix-mintlify-css-leak\n- d5897d7 docs: isolate Mintlify from application CSS\n- ee2c42b Merge pull request #1060 from imbhargav5/codex/cancel-recording-countdown-with-escape\n- b2c5d74 fix(macos): cancel recording countdown with Escape\n- 539160b docs: fix broken relative link in publish-github-release skill (#1059)\n- 7608c41 docs: improve SEO titles and descriptions on four pages (#1058)\n- 33ff55d docs: add changelog entries for v0.2.42 and v0.2.43 (#1056)\n- 7778237 Update appcast for v0.2.43",
+  "tagName": "v0.2.45",
+  "releaseName": "Open Recorder v0.2.45",
+  "releaseNotes": "## Commits since v0.2.44\n\n- eb309c5 Merge pull request #1072 from imbhargav5/codex/fix-duplicate-area-selection\n- 238e728 fix(macos): prevent duplicate area selection overlay\n- 66fcf5b Merge pull request #1070 from imbhargav5/codex/add-settings-menu-item\n- 97adcd8 feat(macos): add settings to menu bar menu\n- 95cba01 Merge pull request #1068 from imbhargav5/mintlify/6c4108fe\n- ec2d1f5 docs: add v0.2.44 changelog and Escape-cancels-countdown behavior\n- 5f19fb3 Update appcast for v0.2.44",
   "makeLatest": true
 }
