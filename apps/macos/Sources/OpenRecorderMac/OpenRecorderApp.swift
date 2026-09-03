@@ -648,6 +648,20 @@ final class OpenRecorderStatusItemController: NSObject {
     }
 }
 
+enum GlobalRecordingHotKeyRegistrationPolicy {
+    static func shouldRegister(
+        action: CaptureShortcutAction,
+        item: ShortcutItem,
+        captureState: CaptureState,
+        runtimeIsRecording: Bool,
+        shortcutRecorderIsActive: Bool
+    ) -> Bool {
+        guard item.isEnabled, !shortcutRecorderIsActive else { return false }
+        guard action == .toggleRecording else { return true }
+        return captureState.shouldRegisterRecordingHotKey(runtimeIsRecording: runtimeIsRecording)
+    }
+}
+
 @MainActor
 private final class GlobalRecordingHotKeyController {
     private weak var model: AppModel?
@@ -661,7 +675,8 @@ private final class GlobalRecordingHotKeyController {
             syncRegistration(
                 captureState: model.captureState,
                 runtimeIsRecording: model.capture.isRecording,
-                shortcuts: model.shortcutPreferences
+                shortcuts: model.shortcutPreferences,
+                shortcutRecorderIsActive: model.isShortcutRecorderActive
             )
             return
         }
@@ -676,7 +691,8 @@ private final class GlobalRecordingHotKeyController {
                 self?.syncRegistration(
                     captureState: state,
                     runtimeIsRecording: model.capture.isRecording,
-                    shortcuts: model.shortcutPreferences
+                    shortcuts: model.shortcutPreferences,
+                    shortcutRecorderIsActive: model.isShortcutRecorderActive
                 )
             }
             .store(in: &cancellables)
@@ -687,7 +703,8 @@ private final class GlobalRecordingHotKeyController {
                 self?.syncRegistration(
                     captureState: model.captureState,
                     runtimeIsRecording: isRecording,
-                    shortcuts: model.shortcutPreferences
+                    shortcuts: model.shortcutPreferences,
+                    shortcutRecorderIsActive: model.isShortcutRecorderActive
                 )
             }
             .store(in: &cancellables)
@@ -698,7 +715,20 @@ private final class GlobalRecordingHotKeyController {
                 self?.syncRegistration(
                     captureState: model.captureState,
                     runtimeIsRecording: model.capture.isRecording,
-                    shortcuts: shortcuts
+                    shortcuts: shortcuts,
+                    shortcutRecorderIsActive: model.isShortcutRecorderActive
+                )
+            }
+            .store(in: &cancellables)
+
+        model.$isShortcutRecorderActive
+            .sink { [weak self, weak model] isActive in
+                guard let model else { return }
+                self?.syncRegistration(
+                    captureState: model.captureState,
+                    runtimeIsRecording: model.capture.isRecording,
+                    shortcuts: model.shortcutPreferences,
+                    shortcutRecorderIsActive: isActive
                 )
             }
             .store(in: &cancellables)
@@ -706,14 +736,16 @@ private final class GlobalRecordingHotKeyController {
         syncRegistration(
             captureState: model.captureState,
             runtimeIsRecording: model.capture.isRecording,
-            shortcuts: model.shortcutPreferences
+            shortcuts: model.shortcutPreferences,
+            shortcutRecorderIsActive: model.isShortcutRecorderActive
         )
     }
 
     private func syncRegistration(
         captureState: CaptureState,
         runtimeIsRecording: Bool,
-        shortcuts: ShortcutPreferences
+        shortcuts: ShortcutPreferences,
+        shortcutRecorderIsActive: Bool
     ) {
         guard installEventHandlerIfNeeded() else { return }
 
@@ -727,14 +759,13 @@ private final class GlobalRecordingHotKeyController {
 
         for (id, action) in actionMap {
             let item = shortcuts.item(for: action)
-            let isAllowedByCaptureState: Bool
-            if action == .toggleRecording {
-                isAllowedByCaptureState = captureState.shouldRegisterRecordingHotKey(runtimeIsRecording: runtimeIsRecording)
-            } else {
-                isAllowedByCaptureState = true
-            }
-
-            if item.isEnabled && isAllowedByCaptureState {
+            if GlobalRecordingHotKeyRegistrationPolicy.shouldRegister(
+                action: action,
+                item: item,
+                captureState: captureState,
+                runtimeIsRecording: runtimeIsRecording,
+                shortcutRecorderIsActive: shortcutRecorderIsActive
+            ) {
                 registerIfNeeded(id: id, combination: item.keyCombination)
             } else {
                 unregister(id: id)
@@ -818,7 +849,7 @@ private final class GlobalRecordingHotKeyController {
     }
 
     private func handleHotKey(id: UInt32) {
-        guard let model else { return }
+        guard let model, !model.isShortcutRecorderActive else { return }
         switch id {
         case 1:
             model.toggleRecordingShortcut()
