@@ -131,6 +131,19 @@ final class ProjectLibraryViewStateTests: XCTestCase {
 }
 
 final class SettingsViewPresentationStateTests: XCTestCase {
+    func testSettingsTabsKeepTheirExpectedOrderAndDefault() {
+        XCTAssertEqual(SettingsTab.allCases, [.general, .shortcuts, .system])
+        XCTAssertEqual(SettingsTab.defaultSelection, .general)
+        XCTAssertEqual(SettingsTab.allCases.map(\.title), ["General", "Shortcuts", "System"])
+        XCTAssertEqual(SettingsTab.allCases.map(\.symbolName), ["gearshape", "keyboard", "desktopcomputer"])
+    }
+
+    func testSettingsWindowUsesStableRoomyDimensions() {
+        XCTAssertEqual(SettingsWindowMetrics.width, 840)
+        XCTAssertEqual(SettingsWindowMetrics.height, 560)
+        XCTAssertEqual(SettingsWindowMetrics.contentMaxWidth, 760)
+    }
+
     func testServiceStartsAsNotCheckedInsteadOfClaimingFailure() {
         let state = settingsServicePresentationState(
             health: nil,
