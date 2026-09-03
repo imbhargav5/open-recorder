@@ -1,6 +1,6 @@
 {
-  "tagName": "v0.2.46",
-  "releaseName": "Open Recorder v0.2.46",
-  "releaseNotes": "## Commits since v0.2.45\n\n- 4ff6060 Merge pull request #1076 from imbhargav5/codex/wider-tabbed-settings-dialog\n- c1253a6 feat(macos): add tabbed settings layout\n- a75b03b Update appcast for v0.2.45",
+  "tagName": "v0.2.47",
+  "releaseName": "Open Recorder v0.2.47",
+  "releaseNotes": "## Commits since v0.2.46\n\n- de8bafb Merge pull request #1080 from imbhargav5/codex/native-shortcut-recorder\n- 7729870 feat(macos): add native shortcut recorder\n- 12dcd2d Update appcast for v0.2.46",
   "makeLatest": true
 }
