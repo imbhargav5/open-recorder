@@ -917,5 +917,20 @@
 ]]></description>
             <enclosure url="https://github.com/imbhargav5/open-recorder/releases/download/v0.2.45/open-recorder-macos.zip" sparkle:edSignature="Jp3mfdLT34XmcZaRn7O2dh9H0F7QGcIkShXQAMAKN4Ql+pgU6GiLb3uYfJzwc8wO3ttSyoi1khXieB7uY/jWCA==" length="73119723" type="application/octet-stream"/>
         </item>
+        <item>
+            <title>Version 0.2.46</title>
+            <pubDate>Thu, 03 Sep 2026 00:50:14 GMT</pubDate>
+            <sparkle:version>0.2.46</sparkle:version>
+            <sparkle:shortVersionString>0.2.46</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+## Commits since v0.2.45
+
+- 4ff6060 Merge pull request #1076 from imbhargav5/codex/wider-tabbed-settings-dialog
+- c1253a6 feat(macos): add tabbed settings layout
+- a75b03b Update appcast for v0.2.45
+]]></description>
+            <enclosure url="https://github.com/imbhargav5/open-recorder/releases/download/v0.2.46/open-recorder-macos.zip" sparkle:edSignature="hvdIToM6lqTrezH7uupBnmvnep/AUlkNhxwtNyLBU1XA/kMVR8N3wv8EaXUDGR4eZtsrS5I02lHOpkO9LXd6DA==" length="73163858" type="application/octet-stream"/>
+        </item>
     </channel>
 </rss>
