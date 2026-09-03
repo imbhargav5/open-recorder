@@ -34,7 +34,22 @@ Press <kbd>Esc</kbd> during the recording countdown to cancel before capture beg
 
 ### Customizing global shortcuts
 
-Change any global shortcut in **Settings** under **Global Shortcuts**. Each action offers a set of preset key combinations, and **Restore Default Shortcuts** resets all five actions to the defaults listed above.
+Change any global shortcut in **Settings** on the **Shortcuts** tab, under **Global Shortcuts**. Open Settings from the menu bar dropdown with **Settings…** or press <kbd>⌘</kbd> <kbd>,</kbd> while an Open Recorder window is focused.
+
+To record a new shortcut:
+
+1. Click the shortcut field next to an action. The field shows **Press shortcut…** and previews modifiers as you hold them.
+2. Press the key combination you want. Open Recorder saves it as soon as you release the keys.
+3. Press <kbd>Esc</kbd> to cancel recording and keep the current shortcut.
+
+You can record any key combination instead of picking from presets. Open Recorder validates the combination and shows an error under the field if it rejects it:
+
+- The combination must include <kbd>⌘</kbd>, <kbd>⌃</kbd>, or <kbd>⌥</kbd>. Function keys (<kbd>F1</kbd>–<kbd>F20</kbd>) can be used on their own.
+- The combination cannot already be assigned to another Open Recorder action.
+- The combination cannot match an Open Recorder menu command, such as <kbd>⌘</kbd> <kbd>N</kbd>.
+- The combination cannot be reserved by macOS or registered by another application.
+
+**Restore Default Shortcuts** resets all five actions to the defaults listed above.
 
 ## In-app shortcuts
 
@@ -47,5 +62,8 @@ These shortcuts work while an Open Recorder window is focused.
 | <kbd>⌘</kbd> <kbd>O</kbd> | Open project |
 | <kbd>⌘</kbd> <kbd>1</kbd> | Show projects |
 | <kbd>⌘</kbd> <kbd>2</kbd> | Show editor |
+| <kbd>⌘</kbd> <kbd>,</kbd> | Open settings |
+
+The menu bar dropdown also includes a **Settings…** item that opens the Settings window. Settings is organized into three tabs: **General** for recording and folder options, **Shortcuts** for the global capture shortcuts, and **System** for macOS permissions.
 
 While a recording is active, the menu bar item also exposes **Stop Recording** with <kbd>⌘</kbd> <kbd>R</kbd>.
