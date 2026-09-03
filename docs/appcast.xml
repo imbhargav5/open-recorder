@@ -932,5 +932,20 @@
 ]]></description>
             <enclosure url="https://github.com/imbhargav5/open-recorder/releases/download/v0.2.46/open-recorder-macos.zip" sparkle:edSignature="hvdIToM6lqTrezH7uupBnmvnep/AUlkNhxwtNyLBU1XA/kMVR8N3wv8EaXUDGR4eZtsrS5I02lHOpkO9LXd6DA==" length="73163858" type="application/octet-stream"/>
         </item>
+        <item>
+            <title>Version 0.2.47</title>
+            <pubDate>Thu, 03 Sep 2026 01:39:29 GMT</pubDate>
+            <sparkle:version>0.2.47</sparkle:version>
+            <sparkle:shortVersionString>0.2.47</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+## Commits since v0.2.46
+
+- de8bafb Merge pull request #1080 from imbhargav5/codex/native-shortcut-recorder
+- 7729870 feat(macos): add native shortcut recorder
+- 12dcd2d Update appcast for v0.2.46
+]]></description>
+            <enclosure url="https://github.com/imbhargav5/open-recorder/releases/download/v0.2.47/open-recorder-macos.zip" sparkle:edSignature="ImQPpdc6mwy2InOwCigSi80Zsu6LCq3QxAYddQWXS9HLyY8l1j77QKgycbLOWG4vtO5wjuUbaz3BBDp02BjAAQ==" length="73249459" type="application/octet-stream"/>
+        </item>
     </channel>
 </rss>
