@@ -261,7 +261,7 @@ struct OpenRecorderApp: App {
         Settings {
             SettingsView()
                 .environmentObject(model)
-                .frame(width: 560)
+                .frame(width: SettingsWindowMetrics.width, height: SettingsWindowMetrics.height)
                 .preferredColorScheme(.dark)
         }
     }
