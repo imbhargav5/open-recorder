@@ -3,6 +3,50 @@ title: "Open Recorder changelog: releases, features, and fixes"
 description: "Release notes for Open Recorder on macOS. Track new screen recording features, capture improvements, and bug fixes in each version update."
 ---
 
+<Update label="September 3, 2026" description="v0.2.47" tags={["macOS"]}>
+## New features
+
+### Record your own global shortcuts
+
+The **Shortcuts** settings tab replaces the preset shortcut dropdowns with a native shortcut recorder. Click a shortcut, then press the key combination you want to assign. Press <kbd>Esc</kbd> to cancel recording.
+
+Open Recorder validates each combination as you record it and explains why a combination is rejected:
+
+- Combinations already assigned to another Open Recorder action or to an app menu command are flagged as duplicates.
+- Combinations reserved by macOS or another application are rejected.
+- Letter, number, and symbol keys require <kbd>⌘</kbd>, <kbd>⌃</kbd>, or <kbd>⌥</kbd>. Function keys such as <kbd>F5</kbd> can be assigned on their own.
+
+**Restore Default Shortcuts** still resets every action to its default combination. See [Keyboard shortcuts](/reference/keyboard-shortcuts) for the defaults and customization details.
+</Update>
+
+<Update label="September 3, 2026" description="v0.2.46" tags={["macOS"]}>
+## New features
+
+### Tabbed settings dialog
+
+Settings now open in a wider dialog organized into three tabs:
+
+- **General**: recording options, such as automatic zoom creation, and the folders for recordings, screenshots, and projects.
+- **Shortcuts**: the global capture shortcuts.
+- **System**: Screen Recording and Accessibility permissions, plus the background service status.
+
+Previously, all settings appeared in a single scrolling list.
+</Update>
+
+<Update label="September 2, 2026" description="v0.2.45" tags={["macOS"]}>
+## New features
+
+### Settings in the menu bar menu
+
+The menu bar menu adds a **Settings…** item with the standard <kbd>⌘</kbd> <kbd>,</kbd> shortcut. Choosing it opens the settings window and brings Open Recorder to the front, so you no longer need to open the main window first.
+
+## Bug fixes
+
+### No more duplicate area selection overlays
+
+Starting an area selection while a selection overlay is already open no longer creates a second overlay. Open Recorder now refocuses the active overlay instead, so you always have a single selection to drag. See [Capture sources](/recording/capture-sources) for how area selection works.
+</Update>
+
 <Update label="September 1, 2026" description="v0.2.44" tags={["macOS"]}>
 ## Bug fixes
 
