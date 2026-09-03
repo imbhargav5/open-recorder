@@ -229,7 +229,9 @@ final class AppModel: ObservableObject {
     @Published private(set) var isTerminationPending = false
     @Published private(set) var activeRecordingStartDate: Date? = nil
     @Published private(set) var shortcutPreferences: ShortcutPreferences = .defaultPreferences
+    @Published private(set) var isShortcutRecorderActive = false
     @Published private(set) var isDragRecordingPending = false
+    private var shortcutRecorderActivationCount = 0
     private var displayFlashWindows: [NSWindow] = []
     private let countdownOverlayController: RecordingCountdownOverlayController
     private let captureUIHideDelayNanoseconds: UInt64
@@ -559,6 +561,9 @@ final class AppModel: ObservableObject {
                 self?.recordingPreferences.setShortcuts(shortcuts)
                 self?.shortcutPreferences = shortcuts
                 self?.objectWillChange.send()
+            },
+            setShortcutRecorderActive: { [weak self] isActive in
+                self?.setShortcutRecorderActive(isActive)
             },
             openFolder: { [weak self] path in
                 self?.openPath(path)
@@ -1305,6 +1310,17 @@ final class AppModel: ObservableObject {
         self.shortcutPreferences = shortcuts
         self.recordingPreferences.setShortcuts(shortcuts)
         self.appShell.settings.send(.shortcutsSynced(shortcuts))
+    }
+
+    func setShortcutRecorderActive(_ isActive: Bool) {
+        if isActive {
+            shortcutRecorderActivationCount += 1
+        } else {
+            shortcutRecorderActivationCount = max(0, shortcutRecorderActivationCount - 1)
+        }
+        let nextIsActive = shortcutRecorderActivationCount > 0
+        guard isShortcutRecorderActive != nextIsActive else { return }
+        isShortcutRecorderActive = nextIsActive
     }
 
     func requestWindow(_ action: NativeWindowCommandAction, editorSession: EditorSession? = nil) {

@@ -786,6 +786,7 @@ final class SettingsDriver {
     @ObservationIgnored private var persistAutoZoomPreference: (Bool) -> Void = { _ in }
     @ObservationIgnored private var persistAutoZoomAnimationPreset: (TimelineZoomAnimationPreset) -> Void = { _ in }
     @ObservationIgnored private var persistShortcuts: (ShortcutPreferences) -> Void = { _ in }
+    @ObservationIgnored private var setShortcutRecorderActive: (Bool) -> Void = { _ in }
     @ObservationIgnored private var openFolder: (String) -> Void = { _ in }
     @ObservationIgnored private var openScreenRecordingSettings: () -> Void = {}
     @ObservationIgnored private var openAccessibilitySettings: () -> Void = {}
@@ -809,6 +810,7 @@ final class SettingsDriver {
         persistAutoZoomPreference: @escaping (Bool) -> Void = { _ in },
         persistAutoZoomAnimationPreset: @escaping (TimelineZoomAnimationPreset) -> Void = { _ in },
         persistShortcuts: @escaping (ShortcutPreferences) -> Void = { _ in },
+        setShortcutRecorderActive: @escaping (Bool) -> Void = { _ in },
         openFolder: @escaping (String) -> Void = { _ in },
         openScreenRecordingSettings: @escaping () -> Void = {},
         openAccessibilitySettings: @escaping () -> Void = {},
@@ -819,6 +821,7 @@ final class SettingsDriver {
         self.persistAutoZoomPreference = persistAutoZoomPreference
         self.persistAutoZoomAnimationPreset = persistAutoZoomAnimationPreset
         self.persistShortcuts = persistShortcuts
+        self.setShortcutRecorderActive = setShortcutRecorderActive
         self.openFolder = openFolder
         self.openScreenRecordingSettings = openScreenRecordingSettings
         self.openAccessibilitySettings = openAccessibilitySettings
@@ -855,6 +858,10 @@ final class SettingsDriver {
             get: { self.state.shortcuts.item(for: action) },
             set: { self.send(.shortcutItemChanged($0)) }
         )
+    }
+
+    func shortcutRecorderActive(_ isActive: Bool) {
+        setShortcutRecorderActive(isActive)
     }
 
     private func perform(_ effects: [SettingsEffect]) {
