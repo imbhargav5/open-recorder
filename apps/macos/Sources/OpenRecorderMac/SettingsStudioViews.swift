@@ -4,123 +4,77 @@ import CoreGraphics
 import SwiftUI
 import UniformTypeIdentifiers
 
+enum SettingsWindowMetrics {
+    static let width: CGFloat = 840
+    static let height: CGFloat = 560
+    static let contentMaxWidth: CGFloat = 760
+}
+
+enum SettingsTab: String, CaseIterable, Identifiable {
+    case general
+    case shortcuts
+    case system
+
+    static let defaultSelection: Self = .general
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .general: "General"
+        case .shortcuts: "Shortcuts"
+        case .system: "System"
+        }
+    }
+
+    var symbolName: String {
+        switch self {
+        case .general: "gearshape"
+        case .shortcuts: "keyboard"
+        case .system: "desktopcomputer"
+        }
+    }
+}
+
 struct SettingsStudioView: View {
+    @State private var selectedTab = SettingsTab.defaultSelection
+
     var driver: SettingsDriver
     var serviceHealth: HealthPayload?
     var paths: AppPaths?
     var serviceState: SettingsServicePresentationState? = nil
 
     var body: some View {
-        ScrollView {
+        VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 18) {
                 Text("Settings")
                     .font(.system(size: 26, weight: .semibold))
                     .foregroundStyle(Theme.fg)
 
-                SettingsSection(title: "Global Shortcuts") {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Use Open Recorder's quick shortcuts from any application to capture screens and recordings.")
-                            .font(.system(size: 12))
-                            .foregroundStyle(Theme.fgMuted)
-                            .padding(.bottom, 4)
-
-                        SettingsShortcutRow(
-                            action: .deviceScreenshot,
-                            item: driver.shortcutBinding(for: .deviceScreenshot)
-                        )
-                        Divider().overlay(Color.white.opacity(0.06))
-                        SettingsShortcutRow(
-                            action: .dragScreenshot,
-                            item: driver.shortcutBinding(for: .dragScreenshot)
-                        )
-                        Divider().overlay(Color.white.opacity(0.06))
-                        SettingsShortcutRow(
-                            action: .deviceScreenRecord,
-                            item: driver.shortcutBinding(for: .deviceScreenRecord)
-                        )
-                        Divider().overlay(Color.white.opacity(0.06))
-                        SettingsShortcutRow(
-                            action: .dragScreenRecord,
-                            item: driver.shortcutBinding(for: .dragScreenRecord)
-                        )
-                        Divider().overlay(Color.white.opacity(0.06))
-                        SettingsShortcutRow(
-                            action: .toggleRecording,
-                            item: driver.shortcutBinding(for: .toggleRecording)
-                        )
-
-                        HStack {
-                            Spacer()
-                            Button("Restore Default Shortcuts") {
-                                driver.send(.shortcutsResetToDefaults)
-                            }
-                            .buttonStyle(.borderless)
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(Theme.accent)
-                        }
-                        .padding(.top, 4)
-                    }
-                }
-
-                SettingsSection(title: "Recording") {
-                    SettingsToggleRow(title: "Create zooms automatically", isOn: driver.autoZoomBinding)
-                    SettingsZoomPresetPicker(selection: driver.autoZoomAnimationPresetBinding)
-                }
-
-                SettingsSection(title: "Folders") {
-                    FolderRow(title: "Recordings", path: paths?.recordingsDir) {
-                        driver.send(.folderOpenRequested($0))
-                    }
-                    FolderRow(title: "Screenshots", path: paths?.screenshotsDir) {
-                        driver.send(.folderOpenRequested($0))
-                    }
-                    FolderRow(title: "Projects", path: paths?.projectsDir) {
-                        driver.send(.folderOpenRequested($0))
-                    }
-                }
-
-                SettingsSection(title: "Permissions") {
-                    VStack(alignment: .leading, spacing: 10) {
-                        ControlGroup {
-                            Button {
-                                driver.send(.screenRecordingSettingsRequested)
-                            } label: {
-                                Label("Screen Recording", systemImage: "lock.shield")
-                            }
-
-                            Button {
-                                driver.send(.accessibilitySettingsRequested)
-                            } label: {
-                                Label("Accessibility", systemImage: "accessibility")
-                            }
-                        }
-                        .controlSize(.regular)
-
-                        Button {
-                            driver.send(.onboardingReviewRequested)
-                        } label: {
-                            Label("Review Permissions", systemImage: "checklist")
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.regular)
-                    }
-                }
-
-                SettingsSection(title: "Service") {
-                    SettingsServiceStatusRow(state: resolvedServiceState)
-                    SettingsRow(title: "Platform", value: serviceHealth?.platform ?? "macOS")
-                    Button {
-                        driver.send(.serviceRefreshRequested)
-                    } label: {
-                        Label(resolvedServiceState.isChecking ? "Checking Service…" : "Check Service", systemImage: "bolt.horizontal")
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.regular)
-                    .disabled(resolvedServiceState.isChecking)
-                }
+                SettingsTabBar(selection: $selectedTab)
             }
-            .frame(maxWidth: 760, alignment: .leading)
-            .padding(32)
+            .frame(maxWidth: SettingsWindowMetrics.contentMaxWidth, alignment: .leading)
+            .padding(.horizontal, 32)
+            .padding(.top, 28)
+            .padding(.bottom, 20)
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Divider()
+                .overlay(Theme.borderStrong.opacity(0.7))
+
+            ScrollView {
+                SettingsTabContent(
+                    selection: selectedTab,
+                    driver: driver,
+                    serviceHealth: serviceHealth,
+                    paths: paths,
+                    serviceState: resolvedServiceState
+                )
+                .frame(maxWidth: SettingsWindowMetrics.contentMaxWidth, alignment: .leading)
+                .padding(.horizontal, 32)
+                .padding(.vertical, 24)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.appBgMuted)
@@ -133,6 +87,174 @@ struct SettingsStudioView: View {
             isRefreshing: driver.state.isRefreshingService,
             statusMessage: driver.state.statusMessage
         )
+    }
+}
+
+private struct SettingsTabBar: View {
+    @Binding var selection: SettingsTab
+
+    var body: some View {
+        Picker("Settings category", selection: $selection) {
+            ForEach(SettingsTab.allCases) { tab in
+                Label(tab.title, systemImage: tab.symbolName)
+                    .tag(tab)
+            }
+        }
+        .labelsHidden()
+        .pickerStyle(.segmented)
+        .frame(maxWidth: 480, alignment: .leading)
+        .accessibilityLabel("Settings category")
+    }
+}
+
+private struct SettingsTabContent: View {
+    var selection: SettingsTab
+    var driver: SettingsDriver
+    var serviceHealth: HealthPayload?
+    var paths: AppPaths?
+    var serviceState: SettingsServicePresentationState
+
+    @ViewBuilder
+    var body: some View {
+        switch selection {
+        case .general:
+            SettingsGeneralPane(driver: driver, paths: paths)
+        case .shortcuts:
+            SettingsShortcutsPane(driver: driver)
+        case .system:
+            SettingsSystemPane(
+                driver: driver,
+                serviceHealth: serviceHealth,
+                serviceState: serviceState
+            )
+        }
+    }
+}
+
+private struct SettingsGeneralPane: View {
+    var driver: SettingsDriver
+    var paths: AppPaths?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            SettingsSection(title: "Recording") {
+                SettingsToggleRow(title: "Create zooms automatically", isOn: driver.autoZoomBinding)
+                SettingsZoomPresetPicker(selection: driver.autoZoomAnimationPresetBinding)
+            }
+
+            SettingsSection(title: "Folders") {
+                FolderRow(title: "Recordings", path: paths?.recordingsDir) {
+                    driver.send(.folderOpenRequested($0))
+                }
+                FolderRow(title: "Screenshots", path: paths?.screenshotsDir) {
+                    driver.send(.folderOpenRequested($0))
+                }
+                FolderRow(title: "Projects", path: paths?.projectsDir) {
+                    driver.send(.folderOpenRequested($0))
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct SettingsShortcutsPane: View {
+    var driver: SettingsDriver
+
+    var body: some View {
+        SettingsSection(title: "Global Shortcuts") {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Use Open Recorder's quick shortcuts from any application to capture screens and recordings.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.fgMuted)
+                    .padding(.bottom, 4)
+
+                SettingsShortcutRow(
+                    action: .deviceScreenshot,
+                    item: driver.shortcutBinding(for: .deviceScreenshot)
+                )
+                Divider().overlay(Color.white.opacity(0.06))
+                SettingsShortcutRow(
+                    action: .dragScreenshot,
+                    item: driver.shortcutBinding(for: .dragScreenshot)
+                )
+                Divider().overlay(Color.white.opacity(0.06))
+                SettingsShortcutRow(
+                    action: .deviceScreenRecord,
+                    item: driver.shortcutBinding(for: .deviceScreenRecord)
+                )
+                Divider().overlay(Color.white.opacity(0.06))
+                SettingsShortcutRow(
+                    action: .dragScreenRecord,
+                    item: driver.shortcutBinding(for: .dragScreenRecord)
+                )
+                Divider().overlay(Color.white.opacity(0.06))
+                SettingsShortcutRow(
+                    action: .toggleRecording,
+                    item: driver.shortcutBinding(for: .toggleRecording)
+                )
+
+                Button("Restore Default Shortcuts") {
+                    driver.send(.shortcutsResetToDefaults)
+                }
+                .buttonStyle(.borderless)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(Theme.accent)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .padding(.top, 4)
+            }
+        }
+    }
+}
+
+private struct SettingsSystemPane: View {
+    var driver: SettingsDriver
+    var serviceHealth: HealthPayload?
+    var serviceState: SettingsServicePresentationState
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            SettingsSection(title: "Permissions") {
+                VStack(alignment: .leading, spacing: 10) {
+                    ControlGroup {
+                        Button {
+                            driver.send(.screenRecordingSettingsRequested)
+                        } label: {
+                            Label("Screen Recording", systemImage: "lock.shield")
+                        }
+
+                        Button {
+                            driver.send(.accessibilitySettingsRequested)
+                        } label: {
+                            Label("Accessibility", systemImage: "accessibility")
+                        }
+                    }
+                    .controlSize(.regular)
+
+                    Button {
+                        driver.send(.onboardingReviewRequested)
+                    } label: {
+                        Label("Review Permissions", systemImage: "checklist")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.regular)
+                }
+            }
+
+            SettingsSection(title: "Service") {
+                SettingsServiceStatusRow(state: serviceState)
+                SettingsRow(title: "Platform", value: serviceHealth?.platform ?? "macOS")
+                Button {
+                    driver.send(.serviceRefreshRequested)
+                } label: {
+                    Label(serviceState.isChecking ? "Checking Service…" : "Check Service", systemImage: "bolt.horizontal")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.regular)
+                .disabled(serviceState.isChecking)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -202,16 +324,24 @@ private struct SettingsZoomPresetPicker: View {
     @Binding var selection: TimelineZoomAnimationPreset
 
     var body: some View {
-        Picker("Auto zoom style", selection: $selection) {
-            ForEach(TimelineZoomAnimationPreset.allCases) { preset in
-                Text(preset.title)
-                    .tag(preset)
+        LabeledContent {
+            Picker("Auto zoom style", selection: $selection) {
+                ForEach(TimelineZoomAnimationPreset.allCases) { preset in
+                    Text(preset.title)
+                        .tag(preset)
+                }
             }
+            .labelsHidden()
+            .pickerStyle(.menu)
+            .fixedSize()
+        } label: {
+            Text("Auto zoom style")
+                .foregroundStyle(Theme.fgMuted)
         }
-        .pickerStyle(.menu)
-        .foregroundStyle(Theme.fgMuted)
+        .font(.system(size: 13))
         .accessibilityHint("Controls the timing and motion used for automatically created zooms")
         .padding(10)
+        .frame(maxWidth: .infinity)
         .background(Theme.overlay, in: RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous)
@@ -232,6 +362,7 @@ struct SettingsSection<Content: View>: View {
             content
         }
         .padding(Theme.space5)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(Theme.surface.opacity(0.78), in: RoundedRectangle(cornerRadius: Theme.radiusLg, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: Theme.radiusLg, style: .continuous)
@@ -327,10 +458,16 @@ struct SettingsToggleRow: View {
     @Binding var isOn: Bool
 
     var body: some View {
-        Toggle(title, isOn: $isOn)
-            .toggleStyle(.switch)
-            .tint(Theme.accent)
-            .foregroundStyle(Theme.fgMuted)
-            .font(.system(size: 13))
+        LabeledContent {
+            Toggle(title, isOn: $isOn)
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .tint(Theme.accent)
+        } label: {
+            Text(title)
+        }
+        .frame(maxWidth: .infinity)
+        .foregroundStyle(Theme.fgMuted)
+        .font(.system(size: 13))
     }
 }
