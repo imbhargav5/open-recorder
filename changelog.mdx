@@ -8,7 +8,9 @@ description: "Release notes for Open Recorder on macOS. Track new screen recordi
 
 ### Record any key combination as a global shortcut
 
-Global shortcuts are no longer limited to preset combinations. Click a shortcut field on the **Shortcuts** tab in **Settings**, then press the keys you want. The field previews modifiers as you hold them, saves the combination when you release the keys, and <kbd>Esc</kbd> cancels recording. Open Recorder validates the combination and shows an error under the field if it conflicts with another action, a menu command, or a shortcut reserved by macOS. See [Keyboard shortcuts](/reference/keyboard-shortcuts) for the validation rules.
+Global shortcuts are no longer limited to preset combinations. Click a shortcut field on the **Shortcuts** tab in **Settings**, then press the keys you want. The field previews modifiers as you hold them, saves the combination when you release the keys, and <kbd>Esc</kbd> cancels recording. Open Recorder validates the combination and shows an error under the field if it conflicts with another action, a menu command, or a shortcut reserved by macOS or registered by another application.
+
+Letter, number, and symbol keys require <kbd>⌘</kbd>, <kbd>⌃</kbd>, or <kbd>⌥</kbd>, while function keys such as <kbd>F5</kbd> can be assigned on their own. **Restore Default Shortcuts** resets every action to its default combination. See [Keyboard shortcuts](/reference/keyboard-shortcuts) for the defaults and full validation rules.
 </Update>
 
 <Update label="September 3, 2026" description="v0.2.46" tags={["macOS"]}>
@@ -17,6 +19,8 @@ Global shortcuts are no longer limited to preset combinations. Click a shortcut 
 ### Tabbed Settings window
 
 Settings is now organized into three tabs in a wider window: **General** for recording and folder options, **Shortcuts** for the global capture shortcuts, and **System** for macOS permissions. See [Keyboard shortcuts](/reference/keyboard-shortcuts) for what lives on the Shortcuts tab.
+
+Previously, all settings appeared in a single scrolling list.
 </Update>
 
 <Update label="September 2, 2026" description="v0.2.45" tags={["macOS"]}>
