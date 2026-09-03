@@ -1,6 +1,6 @@
 {
-  "tagName": "v0.2.45",
-  "releaseName": "Open Recorder v0.2.45",
-  "releaseNotes": "## Commits since v0.2.44\n\n- eb309c5 Merge pull request #1072 from imbhargav5/codex/fix-duplicate-area-selection\n- 238e728 fix(macos): prevent duplicate area selection overlay\n- 66fcf5b Merge pull request #1070 from imbhargav5/codex/add-settings-menu-item\n- 97adcd8 feat(macos): add settings to menu bar menu\n- 95cba01 Merge pull request #1068 from imbhargav5/mintlify/6c4108fe\n- ec2d1f5 docs: add v0.2.44 changelog and Escape-cancels-countdown behavior\n- 5f19fb3 Update appcast for v0.2.44",
+  "tagName": "v0.2.46",
+  "releaseName": "Open Recorder v0.2.46",
+  "releaseNotes": "## Commits since v0.2.45\n\n- 4ff6060 Merge pull request #1076 from imbhargav5/codex/wider-tabbed-settings-dialog\n- c1253a6 feat(macos): add tabbed settings layout\n- a75b03b Update appcast for v0.2.45",
   "makeLatest": true
 }
