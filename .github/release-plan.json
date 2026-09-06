@@ -1,6 +1,6 @@
 {
-  "tagName": "v0.2.47",
-  "releaseName": "Open Recorder v0.2.47",
-  "releaseNotes": "## Commits since v0.2.46\n\n- de8bafb Merge pull request #1080 from imbhargav5/codex/native-shortcut-recorder\n- 7729870 feat(macos): add native shortcut recorder\n- 12dcd2d Update appcast for v0.2.46",
+  "tagName": "v0.2.48",
+  "releaseName": "Open Recorder v0.2.48",
+  "releaseNotes": "## Commits since v0.2.47\n\n- 8849692 feat(macos): add adaptive automatic zoom with protected camera paths\n- ab83176 Merge pull request #1089 from imbhargav5/codex/redesign-update-changelog\n- 98c1923 fix: render readable update changelogs in Sparkle\n- cb94563 Merge pull request #1088 from imbhargav5/codex/zoom-delete-all\n- 2ce5c5c feat(macos): add delete-all menu to zoom inspector\n- 144fe5f Merge pull request #1085 from imbhargav5/mintlify/e5597b47\n- 378275c docs: add changelog entries for v0.2.45–v0.2.47\n- 0b93322 docs: add changelog entries for v0.2.45–v0.2.47 (#1086)\n- 099c145 Merge pull request #1083 from imbhargav5/mintlify/d63936d7\n- 2e26e83 docs: update shortcut customization and Settings navigation\n- c57a645 Update appcast for v0.2.47",
   "makeLatest": true
 }
