@@ -86,6 +86,11 @@ struct TimelineSelectionSidebar: View {
                 ) {
                     edits.deleteSelection(duration: playback.duration)
                 }
+            } else if edits.selectedKind == .zoom {
+                TimelineZoomDeleteButton(
+                    deleteSelected: { edits.deleteSelection(duration: playback.duration) },
+                    deleteAll: { edits.deleteAllZooms() }
+                )
             } else if edits.selectedKind != nil {
                 TimelineSelectionActionButton(title: "Delete", symbolName: "trash", isDestructive: true) {
                     edits.deleteSelection(duration: playback.duration)
@@ -430,6 +435,45 @@ private struct TimelineSelectionInfoRow: View {
         .overlay {
             Rectangle()
                 .stroke(Theme.borderSubtle, lineWidth: 1)
+        }
+    }
+}
+
+private struct TimelineZoomDeleteButton: View {
+    var deleteSelected: () -> Void
+    var deleteAll: () -> Void
+
+    var body: some View {
+        HStack(spacing: 0) {
+            StudioButton(help: "Delete selected zoom", action: deleteSelected) {
+                Label("Delete", systemImage: "trash")
+                    .frame(maxWidth: .infinity)
+                    .frame(height: Theme.btnHeightSm)
+            }
+
+            Rectangle()
+                .fill(Color.red.opacity(0.30))
+                .frame(width: 1, height: Theme.btnHeightSm)
+                .accessibilityHidden(true)
+
+            StudioMenu(help: "Zoom delete options") {
+                Button("Delete All Zoom Levels", role: .destructive, action: deleteAll)
+            } label: {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 10, weight: .semibold))
+                    .frame(width: Theme.btnHeightSm, height: Theme.btnHeightSm)
+            }
+            .fixedSize()
+            .accessibilityLabel("Zoom delete options")
+        }
+        .font(.system(size: 11, weight: .medium))
+        .foregroundStyle(Color.red.opacity(0.95))
+        .background(Color.red.opacity(0.10))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous)
+                .stroke(Color.red.opacity(0.30), lineWidth: 1)
+                .allowsHitTesting(false)
         }
     }
 }
