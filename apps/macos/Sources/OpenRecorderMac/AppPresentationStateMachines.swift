@@ -673,6 +673,7 @@ final class OnboardingDriver {
 
 struct SettingsMachineState: Equatable {
     var createZoomsAutomatically: Bool
+    var autoZoomMaximumDepth = 2.0
     var autoZoomAnimationPreset: TimelineZoomAnimationPreset = .balanced
     var shortcuts: ShortcutPreferences = .defaultPreferences
     var statusMessage = ""
@@ -686,6 +687,8 @@ enum SettingsEvent: Equatable {
     case serviceRefreshFailed(String)
     case autoZoomPreferenceSynced(Bool)
     case autoZoomPreferenceChanged(Bool)
+    case autoZoomMaximumDepthSynced(Double)
+    case autoZoomMaximumDepthChanged(Double)
     case autoZoomAnimationPresetSynced(TimelineZoomAnimationPreset)
     case autoZoomAnimationPresetChanged(TimelineZoomAnimationPreset)
     case shortcutsSynced(ShortcutPreferences)
@@ -700,6 +703,7 @@ enum SettingsEvent: Equatable {
 enum SettingsEffect: Equatable {
     case refreshService
     case persistAutoZoomPreference(Bool)
+    case persistAutoZoomMaximumDepth(Double)
     case persistAutoZoomAnimationPreset(TimelineZoomAnimationPreset)
     case persistShortcuts(ShortcutPreferences)
     case openFolder(String)
@@ -740,6 +744,12 @@ extension SettingsMachineState {
             createZoomsAutomatically = value
             return [.persistAutoZoomPreference(value)]
 
+        case .autoZoomMaximumDepthSynced(let value):
+            autoZoomMaximumDepth = AutoZoomGenerator.maximumDepth(value)
+            return []
+        case .autoZoomMaximumDepthChanged(let value):
+            autoZoomMaximumDepth = AutoZoomGenerator.maximumDepth(value)
+            return [.persistAutoZoomMaximumDepth(autoZoomMaximumDepth)]
         case .autoZoomAnimationPresetSynced(let preset):
             autoZoomAnimationPreset = preset
             return []
@@ -784,6 +794,7 @@ final class SettingsDriver {
 
     @ObservationIgnored private var refreshService: () -> Void = {}
     @ObservationIgnored private var persistAutoZoomPreference: (Bool) -> Void = { _ in }
+    @ObservationIgnored private var persistAutoZoomMaximumDepth: (Double) -> Void = { _ in }
     @ObservationIgnored private var persistAutoZoomAnimationPreset: (TimelineZoomAnimationPreset) -> Void = { _ in }
     @ObservationIgnored private var persistShortcuts: (ShortcutPreferences) -> Void = { _ in }
     @ObservationIgnored private var setShortcutRecorderActive: (Bool) -> Void = { _ in }
@@ -808,6 +819,7 @@ final class SettingsDriver {
     func configure(
         refreshService: @escaping () -> Void = {},
         persistAutoZoomPreference: @escaping (Bool) -> Void = { _ in },
+        persistAutoZoomMaximumDepth: @escaping (Double) -> Void = { _ in },
         persistAutoZoomAnimationPreset: @escaping (TimelineZoomAnimationPreset) -> Void = { _ in },
         persistShortcuts: @escaping (ShortcutPreferences) -> Void = { _ in },
         setShortcutRecorderActive: @escaping (Bool) -> Void = { _ in },
@@ -819,6 +831,7 @@ final class SettingsDriver {
     ) {
         self.refreshService = refreshService
         self.persistAutoZoomPreference = persistAutoZoomPreference
+        self.persistAutoZoomMaximumDepth = persistAutoZoomMaximumDepth
         self.persistAutoZoomAnimationPreset = persistAutoZoomAnimationPreset
         self.persistShortcuts = persistShortcuts
         self.setShortcutRecorderActive = setShortcutRecorderActive
@@ -846,6 +859,10 @@ final class SettingsDriver {
         )
     }
 
+    var autoZoomMaximumDepthBinding: Binding<Double> {
+        Binding(get: { self.state.autoZoomMaximumDepth }, set: { self.send(.autoZoomMaximumDepthChanged($0)) })
+    }
+
     var autoZoomAnimationPresetBinding: Binding<TimelineZoomAnimationPreset> {
         Binding(
             get: { self.state.autoZoomAnimationPreset },
@@ -871,6 +888,8 @@ final class SettingsDriver {
                 refreshService()
             case .persistAutoZoomPreference(let value):
                 persistAutoZoomPreference(value)
+            case .persistAutoZoomMaximumDepth(let value):
+                persistAutoZoomMaximumDepth(value)
             case .persistAutoZoomAnimationPreset(let preset):
                 persistAutoZoomAnimationPreset(preset)
             case .persistShortcuts(let shortcuts):

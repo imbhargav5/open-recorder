@@ -1,6 +1,7 @@
 import AVFoundation
 import AppKit
 import Foundation
+import OSLog
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -554,6 +555,9 @@ final class AppModel: ObservableObject {
             persistAutoZoomPreference: { [weak self] value in
                 self?.recordingPreferences.setCreatesZoomsAutomatically(value)
             },
+            persistAutoZoomMaximumDepth: { [weak self] value in
+                self?.recordingPreferences.setAutoZoomMaximumDepth(value)
+            },
             persistAutoZoomAnimationPreset: { [weak self] preset in
                 self?.recordingPreferences.setAutoZoomAnimationPreset(preset)
             },
@@ -583,6 +587,7 @@ final class AppModel: ObservableObject {
         )
         self.shortcutPreferences = preferences.shortcuts
         appShell.settings.send(.autoZoomPreferenceSynced(preferences.createsZoomsAutomatically))
+        appShell.settings.send(.autoZoomMaximumDepthSynced(preferences.autoZoomMaximumDepth))
         appShell.settings.send(.autoZoomAnimationPresetSynced(preferences.autoZoomAnimationPreset))
         appShell.settings.send(.shortcutsSynced(preferences.shortcuts))
         refreshOnboardingPermissionStates()
@@ -1639,9 +1644,13 @@ final class AppModel: ObservableObject {
     }
 
     private func runRecordingStopFlow(source: CaptureSource?) async {
+        let performanceLog = Logger(subsystem: "dev.openrecorder.app", category: "RecordingLatency")
+        let stopStart = ProcessInfo.processInfo.systemUptime
+        let editorSessionAtStop = appShell.state.lastEditorSession?.id
         do {
             let capturedFacecamSettings = resolveFacecamSettingsForRecording(source: source)
             let outputURL = try await stopRecordingCapture()
+            let captureStopped = ProcessInfo.processInfo.systemUptime
             CaptureAudioFeedback.shared.stopMonitoring()
             var stoppedFacecamURL: URL?
             do {
@@ -1650,8 +1659,11 @@ final class AppModel: ObservableObject {
                 facecamLog.error("stopFacecam threw: \(error.localizedDescription, privacy: .public)")
             }
             let cursorTelemetryURL = cursorTelemetryRecorder.stop(videoURL: outputURL)
-            currentVideoURL = outputURL
-            currentScreenshotURL = nil
+            let telemetrySaved = ProcessInfo.processInfo.systemUptime
+            if appShell.state.lastEditorSession?.id == editorSessionAtStop {
+                currentVideoURL = outputURL
+                currentScreenshotURL = nil
+            }
 
             if FileManager.default.fileExists(atPath: outputURL.path) {
                 let totalDuration = await videoDuration(for: outputURL)
@@ -1666,6 +1678,7 @@ final class AppModel: ObservableObject {
                     facecamSettings: capturedFacecamSettings,
                     cameraClips: cameraClips
                 )
+                let analysisFinished = ProcessInfo.processInfo.systemUptime
                 let sourceName = source?.name ?? selectedSource?.name
                 let recordingSession = RecordingSessionBuilder.build(
                     screenVideoURL: outputURL,
@@ -1683,19 +1696,27 @@ final class AppModel: ObservableObject {
                     timelineEdits: timelineEdits,
                     recordingSession: recordingSession
                 )
+                let registered = ProcessInfo.processInfo.systemUptime
                 let title = summary.summary?.title ?? outputURL.deletingPathExtension().lastPathComponent
-                showEditor(for: EditorSession(
-                    kind: .video,
-                    url: outputURL,
-                    title: title,
-                    projectPath: summary.summary?.path,
-                    recordingSession: recordingSession,
-                    timelineEditSnapshot: timelineEdits
-                ))
-                if case .failed(let message) = summary {
-                    statusMessage = "Saved \(title), but the editable project could not be created: \(message)"
-                } else {
-                    statusMessage = "Saved \(title)"
+                // Saving must finish, but a late analysis must not replace a project opened meanwhile.
+                if appShell.state.lastEditorSession?.id == editorSessionAtStop {
+                    showEditor(for: EditorSession(
+                        kind: .video,
+                        url: outputURL,
+                        title: title,
+                        projectPath: summary.summary?.path,
+                        recordingSession: recordingSession,
+                        timelineEditSnapshot: timelineEdits
+                    ))
+                    let presented = ProcessInfo.processInfo.systemUptime
+                    performanceLog.notice("Stop-to-editor dispatch: \(presented - stopStart)s; capture stop: \(captureStopped - stopStart)s; facecam/telemetry: \(telemetrySaved - captureStopped)s; duration/zoom: \(analysisFinished - telemetrySaved)s; registration: \(registered - analysisFinished)s; presentation dispatch: \(presented - registered)s")
+                    if case .failed(let message) = summary {
+                        statusMessage = "Saved \(title), but the editable project could not be created: \(message)"
+                    } else {
+                        statusMessage = "Saved \(title)"
+                    }
+                } else if case .stoppingRecording = captureState.phase {
+                    dispatch(.recordingStopped(message: nil))
                 }
             } else {
                 dispatch(.recordingStopped(message: "Recording stopped before a file was written."))
@@ -2363,12 +2384,11 @@ final class AppModel: ObservableObject {
         let duration = await videoDuration(for: videoURL)
         var zooms: [TimelineZoomRegion] = []
         if createZoomsAutomatically, let cursorTelemetryURL {
-            zooms = AutoZoomGenerator.generate(
-                from: cursorTelemetryURL,
-                duration: duration,
-                preset: autoZoomAnimationPreset,
-                cameraSettings: facecamSettings
-            )
+            let preset = autoZoomAnimationPreset
+            let maximumZoom = appShell.settings.state.autoZoomMaximumDepth
+            zooms = await AutoZoomGenerationService.generate(.init(telemetryURL: cursorTelemetryURL,
+                duration: duration, preset: preset, cameraSettings: facecamSettings,
+                maximumZoom: maximumZoom, cameraClips: cameraClips))
         }
         return TimelineEditSnapshot(
             zoomRegions: zooms,

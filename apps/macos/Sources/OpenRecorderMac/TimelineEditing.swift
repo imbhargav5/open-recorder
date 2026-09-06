@@ -95,6 +95,8 @@ struct TimelineZoomRegion: Identifiable, Codable, Equatable, Hashable {
     var mode: TimelineZoomMode = .manual
     var animationPreset: TimelineZoomAnimationPreset = .balanced
     var sourceClickTimestamp: Int?
+    var cameraPath: AutoZoomCameraPath?
+    var isUserEdited = false
 
     init(
         id: TimelineRegionID = TimelineRegionID(),
@@ -104,7 +106,9 @@ struct TimelineZoomRegion: Identifiable, Codable, Equatable, Hashable {
         focusY: Double = 0.5,
         mode: TimelineZoomMode = .manual,
         animationPreset: TimelineZoomAnimationPreset = .balanced,
-        sourceClickTimestamp: Int? = nil
+        sourceClickTimestamp: Int? = nil,
+        cameraPath: AutoZoomCameraPath? = nil,
+        isUserEdited: Bool = false
     ) {
         self.id = id
         self.span = span
@@ -114,6 +118,8 @@ struct TimelineZoomRegion: Identifiable, Codable, Equatable, Hashable {
         self.mode = mode
         self.animationPreset = animationPreset
         self.sourceClickTimestamp = sourceClickTimestamp
+        self.cameraPath = cameraPath
+        self.isUserEdited = isUserEdited
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -125,6 +131,8 @@ struct TimelineZoomRegion: Identifiable, Codable, Equatable, Hashable {
         case mode
         case animationPreset
         case sourceClickTimestamp
+        case cameraPath
+        case isUserEdited
     }
 
     init(from decoder: Decoder) throws {
@@ -137,6 +145,8 @@ struct TimelineZoomRegion: Identifiable, Codable, Equatable, Hashable {
         mode = try container.decodeIfPresent(TimelineZoomMode.self, forKey: .mode) ?? .manual
         animationPreset = try container.decodeIfPresent(TimelineZoomAnimationPreset.self, forKey: .animationPreset) ?? .balanced
         sourceClickTimestamp = try container.decodeIfPresent(Int.self, forKey: .sourceClickTimestamp)
+        cameraPath = try? container.decodeIfPresent(AutoZoomCameraPath.self, forKey: .cameraPath)
+        isUserEdited = try container.decodeIfPresent(Bool.self, forKey: .isUserEdited) ?? false
     }
 }
 
@@ -296,11 +306,16 @@ struct TimelineEditSnapshot: Codable, Equatable, Hashable {
     }
 
     func activeZoom(at time: Double) -> TimelineZoomRegion? {
-        zoomRegions.sorted { $0.span.start < $1.span.start }.last { $0.span.contains(time) }
+        zoomRegions.reduce(nil) { current, zoom in
+            guard zoom.span.contains(time) else { return current }
+            guard let current else { return zoom }
+            return zoom.span.start >= current.span.start ? zoom : current
+        }
     }
 
     func activeZoomEffect(at time: Double, cursorTrack: CursorTelemetryTrack? = nil) -> TimelineZoomEffect? {
         guard let zoom = activeZoom(at: time) else { return nil }
+        if let effect = zoom.cameraPath?.effect(at: time) { return effect }
         let depth = TimelineZoomAnimator.animatedDepth(for: zoom, at: time)
         let focus = TimelineZoomFocusResolver.focus(
             for: zoom,
@@ -380,6 +395,8 @@ struct TimelineZoomEffect: Equatable {
     var depth: Double
     var focusX: Double
     var focusY: Double
+    var usesViewportCenter = false
+    var contextSize: CGSize?
 }
 
 enum TimelineZoomCanvasTransform {
@@ -394,6 +411,14 @@ enum TimelineZoomCanvasTransform {
             return .identity
         }
 
+        if effect.usesViewportCenter {
+            let half = 0.5 / depth
+            let x = min(max(CGFloat(effect.focusX), half), 1 - half)
+            let y = min(max(CGFloat(flipsY ? 1 - effect.focusY : effect.focusY), half), 1 - half)
+            return CGAffineTransform(a: depth, b: 0, c: 0, d: depth,
+                tx: rect.midX - (rect.minX + rect.width * x) * depth,
+                ty: rect.midY - (rect.minY + rect.height * y) * depth)
+        }
         let focus = CGPoint(
             x: rect.minX + rect.width * CGFloat(effect.focusX),
             y: rect.minY + rect.height * CGFloat(flipsY ? 1 - effect.focusY : effect.focusY)
@@ -410,20 +435,12 @@ enum TimelineZoomCanvasTransform {
         cursorTrack: CursorTelemetryTrack? = nil
     ) -> TimelineZoomEffect? {
         guard outputTime.isFinite else { return nil }
-        let active = edits.zoomRegions
-            .sorted { $0.span.start < $1.span.start }
-            .compactMap { zoom -> (TimelineZoomRegion, TimelineSpan)? in
-                guard let outputSpan = editPlan.outputSpans(forSourceSpan: zoom.span).last(where: { $0.contains(outputTime) }) else {
-                    return nil
-                }
-                return (zoom, outputSpan)
-            }
-            .last
-        guard let (zoom, outputSpan) = active else { return nil }
-
+        guard let sourceTime = editPlan.sourceTime(forOutputTime: outputTime),
+              let zoom = edits.activeZoom(at: sourceTime),
+              let outputSpan = editPlan.outputSpans(forSourceSpan: zoom.span).last(where: { $0.contains(outputTime) }) else { return nil }
+        if let effect = zoom.cameraPath?.effect(at: sourceTime) { return effect }
         let progress = TimelineZoomAnimator.animationProgress(for: outputSpan, preset: zoom.animationPreset, at: outputTime)
         let depth = 1 + (max(1, zoom.depth) - 1) * progress
-        let sourceTime = editPlan.sourceTime(forOutputTime: outputTime) ?? outputTime
         let focus = TimelineZoomFocusResolver.focus(
             for: zoom,
             at: sourceTime,
@@ -770,17 +787,21 @@ extension TimelineEditState {
     }
 
     private mutating func replaceAutoZooms(with generatedZooms: [TimelineZoomRegion]) {
-        snapshot.zoomRegions.removeAll { $0.mode == .auto }
-        snapshot.zoomRegions.append(contentsOf: generatedZooms.map { zoom in
+        snapshot.zoomRegions.removeAll { $0.mode == .auto && !$0.isUserEdited }
+        let protectedSpans = snapshot.zoomRegions.map(\.span)
+        let accepted = generatedZooms.filter { zoom in
+            !protectedSpans.contains { $0.start < zoom.span.end && zoom.span.start < $0.end }
+        }
+        snapshot.zoomRegions.append(contentsOf: accepted.map { zoom in
             var copy = zoom
             copy.mode = .auto
             return copy
         })
         snapshot.zoomRegions.sort { $0.span.start < $1.span.start }
         clearSelection()
-        statusMessage = generatedZooms.isEmpty
-            ? "No clicks found. Add a manual zoom with Z."
-            : "Generated \(generatedZooms.count) automatic \(generatedZooms.count == 1 ? "zoom" : "zooms")."
+        statusMessage = accepted.isEmpty
+            ? "No additional interactions to zoom. Manual and edited zooms were preserved."
+            : "Generated \(accepted.count) automatic \(accepted.count == 1 ? "zoom" : "zooms")."
     }
 
     private mutating func addClipSplit(at currentTime: Double, duration: Double) {
@@ -997,7 +1018,11 @@ extension TimelineEditState {
         let normalized = span.normalized(duration: duration)
         switch kind {
         case .zoom:
-            mutate(&snapshot.zoomRegions, id: id) { $0.span = normalized }
+            mutate(&snapshot.zoomRegions, id: id) {
+                $0.cameraPath?.retime(from: $0.span, to: normalized)
+                $0.span = normalized
+                $0.isUserEdited = true
+            }
         case .trim:
             mutate(&snapshot.trimRegions, id: id) { $0.span = normalized }
         case .annotation:
@@ -1050,13 +1075,13 @@ extension TimelineEditState {
         let values = TimelineZoomDepth.values
         mutate(&snapshot.zoomRegions, id: id) { region in
             let nearest = values.enumerated().min { abs($0.element - region.depth) < abs($1.element - region.depth) }?.offset ?? 1
-            region.depth = values[(nearest + 1) % values.count]
+            region.setEditedDepth(values[(nearest + 1) % values.count])
         }
     }
 
     private mutating func updateZoomDepth(id: TimelineRegionID, depth: Double) {
         mutate(&snapshot.zoomRegions, id: id) { region in
-            region.depth = min(max(depth, 1.0), 5.0)
+            region.setEditedDepth(depth)
         }
     }
 
@@ -1068,6 +1093,15 @@ extension TimelineEditState {
             if let focusY {
                 region.focusY = min(max(focusY, 0), 1)
             }
+            if var path = region.cameraPath {
+                path.automaticFraming = false
+                for index in path.keyframes.indices.dropFirst().dropLast() {
+                    path.keyframes[index].centerX = region.focusX
+                    path.keyframes[index].centerY = region.focusY
+                }
+                region.cameraPath = path
+            }
+            region.isUserEdited = true
             region.mode = .manual
             region.sourceClickTimestamp = nil
         }
@@ -1075,7 +1109,26 @@ extension TimelineEditState {
 
     private mutating func updateZoomAnimationPreset(id: TimelineRegionID, preset: TimelineZoomAnimationPreset) {
         mutate(&snapshot.zoomRegions, id: id) { region in
+            if var path = region.cameraPath, path.keyframes.count >= 3 {
+                let config = preset.configuration
+                let last = path.keyframes.count - 1
+                if last == 2 {
+                    let ratio = config.rampInSeconds / max(0.001, config.rampInSeconds + config.rampOutSeconds)
+                    path.keyframes[1].time = region.span.start + region.span.duration * min(max(ratio, 0.1), 0.9)
+                } else {
+                    let entranceEpsilon = min(0.000001, (path.keyframes[2].time - region.span.start) * 0.1)
+                    path.keyframes[1].time = max(region.span.start + entranceEpsilon,
+                        min(region.span.start + min(config.rampInSeconds, region.span.duration * 0.4),
+                            path.keyframes[2].time - entranceEpsilon))
+                    let exitEpsilon = min(0.000001, (region.span.end - path.keyframes[last - 2].time) * 0.1)
+                    path.keyframes[last - 1].time = min(region.span.end - exitEpsilon,
+                        max(path.keyframes[last - 2].time + exitEpsilon,
+                            region.span.end - min(config.rampOutSeconds, region.span.duration * 0.4)))
+                }
+                region.cameraPath = path
+            }
             region.animationPreset = preset
+            region.isUserEdited = true
         }
         statusMessage = "Set zoom style to \(preset.title)."
     }
@@ -1226,6 +1279,16 @@ extension TimelineEditState {
 final class TimelineEditDriver {
     var state = TimelineEditState.empty
     private var historyRevision = 0
+    private var generationID = UUID()
+    private(set) var isGeneratingAutoZooms = false
+    @ObservationIgnored private var generationTask: Task<Void, Never>?
+    @ObservationIgnored private let generationOperation: @Sendable (AutoZoomGenerationRequest) async -> [TimelineZoomRegion]
+
+    init(generationOperation: @escaping @Sendable (AutoZoomGenerationRequest) async -> [TimelineZoomRegion] = AutoZoomGenerationService.generate) {
+        self.generationOperation = generationOperation
+    }
+    var autoZoomCameraSettings: FacecamSettings?
+    var autoZoomMaximumDepth = AutoZoomGenerator.defaultDepth
     @ObservationIgnored private var history = EditorHistory<TimelineEditState>()
 
     var snapshot: TimelineEditSnapshot {
@@ -1336,6 +1399,7 @@ final class TimelineEditDriver {
     }
 
     func reset() {
+        cancelAutoZoomGeneration()
         send(.reset)
     }
 
@@ -1344,8 +1408,15 @@ final class TimelineEditDriver {
     }
 
     func applySnapshot(_ snapshot: TimelineEditSnapshot) {
+        cancelAutoZoomGeneration()
         send(.applySnapshot(snapshot), recordsUndo: false)
         resetHistory()
+    }
+
+    private func cancelAutoZoomGeneration() {
+        generationTask?.cancel()
+        generationID = UUID()
+        isGeneratingAutoZooms = false
     }
 
     func regenerateAutoZooms(from videoURL: URL?, duration: Double, preset: TimelineZoomAnimationPreset) {
@@ -1493,8 +1564,23 @@ final class TimelineEditDriver {
             switch effect {
             case .generateAutoZooms(let videoURL, let duration, let preset):
                 let telemetryURL = CursorTelemetryRecorder.telemetryURL(for: videoURL)
-                let generated = AutoZoomGenerator.generate(from: telemetryURL, duration: duration, preset: preset)
-                replaceAutoZooms(with: generated)
+                generationTask?.cancel()
+                let requestID = UUID()
+                generationID = requestID
+                let revision = historyRevision
+                let before = snapshot
+                let maximumZoom = autoZoomMaximumDepth
+                let cameraSettings = autoZoomCameraSettings
+                isGeneratingAutoZooms = true
+                let operation = generationOperation
+                generationTask = Task { [weak self] in
+                    let generated = await operation(.init(telemetryURL: telemetryURL, duration: duration,
+                        preset: preset, cameraSettings: cameraSettings, maximumZoom: maximumZoom, cameraClips: before.cameraClips))
+                    guard let self, self.generationID == requestID else { return }
+                    self.isGeneratingAutoZooms = false
+                    guard !Task.isCancelled, self.historyRevision == revision, self.snapshot == before else { return }
+                    self.replaceAutoZooms(with: generated)
+                }
             }
         }
     }
@@ -1567,9 +1653,12 @@ struct TimelineExportEditPlan: Equatable {
     }
 
     func sourceTime(forOutputTime outputTime: Double) -> Double? {
-        for segment in segments where outputTime >= segment.outputStart && outputTime <= segment.outputEnd {
+        for segment in segments where outputTime >= segment.outputStart && outputTime < segment.outputEnd {
             return segment.sourceStart + (outputTime - segment.outputStart) * max(0.05, segment.speed)
         }
+        // At a cut the incoming segment owns the timestamp. Only the final endpoint
+        // has no incoming segment and should resolve to the last source frame.
+        if let last = segments.last, outputTime == last.outputEnd { return last.sourceEnd }
         return nil
     }
 }

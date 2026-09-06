@@ -209,7 +209,7 @@ struct TimelineSelectionSidebar: View {
         case .zoom:
             if let zoom = edits.zoomRegions.first(where: { $0.id == id }) {
                 InspectorGroup(title: "Zoom", symbolName: "plus.magnifyingglass") {
-                    TimelineSelectionInfoRow(title: "Type", value: zoom.mode == .auto ? "Auto" : "Manual")
+                    TimelineSelectionInfoRow(title: "Type", value: zoom.isUserEdited ? "Edited · protected" : (zoom.mode == .auto ? "Auto" : "Manual"))
                     TimelineZoomStylePicker(preset: zoomAnimationPresetBinding(id: id))
                     TimelineZoomDepthPicker(depth: zoomDepthBinding(id: id))
                 }

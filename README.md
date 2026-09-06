@@ -49,7 +49,7 @@ Open Recorder includes a native editor for turning raw captures into shareable v
 - **Crop and aspect controls** - crop recordings visually and preview/export them in automatic or fixed aspect layouts.
 - **Cursor overlays** - show or hide the captured cursor path, loop cursor motion, tune cursor size and smoothing, and choose from system, touch, and emphasis cursor styles.
 - **Timeline playback** - use transport controls, frame stepping, hover scrubbing, preview speed controls, and timeline zooming while editing.
-- **Zoom sections** - add manual zoom regions from the timeline, set zoom depth, and adjust X/Y focus. The app can also generate automatic zooms from recorded click telemetry.
+- **Zoom sections** - add manual zoom regions from the timeline, set zoom depth, and adjust X/Y focus. Adaptive automatic zoom groups recorded pointer interactions, fits magnification to their context, and plans smooth pans. Set Maximum zoom in Settings; regeneration preserves manual and edited regions. See [automatic zoom](docs/automatic-zoom.md).
 - **Clip splitting and speed changes** - split the recording at the playhead, select clips, set clip speeds from 1x to 2x, merge adjacent split points, and delete selected clips while preserving at least one playable segment.
 - **Camera clips** - when a camera track was recorded, split the camera layer independently, show or hide camera segments, place the facecam in a 3x3 position grid, and adjust camera size and border width per segment.
 - **Autosaved edits** - video styling, crop selection, cursor settings, facecam settings, and timeline edits are saved into the `.openrecorder` project metadata.

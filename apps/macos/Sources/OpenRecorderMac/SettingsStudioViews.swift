@@ -140,6 +140,15 @@ private struct SettingsGeneralPane: View {
             SettingsSection(title: "Recording") {
                 SettingsToggleRow(title: "Create zooms automatically", isOn: driver.autoZoomBinding)
                 SettingsZoomPresetPicker(selection: driver.autoZoomAnimationPresetBinding)
+                HStack {
+                    Text("Maximum zoom")
+                    Slider(value: driver.autoZoomMaximumDepthBinding, in: 1...3, step: 0.05)
+                        .accessibilityLabel("Maximum automatic zoom")
+                    Text(TimelineZoomDepth.label(driver.state.autoZoomMaximumDepth))
+                        .monospacedDigit().frame(width: 44, alignment: .trailing)
+                }
+                Text("Automatic zoom keeps related actions in view. Lower limits preserve more context.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
 
             SettingsSection(title: "Folders") {

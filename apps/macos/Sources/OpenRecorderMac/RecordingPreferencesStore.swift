@@ -3,6 +3,7 @@ import Foundation
 struct RecordingPreferences: Equatable {
     var createsZoomsAutomatically: Bool
     var autoZoomAnimationPreset: TimelineZoomAnimationPreset
+    var autoZoomMaximumDepth: Double = 2
     var shortcuts: ShortcutPreferences = .defaultPreferences
     /// Play a synthesised click sound on every mouse button press during recording.
     var mouseClickSoundsEnabled: Bool
@@ -47,7 +48,7 @@ struct RecordingPreferencesStore {
             shortcuts = .defaultPreferences
         }
 
-        return RecordingPreferences(
+        var preferences = RecordingPreferences(
             createsZoomsAutomatically: defaults.object(forKey: Self.createsZoomsAutomaticallyKey) as? Bool ?? true,
             autoZoomAnimationPreset: TimelineZoomAnimationPreset.storedValue(
                 defaults.string(forKey: Self.autoZoomAnimationPresetKey)
@@ -56,6 +57,13 @@ struct RecordingPreferencesStore {
             mouseClickSoundsEnabled: defaults.object(forKey: Self.mouseClickSoundsKey) as? Bool ?? false,
             keyboardSoundsEnabled: defaults.object(forKey: Self.keyboardSoundsKey) as? Bool ?? false
         )
+        preferences.autoZoomMaximumDepth = AutoZoomGenerator.maximumDepth(
+            defaults.object(forKey: "recording.autoZoomMaximumDepth") as? Double ?? 2)
+        return preferences
+    }
+
+    func setAutoZoomMaximumDepth(_ value: Double) {
+        defaults.set(AutoZoomGenerator.maximumDepth(value), forKey: "recording.autoZoomMaximumDepth")
     }
 
     func setCreatesZoomsAutomatically(_ value: Bool) {

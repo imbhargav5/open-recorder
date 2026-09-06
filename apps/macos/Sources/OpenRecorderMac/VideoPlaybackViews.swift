@@ -233,11 +233,13 @@ struct VideoPreviewPanel: View {
 
     private var styledStage: some View {
         GeometryReader { proxy in
+            let hasAdaptiveCamera = timelineEdits.snapshot.hasAdaptiveCamera
             let recordingFrame = PreviewStageLayout.recordingFrameRect(
-                forAspectRatio: previewAspectRatio,
+                forAspectRatio: hasAdaptiveCamera ? cropSelection.previewAspectRatio(in: playback.naturalVideoSize) : previewAspectRatio,
                 in: proxy.size,
                 paddingValue: padding
             )
+            let cameraFrame = hasAdaptiveCamera ? CGRect(origin: .zero, size: proxy.size) : recordingFrame
             let zoomEffect = timelineEdits.snapshot.activeZoomEffect(at: playback.currentTime, cursorTrack: cursorTrack)
             let facecamZoomTransform = PreviewStageLayout.previewFullStageZoomTransform(
                 effect: zoomEffect,
@@ -246,7 +248,8 @@ struct VideoPreviewPanel: View {
                 sourceSize: playback.naturalVideoSize,
                 cropSelection: cropSelection,
                 inset: inset,
-                insetBalance: insetBalance
+                insetBalance: insetBalance,
+                cameraSettings: activeFacecamSettings
             )
             ZStack(alignment: .topLeading) {
                 BackgroundFillView(style: background)
@@ -269,7 +272,8 @@ struct VideoPreviewPanel: View {
                         cursorTrack: cursorTrack,
                         cropSelection: cropSelection,
                         sourceSize: playback.naturalVideoSize,
-                        letterboxFill: previewLetterboxFill
+                        letterboxFill: previewLetterboxFill,
+                        zoomAppliedByStage: zoomEffect?.usesViewportCenter == true
                     )
                 }
                 .frame(width: recordingFrame.width, height: recordingFrame.height)
@@ -281,18 +285,29 @@ struct VideoPreviewPanel: View {
                 .offset(x: recordingFrame.minX, y: recordingFrame.minY)
 
                 if let facecamVideoURL,
-                   let facecamSettings = activeFacecamSettings {
+                   let facecamSettings = activeFacecamSettings,
+                   zoomEffect?.usesViewportCenter != true || facecamSettings.fixedDuringZoom != true {
                     FacecamPlaybackOverlay(
                         facecamURL: facecamVideoURL,
                         screenPlayback: playback,
                         offsetMs: recordingSession?.facecamOffsetMs,
                         settings: facecamSettings
                     )
-                    .frame(width: recordingFrame.width, height: recordingFrame.height)
-                    .offset(x: recordingFrame.minX, y: recordingFrame.minY)
+                    .frame(width: cameraFrame.width, height: cameraFrame.height)
+                    .offset(x: cameraFrame.minX, y: cameraFrame.minY)
                 }
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
+            .transformEffect(zoomEffect?.usesViewportCenter == true ? facecamZoomTransform : .identity)
+            .overlay(alignment: .topLeading) {
+                if zoomEffect?.usesViewportCenter == true,
+                   let facecamVideoURL, let settings = activeFacecamSettings, settings.fixedDuringZoom == true {
+                    FacecamPlaybackOverlay(facecamURL: facecamVideoURL, screenPlayback: playback,
+                        offsetMs: recordingSession?.facecamOffsetMs, settings: settings)
+                        .frame(width: cameraFrame.width, height: cameraFrame.height)
+                        .offset(x: cameraFrame.minX, y: cameraFrame.minY)
+                }
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .clipped()
@@ -535,9 +550,19 @@ enum PreviewStageLayout {
         sourceSize: CGSize,
         cropSelection: VideoCropSelection,
         inset: Double,
-        insetBalance: VideoInsetBalance
+        insetBalance: VideoInsetBalance,
+        cameraSettings: FacecamSettings? = nil
     ) -> CGAffineTransform {
         guard let effect else { return .identity }
+        if effect.usesViewportCenter {
+            let source = VideoCropSelection.safeSourceSize(sourceSize)
+            let crop = cropSelection.pixelRect(in: source)
+            let layout = VideoInsetGeometry.layout(in: CGRect(origin: .zero, size: recordingFrame.size),
+                amountRatio: VideoInsetGeometry.amountRatio(fromValue: inset.rounded()), balance: insetBalance)
+            let geometry = AutoZoomGeometry.fitted(sourceSize: source, cropRect: crop,
+                container: layout.contentRect.offsetBy(dx: recordingFrame.minX, dy: recordingFrame.minY), canvasSize: stageSize)
+            return TimelineZoomCanvasTransform.transform(for: geometry.canvasEffect(effect, cameraSettings: cameraSettings), in: CGRect(origin: .zero, size: stageSize))
+        }
         let anchor = fullStageZoomAnchor(
             effect: effect,
             stageSize: stageSize,
@@ -596,7 +621,8 @@ enum PreviewStageLayout {
         let normalizedEffect = TimelineZoomEffect(
             depth: effect.depth,
             focusX: Double(min(max(viewportFocus.x / viewportSize.width, 0), 1)),
-            focusY: Double(min(max(viewportFocus.y / viewportSize.height, 0), 1))
+            focusY: Double(min(max(viewportFocus.y / viewportSize.height, 0), 1)),
+            usesViewportCenter: effect.usesViewportCenter
         )
 
         return TimelineZoomCanvasTransform.transform(
@@ -671,6 +697,7 @@ struct PlaybackPreview: View {
     var cropSelection: VideoCropSelection = .fullFrame
     var sourceSize: CGSize = .zero
     var letterboxFill: VideoPreviewLetterboxFill = .black
+    var zoomAppliedByStage = false
 
     var body: some View {
         GeometryReader { proxy in
@@ -691,7 +718,7 @@ struct PlaybackPreview: View {
             )
             let zoomEffect = edits.activeZoomEffect(at: playback.currentTime, cursorTrack: cursorTrack)
             let sourceZoomTransform = PreviewStageLayout.previewSourceZoomTransform(
-                effect: zoomEffect,
+                effect: zoomAppliedByStage ? nil : zoomEffect,
                 sourceDisplaySize: sourceDisplaySize
             )
 

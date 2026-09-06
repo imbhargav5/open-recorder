@@ -25,6 +25,7 @@ enum TimelineMetrics {
 }
 
 struct TimelinePanel: View {
+    @EnvironmentObject private var model: AppModel
     var videoURL: URL?
     var playback: VideoPlaybackController
     var edits: TimelineEditDriver
@@ -124,6 +125,15 @@ struct TimelinePanel: View {
                     isEnabled: playback.player != nil && playback.duration > 0
                 ) {
                     edits.addClipSplit(at: playback.currentTime, duration: playback.duration)
+                }
+
+                TimelineEditToolButton(
+                    symbolName: "sparkles", title: edits.isGeneratingAutoZooms ? "Generating zooms…" : "Regenerate automatic zooms",
+                    isEnabled: videoURL != nil && playback.duration > 0 && !edits.isGeneratingAutoZooms
+                ) {
+                    edits.autoZoomCameraSettings = defaultCameraSettings
+                    edits.autoZoomMaximumDepth = model.appShell.settings.state.autoZoomMaximumDepth
+                    edits.regenerateAutoZooms(from: videoURL, duration: playback.duration, preset: model.autoZoomAnimationPreset)
                 }
 
                 TimelinePreviewSpeedPicker(playback: playback)

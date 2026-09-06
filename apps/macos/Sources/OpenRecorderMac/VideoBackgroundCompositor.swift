@@ -2,6 +2,7 @@ import AVFoundation
 import AppKit
 import CoreImage
 import CoreMedia
+import CoreText
 import CoreVideo
 import Foundation
 import Metal
@@ -200,6 +201,7 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
     private let ciContext: CIContext
     private var renderContext: AVVideoCompositionRenderContext?
     private let renderContextLock = NSLock()
+    private var annotationCache: [String: CIImage] = [:]
     private var cursorGlyphCache: [CursorGlyphCacheKey: CursorGlyphImage] = [:]
     private static let pixelBufferAttributes: VideoCompositorPixelBufferAttributes = [
         kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32BGRA),
@@ -398,9 +400,26 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
             composed = cursor.composited(over: composed)
         }
 
+        // Keep saved annotations in the compositor as well: Core Animation cannot
+        // post-process a custom video compositor.
+        for annotation in instruction.edits.annotationRegions {
+            guard let span = instruction.editPlan.outputSpans(forSourceSpan: annotation.span).first(where: { $0.contains(compositionTime) }),
+                  let layer = annotationImage(annotation, canvasSize: renderSize) else { continue }
+            let progress = (compositionTime - span.start) / max(0.001, span.duration)
+            let opacity = min(1, min(progress / 0.08, (1 - progress) / 0.08))
+            let positioned = layer.transformed(by: CGAffineTransform(
+                translationX: renderSize.width * annotation.x - layer.extent.width / 2,
+                y: renderSize.height * (1 - annotation.y) - layer.extent.height / 2))
+                .applyingFilter("CIColorMatrix", parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: opacity)])
+            composed = positioned.composited(over: composed)
+        }
+
         // When fixedDuringZoom is false (default), composite the camera bubble before applying
         // the zoom so it moves with the zoomed screen content.
-        let cameraIsFixed = instruction.facecamFallbackSettings?.fixedDuringZoom == true
+        let sourceTime = instruction.editPlan.sourceTime(forOutputTime: compositionTime) ?? compositionTime
+        let cameraIsFixed = instruction.edits.activeCameraSettings(at: sourceTime,
+            duration: instruction.editPlan.segments.last?.sourceEnd ?? instruction.timeRange.duration.seconds,
+            fallback: instruction.facecamFallbackSettings)?.fixedDuringZoom == true
         if !cameraIsFixed,
            let facecam = makeFacecamLayer(facecam, for: instruction, compositionTime: compositionTime) {
             composed = facecam.composited(over: composed)
@@ -413,7 +432,8 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
             to: composed,
             renderRect: renderRect,
             instruction: instruction,
-            compositionTime: compositionTime
+            compositionTime: compositionTime,
+            placedRect: placedRect
         )
 
         // When fixedDuringZoom is true, composite the camera bubble AFTER the zoom so it
@@ -426,11 +446,36 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
         return composed.cropped(to: renderRect)
     }
 
+    private func annotationImage(_ annotation: TimelineAnnotationRegion, canvasSize: CGSize) -> CIImage? {
+        let key = "\(annotation.text)|\(annotation.fontSize)|\(canvasSize.width)"
+        if let cached = annotationCache[key] { return cached }
+        let width = Int(min(canvasSize.width * 0.72, max(180, CGFloat(annotation.text.count * 18))))
+        let height = Int(annotation.fontSize + 24)
+        guard width > 0, height > 0,
+              let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        context.setFillColor(CGColor(gray: 0, alpha: 0.62))
+        context.addPath(CGPath(roundedRect: CGRect(x: 0, y: 0, width: width, height: height), cornerWidth: 10, cornerHeight: 10, transform: nil))
+        context.fillPath()
+        let line = CTLineCreateWithAttributedString(NSAttributedString(string: annotation.text, attributes: [
+            NSAttributedString.Key(kCTFontAttributeName as String): CTFontCreateWithName("Helvetica" as CFString, annotation.fontSize, nil),
+            NSAttributedString.Key(kCTForegroundColorAttributeName as String): CGColor(gray: 1, alpha: 1)
+        ]))
+        let textWidth = CTLineGetTypographicBounds(line, nil, nil, nil)
+        context.textPosition = CGPoint(x: max(4, (Double(width) - textWidth) / 2), y: 12)
+        CTLineDraw(line, context)
+        guard let image = context.makeImage() else { return nil }
+        let result = CIImage(cgImage: image)
+        annotationCache[key] = result
+        return result
+    }
+
     private func applyZoomTransform(
         to image: CIImage,
         renderRect: CGRect,
         instruction: VideoBackgroundCompositionInstruction,
-        compositionTime: Double
+        compositionTime: Double,
+        placedRect: CGRect
     ) -> CIImage {
         guard instruction.edits.zoomRegions.isEmpty == false else { return image }
         let effect = TimelineZoomCanvasTransform.activeEffect(
@@ -440,16 +485,15 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
             cursorTrack: instruction.cursorTrack
         )
         guard let effect else { return image }
-        let depth = CGFloat(max(1, effect.depth))
-        guard depth > 1 else { return image }
-
-        // Compute focus point in CIImage coordinate space (Y-up, origin at bottom-left)
-        let focusX = renderRect.minX + renderRect.width * CGFloat(effect.focusX)
-        let focusY = renderRect.minY + renderRect.height * CGFloat(1 - effect.focusY)
-
-        let zoomTransform = CGAffineTransform(translationX: -focusX, y: -focusY)
-            .concatenating(CGAffineTransform(scaleX: depth, y: depth))
-            .concatenating(CGAffineTransform(translationX: focusX, y: focusY))
+        let geometry = AutoZoomGeometry(sourceSize: instruction.normalizedSize, cropRect: instruction.cropRect,
+            contentRect: CGRect(x: placedRect.minX, y: renderRect.height - placedRect.maxY,
+                                width: placedRect.width, height: placedRect.height), canvasSize: renderRect.size)
+        let sourceTime = instruction.editPlan.sourceTime(forOutputTime: compositionTime) ?? compositionTime
+        let settings = instruction.edits.activeCameraSettings(at: sourceTime,
+            duration: instruction.editPlan.segments.last?.sourceEnd ?? instruction.timeRange.duration.seconds,
+            fallback: instruction.facecamFallbackSettings)
+        let mapped = geometry.canvasEffect(effect, cameraSettings: settings)
+        let zoomTransform = TimelineZoomCanvasTransform.transform(for: mapped, in: renderRect, flipsY: true)
 
         return image.transformed(by: zoomTransform)
     }

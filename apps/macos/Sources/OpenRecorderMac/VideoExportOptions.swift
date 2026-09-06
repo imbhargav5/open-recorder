@@ -1033,23 +1033,8 @@ enum VideoExportRenderer {
         composition.renderSize = outputSize
         composition.frameDuration = frameDuration
         composition.instructions = [instruction]
-        if needsFinalCanvasOverlayTool(edits: edits, cursorTrack: nil, cursorSettings: .hidden) {
-            let contentRect = exportSourceContentRect(
-                renderSize: outputSize,
-                cropSize: clampedCropRect.size,
-                styling: styling
-            )
-            composition.animationTool = makeOverlayTool(
-                outputSize: outputSize,
-                contentRect: contentRect,
-                cropRect: clampedCropRect,
-                sourceSize: normalizedSize,
-                edits: edits,
-                editPlan: editPlan,
-                cursorTrack: cursorTrack,
-                cursorSettings: .hidden
-            )
-        }
+        // The custom compositor owns the final canvas, including zoom. Core Animation
+        // post-processing must not be combined with a custom video compositor.
         return composition
     }
 
@@ -1128,7 +1113,10 @@ enum VideoExportRenderer {
             outputSize: outputSize,
             edits: edits,
             editPlan: editPlan,
-            cursorTrack: cursorTrack
+            cursorTrack: cursorTrack,
+            geometry: AutoZoomGeometry.fitted(sourceSize: sourceSize, cropRect: cropRect,
+                container: CGRect(x: contentRect.minX, y: outputSize.height - contentRect.maxY,
+                                  width: contentRect.width, height: contentRect.height), canvasSize: outputSize)
         )
         return AVVideoCompositionCoreAnimationTool(postProcessingAsVideoLayer: videoLayer, in: parentLayer)
     }
@@ -1138,7 +1126,8 @@ enum VideoExportRenderer {
         outputSize: CGSize,
         edits: TimelineEditSnapshot,
         editPlan: TimelineExportEditPlan,
-        cursorTrack: CursorTelemetryTrack?
+        cursorTrack: CursorTelemetryTrack?,
+        geometry: AutoZoomGeometry
     ) {
         guard edits.zoomRegions.isEmpty == false,
               editPlan.outputDuration > 0 else {
@@ -1146,21 +1135,20 @@ enum VideoExportRenderer {
         }
 
         let duration = max(0.001, editPlan.outputDuration)
-        let sampleCount = max(2, min(9_000, Int(ceil(duration * 30)) + 1))
+        let sampleTimes = TimelineZoomCanvasTransform.animationSampleTimes(edits: edits, editPlan: editPlan)
         let rect = CGRect(origin: .zero, size: outputSize)
         var values: [CATransform3D] = []
         var keyTimes: [NSNumber] = []
 
-        for index in 0..<sampleCount {
-            let progress = sampleCount == 1 ? 0 : Double(index) / Double(sampleCount - 1)
-            let outputTime = duration * progress
+        for outputTime in sampleTimes {
+            let progress = outputTime / duration
             let effect = TimelineZoomCanvasTransform.activeEffect(
                 edits: edits,
                 editPlan: editPlan,
                 outputTime: outputTime,
                 cursorTrack: cursorTrack
             )
-            let transform = TimelineZoomCanvasTransform.transform(for: effect, in: rect, flipsY: true)
+            let transform = TimelineZoomCanvasTransform.transform(for: effect.map { geometry.canvasEffect($0) }, in: rect, flipsY: true)
             values.append(CATransform3DMakeAffineTransform(transform))
             keyTimes.append(NSNumber(value: progress))
         }
