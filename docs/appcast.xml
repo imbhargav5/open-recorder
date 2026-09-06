@@ -974,5 +974,49 @@ footer { margin-top: 24px; padding-top: 14px; border-top: 1px solid var(--line);
 ]]></description>
             <enclosure url="https://github.com/imbhargav5/open-recorder/releases/download/v0.2.47/open-recorder-macos.zip" sparkle:edSignature="ImQPpdc6mwy2InOwCigSi80Zsu6LCq3QxAYddQWXS9HLyY8l1j77QKgycbLOWG4vtO5wjuUbaz3BBDp02BjAAQ==" length="73249459" type="application/octet-stream"/>
         </item>
+        <item>
+            <title>Version 0.2.48</title>
+            <pubDate>Sun, 06 Sep 2026 23:31:27 GMT</pubDate>
+            <sparkle:version>0.2.48</sparkle:version>
+            <sparkle:shortVersionString>0.2.48</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>What’s New · 0.2.48</title>
+<style>
+:root { color-scheme: light dark; --text: #242426; --muted: #66666e; --line: #e1e1e6; --link: #305dc8; --background: #fff; }
+@media (prefers-color-scheme: dark) { :root { --text: #ededf0; --muted: #aaaab3; --line: #414146; --link: #9cbaff; --background: #242426; } }
+* { box-sizing: border-box; }
+body { margin: 0; padding: 24px; background: var(--background); color: var(--text); font: 13px/1.6 -apple-system, BlinkMacSystemFont, sans-serif; overflow-wrap: anywhere; }
+header { margin-bottom: 24px; }
+.version { margin: 0 0 4px; color: var(--muted); font-size: 11px; }
+h1 { margin: 0; font-size: 24px; line-height: 1.25; font-weight: 650; letter-spacing: -.5px; }
+h2 { margin: 22px 0 8px; font-size: 14px; line-height: 1.4; font-weight: 600; }
+p { margin: 8px 0; }
+ul { padding-left: 18px; margin: 8px 0; }
+li { padding-left: 3px; margin: 6px 0; }
+li::marker { color: var(--muted); }
+a:any-link { color: var(--link); text-underline-offset: 3px; }
+a:focus-visible { outline: 2px solid var(--link); outline-offset: 3px; }
+footer { margin-top: 24px; padding-top: 14px; border-top: 1px solid var(--line); font-size: 12px; }
+</style>
+</head>
+<body>
+<header><p class="version">Version 0.2.48</p><h1>What’s New</h1></header>
+<main><h2>New</h2>
+<ul><li>Add adaptive automatic zoom with protected camera paths</li><li>Add delete-all menu to zoom inspector</li></ul>
+<h2>Fixed</h2>
+<ul><li>Render readable update changelogs in Sparkle</li></ul></main>
+<footer><a href="https://github.com/imbhargav5/open-recorder/releases/tag/v0.2.48">Full release details</a></footer>
+</body>
+</html>
+]]></description>
+            <enclosure url="https://github.com/imbhargav5/open-recorder/releases/download/v0.2.48/open-recorder-macos.zip" sparkle:edSignature="ptK/XyGQjSSKc8e/1H6ueT+niFCI+51aqVZIBtXypAznjKcnPXn+xwYX/JD8OAW5BONbHKDH4pWfjtGnpeKNCg==" length="73464556" type="application/octet-stream"/>
+        </item>
     </channel>
 </rss>
