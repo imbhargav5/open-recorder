@@ -3,6 +3,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { releaseNotesDescription } from "./render-release-notes.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
@@ -40,9 +41,7 @@ function escapeXml(value) {
 
 function buildItem({ version, url, signature, length, minSystemVersion, releaseNotes }) {
 	const pubDate = new Date().toUTCString();
-	const notesBlock = releaseNotes
-		? `            <description><![CDATA[\n${releaseNotes}\n]]></description>\n`
-		: "";
+	const notesBlock = `            ${releaseNotesDescription({ version, releaseNotes })}\n`;
 	return `        <item>
             <title>Version ${escapeXml(version)}</title>
             <pubDate>${pubDate}</pubDate>
@@ -94,11 +93,11 @@ if (!existsSync(appcastPath)) {
 
 let content = readFileSync(appcastPath, "utf8");
 
-const versionPattern = new RegExp(
-	`\\s*<item>[\\s\\S]*?<sparkle:version>${args.version.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&")}<\\/sparkle:version>[\\s\\S]*?<\\/item>`,
-	"g",
-);
-content = content.replace(versionPattern, "");
+// Match each item independently: a cross-item regex can delete older releases.
+content = content.replace(/<item>[\s\S]*?<\/item>/g, (existingItem) => {
+	const version = /<sparkle:version>([^<]*)<\/sparkle:version>/.exec(existingItem)?.[1];
+	return version === escapeXml(args.version) ? "" : existingItem;
+});
 
 if (!content.includes("</channel>")) {
 	die("appcast.xml is malformed: missing </channel>");
