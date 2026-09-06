@@ -40,3 +40,6 @@ jobs:
 
       - name: Run tests
         run: make test-macos
+
+      - name: Test release-note rendering and appcast updates
+        run: node --test scripts/render-release-notes.test.mjs
