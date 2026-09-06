@@ -561,6 +561,7 @@ enum TimelineEditEvent: Equatable {
     case select(TimelineRegionKind?, TimelineRegionID?)
     case selectClip(index: Int)
     case clearSelection
+    case deleteAllZooms
     case deleteSelection(duration: Double?)
     case updateSpan(kind: TimelineRegionKind, id: TimelineRegionID, span: TimelineSpan, duration: Double)
     case cycleClipSpeed(index: Int)
@@ -650,6 +651,10 @@ extension TimelineEditState {
 
         case .clearSelection:
             clearSelection()
+            return []
+
+        case .deleteAllZooms:
+            deleteAllZooms()
             return []
 
         case .deleteSelection(let duration):
@@ -892,6 +897,15 @@ extension TimelineEditState {
         selectedID = nil
         selectedClipIndex = nil
         selectedCameraClipID = nil
+    }
+
+    private mutating func deleteAllZooms() {
+        guard !snapshot.zoomRegions.isEmpty else { return }
+        snapshot.zoomRegions.removeAll()
+        if selectedKind == .zoom {
+            clearSelection()
+        }
+        statusMessage = "Deleted all zoom levels."
     }
 
     private mutating func deleteSelection(duration: Double? = nil) {
@@ -1376,6 +1390,10 @@ final class TimelineEditDriver {
 
     func clearSelection() {
         send(.clearSelection, recordsUndo: false)
+    }
+
+    func deleteAllZooms() {
+        send(.deleteAllZooms)
     }
 
     func deleteSelection() {
