@@ -21,6 +21,12 @@ struct CaptureHUD: View {
                 idleControls
             }
         }
+        .contentShape(Rectangle())
+        .contextMenu {
+            Button("Quit Open Recorder") {
+                NSApp.terminate(nil)
+            }
+        }
         .animation(.spring(response: 0.35, dampingFraction: 0.82), value: model.captureMode)
         .animation(.spring(response: 0.35, dampingFraction: 0.82), value: isRecordingActive)
         .environment(\.layoutDirection, .leftToRight)
