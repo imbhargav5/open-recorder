@@ -199,6 +199,7 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
     private let renderingQueueKey = DispatchSpecificKey<Bool>()
     private let renderingQueue = DispatchQueue(label: "com.openrecorder.video.compositor", qos: .userInitiated)
     private let ciContext: CIContext
+    private let backgroundCache: VideoStaticBackgroundCache
     private var renderContext: AVVideoCompositionRenderContext?
     private let renderContextLock = NSLock()
     private var annotationCache: [String: CIImage] = [:]
@@ -218,6 +219,7 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
         } else {
             ciContext = CIContext(options: Self.ciContextOptions())
         }
+        backgroundCache = VideoStaticBackgroundCache(context: ciContext)
         super.init()
         renderingQueue.setSpecific(key: renderingQueueKey, value: true)
     }
@@ -234,6 +236,7 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
         renderContextLock.lock()
         renderContext = newRenderContext
         renderContextLock.unlock()
+        backgroundCache.invalidate()
     }
 
     func startRequest(_ request: AVAsynchronousVideoCompositionRequest) {
@@ -262,6 +265,7 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
     }
 
     func cancelAllPendingVideoCompositionRequests() {
+        defer { backgroundCache.invalidate() }
         if DispatchQueue.getSpecific(key: renderingQueueKey) == true {
             return
         }
@@ -358,10 +362,17 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
         let cornerRadius = instruction.styling.borderRadiusRatio * minDim
         let maskedSource = applyRoundedMask(positionedImage, cornerRadius: cornerRadius, in: placedRect)
 
-        var background = makeBackground(instruction.styling.background, extent: renderRect)
-        if instruction.styling.backgroundBlurRatio > 0, !instruction.styling.background.isTransparent {
-            let blurRadius = instruction.styling.backgroundBlurRatio * minDim
-            background = applyGaussianBlur(background, radius: blurRadius).cropped(to: renderRect)
+        let blurRadius = instruction.styling.backgroundBlurRatio * minDim
+        let background = backgroundCache.image(
+            style: instruction.styling.background,
+            extent: renderRect,
+            blurRadius: blurRadius
+        ) {
+            var image = makeBackground(instruction.styling.background, extent: renderRect)
+            if blurRadius > 0, !instruction.styling.background.isTransparent {
+                image = applyGaussianBlur(image, radius: blurRadius).cropped(to: renderRect)
+            }
+            return image
         }
 
         var composed = background

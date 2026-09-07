@@ -11,7 +11,7 @@ import XCTest
 /// OPEN_RECORDER_ZOOM_RENDER_CHECK=1 swift test --filter AdaptiveZoomRenderTests
 final class AdaptiveZoomRenderTests: XCTestCase {
     @MainActor
-    func testEightRepresentativeExports() async throws {
+    func testRepresentativeExports() async throws {
         guard ProcessInfo.processInfo.environment["OPEN_RECORDER_ZOOM_RENDER_CHECK"] == "1" else {
             throw XCTSkip("Opt-in video encoding and visual artifacts")
         }
@@ -27,16 +27,27 @@ final class AdaptiveZoomRenderTests: XCTestCase {
         var padded = plain
         padded.styling.background = .solid(SerializableColor(hex: "172033"))
         padded.styling.paddingRatio = 0.1
-        var cropped = padded
+        var wallpaper = padded
+        wallpaper.styling.background = BackgroundPresets.default
+        wallpaper.styling.shadowIntensity = 0.35
+        var blurredGradient = padded
+        blurredGradient.styling.background = .gradient(GradientPreset(
+            id: "export-validation", kind: .linear(angleDegrees: 45), stops: [
+                GradientStop(color: SerializableColor(hex: "172033"), position: 0),
+                GradientStop(color: SerializableColor(hex: "6388AA"), position: 1)
+            ]))
+        blurredGradient.styling.backgroundBlurRatio = 0.04
+        blurredGradient.styling.borderRadiusRatio = 0.04
+        var cropped = wallpaper
         cropped.cropSelection = VideoCropSelection(normalizedRect: CGRect(x: 0.15, y: 0.1, width: 0.7, height: 0.8))
         var portrait = cropped
         portrait.aspectPreset = .vertical
         var square = padded
         square.aspectPreset = .square
-        var inset = padded
+        var inset = wallpaper
         inset.styling.inset = VideoInsetStyling(amountRatio: 0.15, color: SerializableColor(hex: "EFEFEF"), opacity: 1,
                                               balance: VideoInsetBalance(left: 0.2, top: 0.8))
-        var camera = padded
+        var camera = wallpaper
         camera.facecamVideoURL = source
         camera.facecamFallbackSettings = defaultFacecamSettings(enabled: true)
         camera.facecamFallbackSettings?.fixedDuringZoom = true
@@ -45,6 +56,8 @@ final class AdaptiveZoomRenderTests: XCTestCase {
         let scenarios: [(String, VideoExportOptions, [CursorTelemetryClick])] = [
             ("plain", plain, [click(220, 180, 1000)]),
             ("padded", padded, [click(220, 180, 1000)]),
+            ("wallpaper", wallpaper, [click(220, 180, 1000)]),
+            ("blurred-gradient", blurredGradient, [click(220, 180, 1000)]),
             ("cropped", cropped, [click(320, 120, 1000)]),
             ("portrait", portrait, [click(320, 120, 1000)]),
             ("square", square, [click(320, 120, 1000)]),
