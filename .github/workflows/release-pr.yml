@@ -40,7 +40,7 @@ jobs:
     runs-on: macos-26
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.inputs.base_ref }}
           fetch-depth: 0
@@ -93,7 +93,7 @@ jobs:
         run: make test-macos
 
       - name: Create or update release PR
-        uses: peter-evans/create-pull-request@v7
+        uses: peter-evans/create-pull-request@v8
         with:
           branch: ${{ steps.prepare.outputs.branch_name }}
           base: ${{ github.event.inputs.base_ref }}
