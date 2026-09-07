@@ -3,6 +3,26 @@ title: "Open Recorder changelog: releases, features, and fixes"
 description: "Release notes for Open Recorder on macOS. Track new screen recording features, capture improvements, and bug fixes in each version update."
 ---
 
+<Update label="September 7, 2026" description="v0.2.48" tags={["macOS"]}>
+## New features
+
+### Adaptive automatic zoom
+
+Automatic zoom now plans a smooth camera path across each interaction instead of zooming on isolated clicks. Related actions stay in view together, pans ease between nearby targets, and low-value moments no longer trigger a zoom. A new **Maximum zoom** slider in **Settings** limits generated magnification from 1× to 3× (default 2×). Setting it to 1× disables generated zooms entirely.
+
+The timeline's **Regenerate automatic zooms** button re-analyzes the recording while preserving your manual zoom regions and any automatic regions you have edited. The inspector labels those regions **Edited · protected**. Regeneration applies as a single undoable edit.
+
+### Delete all zooms at once
+
+The zoom inspector's **Delete** button now includes a dropdown with a **Delete All Zoom Levels** option, so you can clear every zoom region from the timeline in one action instead of deleting them one by one.
+
+## Bug fixes
+
+### Readable release notes in the in-app updater
+
+The update window now shows formatted release notes grouped into New, Improved, and Fixed sections. Previously, it displayed raw commit text that was hard to read.
+</Update>
+
 <Update label="September 3, 2026" description="v0.2.47" tags={["macOS"]}>
 ## New features
 
