@@ -1,6 +1,6 @@
 ---
 title: "Open Recorder FAQ: monitors, permissions, and file locations"
-description: "Answers to common Open Recorder questions: multi-monitor support, full-screen recording, Screen Recording permission fixes, and where captures are saved."
+description: "Common Open Recorder questions: multi-monitor support, full-screen recording, Screen Recording permission fixes, export errors, and save locations."
 ---
 
 ## Does Open Recorder support multiple monitors?
@@ -18,6 +18,16 @@ Yes. The recording HUD displays over full-screen macOS apps and stays interactiv
 ## Why is my capture blocked after granting Screen Recording permission?
 
 macOS only refreshes an app's Screen Recording permission state after the app relaunches. Restart Open Recorder after granting access.
+
+## Why does my export fail with "Source video frame is unavailable"?
+
+This error comes from the export renderer. Open Recorder re-renders every frame during export when a project uses a background, frame effects (stage padding, corner roundness, shadow, or background blur), or a camera overlay. The error means the renderer requested a frame from your original recording and macOS could not decode one from the source file.
+
+To resolve it:
+
+1. Confirm the recording's source media still exists on disk. Projects whose files were moved or deleted show a **Media missing** label in the project library and cannot be opened or exported.
+2. Keep the recording file, and any [custom background video](/editing/backgrounds#upload-a-custom-image-or-video), in its original location until the export finishes.
+3. Retry the export. If it still fails, set the background to **None** and turn off the frame effects listed above. That exports the recording without re-rendering, which confirms whether the source recording itself can be read.
 
 ## Where are my captures saved?
 
