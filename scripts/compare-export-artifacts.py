@@ -6,9 +6,9 @@ import re
 import subprocess
 
 
-def probe(path):
+def probe(path, decode_frames=True):
     result = subprocess.check_output([
-        "ffprobe", "-v", "error", "-count_frames", "-show_streams", "-of", "json", str(path)], text=True)
+        "ffprobe", "-v", "error", *(["-count_frames"] if decode_frames else []), "-show_streams", "-of", "json", str(path)], text=True)
     return json.loads(result)["streams"]
 
 
@@ -22,9 +22,27 @@ parser.add_argument("baseline", type=Path)
 parser.add_argument("candidate", type=Path)
 args = parser.parse_args()
 results = []
+
+def recorded_output(directory, video):
+    report = directory / "results.json"
+    if not report.exists() or video.stat().st_mtime > report.stat().st_mtime:
+        return None
+    name = video.stem.rsplit("-", 1)[0]
+    return next((r["output"] for r in json.loads(report.read_text())
+                 if r["fixture"] == name and not r["warmup"]), None)
+
 for baseline in sorted(args.baseline.glob("*-1.mov")):
     candidate = args.candidate / baseline.name
-    before, after = probe(baseline), probe(candidate)
+    recorded_before = recorded_output(args.baseline, baseline)
+    recorded_after = recorded_output(args.candidate, candidate)
+    decoded_counts_available = recorded_before is not None and recorded_after is not None
+    if decoded_counts_available:
+        for key in ["frames", "width", "height", "nominalFPS"]:
+            assert recorded_before[key] == recorded_after[key], f"{baseline.name}: decoded {key} changed"
+        assert recorded_before["monotonic"] and recorded_after["monotonic"]
+    # The benchmark already decoded these exact files. Avoid decoding them twice more
+    # just to count frames; the SSIM pass below still decodes every video frame.
+    before, after = probe(baseline, not decoded_counts_available), probe(candidate, not decoded_counts_available)
     for kind in ["video", "audio"]:
         a = [s for s in before if s["codec_type"] == kind]
         b = [s for s in after if s["codec_type"] == kind]
@@ -36,7 +54,7 @@ for baseline in sorted(args.baseline.glob("*-1.mov")):
                 assert x.get(key) == y.get(key), f"{baseline.name}: {key} changed"
             for key in ["start_time", "duration"]:
                 assert abs(float(x.get(key, 0)) - float(y.get(key, 0))) <= 0.001, f"{baseline.name}: {kind} {key} changed"
-    result = subprocess.run(["ffmpeg", "-v", "info", "-i", str(baseline), "-i", str(candidate),
+    result = subprocess.run(["ffmpeg", "-v", "info", "-hwaccel", "videotoolbox", "-i", str(baseline), "-hwaccel", "videotoolbox", "-i", str(candidate),
                              "-lavfi", "[0:v][1:v]ssim", "-an", "-f", "null", "-"], capture_output=True, text=True, check=True)
     match = re.search(r"All:([0-9.]+)", result.stderr)
     assert match, result.stderr[-2000:]
