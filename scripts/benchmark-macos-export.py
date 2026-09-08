@@ -13,6 +13,7 @@ parser.add_argument("output", type=Path)
 parser.add_argument("--configuration", choices=["debug", "release"], default="release")
 parser.add_argument("--diagnostics", action="store_true")
 parser.add_argument("--capture-frames", action="store_true")
+parser.add_argument("--uncached-masks", action="store_true", help="Testing-only A/B control for invariant masks")
 args = parser.parse_args()
 if (args.output / "results.json").exists():
     parser.error("Choose a fresh output directory; existing results must not be mixed with a new run")
@@ -24,14 +25,15 @@ environment = {**os.environ, "OPEN_RECORDER_EXPORT_BENCH_MANIFEST": str(args.man
                "OPEN_RECORDER_EXPORT_BENCH_OUTPUT": str(args.output.resolve()),
                "OPEN_RECORDER_EXPORT_REVISION": revision,
                "OPEN_RECORDER_EXPORT_DIAGNOSTICS": "1" if args.diagnostics else "0",
-               "OPEN_RECORDER_EXPORT_CAPTURE_FRAMES": "1" if args.capture_frames else "0"}
+               "OPEN_RECORDER_EXPORT_CAPTURE_FRAMES": "1" if args.capture_frames else "0",
+               "OPEN_RECORDER_EXPORT_UNCACHED_MASKS": "1" if args.uncached_masks else "0"}
 result = subprocess.run(["swift", "test", "--package-path", "apps/macos", "-c", args.configuration,
                          "-Xswiftc", "-DOPEN_RECORDER_TESTING", "--filter", "VideoExportBenchmarkTests"], env=environment, cwd=root)
 report = args.output / "results.json"
 if report.exists():
     rows = json.loads(report.read_text())
     for row in rows:
-        row.update(hardware=hardware, operatingSystem=platform.mac_ver()[0], sourceModified=modified, captureFrames=args.capture_frames)
+        row.update(hardware=hardware, operatingSystem=platform.mac_ver()[0], sourceModified=modified, captureFrames=args.capture_frames, uncachedMasks=args.uncached_masks)
     report.write_text(json.dumps(rows, indent=2) + "\n")
     summary = []
     for name in dict.fromkeys(row["fixture"] for row in rows):

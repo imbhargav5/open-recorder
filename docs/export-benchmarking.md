@@ -24,3 +24,17 @@ Fixtures and outputs remain local; do not commit recordings or upload benchmark 
 Release tests and the benchmark runner enable `OPEN_RECORDER_TESTING` for existing test accessors. Normal packaging does not define it. `make test-macos-release` runs the optimized test suite; CI exercises both Apple Silicon and Intel and exposes one aggregate required check that fails if either architecture fails.
 
 The local validation fixtures can be reproduced using FFmpeg's `testsrc2=size=1920x1080:rate=30:duration=8` video and `sine=frequency=440:sample_rate=48000:duration=8` audio, encoded with `h264_videotoolbox` at 12 Mbps and AAC. Scale that fixture to 3840x2160 for a four-second 4K input (30 Mbps); stream-loop the 1080p fixture with stream copy and trim to 60 and 600 seconds for stress inputs. These are synthetic workloads, not evidence for every screen recording.
+
+For long stress fixtures that follow shorter warm-up runs in the same process, set `"warmup":false,"repeats":1` to measure the long export once. Short comparative fixtures retain the default one warm-up and five measured runs. Resident memory excludes some GPU/IOSurface allocations; it must not be described as total GPU memory use.
+
+Compare two matching artifact directories with `python3 scripts/compare-export-artifacts.py BASELINE CANDIDATE` (FFmpeg/ffprobe required). It decodes the first measured MOV from each fixture, compares stream settings/counts/timing, requires whole-video SSIM >=0.999, and compares any first-measured-run pre-encode PNG captures with maximum per-channel difference two. Run comparisons outside timed benchmarks.
+
+Exercise cancellation while real compositor requests are active, followed by a fresh export:
+
+```sh
+OPEN_RECORDER_EXPORT_CANCEL_FIXTURE=/absolute/path/local-video.mp4 \
+  swift test --package-path apps/macos -c release -Xswiftc -DOPEN_RECORDER_TESTING \
+  --filter VideoExportCancellationIntegrationTests
+```
+
+Use `--uncached-masks` as an A/B control when evaluating mask caching. This control exists only in builds compiled with `OPEN_RECORDER_TESTING`; production packages always use the cache. For memory comparisons, put one short fixture in each manifest and run each control/candidate in a fresh process. This separates per-scenario peaks from delayed AVFoundation/Core Image reclamation across a batch of many completed exports.
