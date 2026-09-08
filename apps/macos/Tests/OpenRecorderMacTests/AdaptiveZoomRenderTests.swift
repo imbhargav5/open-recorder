@@ -57,6 +57,7 @@ final class AdaptiveZoomRenderTests: XCTestCase {
             ("plain", plain, [click(220, 180, 1000)]),
             ("padded", padded, [click(220, 180, 1000)]),
             ("wallpaper", wallpaper, [click(220, 180, 1000)]),
+            ("cursor-annotation", wallpaper, [click(220, 180, 1000)]),
             ("blurred-gradient", blurredGradient, [click(220, 180, 1000)]),
             ("cropped", cropped, [click(320, 120, 1000)]),
             ("portrait", portrait, [click(320, 120, 1000)]),
@@ -65,11 +66,26 @@ final class AdaptiveZoomRenderTests: XCTestCase {
             ("camera-fixed", camera, [click(220, 180, 1000)]),
             ("camera-moving", movingCamera, [click(220, 180, 1000)])
         ]
-        for (name, options, clicks) in scenarios {
-            let telemetry = CursorTelemetryPayload(width: 640, height: 360, samples: [], clicks: clicks)
+        for (name, initialOptions, clicks) in scenarios {
+            var options = initialOptions
+            let samples: [CursorTelemetrySample] = name == "cursor-annotation"
+                ? stride(from: 0, through: 6000, by: 100).map {
+                    CursorTelemetrySample(x: 520, y: 300, timestamp: $0, cursorType: "arrow")
+                } : []
+            let telemetry = CursorTelemetryPayload(width: 640, height: 360, samples: samples, clicks: clicks)
+            if name == "cursor-annotation" {
+                let telemetryURL = root.appendingPathComponent("overlay-telemetry.json")
+                try JSONEncoder().encode(telemetry).write(to: telemetryURL)
+                options.cursorOverlay = .default
+                options.cursorTelemetryURL = telemetryURL
+            }
             let regions = AutoZoomGenerator.generate(from: telemetry, duration: 6, cameraSettings: options.facecamFallbackSettings)
             XCTAssertFalse(regions.isEmpty, name)
-            let edits = TimelineEditSnapshot(zoomRegions: regions)
+            var edits = TimelineEditSnapshot(zoomRegions: regions)
+            if name == "cursor-annotation" {
+                edits.annotationRegions = [TimelineAnnotationRegion(span: TimelineSpan(start: 0.25, end: 5.5),
+                    text: "Export fidelity: Aa 0123", x: 0.5, y: 0.8, fontSize: 20)]
+            }
             if name == "pan-inset" {
                 let telemetryURL = CursorTelemetryRecorder.telemetryURL(for: source)
                 try JSONEncoder().encode(telemetry).write(to: telemetryURL)

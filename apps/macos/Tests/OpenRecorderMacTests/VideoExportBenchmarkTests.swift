@@ -15,7 +15,8 @@ final class VideoExportBenchmarkTests: XCTestCase {
         var appearance: String = "wallpaper"
         var fps: Double = 30
         var repeats: Int = 5
-        enum CodingKeys: String, CodingKey { case name, path, appearance, fps, repeats }
+        var warmup: Bool = true
+        enum CodingKeys: String, CodingKey { case name, path, appearance, fps, repeats, warmup }
         init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
             name = try c.decode(String.self, forKey: .name)
@@ -23,6 +24,7 @@ final class VideoExportBenchmarkTests: XCTestCase {
             appearance = try c.decodeIfPresent(String.self, forKey: .appearance) ?? "wallpaper"
             fps = try c.decodeIfPresent(Double.self, forKey: .fps) ?? 30
             repeats = try c.decodeIfPresent(Int.self, forKey: .repeats) ?? 5
+            warmup = try c.decodeIfPresent(Bool.self, forKey: .warmup) ?? true
         }
     }
     struct Media: Codable {
@@ -106,7 +108,7 @@ final class VideoExportBenchmarkTests: XCTestCase {
                 options.facecamVideoURL = source
                 options.facecamFallbackSettings = defaultFacecamSettings(enabled: true)
             }
-            for index in 0...max(1, fixture.repeats) {
+            for index in (fixture.warmup ? 0 : 1)...max(1, fixture.repeats) {
                 let captureDirectory = root.appendingPathComponent("\(fixture.name)-\(index)-frames", isDirectory: true)
                 let capturing = env["OPEN_RECORDER_EXPORT_CAPTURE_FRAMES"] == "1"
                 if capturing { try FileManager.default.createDirectory(at: captureDirectory, withIntermediateDirectories: true) }
