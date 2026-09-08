@@ -40,7 +40,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Debug and release tests
-        run: make test-macos test-macos-release
+        run: |
+          make test-macos
+          python3 scripts/tests/test_macos_notarization.py test-macos-release
       - name: Script tests
         run: node --test scripts/*.test.mjs
 

@@ -33,6 +33,14 @@ final class UpdateCheckerTests: XCTestCase {
         XCTAssertFalse(UpdateChecker.isEnabled(for: bundle))
     }
 
+    func testNightlyCannotUseProductionFeed() throws {
+        let bundle = try makeBundle(
+            identifier: "dev.openrecorder.app.nightly",
+            feedURLString: "https://openrecorder.dev/appcast.xml"
+        )
+        XCTAssertFalse(UpdateChecker.isEnabled(for: bundle))
+    }
+
     func testUpdateCheckerIsDisabledWithoutBundleIdentifier() throws {
         let bundle = try makeBundle(
             identifier: nil,

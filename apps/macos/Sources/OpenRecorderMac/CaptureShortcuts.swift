@@ -388,15 +388,19 @@ public struct ShortcutPreferences: Codable, Equatable, Sendable {
     }
 
     public static var defaultPreferences: ShortcutPreferences {
+        defaults(globalShortcutsEnabled: !AppVariant.isNightly)
+    }
+
+    static func defaults(globalShortcutsEnabled: Bool) -> ShortcutPreferences {
         var map: [CaptureShortcutAction: ShortcutItem] = [:]
         for action in CaptureShortcutAction.allCases {
-            map[action] = ShortcutItem(id: action, isEnabled: true, keyCombination: action.defaultKeyCombination)
+            map[action] = ShortcutItem(id: action, isEnabled: globalShortcutsEnabled, keyCombination: action.defaultKeyCombination)
         }
         return ShortcutPreferences(shortcuts: map)
     }
 
     public func item(for action: CaptureShortcutAction) -> ShortcutItem {
-        shortcuts[action] ?? ShortcutItem(id: action, isEnabled: true, keyCombination: action.defaultKeyCombination)
+        shortcuts[action] ?? ShortcutItem(id: action, isEnabled: !AppVariant.isNightly, keyCombination: action.defaultKeyCombination)
     }
 
     public mutating func setItem(_ item: ShortcutItem) {

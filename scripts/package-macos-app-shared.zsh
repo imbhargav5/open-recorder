@@ -13,6 +13,9 @@ while (( $# > 0 )); do
 		--dev)
 			app_variant="development"
 			;;
+		--nightly)
+			app_variant="nightly"
+			;;
 		--production)
 			app_variant="production"
 			;;
@@ -36,7 +39,7 @@ while (( $# > 0 )); do
 done
 
 if [[ -z "$build_configuration" ]]; then
-    [[ "$app_variant" == "production" ]] && build_configuration=release || build_configuration=debug
+    [[ "$app_variant" == "development" ]] && build_configuration=debug || build_configuration=release
 fi
 if [[ "$build_configuration" != debug && "$build_configuration" != release ]]; then
     print -u2 -- "--configuration must be debug or release"
@@ -48,7 +51,10 @@ if [[ "$app_variant" == production && "$build_configuration" != release ]]; then
 fi
 source_revision="$(git -C "$repo_root" rev-parse HEAD)"
 
-if [[ "$app_variant" == "development" ]]; then
+if [[ "$app_variant" == "nightly" ]]; then
+	app_name="OpenRecorderNightly"
+	bundle_identifier="dev.openrecorder.app.nightly"
+elif [[ "$app_variant" == "development" ]]; then
 	app_name="${OPEN_RECORDER_DEV_APP_NAME:-Open Recorder Dev}"
 	bundle_identifier="${OPEN_RECORDER_DEV_BUNDLE_IDENTIFIER:-dev.openrecorder.app.dev}"
 else
@@ -133,6 +139,13 @@ set_plist_string "CFBundleIdentifier" "$bundle_identifier"
 set_plist_string "OpenRecorderBuildConfiguration" "$build_configuration"
 set_plist_string "OpenRecorderSourceRevision" "$source_revision"
 
+if [[ "$app_variant" == "nightly" ]]; then
+    # Nightly is manually installed and must never own production project files.
+    for key in SUFeedURL SUPublicEDKey SUEnableAutomaticChecks SUScheduledCheckInterval SUAllowsAutomaticUpdates UTExportedTypeDeclarations CFBundleDocumentTypes; do
+        /usr/libexec/PlistBuddy -c "Delete :$key" "$contents_dir/Info.plist" 2>/dev/null || true
+    done
+fi
+
 if [[ -f "$icon_source" ]]; then
 	cp "$icon_source" "$resources_dir/AppIcon.icns"
 	/usr/libexec/PlistBuddy -c "Set :CFBundleIconFile AppIcon" "$contents_dir/Info.plist"
@@ -155,17 +168,28 @@ else
 	zsh "$repo_root/scripts/sign-macos-production-app.zsh" "$bundle_dir"
 fi
 
+if [[ "$app_variant" == "nightly" ]]; then
+    zsh "$repo_root/scripts/verify-macos-production-signature.zsh" "$bundle_dir"
+    zsh "$repo_root/scripts/notarize-macos-production-app.zsh" "$bundle_dir"
+fi
+
 print -- "Packaged $bundle_dir"
 
 if [[ "$install" == true ]]; then
 	install_dir="${OPEN_RECORDER_INSTALL_DIR:-/Applications}"
 	installed_bundle="$install_dir/${app_name}.app"
+    if [[ "$app_variant" == "nightly" ]] && /usr/bin/pgrep -f '/OpenRecorderNightly[.]app/Contents/MacOS/OpenRecorderMac' >/dev/null; then
+        print -u2 -- "Quit OpenRecorderNightly before installing this build. The existing app was not replaced."
+        exit 1
+    fi
 	temp_bundle="$install_dir/.${app_name}.app.installing.$$"
 
 	rm -rf "$temp_bundle"
 	ditto "$bundle_dir" "$temp_bundle"
 	find "$temp_bundle" \( -name '._*' -o -name '.__CodeSignature' \) -delete
-	xattr -r -d com.apple.quarantine "$temp_bundle" 2>/dev/null || true
+	if [[ "$app_variant" != "nightly" ]]; then
+		xattr -r -d com.apple.quarantine "$temp_bundle" 2>/dev/null || true
+	fi
 	rm -rf "$installed_bundle"
 	mv "$temp_bundle" "$installed_bundle"
 	/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$installed_bundle" 2>/dev/null || true

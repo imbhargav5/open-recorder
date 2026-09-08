@@ -111,7 +111,8 @@ enum WindowSourceFilter {
             cleaned(currentApplicationName)
         ].compactMap(\.self)
 
-        if let ownerName,
+        // Bundle identity wins over names shared by production and nightly.
+        if bundleIdentifier == nil, let ownerName,
            currentApplicationNames.contains(where: { ownerName.caseInsensitiveCompare($0) == .orderedSame }) {
             return nil
         }

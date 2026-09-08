@@ -51,3 +51,13 @@ clean-macos:
 test-macos-release:
 	cd apps/rust-service && CARGO_INCREMENTAL=0 cargo test --release
 	cd apps/macos && swift test -c release -Xswiftc -DOPEN_RECORDER_TESTING
+
+.PHONY: package-macos-nightly install-macos-nightly run-macos-nightly
+package-macos-nightly:
+	zsh scripts/package-macos-nightly-app.zsh
+
+install-macos-nightly:
+	zsh scripts/package-macos-nightly-app.zsh --install
+
+run-macos-nightly:
+	zsh scripts/package-macos-nightly-app.zsh --install --launch
