@@ -1,0 +1,37 @@
+---
+title: "Automatic zoom and zoom region editing"
+description: "Generate adaptive automatic zooms, limit magnification with the Maximum zoom setting, regenerate zooms without losing your edits, and delete zoom regions in bulk."
+---
+
+Open Recorder adds zoom regions to the timeline that magnify part of the recording during playback and export. Zooms can be generated automatically from your recorded pointer activity, or added and adjusted manually in the editor.
+
+## Enable automatic zoom
+
+New recordings receive adaptive automatic zooms when **Create zooms automatically** is enabled in **Settings → Recording**. The generator analyzes recorded clicks and cursor movement, groups related actions into interactions, and plans a smooth camera path for each one. Related actions stay in view together, pans ease between nearby targets, and low-value moments do not trigger a zoom.
+
+Two settings in the same section shape the result:
+
+- **Auto zoom style** controls motion timing for generated zooms.
+- **Maximum zoom** limits generated magnification. The slider ranges from 1× to 3×, with a default of 2×. Lower limits preserve more surrounding context. Setting the limit to 1× disables generated zooms entirely.
+
+Automatic zoom relies on pointer telemetry captured during recording. Imported videos without telemetry receive no automatic regions.
+
+## Regenerate automatic zooms
+
+The timeline toolbar includes a **Regenerate automatic zooms** button, marked with a sparkle icon. Click it to re-analyze the recording's telemetry with your current settings and replace the generated zooms. While analysis runs, the button shows **Generating zooms…** and is disabled.
+
+Regeneration preserves your work:
+
+- Manual zoom regions are kept.
+- Automatic regions you have edited are kept. The zoom inspector labels these regions **Edited · protected** in the **Type** row.
+- New generated regions skip the intervals those protected regions occupy.
+
+The result applies as a single edit, so one undo restores the previous zooms.
+
+Editing an automatic region protects it from future regeneration. Changing its timing retimes the saved camera path, changing its depth rescales the magnification, and changing its focus pins the target.
+
+## Delete zoom regions
+
+Select a zoom region on the timeline to open it in the inspector. The **Delete** button removes the selected region.
+
+To clear every zoom region at once, click the dropdown arrow on the right side of the **Delete** button and choose **Delete All Zoom Levels**. The bulk deletion removes all zoom regions, manual and automatic, as a single edit. One undo restores all of them.
