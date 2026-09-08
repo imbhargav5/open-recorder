@@ -239,7 +239,7 @@ final class AppShellDriver {
         workspaces.discard(session: editorSession)
     }
 
-    #if DEBUG
+    #if DEBUG || OPEN_RECORDER_TESTING
     var sessionWorkspaceCountForTesting: Int {
         workspaces.sessionCountForTesting
     }

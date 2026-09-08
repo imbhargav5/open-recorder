@@ -321,7 +321,7 @@ final class EditorWorkspaceRegistry {
         return sessionsByID[sessionID]
     }
 
-    #if DEBUG
+    #if DEBUG || OPEN_RECORDER_TESTING
     var sessionCountForTesting: Int {
         workspacesBySessionID.count
     }

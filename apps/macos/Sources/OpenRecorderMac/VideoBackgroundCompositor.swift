@@ -109,6 +109,7 @@ struct VideoBackgroundStyling: Equatable {
 }
 
 final class VideoBackgroundCompositionInstruction: NSObject, AVVideoCompositionInstructionProtocol, @unchecked Sendable {
+    var diagnostics: VideoExportDiagnostics?
     let timeRange: CMTimeRange
     let enablePostProcessing: Bool = false
     let containsTweening: Bool = true
@@ -285,6 +286,7 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
             throw VideoCompositorError.renderBufferUnavailable
         }
 
+        let preparationStart = instruction.diagnostics?.detailed == true ? CACurrentMediaTime() : 0
         let composedImage = try makeComposedImage(
             source: sourceBuffer,
             facecam: instruction.facecamTrackID.flatMap { request.sourceFrame(byTrackID: $0) },
@@ -292,13 +294,23 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
             compositionTime: request.compositionTime.seconds
         )
 
-        ciContext.render(
-            composedImage,
-            to: outputBuffer,
-            bounds: CGRect(origin: .zero, size: instruction.renderSize),
-            colorSpace: CGColorSpace(name: CGColorSpace.sRGB)
-        )
+        if let diagnostics = instruction.diagnostics, diagnostics.detailed {
+            let preparationSeconds = CACurrentMediaTime() - preparationStart
+            let destination = CIRenderDestination(pixelBuffer: outputBuffer)
+            destination.colorSpace = CGColorSpace(name: CGColorSpace.sRGB)
+            let task = try ciContext.startTask(toRender: composedImage, to: destination)
+            let info = try task.waitUntilCompleted()
+            diagnostics.record(preparationSeconds: preparationSeconds, info: info)
+        } else {
+            ciContext.render(
+                composedImage, to: outputBuffer,
+                bounds: CGRect(origin: .zero, size: instruction.renderSize),
+                colorSpace: CGColorSpace(name: CGColorSpace.sRGB)
+            )
+            instruction.diagnostics?.record()
+        }
 
+        instruction.diagnostics?.frameObserver?(outputBuffer, request.compositionTime.seconds)
         return outputBuffer
     }
 
