@@ -422,15 +422,24 @@ impl InternalPaths {
         let home = env::var_os("HOME")
             .map(PathBuf::from)
             .ok_or_else(|| "HOME is not set".to_string())?;
+        Self::for_home(home, env::var("OPEN_RECORDER_APP_VARIANT").ok().as_deref())
+    }
+
+    fn for_home(home: PathBuf, variant: Option<&str>) -> Result<Self, String> {
+        let directory_name = match variant {
+            Some("nightly") => "OpenRecorderNightly",
+            None | Some("production") => "Open Recorder",
+            Some(other) => return Err(format!("Unknown app variant: {other}")),
+        };
         let support_dir = home
             .join("Library")
             .join("Application Support")
-            .join("Open Recorder");
+            .join(directory_name);
         let projects_dir = support_dir.join("Projects");
 
         Ok(Self {
-            recordings_dir: home.join("Movies").join("Open Recorder"),
-            screenshots_dir: home.join("Pictures").join("Open Recorder"),
+            recordings_dir: home.join("Movies").join(directory_name),
+            screenshots_dir: home.join("Pictures").join(directory_name),
             project_index: projects_dir.join("index.json"),
             projects_dir,
             support_dir,
@@ -1122,6 +1131,20 @@ fn unique_suffix() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn nightly_paths_are_isolated_from_production() {
+        let home = PathBuf::from("/test/home");
+        let production = InternalPaths::for_home(home.clone(), None).unwrap();
+        let nightly = InternalPaths::for_home(home.clone(), Some("nightly")).unwrap();
+        assert_eq!(production.support_dir, home.join("Library/Application Support/Open Recorder"));
+        assert_eq!(nightly.support_dir, home.join("Library/Application Support/OpenRecorderNightly"));
+        assert_eq!(nightly.recordings_dir, home.join("Movies/OpenRecorderNightly"));
+        assert_eq!(nightly.screenshots_dir, home.join("Pictures/OpenRecorderNightly"));
+        assert_ne!(nightly.project_index, production.project_index);
+        assert_ne!(nightly.projects_dir, production.projects_dir);
+        assert!(InternalPaths::for_home(home, Some("unknown")).is_err());
+    }
 
     #[test]
     fn sanitizes_file_names_for_project_files() {

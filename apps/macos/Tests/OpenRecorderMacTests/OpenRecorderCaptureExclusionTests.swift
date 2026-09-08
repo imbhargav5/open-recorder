@@ -12,8 +12,8 @@ final class OpenRecorderCaptureExclusionTests: XCTestCase {
         ))
     }
 
-    func testExcludesProductionAndDevelopmentOpenRecorderBundles() {
-        XCTAssertTrue(OpenRecorderCaptureExclusion.shouldExcludeApplication(
+    func testAllowsOtherVariantsAndExcludesOwnBundle() {
+        XCTAssertFalse(OpenRecorderCaptureExclusion.shouldExcludeApplication(
             bundleIdentifier: "dev.openrecorder.app",
             applicationName: "Open Recorder",
             processID: 100,
@@ -29,8 +29,8 @@ final class OpenRecorderCaptureExclusionTests: XCTestCase {
         ))
     }
 
-    func testExcludesOpenRecorderOwnerNamesForLocalBuildsWithoutBundleIdentifiers() {
-        XCTAssertTrue(OpenRecorderCaptureExclusion.shouldExcludeApplication(
+    func testDoesNotExcludeAnotherProcessByNameAlone() {
+        XCTAssertFalse(OpenRecorderCaptureExclusion.shouldExcludeApplication(
             bundleIdentifier: nil,
             applicationName: "OpenRecorderMac",
             processID: 100,
@@ -47,6 +47,21 @@ final class OpenRecorderCaptureExclusionTests: XCTestCase {
             currentProcessID: 200,
             currentBundleIdentifier: "dev.openrecorder.app.dev"
         ))
+    }
+
+    func testProductionAndNightlyCanCaptureEachOther() {
+        for (current, target) in [
+            ("dev.openrecorder.app", "dev.openrecorder.app.nightly"),
+            ("dev.openrecorder.app.nightly", "dev.openrecorder.app")
+        ] {
+            XCTAssertFalse(OpenRecorderCaptureExclusion.shouldExcludeApplication(
+                bundleIdentifier: target,
+                applicationName: "OpenRecorderMac",
+                processID: 100,
+                currentProcessID: 200,
+                currentBundleIdentifier: current
+            ))
+        }
     }
 
     func testAllowsUnrelatedApplications() {

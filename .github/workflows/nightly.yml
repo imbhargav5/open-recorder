@@ -1,0 +1,113 @@
+name: Build Nightly macOS App
+run-name: Nightly · ${{ github.ref_name }} · ${{ github.run_number }}
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-nightly:
+    name: Nightly (${{ matrix.artifact_arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - artifact_arch: arm64
+            runner: macos-26
+            binary_arch: arm64
+          - artifact_arch: x64
+            runner: macos-26-intel
+            binary_arch: x86_64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    steps:
+      - name: Checkout selected branch
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Run tests
+        run: |
+          make test-macos
+          python3 scripts/tests/test_macos_notarization.py
+
+      - name: Import existing release signing certificate
+        env:
+          CSC_LINK: ${{ secrets.APPLE_CERTIFICATE || secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD || secrets.CSC_KEY_PASSWORD }}
+          CSC_NAME: ${{ secrets.APPLE_SIGNING_IDENTITY || secrets.CSC_NAME }}
+        run: zsh scripts/import-macos-production-signing-certificate.zsh
+
+      - name: Build, sign, notarize, and staple nightly
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: make package-macos-nightly
+
+      - name: Verify nightly identity and architecture
+        env:
+          EXPECTED_ARCH: ${{ matrix.binary_arch }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          app="release/OpenRecorderNightly.app"
+          plist="$app/Contents/Info.plist"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$plist")" = 'dev.openrecorder.app.nightly'
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleName' "$plist")" = 'OpenRecorderNightly'
+          for key in SUFeedURL CFBundleDocumentTypes UTExportedTypeDeclarations; do
+            if /usr/libexec/PlistBuddy -c "Print :$key" "$plist" >/dev/null 2>&1; then
+              echo "Unexpected production metadata in nightly: $key" >&2
+              exit 1
+            fi
+          done
+          for binary in OpenRecorderMac open-recorder-service; do
+            test "$(lipo -archs "$app/Contents/MacOS/$binary")" = "$EXPECTED_ARCH"
+          done
+          zsh scripts/verify-macos-production-signature.zsh "$app"
+          codesign --verify --deep --strict "$app"
+          xcrun stapler validate "$app"
+          spctl -a -vv -t exec "$app"
+
+      - name: Create downloadable ZIP
+        env:
+          ARTIFACT_ARCH: ${{ matrix.artifact_arch }}
+        run: |
+          set -euo pipefail
+          mkdir -p nightly-download
+          ditto -c -k --sequesterRsrc --keepParent \
+            release/OpenRecorderNightly.app \
+            "nightly-download/OpenRecorderNightly-${ARTIFACT_ARCH}.zip"
+          python3 - <<'PY'
+          import json, os, pathlib
+          metadata = {
+              'commit': os.environ['GITHUB_SHA'],
+              'ref': os.environ['GITHUB_REF'],
+              'architecture': os.environ['ARTIFACT_ARCH'],
+              'run': os.environ['GITHUB_SERVER_URL'] + '/' + os.environ['GITHUB_REPOSITORY'] + '/actions/runs/' + os.environ['GITHUB_RUN_ID'],
+          }
+          pathlib.Path('nightly-download/build-info.json').write_text(json.dumps(metadata, indent=2) + '\n')
+          PY
+          shasum -a 256 "nightly-download/OpenRecorderNightly-${ARTIFACT_ARCH}.zip" > nightly-download/SHA256SUMS.txt
+          echo "Download the nightly artifact below, extract the app ZIP, and move OpenRecorderNightly.app to Applications. Architecture: ${ARTIFACT_ARCH}. Commit: ${GITHUB_SHA}." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload notarized nightly app
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenRecorderNightly-${{ matrix.artifact_arch }}-${{ github.run_number }}
+          path: nightly-download/
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Remove temporary signing material
+        if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/open-recorder-signing.keychain-db" 2>/dev/null || true
+          rm -f "$RUNNER_TEMP/open-recorder-signing.p12"

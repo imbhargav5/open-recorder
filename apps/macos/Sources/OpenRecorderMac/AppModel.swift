@@ -1937,7 +1937,7 @@ final class AppModel: ObservableObject {
             in: .userDomainMask
         ).first {
             projectsDirectory = applicationSupport
-                .appendingPathComponent("Open Recorder", isDirectory: true)
+                .appendingPathComponent(AppVariant.storageDirectoryName, isDirectory: true)
                 .appendingPathComponent("Projects", isDirectory: true)
         } else if let mediaURL = screenshotURL ?? recordingURL {
             projectsDirectory = mediaURL.deletingLastPathComponent()

@@ -22,25 +22,10 @@ enum OpenRecorderCaptureExclusion {
             return true
         }
 
-        if let normalizedBundleIdentifier,
-           normalizedBundleIdentifier.hasPrefix("dev.openrecorder.app") {
-            return true
-        }
-
-        if normalizedCurrentBundleIdentifier?.hasPrefix("dev.openrecorder.app") == true,
-           let applicationName = cleaned(applicationName)?.lowercased(),
-           openRecorderApplicationNames.contains(applicationName) {
-            return true
-        }
-
+        // Other variants must remain capturable, including unbundled processes.
+        // Names are not reliable identity: both variants use OpenRecorderMac internally.
         return false
     }
-
-    private static let openRecorderApplicationNames: Set<String> = [
-        "open recorder",
-        "open recorder dev",
-        "openrecordermac"
-    ]
 
     private static func cleaned(_ value: String?) -> String? {
         let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)

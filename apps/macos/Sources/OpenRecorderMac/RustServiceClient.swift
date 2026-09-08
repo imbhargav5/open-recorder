@@ -85,6 +85,7 @@ struct RustServiceClient: Sendable {
 
         let process = Process()
         process.executableURL = executableURL
+        process.environment = AppVariant.serviceEnvironment()
         process.arguments = ["--oneshot", method, paramsString]
 
         let outputPipe = Pipe()

@@ -213,3 +213,68 @@ Thanks to everyone who has contributed to Open Recorder. The historical acknowle
 ## License
 
 Open Recorder is licensed under the Apache License 2.0.
+
+### Download a signed nightly app from GitHub (recommended)
+
+In GitHub, open **Actions → Build Nightly macOS App → Run workflow**, select the
+branch to build, and start the run. Once both architecture jobs finish, download
+`OpenRecorderNightly-arm64-…` for Apple Silicon or `OpenRecorderNightly-x64-…` for
+Intel from the run's **Artifacts** section. Extract the downloaded artifact, then
+extract the app ZIP inside it and move `OpenRecorderNightly.app` to Applications.
+Quit an existing nightly instance before replacing it.
+
+The workflow reuses the production signing and Apple notarization secrets already
+configured in GitHub. It does not require signing credentials on your Mac. Each
+artifact contains a notarized, stapled app, build commit metadata, and a ZIP
+checksum; downloads are retained for 30 days. The workflow runs manually and
+neither creates a GitHub release nor changes the production appcast. GitHub only
+builds committed code on the selected remote branch, not uncommitted local edits.
+The workflow must be merged into the default branch before its Run workflow
+button becomes available.
+
+### Signed local nightly app (optional)
+
+
+`make run-macos-nightly` builds, Developer ID signs, notarizes, staples, installs,
+and launches `/Applications/OpenRecorderNightly.app`. Use
+`make package-macos-nightly` to produce only the bundle, or
+`make install-macos-nightly` to install without launching. Each invocation builds
+from the current checkout, including local changes, using an optimized release build.
+Quit nightly before replacing its installed bundle.
+
+One-time setup on your Mac:
+
+1. Import your **Developer ID Application** certificate **and private key** into
+   Keychain Access (a `.p12` export from the signing Mac, or create a Developer ID
+   certificate through your Apple Developer account). An Apple Development
+   certificate is insufficient for this workflow.
+2. Confirm it appears in `security find-identity -v -p codesigning`.
+3. Run `xcrun notarytool store-credentials OpenRecorderNightly` and follow its
+   interactive prompts for your Apple ID, team ID, and app-specific password.
+   Credentials stay in Keychain; do not commit or paste them into source files.
+4. Run `make run-macos-nightly`.
+
+If multiple Developer ID identities exist, select the intended certificate with
+`CODE_SIGN_IDENTITY`. A non-default signing keychain can be selected with
+`OPEN_RECORDER_SIGNING_KEYCHAIN`; a different notarization profile with
+`OPEN_RECORDER_NOTARY_PROFILE`. Nightly refuses missing signing credentials and
+never falls back to ad-hoc signing. Installation happens only after signature,
+notarization ticket, and Gatekeeper checks pass. Notarization requires internet.
+
+Nightly uses bundle ID `dev.openrecorder.app.nightly`, separate preferences and
+privacy grants, and `OpenRecorderNightly` folders under Application Support,
+Movies, and Pictures. No production library is copied or migrated. Global
+shortcuts start disabled; configure nonconflicting shortcuts in Settings if needed.
+Nightly has no automatic updates or default project-file association; use its
+in-app Open command to deliberately open a project. Opening the same project in
+both apps still means editing the same file.
+
+Both updated variants exclude their own app from capture while allowing the
+other variant. Nightly can record an older production app immediately; production
+can record nightly after production receives the capture-exclusion fix. The
+nightly command never replaces production or the existing Dev installation.
+
+macOS will still ask for nightly's own screen-recording, microphone, and camera
+permissions when those features are first used, and may show OS-mandated reminders.
+Keep the bundle identity and signing identity consistent across rebuilds. Signing
+and notarization establish app trust; they do not bypass privacy consent.
