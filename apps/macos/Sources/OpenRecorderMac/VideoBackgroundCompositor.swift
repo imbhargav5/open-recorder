@@ -201,6 +201,12 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
     private let renderingQueue = DispatchQueue(label: "com.openrecorder.video.compositor", qos: .userInitiated)
     private let ciContext: CIContext
     private let backgroundCache: VideoStaticBackgroundCache
+    let roundedMaskCache = VideoRoundedMaskCache()
+    #if OPEN_RECORDER_TESTING
+    private let cacheMasks = ProcessInfo.processInfo.environment["OPEN_RECORDER_EXPORT_UNCACHED_MASKS"] != "1"
+    #else
+    private let cacheMasks = true
+    #endif
     private var renderContext: AVVideoCompositionRenderContext?
     private let renderContextLock = NSLock()
     private var annotationCache: [String: CIImage] = [:]
@@ -238,6 +244,7 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
         renderContext = newRenderContext
         renderContextLock.unlock()
         backgroundCache.invalidate()
+        roundedMaskCache.invalidate()
     }
 
     func startRequest(_ request: AVAsynchronousVideoCompositionRequest) {
@@ -266,7 +273,10 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
     }
 
     func cancelAllPendingVideoCompositionRequests() {
-        defer { backgroundCache.invalidate() }
+        defer {
+            backgroundCache.invalidate()
+            roundedMaskCache.invalidate()
+        }
         if DispatchQueue.getSpecific(key: renderingQueueKey) == true {
             return
         }
@@ -372,7 +382,7 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
             height: scaledSize.height
         )
         let cornerRadius = instruction.styling.borderRadiusRatio * minDim
-        let maskedSource = applyRoundedMask(positionedImage, cornerRadius: cornerRadius, in: placedRect)
+        let maskedSource = applyRoundedMask(positionedImage, cornerRadius: cornerRadius, in: placedRect, role: .recording)
 
         let blurRadius = instruction.styling.backgroundBlurRatio * minDim
         let background = backgroundCache.image(
@@ -567,7 +577,7 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
         let dx = frame.midX - image.extent.midX
         let dy = frame.midY - image.extent.midY
         image = image.transformed(by: CGAffineTransform(translationX: dx, y: dy))
-        let clipped = applyRoundedMask(image.cropped(to: frame), cornerRadius: radius, in: frame)
+        let clipped = applyRoundedMask(image.cropped(to: frame), cornerRadius: radius, in: frame, role: .facecam)
 
         guard settings.clamped.borderWidth > 0 else {
             return clipped
@@ -877,28 +887,17 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
         return filter.outputImage ?? image
     }
 
-    private func applyRoundedMask(_ image: CIImage, cornerRadius: CGFloat, in rect: CGRect) -> CIImage {
-        let width = max(Int(ceil(rect.width)), 1)
-        let height = max(Int(ceil(rect.height)), 1)
-        let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
-        guard let context = CGContext(
-            data: nil,
-            width: width,
-            height: height,
-            bitsPerComponent: 8,
-            bytesPerRow: 0,
-            space: colorSpace,
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ) else { return image }
-
-        context.setFillColor(NSColor.white.cgColor)
-        let maskRect = CGRect(x: 0, y: 0, width: width, height: height)
-        let radius = max(0, min(cornerRadius, min(rect.width, rect.height) / 2))
-        context.addPath(CGPath(roundedRect: maskRect, cornerWidth: radius, cornerHeight: radius, transform: nil))
-        context.fillPath()
-
-        guard let maskCG = context.makeImage() else { return image }
-        let maskImage = CIImage(cgImage: maskCG).transformed(by: CGAffineTransform(translationX: rect.minX, y: rect.minY))
+    private func applyRoundedMask(_ image: CIImage, cornerRadius: CGFloat, in rect: CGRect,
+                                  role: VideoRoundedMaskCache.Role? = nil) -> CIImage {
+        let localMask: CIImage?
+        if let role, cacheMasks {
+            localMask = roundedMaskCache.mask(size: rect.size, cornerRadius: cornerRadius, role: role)
+        } else {
+            // Inset/decorative geometry must not evict the recording or facecam raster.
+            localMask = VideoRoundedMaskCache.makeMask(size: rect.size, cornerRadius: cornerRadius)
+        }
+        guard let localMask else { return image }
+        let maskImage = localMask.transformed(by: CGAffineTransform(translationX: rect.minX, y: rect.minY))
 
         guard let filter = CIFilter(name: "CIBlendWithMask") else { return image }
         filter.setValue(image, forKey: kCIInputImageKey)
