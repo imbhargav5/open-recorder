@@ -46,3 +46,8 @@ test-macos:
 clean-macos:
 	cd apps/rust-service && cargo clean
 	cd apps/macos && swift package clean
+
+.PHONY: test-macos-release
+test-macos-release:
+	cd apps/rust-service && CARGO_INCREMENTAL=0 cargo test --release
+	cd apps/macos && swift test -c release -Xswiftc -DOPEN_RECORDER_TESTING

@@ -506,6 +506,7 @@ enum VideoExportRenderer {
         options: VideoExportOptions,
         cancellationToken: VideoExportCancellationToken? = nil,
         edits: TimelineEditSnapshot = .empty,
+        diagnostics: VideoExportDiagnostics? = nil,
         progressHandler: @escaping @MainActor (Double) -> Void = { _ in }
     ) async throws {
         if FileManager.default.fileExists(atPath: targetURL.path) {
@@ -513,6 +514,9 @@ enum VideoExportRenderer {
         }
 
         let context = try await makeRenderContext(sourceURL: sourceURL, options: options, edits: edits)
+        for instruction in context.videoComposition.instructions {
+            (instruction as? VideoBackgroundCompositionInstruction)?.diagnostics = diagnostics
+        }
         if options.format.isAnimatedImage {
             try await exportGIF(context: context, targetURL: targetURL, options: options, cancellationToken: cancellationToken, progressHandler: progressHandler)
         } else {

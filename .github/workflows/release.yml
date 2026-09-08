@@ -97,7 +97,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Run tests
-        run: make test-macos
+        run: make test-macos test-macos-release
 
       - name: Import macOS signing certificate
         run: zsh scripts/import-macos-production-signing-certificate.zsh
