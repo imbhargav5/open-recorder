@@ -29,17 +29,28 @@ jobs:
               - 'Makefile'
               - 'package.json'
 
-  test:
-    name: Native macOS tests
+  native-tests:
     needs: changes
     if: needs.changes.outputs.relevant == 'true'
-    runs-on: macos-26
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-26, macos-26-intel]
+    runs-on: ${{ matrix.runner }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
+      - name: Debug and release tests
+        run: make test-macos test-macos-release
+      - name: Script tests
+        run: node --test scripts/*.test.mjs
 
-      - name: Run tests
-        run: make test-macos
-
-      - name: Test release-note rendering and appcast updates
-        run: node --test scripts/render-release-notes.test.mjs
+  test:
+    name: Native macOS tests
+    needs: [changes, native-tests]
+    if: always() && needs.changes.outputs.relevant == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require both native architectures
+        env:
+          RESULT: ${{ needs.native-tests.result }}
+        run: test "$RESULT" = success

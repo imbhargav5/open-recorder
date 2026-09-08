@@ -265,7 +265,7 @@ final class CaptureController: ObservableObject {
         screenRecordingPermission.currentState()
     }
 
-    #if DEBUG
+    #if DEBUG || OPEN_RECORDER_TESTING
     func setRecordingForTesting(_ isRecording: Bool) {
         self.isRecording = isRecording
     }

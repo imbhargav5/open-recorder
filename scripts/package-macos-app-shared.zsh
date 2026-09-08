@@ -6,15 +6,21 @@ repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 app_variant="production"
 install=false
 launch=false
+build_configuration=""
 
-for arg in "$@"; do
-	case "$arg" in
+while (( $# > 0 )); do
+	case "$1" in
 		--dev)
 			app_variant="development"
 			;;
 		--production)
 			app_variant="production"
 			;;
+		--configuration)
+            (( $# >= 2 )) || { print -u2 -- "--configuration requires debug or release"; exit 2; }
+            build_configuration="$2"
+            shift
+            ;;
 		--install)
 			install=true
 			;;
@@ -22,11 +28,25 @@ for arg in "$@"; do
 			launch=true
 			;;
 		*)
-			print -u2 -- "Unknown argument: $arg"
+			print -u2 -- "Unknown argument: $1"
 			exit 2
 			;;
 	esac
+    shift
 done
+
+if [[ -z "$build_configuration" ]]; then
+    [[ "$app_variant" == "production" ]] && build_configuration=release || build_configuration=debug
+fi
+if [[ "$build_configuration" != debug && "$build_configuration" != release ]]; then
+    print -u2 -- "--configuration must be debug or release"
+    exit 2
+fi
+if [[ "$app_variant" == production && "$build_configuration" != release ]]; then
+    print -u2 -- "Production packages require release configuration"
+    exit 2
+fi
+source_revision="$(git -C "$repo_root" rev-parse HEAD)"
 
 if [[ "$app_variant" == "development" ]]; then
 	app_name="${OPEN_RECORDER_DEV_APP_NAME:-Open Recorder Dev}"
@@ -40,10 +60,10 @@ bundle_dir="$repo_root/release/${app_name}.app"
 contents_dir="$bundle_dir/Contents"
 macos_dir="$contents_dir/MacOS"
 resources_dir="$contents_dir/Resources"
-swift_binary="$repo_root/apps/macos/.build/debug/OpenRecorderMac"
+
 swift_resource_bundle_name="OpenRecorderMac_OpenRecorderMac.bundle"
-swift_resource_bundle="$repo_root/apps/macos/.build/debug/$swift_resource_bundle_name"
-service_binary="$repo_root/apps/rust-service/target/debug/open-recorder-service"
+
+
 info_plist="$repo_root/apps/macos/Resources/Info.plist"
 icon_source="$repo_root/apps/macos/Resources/AppIcon.icns"
 
@@ -69,19 +89,20 @@ binary_has_rpath() {
 }
 
 cd "$repo_root/apps/rust-service"
-CARGO_INCREMENTAL=0 cargo build
+rust_flags=()
+[[ "$build_configuration" == release ]] && rust_flags+=(--release)
+CARGO_INCREMENTAL=0 cargo build "${rust_flags[@]}"
+rust_target_dir="$(cargo metadata --format-version 1 --no-deps | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')"
+service_binary="$rust_target_dir/$build_configuration/open-recorder-service"
 
 cd "$repo_root/apps/macos"
-swift build
-
-if [[ ! -d "$swift_resource_bundle" ]]; then
-	swift_resource_bundle="$(find "$repo_root/apps/macos/.build" -type d -name "$swift_resource_bundle_name" -print -quit)"
-fi
-
-if [[ ! -d "$swift_resource_bundle" ]]; then
-	print -u2 -- "Swift resource bundle not found: $swift_resource_bundle_name"
-	exit 1
-fi
+swift build -c "$build_configuration"
+swift_bin_path="$(swift build -c "$build_configuration" --show-bin-path)"
+swift_binary="$swift_bin_path/OpenRecorderMac"
+swift_resource_bundle="$swift_bin_path/$swift_resource_bundle_name"
+for required_path in "$swift_binary" "$service_binary" "$swift_resource_bundle"; do
+    [[ -e "$required_path" ]] || { print -u2 -- "Missing $build_configuration artifact: $required_path"; exit 1; }
+done
 
 rm -rf "$bundle_dir"
 mkdir -p "$macos_dir" "$resources_dir"
@@ -109,6 +130,8 @@ ditto "$sparkle_framework_source" "$contents_dir/Frameworks/Sparkle.framework"
 set_plist_string "CFBundleName" "$app_name"
 set_plist_string "CFBundleDisplayName" "$app_name"
 set_plist_string "CFBundleIdentifier" "$bundle_identifier"
+set_plist_string "OpenRecorderBuildConfiguration" "$build_configuration"
+set_plist_string "OpenRecorderSourceRevision" "$source_revision"
 
 if [[ -f "$icon_source" ]]; then
 	cp "$icon_source" "$resources_dir/AppIcon.icns"
@@ -124,6 +147,7 @@ if ! binary_has_rpath "$macos_dir/OpenRecorderMac" "$frameworks_rpath"; then
 	fi
 	install_name_tool -add_rpath "$frameworks_rpath" "$macos_dir/OpenRecorderMac"
 fi
+python3 "$repo_root/scripts/verify-macos-build.py" "$bundle_dir" --configuration "$build_configuration" --revision "$source_revision" --architecture "$(uname -m)" --swift-bin-path "$swift_bin_path" --rust-bin-path "$rust_target_dir/$build_configuration" --version "$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$info_plist")"
 find "$bundle_dir" \( -name '._*' -o -name '.__CodeSignature' \) -delete
 if [[ "$app_variant" == "development" ]]; then
 	zsh "$repo_root/scripts/sign-macos-development-app.zsh" "$bundle_dir"

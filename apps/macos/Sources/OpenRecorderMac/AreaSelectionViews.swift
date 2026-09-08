@@ -38,7 +38,7 @@ final class AreaSelectionOverlayController: AreaSelectionPresenting {
     private var mode: CaptureMode = .recording
     private var presentationGeneration = 0
 
-#if DEBUG
+#if DEBUG || OPEN_RECORDER_TESTING
     var presentedWindowCountForTesting: Int { windows.count }
     var presentedWindowsForTesting: [NSWindow] { windows }
 #endif
