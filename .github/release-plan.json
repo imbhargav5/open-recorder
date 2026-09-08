@@ -1,6 +1,6 @@
 {
-  "tagName": "v0.2.49",
-  "releaseName": "Open Recorder v0.2.49",
-  "releaseNotes": "## Commits since v0.2.48\n\n- 279c484 Merge pull request #1097 from imbhargav5/codex/cache-static-export-backgrounds\n- 199cbc3 perf(macos): cache static video export backgrounds\n- 897e2b2 Merge pull request #1096 from imbhargav5/codex/hud-quit-context-menu\n- 7fa7e11 feat(macos): add HUD context menu to quit Open Recorder\n- cb0b0d8 docs: add changelog entry for v0.2.48 (#1094)\n- a231fc6 Fill gaps from assistant conversations: document frame export error (#1092)\n- d472506 Update appcast for v0.2.48",
+  "tagName": "v0.2.50",
+  "releaseName": "Open Recorder v0.2.50",
+  "releaseNotes": "## Commits since v0.2.49\n\n- 8ba5249 Merge pull request #1113 from imbhargav5/codex/invariant-export-masks\n- a3f8be7 Record long-run validation and reject format and concurrency experiments\n- b32ff10 Cache invariant recording and facecam masks with bounded lifetime\n- c757571 Merge pull request #1111 from imbhargav5/codex/release-export-benchmarks\n- cc1786f Validate decoded cadence and document export baselines\n- c328cb1 Build optimized production packages and add native export benchmarks\n- 06309ee docs: link v0.2.48 changelog zoom entries to zoom effects guide (#1109)\n- 01c4598 Merge pull request #1105 from imbhargav5/mintlify/e2bab6cc\n- 42ce461 Merge branch 'main' into mintlify/e2bab6cc\n- ef1e3c7 Merge pull request #1104 from imbhargav5/mintlify/39d408d4\n- 1d6df67 docs: shorten zoom effects page description to fit SEO length limit\n- 09a712f docs: add zoom effects editing guide for adaptive automatic zoom and bulk delete\n- b9774b0 docs: add v0.2.49 changelog entry and HUD quit action\n- 5d9a2e0 ci: update actions to Node.js 24 runtimes (#1100)\n- 962c82e Update appcast for v0.2.49",
   "makeLatest": true
 }
