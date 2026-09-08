@@ -14,6 +14,8 @@ parser.add_argument("--configuration", choices=["debug", "release"], default="re
 parser.add_argument("--diagnostics", action="store_true")
 parser.add_argument("--capture-frames", action="store_true")
 args = parser.parse_args()
+if (args.output / "results.json").exists():
+    parser.error("Choose a fresh output directory; existing results must not be mixed with a new run")
 root = Path(__file__).resolve().parent.parent
 modified = bool(subprocess.check_output(["git", "status", "--porcelain"], cwd=root, text=True).strip())
 hardware = subprocess.check_output(["sysctl", "-n", "machdep.cpu.brand_string"], text=True).strip()

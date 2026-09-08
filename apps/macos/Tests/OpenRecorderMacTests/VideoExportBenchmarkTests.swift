@@ -30,6 +30,7 @@ final class VideoExportBenchmarkTests: XCTestCase {
         let frames: Int
         let firstPTS: Double, lastPTS: Double
         let monotonic: Bool
+        let maximumFrameIntervalError: Double
         let audioTracks: Int
     }
     struct Run: Codable {
@@ -151,9 +152,10 @@ final class VideoExportBenchmarkTests: XCTestCase {
                 XCTAssertEqual(actual.width, input.width, fixture.name)
                 XCTAssertEqual(actual.height, input.height, fixture.name)
                 XCTAssertEqual(actual.nominalFPS, fixture.fps, accuracy: 0.01, "Requested FPS mismatch: \(fixture.name)")
-                XCTAssertEqual(actual.frames, Int((input.duration * fixture.fps).rounded()), fixture.name)
+                XCTAssertEqual(actual.frames, Int(ceil(actual.duration * fixture.fps - 0.000001)), fixture.name)
                 XCTAssertEqual(actual.audioTracks, input.audioTracks, fixture.name)
                 XCTAssertTrue(actual.monotonic, fixture.name)
+                XCTAssertLessThanOrEqual(actual.maximumFrameIntervalError, 0.001, fixture.name)
                 print("EXPORT_BENCH \(fixture.name) run=\(index) seconds=\(exportSeconds) frames=\(actual.frames)")
             }
         }
@@ -183,6 +185,7 @@ final class VideoExportBenchmarkTests: XCTestCase {
         return Media(width: size.width, height: size.height, duration: duration, nominalFPS: Double(fps),
                      frames: times.count, firstPTS: times.first ?? 0, lastPTS: times.last ?? 0,
                      monotonic: zip(times, times.dropFirst()).allSatisfy { $0 < $1 },
+                     maximumFrameIntervalError: zip(times, times.dropFirst()).map { abs(($1 - $0) - 1 / Double(fps)) }.max() ?? 0,
                      audioTracks: try await asset.loadTracks(withMediaType: .audio).count)
     }
 }
