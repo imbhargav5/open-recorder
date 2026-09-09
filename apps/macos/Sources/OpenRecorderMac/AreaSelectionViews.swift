@@ -116,7 +116,7 @@ final class AreaSelectionOverlayController: AreaSelectionPresenting {
             window.collectionBehavior = AreaSelectionOverlayChrome.collectionBehavior
             window.isMovableByWindowBackground = false
             window.acceptsMouseMovedEvents = true
-            window.contentView = NSHostingView(rootView: AreaSelectionScreenOverlayView(
+            window.contentView = AreaSelectionHostingView(rootView: AreaSelectionScreenOverlayView(
                 screen: screen,
                 mode: mode,
                 onSelect: { [weak self] area in
@@ -184,6 +184,11 @@ final class AreaSelectionOverlayController: AreaSelectionPresenting {
             }
         }
     }
+}
+
+final class AreaSelectionHostingView: NSHostingView<AreaSelectionScreenOverlayView> {
+    // The activating mouse-down must also begin selection, including on non-key displays.
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
 
 final class AreaSelectionOverlayPanel: NSPanel {
