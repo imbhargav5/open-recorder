@@ -3,6 +3,24 @@ title: "Open Recorder changelog: releases, features, and fixes"
 description: "Release notes for Open Recorder on macOS. Track new screen recording features, capture improvements, and bug fixes in each version update."
 ---
 
+<Update label="September 8, 2026" description="v0.2.50" tags={["macOS"]}>
+## New features
+
+### Signed nightly builds
+
+You can now try upcoming changes early with nightly builds. Each nightly is a signed and notarized app named **OpenRecorderNightly**, built on demand from the repository's **Build Nightly macOS App** GitHub Actions workflow, with downloads for both Apple Silicon and Intel kept for 30 days. Nightly installs alongside the production app with its own preferences, privacy permissions, and capture folders, so testing a nightly never touches your existing setup. Nightly builds do not update automatically.
+
+## Improvements
+
+### Faster styled exports
+
+Exports that use rounded corners, a facecam, a wallpaper, or a blurred background now finish roughly 20 to 30 percent faster. Open Recorder builds the rounded masks for the recording and facecam once per export and reuses them for every frame instead of recreating them frame by frame. Longer recordings benefit most: in testing, a ten-minute 1080p styled export dropped from about 100 seconds to 64 seconds. Exported video quality is unchanged. See [Backgrounds](/editing/backgrounds) for the styling options.
+
+### Smaller, optimized app package
+
+Open Recorder is now packaged with release optimizations enabled, which shrinks the download by about 5 MB.
+</Update>
+
 <Update label="September 7, 2026" description="v0.2.49" tags={["macOS"]}>
 ## New features
 
