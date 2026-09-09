@@ -19,7 +19,7 @@ const features = [
     copy: "Crop and reframe videos for fixed aspect layouts, compose screenshots on styled backgrounds, and export MOV, MP4, GIF, or PNG outputs.",
     icon: <ExportIcon />,
   },
-];
+] as const;
 
 export function RedesignFeatures(): ReactElement {
   return (
