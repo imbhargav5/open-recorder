@@ -585,6 +585,7 @@ struct CaptureState: Hashable {
                 return finish(self)
             }
             next.setPhase(.setup(mode), clearSource: false)
+            next.presentation = .visible
             next.preferredSourceKind = next.selectedSource?.kind ?? next.preferredSourceKind ?? .display
             statusMessage = next.selectedSource == nil ? "Choose a source." : nil
             effects.append(.dismissScreenSelection)

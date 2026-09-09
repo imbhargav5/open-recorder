@@ -503,6 +503,7 @@ final class AppModel: ObservableObject {
                 self?.objectWillChange.send()
             }
         )
+        setCaptureStateMirror(captureState.withPresentation(.hidden))
         NotificationCenter.default.addObserver(
             forName: AVCaptureDevice.wasConnectedNotification,
             object: nil,
@@ -959,11 +960,15 @@ final class AppModel: ObservableObject {
                 restoredSource,
                 preferredSourceKind: storedCaptureSetup.preferredSourceKind
             ))
-            if let restoredSource {
+            if let restoredSource, isHUDVisible {
                 dispatch(.selectSource(restoredSource))
             }
         } else if let defaultSource = capture.sources.first(where: { $0.kind == .display }) ?? capture.sources.first {
-            dispatch(.selectSource(defaultSource))
+            dispatch(.restoreSetup(
+                captureMode,
+                defaultSource,
+                preferredSourceKind: defaultSource.kind
+            ))
         }
     }
 
