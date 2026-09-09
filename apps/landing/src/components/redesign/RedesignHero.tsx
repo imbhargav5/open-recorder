@@ -17,7 +17,7 @@ export function RedesignHero({ docsUrl, sourceUrl }: Props): ReactElement {
       <div className="rd-inner rd-hero-layout">
         {/* Left Column: Heading, Lead, CTAs, and Metadata */}
         <div className="rd-hero-left">
-          <p className="rd-hero-tag">//01 LOCAL-FIRST MACOS</p>
+          <p className="rd-hero-tag">{"//01 LOCAL-FIRST MACOS"}</p>
 
           <h1 className="rd-hero-title">
             The native<br />
