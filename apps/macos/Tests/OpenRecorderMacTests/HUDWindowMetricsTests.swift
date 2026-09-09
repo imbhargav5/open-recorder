@@ -140,6 +140,44 @@ final class HUDWindowMetricsTests: XCTestCase {
     }
 
     @MainActor
+    func testAreaSelectionContentAcceptsFirstMouseWhenPanelIsNotKey() throws {
+        guard !NSScreen.screens.isEmpty else {
+            throw XCTSkip("Area overlay input requires an attached display.")
+        }
+        let controller = AreaSelectionOverlayController()
+        defer { controller.dismiss() }
+
+        for mode in [CaptureMode.recording, .screenshot] {
+            controller.present(mode: mode, onSelect: { _ in }, onCancel: {})
+            let windows = controller.presentedWindowsForTesting
+            XCTAssertEqual(windows.count, NSScreen.screens.count)
+
+            for window in windows {
+                window.resignKey()
+                XCTAssertFalse(window.isKeyWindow)
+                let content = try XCTUnwrap(window.contentView)
+                content.layoutSubtreeIfNeeded()
+                let point = NSPoint(x: 40, y: 40)
+                let event = try XCTUnwrap(NSEvent.mouseEvent(
+                    with: .leftMouseDown,
+                    location: point,
+                    modifierFlags: [],
+                    timestamp: 0,
+                    windowNumber: window.windowNumber,
+                    context: nil,
+                    eventNumber: 1,
+                    clickCount: 1,
+                    pressure: 1
+                ))
+                XCTAssertTrue(content.acceptsFirstMouse(for: event))
+                let hitView = try XCTUnwrap(content.hitTest(point))
+                XCTAssertTrue(hitView.acceptsFirstMouse(for: event),
+                              "The actual drag target must accept the activating mouse-down.")
+            }
+        }
+    }
+
+    @MainActor
     func testAreaSelectionFocusRestoresEveryOverlay() throws {
         guard !NSScreen.screens.isEmpty else {
             throw XCTSkip("Area overlay focus requires an attached display.")
