@@ -1,7 +1,8 @@
 "use client";
 import { useEffect, useRef } from "react";
+import type { ReactElement } from "react";
 
-export function ScrollProgress(): React.ReactElement {
+export function ScrollProgress(): ReactElement {
   const barRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
