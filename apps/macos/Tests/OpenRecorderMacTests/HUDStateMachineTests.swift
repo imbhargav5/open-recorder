@@ -198,13 +198,13 @@ final class HUDStateMachineTests: XCTestCase {
 
         model.toggleHUDPresentation()
 
-        XCTAssertEqual(model.hudState.presentation, .hidden)
-        XCTAssertEqual(model.windowCommand?.action, .hideHUD)
+        XCTAssertEqual(model.hudState.presentation, .visible)
+        XCTAssertEqual(model.windowCommand?.action, .showHUD)
 
         model.toggleHUDPresentation()
 
-        XCTAssertEqual(model.hudState.presentation, .visible)
-        XCTAssertEqual(model.windowCommand?.action, .showHUD)
+        XCTAssertEqual(model.hudState.presentation, .hidden)
+        XCTAssertEqual(model.windowCommand?.action, .hideHUD)
     }
 
     func testAreaSelectionBlocksNewCapturesUntilCanceled() {

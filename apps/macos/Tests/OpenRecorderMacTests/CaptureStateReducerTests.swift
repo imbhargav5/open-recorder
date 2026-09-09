@@ -186,6 +186,17 @@ final class CaptureStateReducerTests: XCTestCase {
         XCTAssertEqual(withoutSource.effects, [.showHUD])
     }
 
+    func testRestoringSourceKeepsLaunchHUDHiddenWithoutPresentationEffects() {
+        let source = makeSource(id: "display:restored", kind: .display)
+        let state = CaptureState.setup(.recording).withPresentation(.hidden)
+
+        let transition = state.applying(.restoreSetup(.recording, source, preferredSourceKind: .display))
+
+        XCTAssertEqual(transition.state.source, source)
+        XCTAssertEqual(transition.state.presentation, .hidden)
+        XCTAssertTrue(transition.effects.isEmpty)
+    }
+
     func testRestoreSetupUsesRestoredSourceKindOrRequestedFallback() {
         let window = makeSource(id: "window:restored", kind: .window)
 

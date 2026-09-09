@@ -52,6 +52,18 @@ final class AppModelStateTests: XCTestCase {
         )
     }
 
+    func testLaunchKeepsHUDHiddenUntilExplicitlyRequested() {
+        let model = AppModel()
+
+        XCTAssertFalse(model.isHUDVisible)
+        XCTAssertNil(model.windowCommand)
+
+        model.showHUD()
+
+        XCTAssertTrue(model.isHUDVisible)
+        XCTAssertEqual(model.windowCommand?.action, .showHUD)
+    }
+
     func testBeginRecordingMovesToReusableSetupAndRequestsHUD() {
         let model = AppModel()
 
@@ -87,7 +99,7 @@ final class AppModelStateTests: XCTestCase {
 
         let model = AppModel(captureSetupPreferencesStore: store)
 
-        XCTAssertEqual(model.hudState, .setup(.screenshot, preferredSourceKind: .window))
+        XCTAssertEqual(model.hudState, .setup(.screenshot, preferredSourceKind: .window).withPresentation(.hidden))
         XCTAssertEqual(model.captureMode, .screenshot)
         XCTAssertEqual(model.preferredSourceSelectorKind, .window)
     }
@@ -2141,12 +2153,12 @@ final class AppModelStateTests: XCTestCase {
 
         XCTAssertEqual(
             titles(in: controller.makeMenu(updateChecksEnabled: false)),
-            ["New Recording", "New Screenshot", "-", "Hide Recorder", "-", "Settings…", "-", "Quit Open Recorder"]
+            ["New Recording", "New Screenshot", "-", "Show Recorder", "-", "Settings…", "-", "Quit Open Recorder"]
         )
         XCTAssertEqual(
             titles(in: controller.makeMenu(updateChecksEnabled: true)),
             [
-                "New Recording", "New Screenshot", "-", "Hide Recorder", "-", "Settings…",
+                "New Recording", "New Screenshot", "-", "Show Recorder", "-", "Settings…",
                 "Check for Updates…", "-", "Quit Open Recorder",
             ]
         )
