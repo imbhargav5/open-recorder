@@ -13,5 +13,6 @@ Validate:
 
 ```bash
 pnpm --dir apps/landing lint
+pnpm --dir apps/landing exec tsc --noEmit
 pnpm --dir apps/landing build
 ```
