@@ -7,8 +7,8 @@ export type Step = {
 };
 
 interface Props {
-  steps: readonly Step[];
-  parallax?: boolean;
+  readonly steps: readonly Step[];
+  readonly parallax?: boolean;
 }
 
 export function StepList({ steps, parallax = true }: Props): ReactElement {
