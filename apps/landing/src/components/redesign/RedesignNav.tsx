@@ -1,7 +1,9 @@
 import Image from "next/image";
 import type { ReactElement } from "react";
 
-export function RedesignNav(): ReactElement {
+type Props = { readonly docsUrl: string };
+
+export function RedesignNav({ docsUrl }: Props): ReactElement {
   return (
     <nav className="rd-nav" aria-label="Primary navigation">
       <div className="rd-nav-inner">
@@ -19,7 +21,7 @@ export function RedesignNav(): ReactElement {
           <a className="rd-nav-link" href="#architecture">Architecture</a>
           <a
             className="rd-btn rd-btn-primary rd-btn-sm"
-            href="https://docs.openrecorder.xyz/"
+            href={docsUrl}
             target="_blank"
             rel="noopener noreferrer"
           >
