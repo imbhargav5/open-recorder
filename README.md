@@ -74,6 +74,7 @@ Open Recorder includes a native editor for turning raw captures into shareable v
 - `apps/macos` - native SwiftUI macOS app
 - `apps/rust-service` - Rust JSON-lines service and one-shot command backend
 - `apps/landing` - Next.js landing page for the project
+- `recording`, `editing`, and `reference` - Mintlify documentation content roots for the Recording, Editing, and Reference navigation groups
 - `docs` - project documentation and supporting artifacts
 
 ## Build From Source
