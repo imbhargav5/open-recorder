@@ -1,5 +1,5 @@
 import type { ReactElement } from "react";
-interface Props { sourceUrl: string }
+interface Props { readonly sourceUrl: string }
 
 export function RedesignCTA({ sourceUrl }: Props): ReactElement {
   return (
