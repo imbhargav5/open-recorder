@@ -20,7 +20,7 @@ export default function RedesignPage(): ReactElement {
       <ScrollProgress />
       <MotionObserver />
 
-      <RedesignNav />
+      <RedesignNav docsUrl={docsUrl} />
       <RedesignHero docsUrl={docsUrl} sourceUrl={sourceUrl} />
       <RedesignProof />
       <RedesignFeatures />
