@@ -20,7 +20,7 @@ export default function Home(): ReactElement {
       <ScrollProgress />
       <MotionObserver />
 
-      <RedesignNav />
+      <RedesignNav docsUrl={docsUrl} />
       <RedesignHero docsUrl={docsUrl} sourceUrl={sourceUrl} />
       <RedesignProof />
       <RedesignFeatures />
