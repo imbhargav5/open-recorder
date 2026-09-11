@@ -2,8 +2,8 @@ import Image from "next/image";
 import type { ReactElement } from "react";
 
 interface Props {
-  docsUrl: string;
-  sourceUrl: string;
+  readonly docsUrl: string;
+  readonly sourceUrl: string;
 }
 
 export function RedesignHero({ docsUrl, sourceUrl }: Props): ReactElement {
