@@ -1,9 +1,9 @@
 import type { ReactElement } from "react";
 
 export type Step = {
-  number?: string; // "01" — omit for rows without numbers (Swift app / Rust service)
-  title: string;
-  description: string;
+  readonly number?: string; // "01" — omit for rows without numbers (Swift app / Rust service)
+  readonly title: string;
+  readonly description: string;
 };
 
 interface Props {
