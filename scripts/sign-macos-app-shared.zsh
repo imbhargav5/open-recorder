@@ -220,6 +220,9 @@ if command -v codesign >/dev/null 2>&1; then
 
 	sign_sparkle_framework
 	sign_code "$service_binary" "${codesign_args[@]}"
+	if [[ -f "$macos_dir/whisper-cli" ]]; then
+		sign_code "$macos_dir/whisper-cli" "${codesign_args[@]}"
+	fi
 	sign_code "$swift_binary" "${app_codesign_args[@]}"
 	sign_code "$bundle_dir" "${app_codesign_args[@]}"
 	print -- "Signed $bundle_dir with $sign_identity_name"

@@ -220,7 +220,8 @@ final class PreviewPlaybackSpeedSelectionTests: XCTestCase {
 final class InspectorAvailabilityTests: XCTestCase {
     func testHidesInertAudioTabWithoutRemovingCompatibilityCase() {
         XCTAssertFalse(InspectorTab.availableCases.contains(.audio))
-        XCTAssertEqual(InspectorTab.availableCases, [.appearance, .cursor, .camera])
+        XCTAssertEqual(InspectorTab.availableCases, [.appearance, .cursor, .camera, .captions])
+        XCTAssertFalse(InspectorTab.captions.isStubbed)
         XCTAssertTrue(InspectorTab.allCases.contains(.audio))
     }
 }

@@ -43,6 +43,8 @@ Open Recorder includes a native editor for turning raw captures into shareable v
 
 ### Video Editor
 
+- **Local captions (alpha)** - generate editable subtitles with local Whisper and Ollama, style the preview, and burn captions into exported videos. See [local caption setup](docs/captions.md).
+
 - **Backgrounds** - place recordings on transparent, solid color, gradient, or bundled wallpaper backgrounds.
 - **Framing** - adjust stage padding, background blur, shadow strength, and recording corner roundness.
 - **Inset styling** - add an inset treatment around the recording with configurable amount, color, opacity, and balance.

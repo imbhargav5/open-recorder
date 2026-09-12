@@ -207,6 +207,8 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
     #else
     private let cacheMasks = true
     #endif
+    private var captionRasterKey: CaptionRenderer.Key?
+    private var captionRaster: CaptionRenderer.Image?
     private var renderContext: AVVideoCompositionRenderContext?
     private let renderContextLock = NSLock()
     private var annotationCache: [String: CIImage] = [:]
@@ -476,6 +478,18 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
             composed = facecam.composited(over: composed)
         }
 
+        if let captions = instruction.edits.captions, let segment = captions.active(at: sourceTime) {
+            let key = CaptionRenderer.Key(text: segment.text, style: captions.style, width: Int(renderSize.width), height: Int(renderSize.height))
+            if captionRasterKey != key {
+                captionRasterKey = key
+                captionRaster = CaptionRenderer.render(text: segment.text, style: captions.style, canvas: renderSize)
+            }
+            if let raster = captionRaster {
+                composed = CIImage(cgImage: raster.image)
+                    .transformed(by: CGAffineTransform(translationX: raster.frame.minX, y: raster.frame.minY))
+                    .composited(over: composed)
+            }
+        }
         return composed.cropped(to: renderRect)
     }
 
