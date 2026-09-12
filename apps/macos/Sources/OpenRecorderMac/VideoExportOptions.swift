@@ -316,6 +316,8 @@ struct VideoExportOptions: Equatable {
     var quality: VideoExportQuality = .defaultExportOption
     var gifSize: VideoExportGIFSize = .defaultExportOption
     var gifLoops = true
+    var screenshotState: ScreenshotEditorState? = nil
+    var scene: SceneSettings = .identity
     var aspectPreset: VideoPreviewAspectPreset = .auto
     var styling: VideoBackgroundStyling
     var cropSelection: VideoCropSelection?
@@ -385,6 +387,12 @@ struct VideoExportOptions: Equatable {
             copy.resolution = .custom
             copy.customOutputSize = CGSize(width: width, height: height)
         }
+        return copy
+    }
+
+    func withScene(_ settings: SceneSettings) -> VideoExportOptions {
+        var copy = self
+        copy.scene = settings
         return copy
     }
 
@@ -509,6 +517,12 @@ enum VideoExportRenderer {
         diagnostics: VideoExportDiagnostics? = nil,
         progressHandler: @escaping @MainActor (Double) -> Void = { _ in }
     ) async throws {
+        guard !ExportFileSafety.sameFile(sourceURL, targetURL) else { throw ExportFileSafety.Failure.originalFile }
+        if let screenshot = options.screenshotState {
+            try await SceneImageAnimationExporter.export(sourceURL: sourceURL, targetURL: targetURL, state: screenshot,
+                options: options, cancellationToken: cancellationToken, progressHandler: progressHandler)
+            return
+        }
         if FileManager.default.fileExists(atPath: targetURL.path) {
             try FileManager.default.removeItem(at: targetURL)
         }
@@ -566,6 +580,7 @@ enum VideoExportRenderer {
             duration: CMTime(seconds: duration, preferredTimescale: 600),
             frameDuration: frameDuration,
             styling: options.styling,
+            scene: options.scene,
             edits: edits,
             editPlan: exportAsset.plan,
             cursorTrack: cursorTrack,
@@ -956,6 +971,7 @@ enum VideoExportRenderer {
         duration: CMTime,
         frameDuration: CMTime,
         styling: VideoBackgroundStyling,
+        scene: SceneSettings = .identity,
         edits: TimelineEditSnapshot = .empty,
         editPlan: TimelineExportEditPlan = TimelineExportEditPlan(segments: [], outputDuration: 0),
         cursorTrack: CursorTelemetryTrack? = nil,
@@ -982,7 +998,7 @@ enum VideoExportRenderer {
             .concatenating(CGAffineTransform(scaleX: scale, y: scale))
             .concatenating(translation)
 
-        if styling.isPassthrough, facecamTrack == nil {
+        if styling.isPassthrough, facecamTrack == nil, !scene.isActive {
             let instruction = AVMutableVideoCompositionInstruction()
             instruction.timeRange = CMTimeRange(start: .zero, duration: duration)
 
@@ -1019,6 +1035,7 @@ enum VideoExportRenderer {
             trackID: videoTrack.trackID,
             facecamTrackID: facecamTrack?.trackID,
             styling: styling,
+            scene: scene,
             preferredTransform: normalizedTransform,
             normalizedSize: normalizedSize,
             facecamPreferredTransform: facecamPreferredTransform,
