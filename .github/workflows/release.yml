@@ -102,6 +102,9 @@ jobs:
       - name: Import macOS signing certificate
         run: zsh scripts/import-macos-production-signing-certificate.zsh
 
+      - name: Install caption build dependency
+        run: command -v cmake >/dev/null 2>&1 || brew install cmake
+
       - name: Package app bundle
         run: make package-macos
 
@@ -128,7 +131,7 @@ jobs:
         run: |
           set -euo pipefail
           expected="${{ matrix.binary_arch }}"
-          for binary in "OpenRecorderMac" "open-recorder-service"; do
+          for binary in "OpenRecorderMac" "open-recorder-service" "whisper-cli"; do
             archs=$(lipo -archs "release/Open Recorder.app/Contents/MacOS/${binary}")
             echo "${binary}: ${archs}"
             if [ "${archs}" != "${expected}" ]; then
@@ -208,7 +211,7 @@ jobs:
           expected_version="${{ needs.resolve-release.outputs.tag_name }}"
           expected_version="${expected_version#v}"
 
-          for binary in "OpenRecorderMac" "open-recorder-service"; do
+          for binary in "OpenRecorderMac" "open-recorder-service" "whisper-cli"; do
             lipo -create \
               "${x64_app}/Contents/MacOS/${binary}" \
               "${arm_app}/Contents/MacOS/${binary}" \

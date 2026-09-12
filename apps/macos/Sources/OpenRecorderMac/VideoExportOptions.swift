@@ -998,7 +998,7 @@ enum VideoExportRenderer {
             .concatenating(CGAffineTransform(scaleX: scale, y: scale))
             .concatenating(translation)
 
-        if styling.isPassthrough, facecamTrack == nil, !scene.isActive {
+        if styling.isPassthrough, facecamTrack == nil, !scene.isActive, edits.captions?.style.isVisible != true {
             let instruction = AVMutableVideoCompositionInstruction()
             instruction.timeRange = CMTimeRange(start: .zero, duration: duration)
 

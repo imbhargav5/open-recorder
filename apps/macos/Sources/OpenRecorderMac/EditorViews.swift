@@ -125,6 +125,7 @@ struct VideoEditorStudioView: View {
     var editorSessionID: UUID?
     var workspace: EditorWorkspaceDriver
     @State private var playback = VideoPlaybackController()
+    @State private var includeCaptions = true
     var editor: VideoEditorDriver
     var timelineEdits: TimelineEditDriver
     var videoExport: VideoExportDriver
@@ -151,16 +152,21 @@ struct VideoEditorStudioView: View {
             editor.send(.exportRequested)
         }
         .onChange(of: videoURL) { _, _ in
+            workspace.captions.attach(videoURL)
             syncEditorSession()
         }
         .onChange(of: editorSessionID) { _, _ in
             syncEditorSession()
+        }
+        .onChange(of: editor.state.activeSheet) { _, sheet in
+            if sheet == .export { includeCaptions = timelineEdits.snapshot.captions?.style.isVisible == true }
         }
         .onChange(of: autosaveSnapshot) { _, snapshot in
             editor.send(.autosaveSnapshotChanged(snapshot))
         }
         .onAppear(perform: configureEditor)
         .onDisappear {
+            workspace.captions.close()
             editor.send(.disappeared(autosaveSnapshot))
         }
         .background {
@@ -207,7 +213,8 @@ struct VideoEditorStudioView: View {
     }
 
     private func configureEditor() {
-            editor.configure(
+        workspace.captions.attach(videoURL)
+        editor.configure(
                 applyTimelineSnapshot: { snapshot in
                     timelineEdits.applySnapshot(snapshot)
                 },
@@ -229,7 +236,7 @@ struct VideoEditorStudioView: View {
                     videoExport?.clear()
                 }
             )
-            syncEditorSession()
+        syncEditorSession()
     }
 
     private var editorColumn: some View {
@@ -312,6 +319,7 @@ struct VideoEditorStudioView: View {
             loopCursor: editor.binding(\.cursorOverlay.loops), cursorSize: editor.binding(\.cursorOverlay.size),
             cursorSmoothing: editor.binding(\.cursorOverlay.smoothing), cursorStyleID: editor.binding(\.cursorOverlay.styleID),
             cameraSettings: editor.binding(\.facecamSettings), recordingSession: recordingSession,
+            captionController: workspace.captions, captionEdits: timelineEdits, captionPlayback: playback,
             activeTab: $activeInspector, scene: editor.binding(\.scene), canvasAspect: editor.previewAspectPresetBinding,
             sceneEndpoint: $sceneEndpoint, showsSelection: $showsTimelineSelection,
             selectionSidebar: TimelineSelectionSidebar(edits: timelineEdits, playback: playback, defaultCameraSettings: editor.state.currentFacecamSettings),
@@ -355,6 +363,13 @@ struct VideoEditorStudioView: View {
         modifiers.intersection([.command, .control, .option]).isEmpty
     }
 
+    private var captionExportEdits: TimelineEditSnapshot {
+        var snapshot = timelineEdits.snapshot
+        if !includeCaptions { snapshot.captions = nil }
+        else { snapshot.captions?.style.isVisible = true }
+        return snapshot
+    }
+
     private var exportDialog: some View {
         VideoExportDialog(
             phase: videoExport.state.phase,
@@ -368,10 +383,12 @@ struct VideoEditorStudioView: View {
             quality: editor.exportQualityBinding,
             gifSize: editor.exportGIFSizeBinding,
             gifLoops: editor.exportGIFLoopsBinding,
+            includeCaptions: $includeCaptions,
+            hasCaptions: timelineEdits.snapshot.captions?.segments.isEmpty == false,
             onExport: {
                 editor.send(.exportConfirmed(
                     recordingURL: exportRequest?.url ?? videoURL,
-                    edits: timelineEdits.snapshot,
+                    edits: captionExportEdits,
                     snapshot: autosaveSnapshot,
                     cursorTelemetryURL: cursorTelemetryURL,
                     facecamVideoURL: facecamVideoURL,

@@ -26,6 +26,9 @@ struct SettingsInspector: View {
     @Binding var cursorStyleID: CursorStyleID
     var cameraSettings: Binding<FacecamSettings?>? = nil
     var recordingSession: RecordingSession?
+    var captionController: CaptionController? = nil
+    var captionEdits: TimelineEditDriver? = nil
+    var captionPlayback: VideoPlaybackController? = nil
 
     @Namespace private var tabRailAnimation
     @Binding var activeTab: InspectorTab
@@ -318,11 +321,8 @@ struct SettingsInspector: View {
                 SessionAssetRow(title: "Facecam File", path: path)
             }
         case .captions:
-            InspectorGroup(title: "Captions", symbolName: "captions.bubble.fill", showsTopDivider: false) {
-                Text("Automatic AI speech-to-text captions coming soon.")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .padding(.vertical, 8)
+            if let captionController, let captionEdits, let captionPlayback {
+                CaptionInspector(controller: captionController, edits: captionEdits, playback: captionPlayback)
             }
         case .settings:
             InspectorGroup(title: "Settings", symbolName: "gearshape.fill", showsTopDivider: false) {
@@ -487,7 +487,7 @@ enum InspectorTab: String, CaseIterable, Identifiable {
     case settings
     case audio
 
-    static let availableCases: [InspectorTab] = [.appearance, .scene, .cursor, .camera]
+    static let availableCases: [InspectorTab] = [.appearance, .scene, .cursor, .camera, .captions]
     static let railCases: [InspectorTab] = [.appearance, .scene, .cursor, .camera, .captions, .settings]
 
     var id: String { rawValue }
@@ -530,8 +530,8 @@ enum InspectorTab: String, CaseIterable, Identifiable {
 
     var isStubbed: Bool {
         switch self {
-        case .appearance, .scene, .cursor, .camera: false
-        case .captions, .settings, .audio: true
+        case .appearance, .scene, .cursor, .camera, .captions: false
+        case .settings, .audio: true
         }
     }
 
@@ -541,7 +541,7 @@ enum InspectorTab: String, CaseIterable, Identifiable {
         case .appearance: "Appearance & Frame"
         case .cursor: "Cursor Settings"
         case .camera: "Camera & Facecam"
-        case .captions: "Captions (Coming Soon)"
+        case .captions: "Captions"
         case .settings: "Project Settings (Coming Soon)"
         case .audio: "Audio Preview"
         }

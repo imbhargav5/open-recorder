@@ -19,6 +19,14 @@ def verify(bundle, configuration, revision, architecture, version, swift_bin_pat
     resources = contents / "Resources" / "OpenRecorderMac_OpenRecorderMac.bundle"
     if not resources.is_dir() or not any(resources.rglob("*.jpg")):
         raise ValueError("Missing packaged Swift wallpaper resources")
+    helper = contents / "MacOS" / "whisper-cli"
+    if not helper.is_file():
+        raise ValueError("Missing bundled caption speech helper")
+    helper_architectures = subprocess.check_output(["lipo", "-archs", str(helper)], text=True).split()
+    if set(helper_architectures) != set(architecture.split(",")):
+        raise ValueError(f"whisper-cli: unexpected architectures {helper_architectures}")
+    if not (contents / "Resources" / "whisper-LICENSE").is_file():
+        raise ValueError("Missing caption speech helper license")
     def digest(path):
         return hashlib.sha256(path.read_bytes()).hexdigest()
     for path in [Path(swift_bin_path), Path(rust_bin_path)]:

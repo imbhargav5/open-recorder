@@ -351,6 +351,12 @@ struct VideoPreviewPanel: View {
                         .offset(x: cameraFrame.minX, y: cameraFrame.minY)
                 }
             }
+            .overlay {
+                if let captions = timelineEdits.snapshot.captions {
+                    CaptionPreviewOverlay(segment: captions.active(at: playback.currentTime), style: captions.style, size: proxy.size)
+                        .equatable()
+                }
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .clipped()

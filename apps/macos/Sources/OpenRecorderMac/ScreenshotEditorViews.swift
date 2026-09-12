@@ -197,6 +197,7 @@ struct ScreenshotEditorStudioView: View {
             format: Binding(get: { animationDraft.format }, set: { animationDraft.setFormat($0) }),
             frameRate: $animationDraft.frameRate, quality: $animationDraft.quality,
             gifSize: $animationDraft.gifSize, gifLoops: $animationDraft.gifLoops,
+            includeCaptions: .constant(false),
             mediaLabel: "Animation",
             onExport: {
                 var options = animationDraft.currentOptions

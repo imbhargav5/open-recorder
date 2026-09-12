@@ -44,6 +44,9 @@ jobs:
           CSC_NAME: ${{ secrets.APPLE_SIGNING_IDENTITY || secrets.CSC_NAME }}
         run: zsh scripts/import-macos-production-signing-certificate.zsh
 
+      - name: Install caption build dependency
+        run: command -v cmake >/dev/null 2>&1 || brew install cmake
+
       - name: Build, sign, notarize, and staple nightly
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -67,7 +70,7 @@ jobs:
               exit 1
             fi
           done
-          for binary in OpenRecorderMac open-recorder-service; do
+          for binary in OpenRecorderMac open-recorder-service whisper-cli; do
             test "$(lipo -archs "$app/Contents/MacOS/$binary")" = "$EXPECTED_ARCH"
           done
           zsh scripts/verify-macos-production-signature.zsh "$app"
