@@ -110,11 +110,15 @@ for required_path in "$swift_binary" "$service_binary" "$swift_resource_bundle";
     [[ -e "$required_path" ]] || { print -u2 -- "Missing $build_configuration artifact: $required_path"; exit 1; }
 done
 
+zsh "$repo_root/scripts/build-caption-helper.zsh"
+
 rm -rf "$bundle_dir"
 mkdir -p "$macos_dir" "$resources_dir"
 
 cp "$swift_binary" "$macos_dir/OpenRecorderMac"
 cp "$service_binary" "$macos_dir/open-recorder-service"
+cp "$repo_root/apps/macos/.build/caption-helper/bin/whisper-cli" "$macos_dir/whisper-cli"
+cp "$repo_root/apps/macos/.build/caption-helper/whisper-LICENSE" "$resources_dir/whisper-LICENSE"
 cp "$info_plist" "$contents_dir/Info.plist"
 cp -R "$swift_resource_bundle" "$resources_dir/"
 

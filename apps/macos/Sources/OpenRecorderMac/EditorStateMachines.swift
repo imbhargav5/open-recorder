@@ -811,6 +811,7 @@ final class EditorWorkspaceDriver {
     let timeline = TimelineEditDriver()
     let screenshot = ScreenshotEditorDriver()
     let videoExport = VideoExportDriver()
+    let captions = CaptionController()
 
     @ObservationIgnored private let synchronizesAppShell: Bool
     @ObservationIgnored private var setAppSection: (AppSection) -> Void = { _ in }
@@ -919,6 +920,7 @@ final class EditorWorkspaceDriver {
     }
 
     func discardTransientState() {
+        captions.close()
         video.cancelPendingExportLaunch()
         videoExport.clear()
     }

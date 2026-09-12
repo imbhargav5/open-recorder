@@ -259,6 +259,7 @@ struct TimelineEditSnapshot: Codable, Equatable, Hashable {
     var clipSplitTimes: [Double] = []
     var clipSpeeds: [Int: Double] = [:]
     var cameraClips: [TimelineCameraClip] = []
+    var captions: CaptionTrack?
 
     static let empty = TimelineEditSnapshot()
 
@@ -285,6 +286,7 @@ struct TimelineEditSnapshot: Codable, Equatable, Hashable {
         case clipSplitTimes
         case clipSpeeds
         case cameraClips
+        case captions
     }
 
     init(from decoder: Decoder) throws {
@@ -295,10 +297,11 @@ struct TimelineEditSnapshot: Codable, Equatable, Hashable {
         clipSplitTimes = try container.decodeIfPresent([Double].self, forKey: .clipSplitTimes) ?? []
         clipSpeeds = try container.decodeIfPresent([Int: Double].self, forKey: .clipSpeeds) ?? [:]
         cameraClips = try container.decodeIfPresent([TimelineCameraClip].self, forKey: .cameraClips) ?? []
+        captions = try container.decodeIfPresent(CaptionTrack.self, forKey: .captions)
     }
 
     var hasEdits: Bool {
-        !zoomRegions.isEmpty || !trimRegions.isEmpty || !annotationRegions.isEmpty || !clipSplitTimes.isEmpty || hasClipSpeedEdits || !cameraClips.isEmpty
+        captions != nil || !zoomRegions.isEmpty || !trimRegions.isEmpty || !annotationRegions.isEmpty || !clipSplitTimes.isEmpty || hasClipSpeedEdits || !cameraClips.isEmpty
     }
 
     var hasClipSpeedEdits: Bool {
@@ -563,6 +566,7 @@ struct TimelineEditState: Equatable {
 
 enum TimelineEditEvent: Equatable {
     case applySnapshot(TimelineEditSnapshot)
+    case replaceCaptions(CaptionTrack?)
     case reset
     case add(TimelineRegionKind, currentTime: Double, duration: Double)
     case regenerateAutoZoomsRequested(videoURL: URL?, duration: Double, preset: TimelineZoomAnimationPreset)
@@ -599,6 +603,10 @@ enum TimelineEditEffect: Equatable {
 extension TimelineEditState {
     mutating func applying(_ event: TimelineEditEvent) -> [TimelineEditEffect] {
         switch event {
+        case .replaceCaptions(let track):
+            snapshot.captions = track
+            return []
+
         case .applySnapshot(let snapshot):
             self.snapshot = snapshot
             clearSelection()

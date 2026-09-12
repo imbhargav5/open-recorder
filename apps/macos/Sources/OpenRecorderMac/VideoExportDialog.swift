@@ -12,6 +12,8 @@ struct VideoExportDialog: View {
     @Binding var quality: VideoExportQuality
     @Binding var gifSize: VideoExportGIFSize
     @Binding var gifLoops: Bool
+    @Binding var includeCaptions: Bool
+    var hasCaptions: Bool = false
     var onExport: () -> Void
     var onRetrySave: () -> Void
     var onShowInFinder: () -> Void
@@ -115,6 +117,7 @@ struct VideoExportDialog: View {
             }
 
             settingsPanel
+            if hasCaptions { Toggle("Include captions", isOn: $includeCaptions) }
             idleActions
         }
     }
