@@ -119,12 +119,17 @@ final class SceneTests: XCTestCase {
         let queue = try XCTUnwrap(device.makeCommandQueue())
         let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm, width: 320, height: 180, mipmapped: false)
         descriptor.usage = [.shaderRead, .shaderWrite, .renderTarget]
-        descriptor.storageMode = .shared
+        descriptor.storageMode = device.hasUnifiedMemory ? .shared : .managed
         let texture = try XCTUnwrap(device.makeTexture(descriptor: descriptor))
         let context = CIContext(mtlDevice: device)
         let cg = try XCTUnwrap(try fixtureImage().cgImage(forProposedRect: nil, context: nil, hints: nil))
         let command = try XCTUnwrap(queue.makeCommandBuffer())
         SceneMetalDisplay.render(CIImage(cgImage: cg), context: context, texture: texture, commandBuffer: command)
+        if !device.hasUnifiedMemory {
+            let blit = try XCTUnwrap(command.makeBlitCommandEncoder())
+            blit.synchronize(resource: texture)
+            blit.endEncoding()
+        }
         command.commit(); command.waitUntilCompleted()
         var pixel = [UInt8](repeating: 0, count: 4)
         texture.getBytes(&pixel, bytesPerRow: 4, from: MTLRegionMake2D(80, 45, 1, 1), mipmapLevel: 0)
