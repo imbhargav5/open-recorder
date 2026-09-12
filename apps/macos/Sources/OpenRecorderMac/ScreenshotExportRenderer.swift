@@ -1,8 +1,13 @@
 import AppKit
 import CoreGraphics
+import CoreImage
+import Metal
 import Foundation
 
 struct ScreenshotExportConfiguration {
+    var scene: SceneSettings = .identity
+    var canvasAspect: VideoPreviewAspectPreset = .auto
+    var sceneTime = 0.0
     var background: BackgroundStyle
     var padding: Double
     var backgroundRoundness: Double
@@ -35,6 +40,8 @@ struct ScreenshotExportConfiguration {
             imageRoundness: screenshotState.imageRoundness,
             imageShadow: screenshotState.imageShadow
         )
+        scene = screenshotState.scene
+        canvasAspect = screenshotState.canvasAspect
     }
 }
 
@@ -82,6 +89,16 @@ struct ScreenshotCompositionLayout {
             width: backgroundRect.width + shadowMargin * 2,
             height: backgroundRect.height + shadowMargin * 2
         )
+        if configuration.canvasAspect != .auto {
+            let ratio = configuration.canvasAspect.aspectRatio(forExportSourceSize: canvasSize)
+            let previous = canvasSize
+            canvasSize = CGSize(width: max(previous.width, previous.height * ratio),
+                                height: max(previous.height, previous.width / ratio))
+            let dx = (canvasSize.width - previous.width) / 2, dy = (canvasSize.height - previous.height) / 2
+            imageRect = imageRect.offsetBy(dx: dx, dy: dy)
+            backgroundRect = CGRect(x: shadowMargin, y: shadowMargin,
+                                    width: canvasSize.width - 2 * shadowMargin, height: canvasSize.height - 2 * shadowMargin)
+        }
     }
 
     func displayScale(toFit availableSize: CGSize) -> CGFloat {
@@ -104,6 +121,11 @@ struct ScreenshotExportRenderer {
     }
 
     func renderPNG(from image: NSImage) -> Data? {
+        guard let rendered = renderImage(from: image) else { return nil }
+        return NSBitmapImageRep(cgImage: rendered).representation(using: .png, properties: [:])
+    }
+
+    func renderImage(from image: NSImage, maxDimension: CGFloat? = nil, renderer: SceneRenderer = SceneRenderer(), ciContext: CIContext = SceneImageContext.shared) -> CGImage? {
         guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
             return nil
         }
@@ -135,6 +157,23 @@ struct ScreenshotExportRenderer {
         context.scaleBy(x: 1, y: -1)
 
         drawExportBackground(in: context, rect: layout.backgroundRect, layout: layout)
+        if configuration.scene.isActive {
+            guard let backdrop = context.makeImage() else { return nil }
+            let rect = CGRect(x: layout.imageRect.minX, y: CGFloat(height) - layout.imageRect.maxY,
+                              width: layout.imageRect.width, height: layout.imageRect.height)
+            let media = CIImage(cgImage: cgImage).transformed(by: CGAffineTransform(translationX: rect.minX, y: rect.minY))
+            var composed = renderer.render(media: media, mediaRect: rect, frame: rect, canvas: layout.canvasSize,
+                settings: configuration.scene, time: configuration.sceneTime,
+                radius: layout.imageRoundness, shadow: configuration.imageShadow)
+                .composited(over: CIImage(cgImage: backdrop))
+            var bounds = CGRect(x: 0, y: 0, width: width, height: height)
+            if let maxDimension {
+                let scale = min(1, maxDimension / max(bounds.width, bounds.height))
+                composed = composed.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+                bounds = bounds.applying(CGAffineTransform(scaleX: scale, y: scale)).integral
+            }
+            return ciContext.createCGImage(composed, from: bounds)
+        }
         drawExportImageShadow(in: context, rect: layout.imageRect, layout: layout)
 
         context.saveGState()
@@ -152,8 +191,7 @@ struct ScreenshotExportRenderer {
             return nil
         }
 
-        let bitmap = NSBitmapImageRep(cgImage: exportedImage)
-        return bitmap.representation(using: .png, properties: [:])
+        return exportedImage
     }
 
     private static func styleScale(for image: NSImage, cgImage: CGImage) -> CGFloat {
@@ -308,4 +346,12 @@ struct ScreenshotExportRenderer {
         context.draw(cgImage, in: CGRect(origin: .zero, size: rect.size))
         context.restoreGState()
     }
+}
+
+// CIContext is thread-safe and expensive to create; share the Metal-backed image context.
+enum SceneImageContext {
+    static let shared: CIContext = {
+        if let device = MTLCreateSystemDefaultDevice() { return CIContext(mtlDevice: device, options: [.cacheIntermediates: false]) }
+        return CIContext(options: [.cacheIntermediates: false])
+    }()
 }
