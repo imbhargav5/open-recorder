@@ -78,6 +78,7 @@ Open Recorder includes a native editor for turning raw captures into shareable v
 - `index.mdx` and `changelog.mdx` - root Mintlify pages for the Overview and Updates navigation groups
 - `docs.json` - Mintlify documentation configuration and navigation file
 - `.mintignore` - excludes separately deployed application source from Mintlify documentation assets
+- `.all-contributorsrc` - All Contributors configuration that generates the README contributor table
 - `docs` - project documentation and supporting artifacts
 - `.github` - GitHub templates and repository automation configuration
 - `licenses` - secondary MIT license notices for OpenScreen and RECORDLY
