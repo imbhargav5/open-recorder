@@ -75,6 +75,7 @@ Open Recorder includes a native editor for turning raw captures into shareable v
 - `apps/rust-service` - Rust JSON-lines service and one-shot command backend
 - `apps/landing` - Next.js landing page for the project
 - `recording`, `editing`, and `reference` - Mintlify documentation content roots for the Recording, Editing, and Reference navigation groups
+- `index.mdx` and `changelog.mdx` - root Mintlify pages for the Overview and Updates navigation groups
 - `docs` - project documentation and supporting artifacts
 - `licenses` - secondary MIT license notices for OpenScreen and RECORDLY
 - `scripts` - repository build, packaging, verification, and maintenance tooling
