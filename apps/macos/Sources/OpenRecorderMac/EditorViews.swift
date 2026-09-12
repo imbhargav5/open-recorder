@@ -131,23 +131,14 @@ struct VideoEditorStudioView: View {
     var videoExport: VideoExportDriver
     var exportRequest: EditorExportRequest?
     @State private var sidebarWidth: CGFloat = 320
+    @State private var activeInspector: InspectorTab = .appearance
+    @State private var showsTimelineSelection = false
+    @State private var sceneEndpoint: SceneEndpoint = .start
+    @State private var sceneTool: SceneTool = .tilt
     private let timelineHeight = TimelineMetrics.compactPanelHeight
 
     var body: some View {
-        StudioSplitPane(
-            axis: .horizontal,
-            secondarySize: sidebarWidth,
-            minPrimarySize: 520,
-            minSecondarySize: 280,
-            maxSecondarySize: 440,
-            spacing: 0
-        ) {
-            editorColumn
-        } secondary: {
-            sidebarContent
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-        .background(Theme.appBg)
+        workspacePanes
         .sheet(item: editor.activeSheetBinding(exportIsBusy: videoExport.state.phase.isBusy)) { sheet in
             switch sheet {
             case .export:
@@ -173,9 +164,57 @@ struct VideoEditorStudioView: View {
         .onChange(of: autosaveSnapshot) { _, snapshot in
             editor.send(.autosaveSnapshotChanged(snapshot))
         }
-        .onAppear {
-            workspace.captions.attach(videoURL)
-            editor.configure(
+        .onAppear(perform: configureEditor)
+        .onDisappear {
+            workspace.captions.close()
+            editor.send(.disappeared(autosaveSnapshot))
+        }
+        .background {
+            StudioKeyDownMonitor { event in
+                handleEditorShortcut(event)
+            }
+            .frame(width: 0, height: 0)
+        }
+    }
+
+    private var workspacePanes: some View {
+        StudioSplitPane(
+            axis: .horizontal,
+            secondarySize: sidebarWidth,
+            minPrimarySize: 520,
+            minSecondarySize: 280,
+            maxSecondarySize: 440,
+            spacing: 0
+        ) {
+            editorColumn
+        } secondary: {
+            sidebarContent
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .background(Theme.appBg)
+        .onChange(of: timelineEdits.state) { old, next in
+            if old.selectedID != next.selectedID || old.selectedClipIndex != next.selectedClipIndex || old.selectedCameraClipID != next.selectedCameraClipID || old.selectedKind != next.selectedKind {
+                showsTimelineSelection = timelineEdits.hasSelection
+                editor.sceneHistoryIsActive = false
+            }
+        }
+        .onChange(of: activeInspector) { _, tab in editor.sceneHistoryIsActive = tab == .scene }
+        .onChange(of: showsTimelineSelection) { _, selected in
+            editor.sceneHistoryIsActive = !selected && activeInspector == .scene
+        }
+        .onChange(of: editor.state.video.scene) { _, _ in
+            if activeInspector == .scene && !showsTimelineSelection { playback.pause() }
+        }
+        .onChange(of: sceneEditPlan.outputDuration) { _, duration in
+            guard duration > 0 else { return }
+            let next = editor.state.video.scene.clamped(to: duration)
+            if next != editor.state.video.scene { editor.binding(\.scene).wrappedValue = next }
+        }
+    }
+
+    private func configureEditor() {
+        workspace.captions.attach(videoURL)
+        editor.configure(
                 applyTimelineSnapshot: { snapshot in
                     timelineEdits.applySnapshot(snapshot)
                 },
@@ -197,18 +236,7 @@ struct VideoEditorStudioView: View {
                     videoExport?.clear()
                 }
             )
-            syncEditorSession()
-        }
-        .onDisappear {
-            workspace.captions.close()
-            editor.send(.disappeared(autosaveSnapshot))
-        }
-        .background {
-            StudioKeyDownMonitor { event in
-                handleEditorShortcut(event)
-            }
-            .frame(width: 0, height: 0)
-        }
+        syncEditorSession()
     }
 
     private var editorColumn: some View {
@@ -240,6 +268,11 @@ struct VideoEditorStudioView: View {
                 facecamSettings: editor.state.currentFacecamSettings,
                 cameraTimelineFallback: editor.state.currentFacecamSettings,
                 previewAspectPreset: editor.previewAspectPresetBinding,
+                scene: editor.binding(\.scene),
+                sceneEndpoint: sceneEndpoint,
+                sceneTool: $sceneTool,
+                showsSceneTools: activeInspector == .scene && !showsTimelineSelection,
+                onSceneEditingChanged: sceneUndoTransaction,
                 onCropVideo: {
                     guard let videoURL else { return }
                     editor.send(.cropRequested(videoURL))
@@ -261,37 +294,37 @@ struct VideoEditorStudioView: View {
         }
     }
 
-    @ViewBuilder
+    private var sceneEditPlan: TimelineExportEditPlan {
+        TimelineExportEditPlan.build(duration: playback.duration, edits: timelineEdits.snapshot)
+    }
+
+    private func seekScene(_ time: Double) {
+        playback.pause()
+        playback.seek(to: sceneEditPlan.sourceTime(forOutputTime: time) ?? playback.duration)
+    }
+
+    private func sceneUndoTransaction(_ editing: Bool) {
+        editor.sceneHistoryIsActive = true
+        if editing { playback.pause(); editor.beginUndoTransaction() }
+        else { editor.endUndoTransaction() }
+    }
+
     private var sidebarContent: some View {
-        if timelineEdits.hasSelection {
-            TimelineSelectionSidebar(
-                edits: timelineEdits,
-                playback: playback,
-                defaultCameraSettings: editor.state.currentFacecamSettings
-            )
-        } else {
-            SettingsInspector(
-                borderRadius: editor.binding(\.borderRadius),
-                padding: editor.binding(\.padding),
-                shadow: editor.binding(\.shadow),
-                backgroundBlur: editor.binding(\.backgroundBlur),
-                background: editor.binding(\.background),
-                inset: editor.binding(\.inset),
-                insetColor: editor.binding(\.insetColor),
-                insetOpacity: editor.binding(\.insetOpacity),
-                insetBalance: editor.binding(\.insetBalance),
-                showCursor: editor.binding(\.cursorOverlay.isVisible),
-                loopCursor: editor.binding(\.cursorOverlay.loops),
-                cursorSize: editor.binding(\.cursorOverlay.size),
-                cursorSmoothing: editor.binding(\.cursorOverlay.smoothing),
-                cursorStyleID: editor.binding(\.cursorOverlay.styleID),
-                cameraSettings: editor.binding(\.facecamSettings),
-                recordingSession: recordingSession,
-                captionController: workspace.captions,
-                captionEdits: timelineEdits,
-                captionPlayback: playback
-            )
-        }
+        SettingsInspector(
+            borderRadius: editor.binding(\.borderRadius), padding: editor.binding(\.padding),
+            shadow: editor.binding(\.shadow), backgroundBlur: editor.binding(\.backgroundBlur),
+            background: editor.binding(\.background), inset: editor.binding(\.inset),
+            insetColor: editor.binding(\.insetColor), insetOpacity: editor.binding(\.insetOpacity),
+            insetBalance: editor.binding(\.insetBalance), showCursor: editor.binding(\.cursorOverlay.isVisible),
+            loopCursor: editor.binding(\.cursorOverlay.loops), cursorSize: editor.binding(\.cursorOverlay.size),
+            cursorSmoothing: editor.binding(\.cursorOverlay.smoothing), cursorStyleID: editor.binding(\.cursorOverlay.styleID),
+            cameraSettings: editor.binding(\.facecamSettings), recordingSession: recordingSession,
+            captionController: workspace.captions, captionEdits: timelineEdits, captionPlayback: playback,
+            activeTab: $activeInspector, scene: editor.binding(\.scene), canvasAspect: editor.previewAspectPresetBinding,
+            sceneEndpoint: $sceneEndpoint, showsSelection: $showsTimelineSelection,
+            selectionSidebar: TimelineSelectionSidebar(edits: timelineEdits, playback: playback, defaultCameraSettings: editor.state.currentFacecamSettings),
+            sceneDuration: sceneEditPlan.outputDuration, seekScene: seekScene, onSceneEditingChanged: sceneUndoTransaction
+        )
     }
 
     private func handleEditorShortcut(_ event: NSEvent) -> Bool {

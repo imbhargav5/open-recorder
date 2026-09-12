@@ -4,7 +4,7 @@ import CoreGraphics
 import SwiftUI
 import UniformTypeIdentifiers
 
-enum VideoPreviewAspectPreset: String, CaseIterable, Identifiable {
+enum VideoPreviewAspectPreset: String, Codable, CaseIterable, Identifiable {
     case auto
     case wide
     case square
@@ -108,8 +108,14 @@ struct VideoPreviewPanel: View {
     var facecamSettings: FacecamSettings?
     var cameraTimelineFallback: FacecamSettings?
     @Binding var previewAspectPreset: VideoPreviewAspectPreset
+    @Binding var scene: SceneSettings
+    var sceneEndpoint: SceneEndpoint
+    @Binding var sceneTool: SceneTool
+    var showsSceneTools = false
+    var onSceneEditingChanged: (Bool) -> Void = { _ in }
     var onCropVideo: () -> Void = {}
     var onRequestClearSelection: () -> Void = {}
+    @State private var scenePreviewStatus: String?
     @State private var isPreviewAspectDropdownPresented = false
     @State private var cursorTrack: CursorTelemetryTrack?
     @State private var loadedCursorTelemetryPath: String?
@@ -123,10 +129,15 @@ struct VideoPreviewPanel: View {
                     .padding(.bottom, 7)
             }
 
+            if showsSceneTools { SceneCanvasTools(tool: $sceneTool) }
             ZStack {
                 if videoURL != nil {
                     AspectRatioFitContainer(aspectRatio: previewAspectRatio) {
-                        styledStage
+                        Group {
+                            if scene.isActive { sceneStage } else { styledStage }
+                        }
+                        .modifier(SceneCanvasGesture(enabled: showsSceneTools, tool: sceneTool,
+                            pose: scenePoseBinding(settings: $scene, endpoint: sceneEndpoint), onEditingChanged: onSceneEditingChanged))
                     } overlay: {
                         recordingSessionBadges
                     }
@@ -229,6 +240,38 @@ struct VideoPreviewPanel: View {
                 }
             )
         }
+    }
+
+    private var sceneStyling: VideoBackgroundStyling {
+        VideoExportOptions.default.with(background: background, padding: padding, borderRadius: borderRadius,
+            shadow: shadow, backgroundBlur: backgroundBlur, inset: inset, insetColor: insetColor,
+            insetOpacity: insetOpacity, insetBalance: insetBalance).styling
+    }
+
+    private var sceneStage: some View {
+        GeometryReader { proxy in
+            SceneVideoPreview(player: playback.player, sourceSize: playback.naturalVideoSize,
+                cropSelection: cropSelection, settings: scene, styling: sceneStyling,
+                edits: timelineEdits.snapshot, duration: playback.duration, cursorTrack: cursorTrack,
+                cursorSettings: cursorSettings, cameraSettings: activeFacecamSettings,
+                onPreviewStatus: { scenePreviewStatus = $0 })
+                .overlay {
+                    if let scenePreviewStatus { Text(scenePreviewStatus).font(.callout).padding(20).background(Theme.sidebarBg) }
+                }
+                .overlay(alignment: .topLeading) {
+                    if let url = facecamVideoURL, let settings = activeFacecamSettings {
+                        let effect = timelineEdits.snapshot.activeZoomEffect(at: playback.currentTime, cursorTrack: cursorTrack)
+                        let frame = PreviewStageLayout.recordingFrameRect(forAspectRatio: cropSelection.previewAspectRatio(in: playback.naturalVideoSize),
+                            in: proxy.size, paddingValue: padding)
+                        FacecamPlaybackOverlay(facecamURL: url, screenPlayback: playback,
+                            offsetMs: recordingSession?.facecamOffsetMs, settings: settings)
+                            .frame(width: proxy.size.width, height: proxy.size.height)
+                            .transformEffect(settings.fixedDuringZoom == true ? .identity : PreviewStageLayout.previewFullStageZoomTransform(
+                                effect: effect, stageSize: proxy.size, recordingFrame: frame, sourceSize: playback.naturalVideoSize,
+                                cropSelection: cropSelection, inset: inset, insetBalance: insetBalance, cameraSettings: settings))
+                    }
+                }
+        }.clipped()
     }
 
     private var styledStage: some View {

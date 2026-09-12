@@ -31,7 +31,15 @@ struct SettingsInspector: View {
     var captionPlayback: VideoPlaybackController? = nil
 
     @Namespace private var tabRailAnimation
-    @State private var activeTab: InspectorTab = .appearance
+    @Binding var activeTab: InspectorTab
+    @Binding var scene: SceneSettings
+    @Binding var canvasAspect: VideoPreviewAspectPreset
+    @Binding var sceneEndpoint: SceneEndpoint
+    @Binding var showsSelection: Bool
+    var selectionSidebar: TimelineSelectionSidebar? = nil
+    var sceneDuration: Double = 3
+    var seekScene: (Double) -> Void = { _ in }
+    var onSceneEditingChanged: (Bool) -> Void = { _ in }
     @State private var hoveredTab: InspectorTab?
     @State private var isInsetBalanceExpanded = false
     @State private var removeCameraBackground = false
@@ -65,29 +73,33 @@ struct SettingsInspector: View {
         HStack(spacing: 0) {
             verticalIconRail
 
-            ScrollViewReader { scrollProxy in
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 0) {
-                        tabContent
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 14)
-                    .padding(.bottom, 18)
-                    .animation(.snappy(duration: 0.34), value: activeTab.id)
-                    .animation(.snappy(duration: 0.34), value: background.presetKind)
-                    .animation(.snappy(duration: 0.34), value: hasRecordedCamera)
-                    .animation(.snappy(duration: 0.34), value: cursorStyleID)
-                    .animation(.smooth(duration: 0.30), value: showsInsetControls)
-                    .onChange(of: isInsetBalanceExpanded) { _, isExpanded in
-                        guard isExpanded else { return }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
-                            withAnimation(.snappy(duration: 0.34)) {
-                                scrollProxy.scrollTo(insetBalanceScrollID, anchor: .bottom)
+            if showsSelection, let selectionSidebar {
+                selectionSidebar
+            } else {
+                ScrollViewReader { scrollProxy in
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 0) {
+                            tabContent
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.top, 14)
+                        .padding(.bottom, 18)
+                        .animation(.snappy(duration: 0.34), value: activeTab.id)
+                        .animation(.snappy(duration: 0.34), value: background.presetKind)
+                        .animation(.snappy(duration: 0.34), value: hasRecordedCamera)
+                        .animation(.snappy(duration: 0.34), value: cursorStyleID)
+                        .animation(.smooth(duration: 0.30), value: showsInsetControls)
+                        .onChange(of: isInsetBalanceExpanded) { _, isExpanded in
+                            guard isExpanded else { return }
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+                                withAnimation(.snappy(duration: 0.34)) {
+                                    scrollProxy.scrollTo(insetBalanceScrollID, anchor: .bottom)
+                                }
                             }
                         }
                     }
+                    .scrollIndicators(.visible)
                 }
-                .scrollIndicators(.visible)
             }
         }
     }
@@ -95,13 +107,14 @@ struct SettingsInspector: View {
     private var verticalIconRail: some View {
         VStack(spacing: 12) {
             ForEach(InspectorTab.railCases) { tab in
-                let isSelected = activeTab == tab
+                let isSelected = activeTab == tab && !showsSelection
                 let isStubbed = tab.isStubbed
 
                 StudioButton(hitTarget: .rounded(Theme.radiusSm), help: tab.helpText) {
                     guard !isStubbed else { return }
                     withAnimation(.snappy(duration: 0.20)) {
                         activeTab = tab
+                        showsSelection = false
                     }
                 } label: {
                     VStack(spacing: 4) {
@@ -168,7 +181,10 @@ struct SettingsInspector: View {
     @ViewBuilder
     private var tabContent: some View {
         switch activeTab {
+        case .scene:
+            SceneInspector(settings: $scene, endpoint: $sceneEndpoint, duration: sceneDuration, seek: seekScene, onEditingChanged: onSceneEditingChanged)
         case .appearance:
+            CanvasAspectPicker(selection: $canvasAspect).padding(.bottom, 12)
             BackgroundPickerView(selection: $background, showsTopDivider: false)
             InspectorGroup(
                 title: "Frame",
@@ -464,19 +480,21 @@ struct InspectorFooterButton: View {
 
 enum InspectorTab: String, CaseIterable, Identifiable {
     case appearance
+    case scene
     case cursor
     case camera
     case captions
     case settings
     case audio
 
-    static let availableCases: [InspectorTab] = [.appearance, .cursor, .camera, .captions]
-    static let railCases: [InspectorTab] = [.appearance, .cursor, .camera, .captions, .settings]
+    static let availableCases: [InspectorTab] = [.appearance, .scene, .cursor, .camera, .captions]
+    static let railCases: [InspectorTab] = [.appearance, .scene, .cursor, .camera, .captions, .settings]
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
+        case .scene: "Scene"
         case .appearance: "Appearance"
         case .cursor: "Cursor"
         case .camera: "Camera"
@@ -488,6 +506,7 @@ enum InspectorTab: String, CaseIterable, Identifiable {
 
     var shortTitle: String {
         switch self {
+        case .scene: "Scene"
         case .appearance: "Frame"
         case .cursor: "Cursor"
         case .camera: "Camera"
@@ -499,6 +518,7 @@ enum InspectorTab: String, CaseIterable, Identifiable {
 
     var symbolName: String {
         switch self {
+        case .scene: "rotate.3d"
         case .appearance: "slider.horizontal.3"
         case .cursor: "cursorarrow"
         case .camera: "camera"
@@ -510,13 +530,14 @@ enum InspectorTab: String, CaseIterable, Identifiable {
 
     var isStubbed: Bool {
         switch self {
-        case .appearance, .cursor, .camera, .captions: false
+        case .appearance, .scene, .cursor, .camera, .captions: false
         case .settings, .audio: true
         }
     }
 
     var helpText: String {
         switch self {
+        case .scene: "Scene · 3D Tilt & Motion (Alpha)"
         case .appearance: "Appearance & Frame"
         case .cursor: "Cursor Settings"
         case .camera: "Camera & Facecam"

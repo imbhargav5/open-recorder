@@ -4,6 +4,8 @@ import Observation
 import SwiftUI
 
 struct ScreenshotEditorState: Codable, Equatable, Hashable {
+    var scene: SceneSettings = .identity
+    var canvasAspect: VideoPreviewAspectPreset = .auto
     var background: BackgroundStyle = BackgroundPresets.default
     var padding = 56.0
     var backgroundRoundness = 0.0
@@ -30,6 +32,7 @@ struct ScreenshotEditorState: Codable, Equatable, Hashable {
     }
 
     private enum CodingKeys: String, CodingKey {
+        case scene, canvasAspect
         case background
         case padding
         case backgroundRoundness
@@ -41,6 +44,8 @@ struct ScreenshotEditorState: Codable, Equatable, Hashable {
     init(from decoder: Decoder) throws {
         let defaults = Self.default
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        scene = try container.decodeIfPresent(SceneSettings.self, forKey: .scene) ?? .identity
+        canvasAspect = try container.decodeIfPresent(VideoPreviewAspectPreset.self, forKey: .canvasAspect) ?? .auto
         background = try container.decodeIfPresent(BackgroundStyle.self, forKey: .background) ?? defaults.background
         padding = try container.decodeIfPresent(Double.self, forKey: .padding) ?? defaults.padding
         backgroundRoundness = try container.decodeIfPresent(Double.self, forKey: .backgroundRoundness) ?? defaults.backgroundRoundness
@@ -152,6 +157,7 @@ extension ScreenshotEditorMachineState {
 @MainActor
 final class ScreenshotEditorDriver {
     var state = ScreenshotEditorMachineState()
+    var scenePreviewTime = 0.0
     private var historyRevision = 0
 
     @ObservationIgnored private var history = EditorHistory<ScreenshotEditorState>()
@@ -300,14 +306,19 @@ final class ScreenshotEditorDriver {
         )
     }
 
-    func saveComposedPNG(image: NSImage?, suggestedFileName: String) {
-        let exportState = state.screenshot
+    func saveComposedPNG(image: NSImage?, suggestedFileName: String, sourceURL: URL? = nil) {
+        var exportState = state.screenshot
+        exportState.scene = exportState.scene.still(at: scenePreviewTime)
         guard let image, let data = renderPNG(image, exportState) else {
             send(.saveFailed("Failed to render screenshot."))
             return
         }
 
         guard let targetURL = presentSaveURL(suggestedFileName) else { return }
+        if let sourceURL, ExportFileSafety.sameFile(sourceURL, targetURL) {
+            send(.saveFailed("Choose a different filename to preserve the original image."))
+            return
+        }
 
         do {
             try writePNG(data, targetURL)
@@ -318,7 +329,8 @@ final class ScreenshotEditorDriver {
     }
 
     func copyComposedPNG(image: NSImage?) {
-        let exportState = state.screenshot
+        var exportState = state.screenshot
+        exportState.scene = exportState.scene.still(at: scenePreviewTime)
         guard let image, let data = renderPNG(image, exportState) else {
             send(.copyFailed("Failed to render screenshot."))
             return

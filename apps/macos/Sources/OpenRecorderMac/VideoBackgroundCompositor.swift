@@ -118,6 +118,7 @@ final class VideoBackgroundCompositionInstruction: NSObject, AVVideoCompositionI
 
     let sourceTrackID: CMPersistentTrackID
     let facecamTrackID: CMPersistentTrackID?
+    let scene: SceneSettings
     let styling: VideoBackgroundStyling
     let preferredTransform: CGAffineTransform
     let normalizedSize: CGSize
@@ -136,6 +137,7 @@ final class VideoBackgroundCompositionInstruction: NSObject, AVVideoCompositionI
         trackID: CMPersistentTrackID,
         facecamTrackID: CMPersistentTrackID? = nil,
         styling: VideoBackgroundStyling,
+        scene: SceneSettings = .identity,
         preferredTransform: CGAffineTransform,
         normalizedSize: CGSize,
         facecamPreferredTransform: CGAffineTransform = .identity,
@@ -152,6 +154,7 @@ final class VideoBackgroundCompositionInstruction: NSObject, AVVideoCompositionI
         self.sourceTrackID = trackID
         self.facecamTrackID = facecamTrackID
         self.requiredSourceTrackIDs = ([trackID] + (facecamTrackID.map { [$0] } ?? [])).map { NSNumber(value: $0) }
+        self.scene = scene
         self.styling = styling
         self.preferredTransform = preferredTransform
         self.normalizedSize = normalizedSize
@@ -211,6 +214,7 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
     private var captionRaster: CaptionRenderer.Image?
     private var renderContext: AVVideoCompositionRenderContext?
     private let renderContextLock = NSLock()
+    private let sceneRenderer = SceneRenderer()
     private var annotationCache: [String: CIImage] = [:]
     private var cursorGlyphCache: [CursorGlyphCacheKey: CursorGlyphImage] = [:]
     private static let pixelBufferAttributes: VideoCompositorPixelBufferAttributes = [
@@ -326,7 +330,7 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
         return outputBuffer
     }
 
-    private func makeComposedImage(
+    func makeComposedImage(
         source: CVPixelBuffer,
         facecam: CVPixelBuffer?,
         instruction: VideoBackgroundCompositionInstruction,
@@ -397,6 +401,50 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
                 image = applyGaussianBlur(image, radius: blurRadius).cropped(to: renderRect)
             }
             return image
+        }
+
+        if instruction.scene.isActive {
+            // Scene zooms happen within the screen surface; the stage remains upright.
+            var media = maskedSource
+            if let cursor = makeCursorLayer(for: instruction, compositionTime: compositionTime, contentRect: contentRect) {
+                media = cursor.composited(over: media)
+            }
+            media = applyZoomTransform(to: media, renderRect: renderRect, instruction: instruction,
+                                       compositionTime: compositionTime, placedRect: placedRect).cropped(to: placedRect)
+            var surface = media
+            if instruction.styling.inset.isEnabled && instruction.styling.inset.opacity > 0 {
+                surface = media.composited(over: makeInsetLayer(for: instruction.styling.inset,
+                    in: sourceLayout.frameRect, cornerRadius: cornerRadius))
+            }
+            var result = sceneRenderer.render(media: surface, mediaRect: sourceLayout.frameRect,
+                frame: sourceLayout.frameRect, canvas: renderSize,
+                settings: instruction.scene.clamped(to: instruction.editPlan.outputDuration),
+                time: compositionTime, radius: cornerRadius, shadow: instruction.styling.shadowIntensity)
+                .composited(over: background)
+            // Canvas annotations and facecam are deliberately outside the tilted surface.
+            for annotation in instruction.edits.annotationRegions {
+                guard let span = instruction.editPlan.outputSpans(forSourceSpan: annotation.span).first(where: { $0.contains(compositionTime) }),
+                      let layer = annotationImage(annotation, canvasSize: renderSize) else { continue }
+                let progress = (compositionTime - span.start) / max(0.001, span.duration)
+                let opacity = min(1, min(progress / 0.08, (1 - progress) / 0.08))
+                let positioned = layer.transformed(by: CGAffineTransform(
+                    translationX: renderSize.width * annotation.x - layer.extent.width / 2,
+                    y: renderSize.height * (1 - annotation.y) - layer.extent.height / 2))
+                    .applyingFilter("CIColorMatrix", parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: opacity)])
+                result = positioned.composited(over: result)
+            }
+            if var camera = makeFacecamLayer(facecam, for: instruction, compositionTime: compositionTime) {
+                let sourceTime = instruction.editPlan.sourceTime(forOutputTime: compositionTime) ?? compositionTime
+                let fixed = instruction.edits.activeCameraSettings(at: sourceTime,
+                    duration: instruction.editPlan.segments.last?.sourceEnd ?? 0,
+                    fallback: instruction.facecamFallbackSettings)?.fixedDuringZoom == true
+                if !fixed {
+                    camera = applyZoomTransform(to: camera, renderRect: renderRect, instruction: instruction,
+                        compositionTime: compositionTime, placedRect: placedRect)
+                }
+                result = camera.composited(over: result)
+            }
+            return result.cropped(to: renderRect)
         }
 
         var composed = background

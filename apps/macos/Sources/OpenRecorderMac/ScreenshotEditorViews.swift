@@ -14,6 +14,13 @@ struct ScreenshotEditorStudioView: View {
     var editor: ScreenshotEditorDriver
     var exportRequest: EditorExportRequest?
     @State private var sidebarWidth: CGFloat = 320
+    @State private var activeInspector: InspectorTab = .appearance
+    @State private var sceneEndpoint: SceneEndpoint = .start
+    @State private var sceneTool: SceneTool = .tilt
+    @State private var image: NSImage?
+    @State private var animationPlaying = false
+    @State private var animationExportPresented = false
+    @State private var animationDraft = VideoExportDraftState()
 
     var body: some View {
         StudioSplitPane(
@@ -24,53 +31,122 @@ struct ScreenshotEditorStudioView: View {
             maxSecondarySize: 440,
             spacing: 0
         ) {
-            ScreenshotCanvas(
-                image: image,
-                background: editor.state.screenshot.background,
-                padding: editor.state.screenshot.padding,
-                backgroundRoundness: editor.state.screenshot.backgroundRoundness,
-                backgroundShadow: editor.state.screenshot.backgroundShadow,
-                imageRoundness: editor.state.screenshot.imageRoundness,
-                imageShadow: editor.state.screenshot.imageShadow
-            )
+            VStack(spacing: 0) {
+                if activeInspector == .scene { SceneCanvasTools(tool: $sceneTool) }
+                Group {
+                    if editor.state.screenshot.scene.isActive || editor.state.screenshot.canvasAspect != .auto {
+                        SceneScreenshotPreview(image: image, state: editor.state.screenshot, time: editor.scenePreviewTime)
+                    } else {
+                        ScreenshotCanvas(image: image, background: editor.state.screenshot.background,
+                            padding: editor.state.screenshot.padding, backgroundRoundness: editor.state.screenshot.backgroundRoundness,
+                            backgroundShadow: editor.state.screenshot.backgroundShadow,
+                            imageRoundness: editor.state.screenshot.imageRoundness, imageShadow: editor.state.screenshot.imageShadow)
+                    }
+                }
+                .modifier(SceneCanvasGesture(enabled: activeInspector == .scene, tool: sceneTool,
+                    pose: scenePoseBinding(settings: editor.binding(for: \.scene), endpoint: sceneEndpoint),
+                    onEditingChanged: handleUndoTransaction))
+                if editor.state.screenshot.scene.motion.enabled {
+                    HStack {
+                        Button { animationPlaying.toggle() } label: {
+                            Image(systemName: animationPlaying ? "pause.fill" : "play.fill")
+                        }.help(animationPlaying ? "Pause animation" : "Play animation")
+                        Slider(value: Binding(get: { editor.scenePreviewTime }, set: { animationPlaying = false; editor.scenePreviewTime = $0 }),
+                               in: 0...editor.state.screenshot.scene.imageDuration)
+                        Text(String(format: "%.2fs", editor.scenePreviewTime)).monospacedDigit().font(.caption)
+                    }.padding(12)
+                }
+            }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } secondary: {
-            ScreenshotSettingsPanel(
-                background: editor.binding(for: \.background),
-                padding: editor.binding(for: \.padding),
-                backgroundRoundness: editor.binding(for: \.backgroundRoundness),
-                backgroundShadow: editor.binding(for: \.backgroundShadow),
-                imageRoundness: editor.binding(for: \.imageRoundness),
-                imageShadow: editor.binding(for: \.imageShadow),
-                onEditingChanged: handleUndoTransaction,
-                onRevealFile: {
-                    if let screenshotURL {
-                        model.reveal(screenshotURL.path)
+            HStack(spacing: 0) {
+                VStack(spacing: 14) {
+                    ForEach([InspectorTab.appearance, .scene]) { tab in
+                        Button { activeInspector = tab } label: {
+                            VStack(spacing: 5) {
+                                Image(systemName: tab.symbolName).font(.system(size: 16))
+                                Text(tab.shortTitle).font(.system(size: 9.5))
+                            }.foregroundStyle(activeInspector == tab ? Theme.fg : Theme.fgMuted)
+                                .frame(width: 46, height: 46)
+                        }.buttonStyle(.plain).help(tab.helpText)
                     }
-                },
-                onExport: {
-                    editor.send(.exportRequested)
-                },
-                onSave: {
-                    editor.saveComposedPNG(image: image, suggestedFileName: suggestedExportFileName)
-                },
-                onCopy: {
-                    editor.copyComposedPNG(image: image)
+                    Spacer()
+                }.padding(.top, 14).frame(width: 50).background(Theme.railBg)
+                if activeInspector == .scene {
+                    VStack(spacing: 0) {
+                        ScrollView {
+                            SceneInspector(settings: editor.binding(for: \.scene), endpoint: $sceneEndpoint,
+                                duration: editor.state.screenshot.scene.imageDuration, isImage: true,
+                                seek: { animationPlaying = false; editor.scenePreviewTime = $0 }, onEditingChanged: handleUndoTransaction)
+                                .padding(14)
+                        }
+                        HStack {
+                            Button("Copy PNG") { editor.copyComposedPNG(image: image) }
+                            Spacer()
+                            Menu("Export") {
+                                Button("Save PNG…") { editor.saveComposedPNG(image: image, suggestedFileName: suggestedExportFileName, sourceURL: screenshotURL) }
+                                Button("Export Animation…") { presentAnimationExport() }
+                            }
+                        }.controlSize(.small).padding(10)
+                    }
+                } else {
+                    ScreenshotSettingsPanel(
+                        background: editor.binding(for: \.background),
+                        padding: editor.binding(for: \.padding),
+                        backgroundRoundness: editor.binding(for: \.backgroundRoundness),
+                        backgroundShadow: editor.binding(for: \.backgroundShadow),
+                        imageRoundness: editor.binding(for: \.imageRoundness),
+                        imageShadow: editor.binding(for: \.imageShadow),
+                        canvasAspect: editor.binding(for: \.canvasAspect),
+                        onAnimateExport: { presentAnimationExport() },
+                        onEditingChanged: handleUndoTransaction,
+                        onRevealFile: {
+                            if let screenshotURL {
+                                model.reveal(screenshotURL.path)
+                            }
+                        },
+                        onExport: {
+                            editor.send(.exportRequested)
+                        },
+                        onSave: {
+                            editor.saveComposedPNG(image: image, suggestedFileName: suggestedExportFileName, sourceURL: screenshotURL)
+                        },
+                        onCopy: {
+                            editor.copyComposedPNG(image: image)
+                        }
+                    )
                 }
-            )
+            }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .background(Theme.appBg)
         .sheet(isPresented: editor.exportDialogBinding) {
             ScreenshotExportDialog(
                 onSave: {
-                    editor.saveComposedPNG(image: image, suggestedFileName: suggestedExportFileName)
+                    editor.saveComposedPNG(image: image, suggestedFileName: suggestedExportFileName, sourceURL: screenshotURL)
                 },
                 onCopy: {
                     editor.copyComposedPNG(image: image)
                 }
             )
             .frame(width: 420)
+        }
+        .sheet(isPresented: $animationExportPresented) { animationExportDialog }
+        .task(id: screenshotURL) { image = screenshotURL.flatMap { NSImage(contentsOf: $0) }; editor.scenePreviewTime = 0; animationPlaying = false }
+        .task(id: animationPlaying) {
+            guard animationPlaying else { return }
+            if editor.scenePreviewTime >= editor.state.screenshot.scene.imageDuration { editor.scenePreviewTime = 0 }
+            let start = Date().timeIntervalSinceReferenceDate - editor.scenePreviewTime
+            while !Task.isCancelled && animationPlaying {
+                editor.scenePreviewTime = min(editor.state.screenshot.scene.imageDuration, Date().timeIntervalSinceReferenceDate - start)
+                if editor.scenePreviewTime >= editor.state.screenshot.scene.imageDuration { animationPlaying = false; break }
+                try? await Task.sleep(for: .milliseconds(33))
+            }
+        }
+        .onChange(of: editor.state.screenshot.scene) { _, _ in animationPlaying = false }
+        .onChange(of: editor.state.screenshot.scene.imageDuration) { _, duration in
+            editor.binding(for: \.scene).wrappedValue = editor.state.screenshot.scene.clamped(to: duration)
+            editor.scenePreviewTime = min(editor.scenePreviewTime, duration)
         }
         .onChange(of: exportRequest?.id) { _, requestID in
             guard requestID != nil, isScreenshotExportRequestTarget else { return }
@@ -106,9 +182,30 @@ struct ScreenshotEditorStudioView: View {
         }
     }
 
-    private var image: NSImage? {
-        guard let url = screenshotURL else { return nil }
-        return NSImage(contentsOf: url)
+    private func presentAnimationExport() {
+        animationPlaying = false
+        workspace.videoExport.clear()
+        animationDraft = VideoExportDraftState()
+        animationExportPresented = true
+    }
+
+    private var animationExportDialog: some View {
+        let exporter = workspace.videoExport
+        return VideoExportDialog(phase: exporter.state.phase, progress: exporter.state.progress,
+            errorMessage: exporter.state.errorMessage, exportedFileName: exporter.state.exportedFileName,
+            isExporting: exporter.state.isExporting, resolution: $animationDraft.resolution,
+            format: Binding(get: { animationDraft.format }, set: { animationDraft.setFormat($0) }),
+            frameRate: $animationDraft.frameRate, quality: $animationDraft.quality,
+            gifSize: $animationDraft.gifSize, gifLoops: $animationDraft.gifLoops,
+            includeCaptions: .constant(false),
+            mediaLabel: "Animation",
+            onExport: {
+                var options = animationDraft.currentOptions
+                options.screenshotState = editor.state.screenshot
+                exporter.export(sourceURL: screenshotURL, options: options, edits: .empty)
+            }, onRetrySave: { exporter.send(.retrySaveRequested) }, onShowInFinder: { exporter.send(.revealRequested) },
+            onCancelExport: { exporter.send(.cancelRequested) }, onClose: { animationExportPresented = false })
+            .frame(width: 520).interactiveDismissDisabled(exporter.state.phase.isBusy)
     }
 
     private var suggestedExportFileName: String {
@@ -117,6 +214,7 @@ struct ScreenshotEditorStudioView: View {
 
     private func handleUndoTransaction(_ isEditing: Bool) {
         if isEditing {
+            animationPlaying = false
             editor.beginUndoTransaction()
         } else {
             editor.endUndoTransaction()
@@ -412,6 +510,8 @@ struct ScreenshotSettingsPanel: View {
     @Binding var backgroundShadow: Double
     @Binding var imageRoundness: Double
     @Binding var imageShadow: Double
+    @Binding var canvasAspect: VideoPreviewAspectPreset
+    var onAnimateExport: () -> Void = {}
     var onEditingChanged: (Bool) -> Void = { _ in }
     var onRevealFile: () -> Void = {}
     var onExport: () -> Void
@@ -423,6 +523,7 @@ struct ScreenshotSettingsPanel: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     header
+                    CanvasAspectPicker(selection: $canvasAspect)
                     BackgroundPickerView(selection: $background)
                     InspectorGroup(title: "Background Layer", symbolName: "rectangle.fill") {
                         InspectorSlider(title: "Padding", valueText: "\(Int(padding))px", value: $padding, range: 0...140, step: 1, onEditingChanged: onEditingChanged)
@@ -446,7 +547,7 @@ struct ScreenshotSettingsPanel: View {
                     onRevealFile()
                 }
                 if let onSave, let onCopy {
-                    ScreenshotExportMenu(onSave: onSave, onCopy: onCopy)
+                    ScreenshotExportMenu(onAnimate: onAnimateExport, onSave: onSave, onCopy: onCopy)
                 } else {
                     InspectorFooterButton(title: "Export", symbolName: "square.and.arrow.up") {
                         onExport()
@@ -489,11 +590,14 @@ struct ScreenshotSettingsPanel: View {
 }
 
 private struct ScreenshotExportMenu: View {
+    var onAnimate: () -> Void = {}
     var onSave: () -> Void
     var onCopy: () -> Void
 
     var body: some View {
         Menu {
+            Button("Export Animation…", action: onAnimate)
+            Divider()
             Button(action: onSave) {
                 Label("Save PNG…", systemImage: "square.and.arrow.down")
             }

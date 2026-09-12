@@ -14,6 +14,7 @@ struct VideoExportDialog: View {
     @Binding var gifLoops: Bool
     @Binding var includeCaptions: Bool
     var hasCaptions: Bool = false
+    var mediaLabel: String = "Video"
     var onExport: () -> Void
     var onRetrySave: () -> Void
     var onShowInFinder: () -> Void
@@ -325,7 +326,7 @@ struct VideoExportDialog: View {
             Spacer(minLength: 0)
 
             ExportDialogButton(
-                title: isExporting ? "Exporting…" : "Export Video",
+                title: isExporting ? "Exporting…" : "Export \(mediaLabel)",
                 systemImage: "square.and.arrow.down",
                 kind: .primary,
                 minWidth: 136,
@@ -367,11 +368,11 @@ struct VideoExportDialog: View {
         case .saving:
             "Ready to Save"
         case .exporting where displayedProgress <= 0.01:
-            "Preparing Video"
+            "Preparing \(mediaLabel)"
         case .exporting:
-            "Rendering Video"
+            "Rendering \(mediaLabel)"
         case .idle, .savePending, .success, .failed:
-            "Export Video"
+            "Export \(mediaLabel)"
         }
     }
 
@@ -393,12 +394,12 @@ struct VideoExportDialog: View {
 
     private var headerTitle: String {
         switch phase {
-        case .exporting: "Exporting Video"
+        case .exporting: "Exporting \(mediaLabel)"
         case .saving: "Save Export"
         case .savePending: "Export Ready"
         case .success: "Export Complete"
         case .failed: "Export Failed"
-        case .idle: "Export Video"
+        case .idle: "Export \(mediaLabel)"
         }
     }
 

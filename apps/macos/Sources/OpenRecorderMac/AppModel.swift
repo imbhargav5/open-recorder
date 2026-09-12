@@ -644,10 +644,7 @@ final class AppModel: ObservableObject {
                 self?.videoExportSaveDestination(sourceURL: sourceURL, options: options)
             },
             copyFile: { sourceURL, targetURL in
-                if FileManager.default.fileExists(atPath: targetURL.path) {
-                    try FileManager.default.removeItem(at: targetURL)
-                }
-                try FileManager.default.copyItem(at: sourceURL, to: targetURL)
+                try ExportFileSafety.install(source: sourceURL, destination: targetURL)
             },
             deleteFile: { url in
                 try? FileManager.default.removeItem(at: url)
