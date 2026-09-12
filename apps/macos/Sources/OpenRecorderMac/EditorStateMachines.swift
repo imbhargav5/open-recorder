@@ -87,7 +87,10 @@ struct VideoExportDraftState: Equatable {
 
 struct VideoEditorState: Equatable {
     var video = ProjectVideoEditorState.default
-    var previewAspectPreset: VideoPreviewAspectPreset = .auto
+    var previewAspectPreset: VideoPreviewAspectPreset {
+        get { video.canvasAspect }
+        set { video.canvasAspect = newValue }
+    }
     var activeSheet: VideoEditorSheet?
     var presentedSheet: VideoEditorSheet?
     var appliedTimelineIdentity: String?
@@ -119,6 +122,7 @@ struct VideoEditorState: Equatable {
             insetOpacity: video.insetOpacity,
             insetBalance: video.insetBalance
         )
+        .withScene(video.scene)
         .withAspectPreset(previewAspectPreset)
         .withCursorOverlay(cursorOverlaySettings, telemetryURL: cursorTelemetryURL)
     }
@@ -291,7 +295,6 @@ extension VideoEditorState {
         if appliedVideoStateIdentity != identity {
             appliedVideoStateIdentity = identity
             video = Self.initialVideoState(for: context)
-            previewAspectPreset = .auto
             didApplyState = true
         }
 
@@ -350,6 +353,16 @@ extension VideoEditorState {
 @MainActor
 final class VideoEditorDriver {
     var state = VideoEditorState()
+    var sceneHistoryIsActive = false
+    private var historyRevision = 0
+    @ObservationIgnored private var history = EditorHistory<ProjectVideoEditorState>()
+    var canUndo: Bool { _ = historyRevision; return history.canUndo }
+    var canRedo: Bool { _ = historyRevision; return history.canRedo }
+    func beginUndoTransaction() { history.beginTransaction(current: state.video) }
+    func endUndoTransaction() { if history.commitTransaction(current: state.video) { historyRevision += 1 } }
+    func undo() { if let previous = history.undo(current: state.video) { state.video = previous; historyRevision += 1 } }
+    func redo() { if let next = history.redo(current: state.video) { state.video = next; historyRevision += 1 } }
+
 
     @ObservationIgnored private let autosave = ProjectAutosaveCoordinator()
     @ObservationIgnored private var applyTimelineSnapshot: (TimelineEditSnapshot) -> Void = { _ in }
@@ -374,7 +387,12 @@ final class VideoEditorDriver {
     }
 
     func send(_ event: VideoEditorEvent) {
+        let before = state.video
+        let identity = state.appliedVideoStateIdentity
         let effects = state.applying(event)
+        if state.appliedVideoStateIdentity != identity { history.reset() }
+        else { history.recordChange(from: before, to: state.video) }
+        historyRevision += 1
         perform(effects)
     }
 
@@ -860,7 +878,7 @@ final class EditorWorkspaceDriver {
         guard state.selectedSection == .editor else { return false }
         switch kind {
         case .video:
-            return timeline.canUndo
+            return video.sceneHistoryIsActive ? video.canUndo : timeline.canUndo
         case .screenshot:
             return screenshot.canUndo
         case nil:
@@ -872,7 +890,7 @@ final class EditorWorkspaceDriver {
         guard state.selectedSection == .editor else { return false }
         switch kind {
         case .video:
-            return timeline.canRedo
+            return video.sceneHistoryIsActive ? video.canRedo : timeline.canRedo
         case .screenshot:
             return screenshot.canRedo
         case nil:
@@ -1057,9 +1075,9 @@ final class EditorWorkspaceDriver {
                     setStatusMessage(message)
                 }
             case .undoTimeline:
-                timeline.undo()
+                if video.sceneHistoryIsActive { video.undo() } else { timeline.undo() }
             case .redoTimeline:
-                timeline.redo()
+                if video.sceneHistoryIsActive { video.redo() } else { timeline.redo() }
             case .undoScreenshot:
                 screenshot.undo()
             case .redoScreenshot:

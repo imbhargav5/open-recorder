@@ -191,10 +191,7 @@ final class VideoExportDriver {
     }
     @ObservationIgnored private var saveDestination: (URL, VideoExportOptions) -> URL? = { _, _ in nil }
     @ObservationIgnored private var copyFile: (URL, URL) throws -> Void = { sourceURL, targetURL in
-        if FileManager.default.fileExists(atPath: targetURL.path) {
-            try FileManager.default.removeItem(at: targetURL)
-        }
-        try FileManager.default.copyItem(at: sourceURL, to: targetURL)
+        try ExportFileSafety.install(source: sourceURL, destination: targetURL)
     }
     @ObservationIgnored private var deleteFile: (URL) -> Void = { url in
         try? FileManager.default.removeItem(at: url)
@@ -298,8 +295,9 @@ final class VideoExportDriver {
                 }
                 perform([.copyFile(sourceURL: sourceURL, targetURL: targetURL, tempURL: tempURL)])
 
-            case .copyFile(_, let targetURL, let tempURL):
+            case .copyFile(let sourceURL, let targetURL, let tempURL):
                 do {
+                    guard !ExportFileSafety.sameFile(sourceURL, targetURL) else { throw ExportFileSafety.Failure.originalFile }
                     try copyFile(tempURL, targetURL)
                     deleteFile(tempURL)
                     send(.saveSucceeded(targetURL))
