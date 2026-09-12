@@ -83,6 +83,7 @@ Open Recorder includes a native editor for turning raw captures into shareable v
 - `.all-contributorsrc` - All Contributors configuration that generates the README contributor table
 - `docs` - project documentation and supporting artifacts
 - `open-recorder-ui.png` - root-level preview of the Open Recorder Editor UI embedded above
+- `open-recorder-demo.gif` - root-level copy of the landing hero demo GIF (byte-identical to `apps/landing/public/open-recorder-demo.gif`)
 - `.github` - GitHub templates and repository automation configuration
 - `licenses` - secondary MIT license notices for OpenScreen and RECORDLY
 - `scripts` - repository build, packaging, verification, and maintenance tooling
