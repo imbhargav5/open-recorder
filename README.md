@@ -82,6 +82,7 @@ Open Recorder includes a native editor for turning raw captures into shareable v
 - `licenses` - secondary MIT license notices for OpenScreen and RECORDLY
 - `scripts` - repository build, packaging, verification, and maintenance tooling
 - `skills` - repository-local maintainer automation guidance
+- `TRANSLATION_GUIDE.md` - contributor guide for app localization
 
 ## Build From Source
 
