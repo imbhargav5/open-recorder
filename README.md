@@ -89,6 +89,7 @@ Open Recorder includes a native editor for turning raw captures into shareable v
 - `open-recorder-demo.gif` - root-level copy of the landing hero demo GIF (byte-identical to `apps/landing/public/open-recorder-demo.gif`)
 - `.github` - GitHub templates and repository automation configuration
 - `.mergify.yml` - repository Mergify configuration
+- `README.md` - project overview and repository guide
 - `licenses` - secondary MIT license notices for OpenScreen and RECORDLY
 - `scripts` - repository build, packaging, verification, and maintenance tooling
 - `Makefile` - top-level command entry point for setup, macOS build, development, packaging, testing, and cleanup
