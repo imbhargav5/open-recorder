@@ -3,6 +3,18 @@ title: "Open Recorder changelog: releases, features, and fixes"
 description: "Release notes for Open Recorder on macOS. Track new screen recording features, capture improvements, and bug fixes in each version update."
 ---
 
+<Update label="September 12, 2026" description="v0.2.53" tags={["macOS"]}>
+## New features
+
+### Local AI captions
+
+Generate captions for a recording without sending audio to the cloud. Open a video, choose **Captions** in the editor inspector, and expand **Local AI setup** to download the multilingual base speech model (148 MB) and pick an installed local text model from Ollama. Pick a language or **Auto detect**, then click **Generate captions**: transcription runs on your Mac with whisper.cpp and punctuation cleanup runs through your local Ollama model. Edit caption text and timing inline, restyle every caption (font size, colors, background opacity, top or bottom placement), and toggle **Include captions** when exporting. Captions are saved with the project, so reopening or exporting a captioned recording does not require Ollama.
+
+### 3D scenes for image and video editors
+
+Add depth to screenshots and recordings with the new **Scene** inspector. Tilt, rotate, and offset the canvas in 3D, and animate the motion on video exports for a polished intro or outro effect. Scene settings live alongside your other editor styling and apply on both preview and export.
+</Update>
+
 <Update label="September 10, 2026" description="v0.2.52" tags={["macOS"]}>
 ## Bug fixes
 
