@@ -91,6 +91,7 @@ Open Recorder includes a native editor for turning raw captures into shareable v
 - `licenses` - secondary MIT license notices for OpenScreen and RECORDLY
 - `scripts` - repository build, packaging, verification, and maintenance tooling
 - `Makefile` - top-level command entry point for setup, macOS build, development, packaging, testing, and cleanup
+- `package.json` - root private pnpm package manifest for repository-level scripts
 - `skills` - repository-local maintainer automation guidance
 - `CONTRIBUTING.md` - contribution guidelines for the project
 - `TRANSLATION_GUIDE.md` - contributor guide for app localization
