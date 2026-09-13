@@ -82,6 +82,7 @@ Open Recorder includes a native editor for turning raw captures into shareable v
 - `.mintignore` - excludes separately deployed application source from Mintlify documentation assets
 - `.all-contributorsrc` - All Contributors configuration that generates the README contributor table
 - `.gitignore` - repository ignore rules for local and generated files
+- `LICENSE` - Apache License 2.0 text for the project
 - `docs` - project documentation and supporting artifacts
 - `open-recorder-ui.png` - root-level preview of the Open Recorder Editor UI embedded above
 - `CursorLoop.gif` - root-level cursor-loop demo GIF
