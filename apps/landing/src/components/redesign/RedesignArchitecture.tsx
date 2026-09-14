@@ -1,11 +1,12 @@
 import type { ReactElement } from "react";
 import { StepList } from "./StepList";
+import type { Step } from "./StepList";
 
 const archRows = [
   { title: "Swift app",    description: "Capture UI, editor timeline, screenshot composition, Finder integration" },
   { title: "Rust service", description: "Project metadata, path handling, screenshot indexing, exports" },
   { title: "Local paths",  description: "~/Movies/Open Recorder, ~/Pictures/Open Recorder, and local project files" },
-] as const;
+] as const satisfies readonly Step[];
 
 const tags = ["Swift 6", "Rust", "ScreenCaptureKit", "AVFoundation", "Apache 2.0"] as const;
 

@@ -1,12 +1,13 @@
 import type { ReactElement } from "react";
 import { StepList } from "./StepList";
+import type { Step } from "./StepList";
 
 const steps = [
   { number: "01", title: "Choose the source", description: "Pick a display, window, or hand-drawn region with a capture flow built natively for macOS." },
   { number: "02", title: "Record or screenshot", description: "Save clips to Movies and screenshots to Pictures with project metadata created automatically." },
   { number: "03", title: "Edit the timeline", description: "Refine clips with trims, speed changes, zoom effects, cursor overlays, and independently controlled camera segments." },
   { number: "04", title: "Export or compose", description: "Export MOV, MP4, GIF, or PNG assets with crop and aspect controls, styled backgrounds, and screenshot composition." },
-] as const;
+] as const satisfies readonly Step[];
 
 export function RedesignWorkflow(): ReactElement {
   return (
