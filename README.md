@@ -79,7 +79,7 @@ Open Recorder includes a native editor for turning raw captures into shareable v
 - `recording`, `editing`, and `reference` - Mintlify documentation content roots for the Recording, Editing, and Reference navigation groups
 - `index.mdx` and `changelog.mdx` - root Mintlify pages for the Overview and Updates navigation groups
 - `docs.json` - Mintlify documentation configuration and navigation file
-- `.mintignore` - excludes separately deployed application source from Mintlify documentation assets
+- `.mintignore` - excludes separately deployed application source and engineering notes/generated files from Mintlify documentation assets
 - `.all-contributorsrc` - All Contributors configuration that generates the README contributor table
 - `.gitignore` - repository ignore rules for local and generated files
 - `LICENSE` - Apache License 2.0 text for the project
