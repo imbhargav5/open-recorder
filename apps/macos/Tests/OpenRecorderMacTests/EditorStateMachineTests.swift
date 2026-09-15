@@ -741,6 +741,12 @@ final class ScreenshotEditorStateMachineTests: XCTestCase {
         XCTAssertEqual(state.applying(.saveSucceeded(exportURL)), [
             .setWorkspaceStatus(EditorWorkspaceStatus(message: "Exported exported-shot.png", severity: .success))
         ])
+        XCTAssertEqual(state.applying(.saveAndCopySucceeded(exportURL)), [
+            .setWorkspaceStatus(EditorWorkspaceStatus(
+                message: "Exported exported-shot.png and copied PNG",
+                severity: .success
+            ))
+        ])
         XCTAssertEqual(state.applying(.copyFailed("No image")), [
             .setWorkspaceStatus(EditorWorkspaceStatus(message: "No image", severity: .failure))
         ])
@@ -754,6 +760,7 @@ final class ScreenshotEditorStateMachineTests: XCTestCase {
         let driver = ScreenshotEditorDriver()
         let image = NSImage(size: NSSize(width: 1, height: 1))
         let targetURL = URL(fileURLWithPath: "/tmp/driver-shot.png")
+        let sourceURL = URL(fileURLWithPath: "/tmp/original-shot.png")
         var savedURL: URL?
         var copiedData: Data?
         var statusMessages: [String] = []
@@ -776,7 +783,10 @@ final class ScreenshotEditorStateMachineTests: XCTestCase {
             statusHandler: { _ in },
             setWorkspaceStatus: { statusMessages.append($0.message) },
             renderPNG: { _, _ in Data([0x89, 0x50, 0x4E, 0x47]) },
-            presentSaveURL: { _ in targetURL },
+            presentSaveURL: { _ in
+                XCTFail("Quick Save must not present a save panel")
+                return nil
+            },
             writePNG: { _, url in savedURL = url },
             copyPNG: { data in
                 copiedData = data
@@ -784,7 +794,11 @@ final class ScreenshotEditorStateMachineTests: XCTestCase {
             }
         )
 
-        driver.saveComposedPNG(image: image, suggestedFileName: "shot.png")
+        XCTAssertTrue(driver.saveComposedPNG(
+            image: image,
+            suggestedFileName: "driver-shot.png",
+            sourceURL: sourceURL
+        ))
         XCTAssertEqual(savedURL, targetURL)
         XCTAssertEqual(statusMessages.last, "Exported driver-shot.png")
 
@@ -794,10 +808,81 @@ final class ScreenshotEditorStateMachineTests: XCTestCase {
     }
 
     @MainActor
+    func testScreenshotDriverSaveAsUsesPicker() {
+        let driver = ScreenshotEditorDriver()
+        let image = NSImage(size: NSSize(width: 1, height: 1))
+        let sourceURL = URL(fileURLWithPath: "/tmp/original-shot.png")
+        let targetURL = URL(fileURLWithPath: "/tmp/chosen-shot.png")
+        var presentedName: String?
+        var writtenURL: URL?
+
+        driver.configure(
+            saveHandler: { _ in makeScreenshotDriverProjectSummary() },
+            statusHandler: { _ in },
+            setWorkspaceStatus: { _ in },
+            renderPNG: { _, _ in Data([0x89, 0x50, 0x4E, 0x47]) },
+            presentSaveURL: { name in
+                presentedName = name
+                return targetURL
+            },
+            writePNG: { _, url in writtenURL = url }
+        )
+
+        XCTAssertTrue(driver.saveComposedPNGAs(
+            image: image,
+            suggestedFileName: "original-shot-export.png",
+            sourceURL: sourceURL
+        ))
+        XCTAssertEqual(presentedName, "original-shot-export.png")
+        XCTAssertEqual(writtenURL, targetURL)
+    }
+
+    @MainActor
+    func testScreenshotDriverQuickSaveWritesAndCopiesSamePNG() {
+        let driver = ScreenshotEditorDriver()
+        let image = NSImage(size: NSSize(width: 1, height: 1))
+        let png = Data([0x89, 0x50, 0x4E, 0x47])
+        let sourceURL = URL(fileURLWithPath: "/tmp/original-shot.png")
+        let targetURL = URL(fileURLWithPath: "/tmp/original-shot-export.png")
+        var writtenData: Data?
+        var writtenURL: URL?
+        var copiedData: Data?
+        var statusMessages: [String] = []
+
+        driver.configure(
+            saveHandler: { _ in makeScreenshotDriverProjectSummary() },
+            statusHandler: { _ in },
+            setWorkspaceStatus: { statusMessages.append($0.message) },
+            renderPNG: { _, _ in png },
+            presentSaveURL: { _ in
+                XCTFail("Quick Save must not present a save panel")
+                return nil
+            },
+            writePNG: { data, url in
+                writtenData = data
+                writtenURL = url
+            },
+            copyPNG: { data in
+                copiedData = data
+                return true
+            }
+        )
+
+        XCTAssertTrue(driver.saveAndCopyComposedPNG(
+            image: image,
+            suggestedFileName: "original-shot-export.png",
+            sourceURL: sourceURL
+        ))
+        XCTAssertEqual(writtenData, png)
+        XCTAssertEqual(writtenURL, targetURL)
+        XCTAssertEqual(copiedData, png)
+        XCTAssertEqual(statusMessages.last, "Exported original-shot-export.png and copied PNG")
+    }
+
+    @MainActor
     func testScreenshotDriverExportUsesCurrentStyleState() {
         let driver = ScreenshotEditorDriver()
         let image = NSImage(size: NSSize(width: 1, height: 1))
-        let targetURL = URL(fileURLWithPath: "/tmp/styled-shot.png")
         let styledState = ScreenshotEditorState(
             background: .solid(SerializableColor(hex: "#AA5500")),
             padding: 96,
@@ -829,15 +914,37 @@ final class ScreenshotEditorStateMachineTests: XCTestCase {
                 renderedState = state
                 return Data([0x89, 0x50, 0x4E, 0x47])
             },
-            presentSaveURL: { _ in targetURL },
+            presentSaveURL: { _ in
+                XCTFail("Quick Save must not present a save panel")
+                return nil
+            },
             writePNG: { _, _ in }
         )
 
         driver.apply(styledState)
-        driver.saveComposedPNG(image: image, suggestedFileName: "styled-shot.png")
+        XCTAssertTrue(driver.saveComposedPNG(
+            image: image,
+            suggestedFileName: "styled-shot.png",
+            sourceURL: URL(fileURLWithPath: "/tmp/source.png")
+        ))
 
         XCTAssertEqual(renderedState, styledState)
     }
+}
+
+private func makeScreenshotDriverProjectSummary() -> ProjectSummary {
+    ProjectSummary(
+        id: "project",
+        title: "Screenshot",
+        path: "/tmp/screenshot.openrecorder",
+        recordingPath: nil,
+        screenshotPath: "/tmp/original-shot.png",
+        sourceName: "Display",
+        createdAt: "now",
+        updatedAt: "now",
+        lastOpenedAt: "now",
+        missing: false
+    )
 }
 
 final class TimelineEditStateMachineTests: XCTestCase {

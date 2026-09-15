@@ -1,3 +1,4 @@
+import AppKit
 import CoreGraphics
 import SwiftUI
 import XCTest
@@ -60,6 +61,58 @@ final class StudioKeyEventScopeTests: XCTestCase {
 
         cache.update(windowNumber: nil, isKey: false)
         XCTAssertNil(cache.snapshot())
+    }
+}
+
+final class ScreenshotEditorShortcutActionTests: XCTestCase {
+    func testResolvesQuickScreenshotActions() {
+        XCTAssertEqual(
+            ScreenshotEditorShortcutAction.resolve(
+                characters: "c",
+                modifiers: [.command],
+                isTextInputActive: false
+            ),
+            .copyAndClose
+        )
+        XCTAssertEqual(
+            ScreenshotEditorShortcutAction.resolve(
+                characters: "S",
+                modifiers: [.command],
+                isTextInputActive: false
+            ),
+            .saveAndCopy
+        )
+        XCTAssertEqual(
+            ScreenshotEditorShortcutAction.resolve(
+                characters: "s",
+                modifiers: [.command, .shift],
+                isTextInputActive: false
+            ),
+            .saveAs
+        )
+    }
+
+    func testPreservesTextEditingAndUnrelatedModifiedShortcuts() {
+        XCTAssertNil(ScreenshotEditorShortcutAction.resolve(
+            characters: "c",
+            modifiers: [.command],
+            isTextInputActive: true
+        ))
+        XCTAssertNil(ScreenshotEditorShortcutAction.resolve(
+            characters: "c",
+            modifiers: [.command, .shift],
+            isTextInputActive: false
+        ))
+        XCTAssertNil(ScreenshotEditorShortcutAction.resolve(
+            characters: "s",
+            modifiers: [.command, .option],
+            isTextInputActive: false
+        ))
+        XCTAssertNil(ScreenshotEditorShortcutAction.resolve(
+            characters: "s",
+            modifiers: [],
+            isTextInputActive: false
+        ))
     }
 }
 
