@@ -87,6 +87,7 @@ enum ScreenshotEditorEvent: Equatable {
     case disappeared(ProjectAutosaveSnapshot?)
     case saveFailed(String)
     case saveSucceeded(URL)
+    case saveAndCopySucceeded(URL)
     case copyFailed(String)
     case copySucceeded
 }
@@ -138,6 +139,12 @@ extension ScreenshotEditorMachineState {
         case .saveSucceeded(let url):
             return [.setWorkspaceStatus(EditorWorkspaceStatus(
                 message: "Exported \(url.lastPathComponent)",
+                severity: .success
+            ))]
+
+        case .saveAndCopySucceeded(let url):
+            return [.setWorkspaceStatus(EditorWorkspaceStatus(
+                message: "Exported \(url.lastPathComponent) and copied PNG",
                 severity: .success
             ))]
 
@@ -306,41 +313,75 @@ final class ScreenshotEditorDriver {
         )
     }
 
-    func saveComposedPNG(image: NSImage?, suggestedFileName: String, sourceURL: URL? = nil) {
-        var exportState = state.screenshot
-        exportState.scene = exportState.scene.still(at: scenePreviewTime)
-        guard let image, let data = renderPNG(image, exportState) else {
-            send(.saveFailed("Failed to render screenshot."))
-            return
+    @discardableResult
+    func saveComposedPNG(image: NSImage?, suggestedFileName: String, sourceURL: URL? = nil) -> Bool {
+        guard let targetURL = Self.automaticExportURL(
+            sourceURL: sourceURL,
+            suggestedFileName: suggestedFileName
+        ) else {
+            send(.saveFailed("Couldn’t determine where to save the screenshot. Use Save As… instead."))
+            return false
         }
-
-        guard let targetURL = presentSaveURL(suggestedFileName) else { return }
-        if let sourceURL, ExportFileSafety.sameFile(sourceURL, targetURL) {
-            send(.saveFailed("Choose a different filename to preserve the original image."))
-            return
-        }
-
-        do {
-            try writePNG(data, targetURL)
-            send(.saveSucceeded(targetURL))
-        } catch {
-            send(.saveFailed(error.localizedDescription))
-        }
+        return exportComposedPNG(
+            image: image,
+            targetURL: targetURL,
+            sourceURL: sourceURL,
+            copyToClipboard: false
+        )
     }
 
-    func copyComposedPNG(image: NSImage?) {
+    @discardableResult
+    func saveComposedPNGAs(image: NSImage?, suggestedFileName: String, sourceURL: URL? = nil) -> Bool {
+        guard let targetURL = presentSaveURL(suggestedFileName) else { return false }
+        return exportComposedPNG(
+            image: image,
+            targetURL: targetURL,
+            sourceURL: sourceURL,
+            copyToClipboard: false
+        )
+    }
+
+    @discardableResult
+    func saveAndCopyComposedPNG(image: NSImage?, suggestedFileName: String, sourceURL: URL? = nil) -> Bool {
+        guard let targetURL = Self.automaticExportURL(
+            sourceURL: sourceURL,
+            suggestedFileName: suggestedFileName
+        ) else {
+            send(.saveFailed("Couldn’t determine where to save the screenshot. Use Save As… instead."))
+            return false
+        }
+        return exportComposedPNG(
+            image: image,
+            targetURL: targetURL,
+            sourceURL: sourceURL,
+            copyToClipboard: true
+        )
+    }
+
+    @discardableResult
+    func copyComposedPNG(image: NSImage?) -> Bool {
         var exportState = state.screenshot
         exportState.scene = exportState.scene.still(at: scenePreviewTime)
         guard let image, let data = renderPNG(image, exportState) else {
             send(.copyFailed("Failed to render screenshot."))
-            return
+            return false
         }
 
         if copyPNG(data) {
             send(.copySucceeded)
+            return true
         } else {
             send(.copyFailed("Failed to copy screenshot."))
+            return false
         }
+    }
+
+    static func automaticExportURL(sourceURL: URL?, suggestedFileName: String) -> URL? {
+        guard let sourceURL else { return nil }
+        let fileName = URL(fileURLWithPath: suggestedFileName).lastPathComponent
+        guard !fileName.isEmpty else { return nil }
+        let targetURL = sourceURL.deletingLastPathComponent().appendingPathComponent(fileName)
+        return targetURL.pathExtension.isEmpty ? targetURL.appendingPathExtension("png") : targetURL
     }
 
     func flushPendingAutosave() async -> Bool {
@@ -357,6 +398,43 @@ final class ScreenshotEditorDriver {
 
     var canAbandonPendingAutosave: Bool {
         autosave.canAbandonPendingChanges
+    }
+
+    private func exportComposedPNG(
+        image: NSImage?,
+        targetURL: URL,
+        sourceURL: URL?,
+        copyToClipboard: Bool
+    ) -> Bool {
+        var exportState = state.screenshot
+        exportState.scene = exportState.scene.still(at: scenePreviewTime)
+        guard let image, let data = renderPNG(image, exportState) else {
+            send(.saveFailed("Failed to render screenshot."))
+            return false
+        }
+
+        if let sourceURL, ExportFileSafety.sameFile(sourceURL, targetURL) {
+            send(.saveFailed("Choose a different filename to preserve the original image."))
+            return false
+        }
+
+        do {
+            try writePNG(data, targetURL)
+        } catch {
+            send(.saveFailed(error.localizedDescription))
+            return false
+        }
+
+        guard copyToClipboard else {
+            send(.saveSucceeded(targetURL))
+            return true
+        }
+        guard copyPNG(data) else {
+            send(.copyFailed("Saved \(targetURL.lastPathComponent), but failed to copy the screenshot."))
+            return false
+        }
+        send(.saveAndCopySucceeded(targetURL))
+        return true
     }
 
     private func perform(_ effects: [ScreenshotEditorEffect]) {

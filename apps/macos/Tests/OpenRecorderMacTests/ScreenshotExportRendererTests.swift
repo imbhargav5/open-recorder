@@ -472,7 +472,7 @@ final class ScreenshotEditorHistoryTests: XCTestCase {
     func testSaveComposedPNGUsesCurrentScreenshotStyle() throws {
         let editor = ScreenshotEditorDriver()
         let image = NSImage(size: NSSize(width: 2, height: 2))
-        let targetURL = URL(fileURLWithPath: "/tmp/styled-export.png")
+        let targetURL = URL(fileURLWithPath: "/tmp/screen-export.png")
         var renderedState: ScreenshotEditorState?
         var writtenURL: URL?
         var writtenData: Data?
@@ -486,9 +486,9 @@ final class ScreenshotEditorHistoryTests: XCTestCase {
                 renderedState = state
                 return Data("styled-png".utf8)
             },
-            presentSaveURL: { suggestedName in
-                XCTAssertEqual(suggestedName, "screen-export.png")
-                return targetURL
+            presentSaveURL: { _ in
+                XCTFail("Quick Save must not present a save panel")
+                return nil
             },
             writePNG: { data, url in
                 writtenData = data
@@ -500,7 +500,11 @@ final class ScreenshotEditorHistoryTests: XCTestCase {
         editor.update(\.padding, to: 96)
         editor.update(\.backgroundRoundness, to: 44)
         editor.update(\.imageShadow, to: 0.15)
-        editor.saveComposedPNG(image: image, suggestedFileName: "screen-export.png")
+        XCTAssertTrue(editor.saveComposedPNG(
+            image: image,
+            suggestedFileName: "screen-export.png",
+            sourceURL: URL(fileURLWithPath: "/tmp/source.png")
+        ))
 
         let state = try XCTUnwrap(renderedState)
         XCTAssertEqual(state.background, background)

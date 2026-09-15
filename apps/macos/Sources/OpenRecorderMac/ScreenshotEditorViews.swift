@@ -81,10 +81,11 @@ struct ScreenshotEditorStudioView: View {
                                 .padding(14)
                         }
                         HStack {
-                            Button("Copy PNG") { editor.copyComposedPNG(image: image) }
+                            Button("Copy & Close", action: copyPNGAndClose)
                             Spacer()
                             Menu("Export") {
-                                Button("Save PNG…") { editor.saveComposedPNG(image: image, suggestedFileName: suggestedExportFileName, sourceURL: screenshotURL) }
+                                Button("Save PNG", action: saveAndCopyPNG)
+                                Button("Save PNG As…", action: savePNGAs)
                                 Button("Export Animation…") { presentAnimationExport() }
                             }
                         }.controlSize(.small).padding(10)
@@ -109,10 +110,13 @@ struct ScreenshotEditorStudioView: View {
                             editor.send(.exportRequested)
                         },
                         onSave: {
-                            editor.saveComposedPNG(image: image, suggestedFileName: suggestedExportFileName, sourceURL: screenshotURL)
+                            saveAndCopyPNG()
+                        },
+                        onSaveAs: {
+                            savePNGAs()
                         },
                         onCopy: {
-                            editor.copyComposedPNG(image: image)
+                            copyPNGAndClose()
                         }
                     )
                 }
@@ -123,10 +127,13 @@ struct ScreenshotEditorStudioView: View {
         .sheet(isPresented: editor.exportDialogBinding) {
             ScreenshotExportDialog(
                 onSave: {
-                    editor.saveComposedPNG(image: image, suggestedFileName: suggestedExportFileName, sourceURL: screenshotURL)
+                    saveAndCopyPNG()
+                },
+                onSaveAs: {
+                    savePNGAs()
                 },
                 onCopy: {
-                    editor.copyComposedPNG(image: image)
+                    copyPNGAndClose()
                 }
             )
             .frame(width: 420)
@@ -180,6 +187,12 @@ struct ScreenshotEditorStudioView: View {
         .onDisappear {
             editor.send(.disappeared(autosaveSnapshot))
         }
+        .background {
+            StudioKeyDownMonitor { event in
+                handleEditorShortcut(event)
+            }
+            .frame(width: 0, height: 0)
+        }
     }
 
     private func presentAnimationExport() {
@@ -210,6 +223,51 @@ struct ScreenshotEditorStudioView: View {
 
     private var suggestedExportFileName: String {
         ScreenshotExportRenderer.suggestedFileName(for: screenshotURL)
+    }
+
+    private func saveAndCopyPNG() {
+        editor.saveAndCopyComposedPNG(
+            image: image,
+            suggestedFileName: suggestedExportFileName,
+            sourceURL: screenshotURL
+        )
+    }
+
+    private func savePNGAs() {
+        editor.saveComposedPNGAs(
+            image: image,
+            suggestedFileName: suggestedExportFileName,
+            sourceURL: screenshotURL
+        )
+    }
+
+    private func copyPNGAndClose() {
+        guard editor.copyComposedPNG(image: image) else { return }
+        let editorWindow = NSApp.keyWindow?.sheetParent ?? NSApp.keyWindow
+        DispatchQueue.main.async {
+            editorWindow?.performClose(nil)
+        }
+    }
+
+    private func handleEditorShortcut(_ event: NSEvent) -> Bool {
+        guard let action = ScreenshotEditorShortcutAction.resolve(
+            characters: event.charactersIgnoringModifiers ?? event.characters ?? "",
+            modifiers: event.modifierFlags,
+            isTextInputActive: StudioKeyEventScope.isTextInputActive(in: NSApp.keyWindow)
+        ) else {
+            return false
+        }
+        guard !event.isARepeat else { return true }
+
+        switch action {
+        case .copyAndClose:
+            copyPNGAndClose()
+        case .saveAndCopy:
+            saveAndCopyPNG()
+        case .saveAs:
+            savePNGAs()
+        }
+        return true
     }
 
     private func handleUndoTransaction(_ isEditing: Bool) {
@@ -254,6 +312,7 @@ struct ScreenshotEditorStudioView: View {
 struct ScreenshotExportDialog: View {
     @Environment(\.dismiss) private var dismiss
     var onSave: () -> Void
+    var onSaveAs: () -> Void
     var onCopy: () -> Void
     @State private var pendingChoice: ScreenshotExportChoice?
 
@@ -264,7 +323,7 @@ struct ScreenshotExportDialog: View {
             HStack(spacing: 10) {
                 ScreenshotExportActionCard(
                     title: "Save",
-                    subtitle: "Choose a folder",
+                    subtitle: "Save beside original and copy",
                     symbolName: "square.and.arrow.down",
                     isPrimary: true
                 ) {
@@ -275,7 +334,7 @@ struct ScreenshotExportDialog: View {
 
                 ScreenshotExportActionCard(
                     title: "Copy",
-                    subtitle: "Put PNG on clipboard",
+                    subtitle: "Copy PNG and close editor",
                     symbolName: "doc.on.doc",
                     isPrimary: false
                 ) {
@@ -284,6 +343,17 @@ struct ScreenshotExportDialog: View {
                 }
                 .keyboardShortcut("c", modifiers: .command)
             }
+
+            Button {
+                select(.saveAs)
+            } label: {
+                Label("Save PNG As…", systemImage: "folder")
+                    .font(.system(size: 12, weight: .semibold))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 30)
+            }
+            .buttonStyle(.bordered)
+            .keyboardShortcut("s", modifiers: [.command, .shift])
 
             Button(role: .cancel) {
                 dismiss()
@@ -312,6 +382,38 @@ struct ScreenshotExportDialog: View {
             }
         }
         .onDisappear(perform: performPendingChoice)
+        .background {
+            StudioKeyDownMonitor { event in
+                handleShortcut(event)
+            }
+            .frame(width: 0, height: 0)
+        }
+    }
+
+    private func select(_ choice: ScreenshotExportChoice) {
+        pendingChoice = choice
+        dismiss()
+    }
+
+    private func handleShortcut(_ event: NSEvent) -> Bool {
+        guard let action = ScreenshotEditorShortcutAction.resolve(
+            characters: event.charactersIgnoringModifiers ?? event.characters ?? "",
+            modifiers: event.modifierFlags,
+            isTextInputActive: StudioKeyEventScope.isTextInputActive(in: NSApp.keyWindow)
+        ) else {
+            return false
+        }
+        guard !event.isARepeat else { return true }
+
+        switch action {
+        case .copyAndClose:
+            select(.copy)
+        case .saveAndCopy:
+            select(.save)
+        case .saveAs:
+            select(.saveAs)
+        }
+        return true
     }
 
     private func performPendingChoice() {
@@ -320,6 +422,8 @@ struct ScreenshotExportDialog: View {
         switch choice {
         case .save:
             onSave()
+        case .saveAs:
+            onSaveAs()
         case .copy:
             onCopy()
         case nil:
@@ -350,7 +454,35 @@ struct ScreenshotExportDialog: View {
 
 enum ScreenshotExportChoice: Equatable {
     case save
+    case saveAs
     case copy
+}
+
+enum ScreenshotEditorShortcutAction: Equatable {
+    case copyAndClose
+    case saveAndCopy
+    case saveAs
+
+    static func resolve(
+        characters: String,
+        modifiers: NSEvent.ModifierFlags,
+        isTextInputActive: Bool
+    ) -> ScreenshotEditorShortcutAction? {
+        guard !isTextInputActive else { return nil }
+        let key = characters.lowercased()
+        let relevantModifiers = modifiers.intersection([.command, .shift, .control, .option])
+
+        switch (key, relevantModifiers) {
+        case ("c", [.command]):
+            return .copyAndClose
+        case ("s", [.command]):
+            return .saveAndCopy
+        case ("s", [.command, .shift]):
+            return .saveAs
+        default:
+            return nil
+        }
+    }
 }
 
 private struct ScreenshotExportActionCard: View {
@@ -516,6 +648,7 @@ struct ScreenshotSettingsPanel: View {
     var onRevealFile: () -> Void = {}
     var onExport: () -> Void
     var onSave: (() -> Void)? = nil
+    var onSaveAs: (() -> Void)? = nil
     var onCopy: (() -> Void)? = nil
 
     var body: some View {
@@ -547,7 +680,12 @@ struct ScreenshotSettingsPanel: View {
                     onRevealFile()
                 }
                 if let onSave, let onCopy {
-                    ScreenshotExportMenu(onAnimate: onAnimateExport, onSave: onSave, onCopy: onCopy)
+                    ScreenshotExportMenu(
+                        onAnimate: onAnimateExport,
+                        onSave: onSave,
+                        onSaveAs: onSaveAs,
+                        onCopy: onCopy
+                    )
                 } else {
                     InspectorFooterButton(title: "Export", symbolName: "square.and.arrow.up") {
                         onExport()
@@ -592,6 +730,7 @@ struct ScreenshotSettingsPanel: View {
 private struct ScreenshotExportMenu: View {
     var onAnimate: () -> Void = {}
     var onSave: () -> Void
+    var onSaveAs: (() -> Void)?
     var onCopy: () -> Void
 
     var body: some View {
@@ -599,14 +738,21 @@ private struct ScreenshotExportMenu: View {
             Button("Export Animation…", action: onAnimate)
             Divider()
             Button(action: onSave) {
-                Label("Save PNG…", systemImage: "square.and.arrow.down")
+                Label("Save PNG", systemImage: "square.and.arrow.down")
             }
-            .keyboardShortcut("s", modifiers: [.command, .shift])
+            .keyboardShortcut("s", modifiers: .command)
+
+            if let onSaveAs {
+                Button(action: onSaveAs) {
+                    Label("Save PNG As…", systemImage: "folder")
+                }
+                .keyboardShortcut("s", modifiers: [.command, .shift])
+            }
 
             Button(action: onCopy) {
-                Label("Copy PNG", systemImage: "doc.on.doc")
+                Label("Copy PNG and Close", systemImage: "doc.on.doc")
             }
-            .keyboardShortcut("c", modifiers: [.command, .shift])
+            .keyboardShortcut("c", modifiers: .command)
         } label: {
             Label("Export", systemImage: "square.and.arrow.up")
                 .font(.system(size: 10, weight: .medium))
