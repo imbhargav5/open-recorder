@@ -1,0 +1,73 @@
+---
+title: "Generate and style local AI captions"
+description: "Set up the on-device speech model and a local Ollama text model, generate captions, edit text and timing, restyle the track, and include on export."
+---
+
+Open Recorder generates captions for a recording entirely on your Mac. Transcription runs through whisper.cpp and punctuation cleanup runs through a text model you already have installed in Ollama. No audio or transcript leaves the device.
+
+The **Captions** inspector is marked **ALPHA** while the feature stabilizes.
+
+## Set up local AI
+
+Open a video in the editor, select **Captions** in the inspector, and expand **Local AI setup**. First-time setup has two prerequisites.
+
+**Download the speech model.** Click **Download speech model (148 MB)** to fetch the multilingual base whisper.cpp model. The download is verified by SHA-256 and stored in the app's Application Support directory. It is shared across editor windows and only needs to be downloaded once per app variant. This is the only network transfer the feature makes to a model host.
+
+**Pick a text model from Ollama.** Install [Ollama](https://ollama.com), open it, and pull a text model with `ollama pull <model>`. Back in Open Recorder, choose the model from the **Text model** picker. Only models stored locally in Ollama appear; cloud aliases and non-completion models are filtered out.
+
+- **Open Ollama** launches the app if it is not running.
+- **Check again** re-scans the local Ollama instance for installed models.
+
+If the speech helper is missing, reinstall Open Recorder to restore it.
+
+## Generate captions
+
+With setup complete, choose a language from the **Language** picker or leave it on **Auto detect**, then click **Generate captions**. Open Recorder prepares the source audio, transcribes it with whisper.cpp, and asks your Ollama model to adjust punctuation and capitalization without rewriting words.
+
+While generation runs:
+
+- The current phase is shown next to the progress indicator.
+- **Cancel** stops the run. Cancellation, closing the project, or changing the source invalidates any pending result.
+- If punctuation cleanup fails, **Retry cleanup** reuses the existing transcript instead of re-transcribing.
+
+Existing captions are replaced only when a run succeeds. If you have already edited a caption track, Open Recorder asks you to confirm before replacing it. Your current captions stay in place until the new run succeeds, and the replacement can be undone.
+
+Click **Regenerate captions** to run generation again on the same recording.
+
+## Edit text and timing
+
+Every segment in the track is listed under the generation controls. For each caption:
+
+- Click the timestamp button to seek playback to that segment.
+- Edit the caption text inline. Text edits commit when you press Return or move focus out of the field.
+- Adjust the start and end times in seconds, then click **Apply** to commit the timing change.
+- Click the trash icon to delete the segment.
+
+Times must stay inside the recording and cannot overlap another caption. Invalid edits show an inline validation message and are not applied. Caption changes participate in the editor's undo and redo history along with your other timeline edits.
+
+## Restyle the caption track
+
+Style controls in the **Captions** inspector apply to every segment in the track.
+
+| Control | Effect |
+| --- | --- |
+| **Show captions** | Toggles the caption track on or off in the preview and, by default, on export. |
+| **Font size** | Sets caption text size, scaled relative to a 1080-pixel short edge so it stays consistent across export resolutions. |
+| **Text color** | Sets the caption text color. |
+| **Background** | Sets the caption background color. |
+| **Opacity** | Controls the background opacity behind the caption text. |
+| **Position** | Places captions at the **Top** or **Bottom** of the frame. |
+
+Long captions shrink to fit two lines. Captions are anchored to the final export canvas, so they stay in place through zoom regions and cropping.
+
+## Include captions on export
+
+The **Video Export** dialog has an **Include captions** toggle. It defaults to whatever the **Show captions** style is set to and can be overridden for that export without changing the project's visibility setting.
+
+## What is saved with the project
+
+Caption text, timing, and style are saved inside the project file. Reopening a captioned project and re-exporting it does not require Ollama or the speech model to be present. Only generating or regenerating captions needs the local AI setup.
+
+## Privacy
+
+Transcription and punctuation cleanup both run on your Mac. Audio is not uploaded to a cloud service, and there is no cloud fallback. The only network request the feature makes is the initial speech model download from the model host, and only after you click **Download speech model**. Ollama discovery is restricted to loopback.
