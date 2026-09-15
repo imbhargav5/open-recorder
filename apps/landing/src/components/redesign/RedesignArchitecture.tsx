@@ -8,7 +8,7 @@ const archRows = [
   { title: "Local paths",  description: "~/Movies/Open Recorder, ~/Pictures/Open Recorder, and local project files" },
 ] as const satisfies readonly Step[];
 
-const tags = ["Swift 6", "Rust", "ScreenCaptureKit", "AVFoundation", "Apache 2.0"] as const;
+const tags = ["Swift 6", "Rust", "ScreenCaptureKit", "AVFoundation", "Apache 2.0"] as const satisfies readonly string[];
 
 export function RedesignArchitecture(): ReactElement {
   return (
