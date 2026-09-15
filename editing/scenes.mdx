@@ -1,0 +1,102 @@
+---
+title: "3D scenes for screenshots and recordings"
+description: "Tilt, rotate, and position your media in 3D with the Scene inspector, wrap it in a browser or device mockup, and animate a single motion interval on export."
+---
+
+The **Scene** inspector adds a 3D pose to the media inside the editor stage. Use it to angle a screenshot for a hero image, add depth to a recording, wrap either one in a browser or device mockup, and optionally animate one push, pull, or sweep on export. Scene is shared between the image editor and the video editor.
+
+<Note>
+Scene is labeled **Alpha** in the inspector while its geometry, mockups, and motion presets stabilize. Names, defaults, and ranges may still change.
+</Note>
+
+## When to use Scene
+
+- Angle a screenshot before saving or copying it as a PNG.
+- Wrap a screenshot or recording in a **Browser**, **Desktop Window**, **Phone**, or **Tablet** mockup.
+- Add a single push-in, pull-out, tilt-reveal, or side-sweep animation to a recording or animated image export.
+
+Scene is disabled by default: every editor opens with the pose flat, no mockup, and motion off, so nothing renders differently until you touch the inspector.
+
+## Open the Scene inspector
+
+1. Open a screenshot or recording in the editor.
+2. In the right-side inspector rail, click **Scene** (the `rotate.3d` icon, labeled **Scene · 3D Tilt & Motion (Alpha)**).
+3. Above the canvas, choose **Tilt** or **Move** to drag directly on the preview. Hold **Shift** while dragging for precision.
+
+Click **Reset Scene** at the top of the inspector to return every Scene control to its defaults.
+
+## Pose the media
+
+The **Presets** section applies a starting pose in one click: **Flat**, **Tilt Left**, **Tilt Right**, or **Elevated**.
+
+Fine-tune the pose in the **Transform** section:
+
+| Control | Range | Notes |
+| --- | --- | --- |
+| **Horizontal Tilt** | −60° to 60° | Rotates the media around its vertical axis. |
+| **Vertical Tilt** | −60° to 60° | Rotates the media around its horizontal axis. |
+| **Rotation** | −180° to 180° | Rolls the media in the plane of the canvas. |
+| **Scale** | 0.25× to 2× | Shrinks or enlarges the tilted surface. |
+| **Position X** | −1 to 1 | Slides the surface horizontally, in canvas widths. |
+| **Position Y** | −1 to 1 | Slides the surface vertically, in canvas heights. |
+| **Perspective** (Advanced) | 0 to 1 | Lower values flatten the projection; higher values exaggerate depth. |
+
+The background, facecam bubble, canvas annotations, and captions stay upright while you tilt. Only the screen surface itself and its mockup frame move in 3D.
+
+## Wrap the media in a mockup
+
+The **Mockup** section places the tilted surface inside a device or window frame:
+
+- **None** — no mockup.
+- **Browser** — a browser chrome with an address bar.
+- **Desktop Window** — a macOS-style window with traffic-light buttons.
+- **Phone** — a portrait phone bezel.
+- **Tablet** — a tablet bezel.
+
+For any mockup other than **None**, pick a **Light** or **Dark** style, and toggle **Edge highlight** to add a subtle rim light around the frame.
+
+## Animate on export
+
+The **Motion** section adds one motion interval to the current edit. Turn on **Animate** to reveal the motion controls.
+
+Motion is intentionally a single interval with a start pose and an end pose. Before the start time the surface holds the start pose; after the end time it holds the end pose. There is no way to chain multiple keyframes on the same clip.
+
+<Steps>
+  <Step title="Pick a motion preset (optional)">
+    Open **Motion preset** and choose **Push In**, **Pull Out**, **Tilt Reveal**, or **Side Sweep**. Each preset fills in a matching start pose and end pose that you can then tweak.
+  </Step>
+  <Step title="Set the interval">
+    Drag the two handles on the range slider, or use the **Start** and **End** number sliders, to place the motion inside the clip. The minimum interval is 0.05s.
+  </Step>
+  <Step title="Set an image duration (image editor only)">
+    For animated image exports, set **Duration** (0.25s to 60s) to control how long the exported clip lasts. The interval is clamped to fit inside this duration.
+  </Step>
+  <Step title="Edit the poses">
+    Use the **Edit pose** segmented control to switch between **Start** and **End**, then adjust the sliders in **Transform**. The preview seeks to the endpoint you are editing so you always see what you are shaping.
+  </Step>
+  <Step title="Pick an easing curve">
+    Choose **Linear**, **Ease In**, **Ease Out**, or **Ease In Out** to control how the surface accelerates between the two poses.
+  </Step>
+</Steps>
+
+Turning **Animate** off returns Scene to a single static pose.
+
+## Preview and export
+
+Scene renders the same geometry in the editor preview and on export, so what you see is what you get. When Scene is active, the video editor switches to a Metal-backed preview to keep tilt, motion, and mockup responsive at playback speed.
+
+### Screenshot exports
+
+- **Save PNG…** and **Copy PNG** capture the pose currently displayed in the preview. If motion is on and you have scrubbed to a specific time, the PNG is exported at that time.
+- **Export animated image** (from the screenshot editor's export menu) renders the motion interval as a video file. Pick **MP4**, **MOV**, or **GIF** in the export dialog. GIF exports respect the **Loop** toggle.
+
+### Video exports
+
+- Scene is included automatically in any video export. The motion interval is clamped to the exported segment.
+- Exported videos use the same **MP4**, **MOV**, and **GIF** formats as any other video export.
+
+## Undo, redo, and reset
+
+- Scene edits use a dedicated undo history while the Scene inspector is active, so undoing a tilt or motion change does not disturb your timeline edits.
+- Each section header has its own reset button: **Transform** returns the pose to identity, **Mockup** clears the frame and edge highlight, and **Motion** resets the interval and disables **Animate**.
+- **Reset Scene** at the top of the inspector clears every Scene control at once.
