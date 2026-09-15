@@ -3,7 +3,7 @@ import type { ReactElement, ReactNode } from "react";
 import "./redesign/design-tokens.css";
 import "./redesign/redesign.css";
 
-export const metadata: Metadata = {
+export const metadata: Readonly<Metadata> = {
   title: "Open Recorder | Native macOS capture studio",
   description:
     "Open Recorder is an open-source macOS screen recorder, screenshot tool, and native editor built with Swift and Rust.",
