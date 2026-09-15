@@ -18,7 +18,7 @@
       },
       {
         "group": "Editing",
-        "pages": ["editing/backgrounds", "editing/zoom-effects"]
+        "pages": ["editing/backgrounds", "editing/zoom-effects", "editing/scenes"]
       },
       {
         "group": "Reference",
