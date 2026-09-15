@@ -1,5 +1,12 @@
 import type { ReactElement } from "react";
 
+type Feature = {
+  readonly eyebrow: string;
+  readonly title: string;
+  readonly copy: string;
+  readonly icon: ReactElement;
+};
+
 const features = [
   {
     eyebrow: "Capture",
@@ -19,7 +26,7 @@ const features = [
     copy: "Crop and reframe videos for fixed aspect layouts, compose screenshots on styled backgrounds, and export MOV, MP4, GIF, or PNG outputs.",
     icon: <ExportIcon />,
   },
-] as const;
+] as const satisfies readonly Feature[];
 
 export function RedesignFeatures(): ReactElement {
   return (
