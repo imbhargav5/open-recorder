@@ -1,11 +1,16 @@
 import type { ReactElement } from "react";
 
+type ProofPoint = {
+  readonly label: string;
+  readonly desc: string;
+};
+
 const proofPoints = [
   { label: "Native macOS",    desc: "Swift capture UI with system privacy flows" },
   { label: "Local-first",     desc: "Recordings and projects stay on your Mac" },
   { label: "Open source",     desc: "Apache 2.0 · Swift + Rust stack" },
   { label: "Editor included", desc: "Zooms, camera clips, cursor overlays, exports" },
-] as const;
+] as const satisfies readonly ProofPoint[];
 
 export function RedesignProof(): ReactElement {
   return (
