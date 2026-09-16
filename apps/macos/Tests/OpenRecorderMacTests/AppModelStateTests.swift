@@ -789,7 +789,16 @@ final class AppModelStateTests: XCTestCase {
             path: directory.appendingPathComponent("example-screenshot.openrecorder").path,
             screenshotPath: url.path
         )
-        let model = AppModel(registerImportedMedia: { _, _ in project })
+        let appearanceStore = EditorAppearancePreferencesStore.ephemeral()
+        var rememberedState = ScreenshotEditorState.default
+        rememberedState.canvasAspect = .square
+        rememberedState.padding = 81
+        rememberedState.imageRoundness = 19
+        appearanceStore.saveScreenshot(ScreenshotAppearancePreferences(state: rememberedState))
+        let model = AppModel(
+            editorAppearancePreferencesStore: appearanceStore,
+            registerImportedMedia: { _, _, _ in project }
+        )
 
         let importTask = try XCTUnwrap(model.openEditorFile(at: url))
         await importTask.value
@@ -802,6 +811,7 @@ final class AppModelStateTests: XCTestCase {
         XCTAssertEqual(editorSession.kind, .screenshot)
         XCTAssertEqual(editorSession.url, url)
         XCTAssertEqual(editorSession.projectPath, project.path)
+        XCTAssertEqual(editorSession.screenshotEditorState, rememberedState)
         XCTAssertEqual(model.projects.first, project)
         XCTAssertEqual(model.statusMessage, "Opened example-screenshot.png")
     }
@@ -826,7 +836,15 @@ final class AppModelStateTests: XCTestCase {
         )
         try JSONEncoder().encode(document).write(to: projectURL)
         let project = makeImportedProjectSummary(path: projectURL.path, screenshotPath: mediaURL.path)
-        let model = AppModel(registerImportedMedia: { _, _ in project })
+        let appearanceStore = EditorAppearancePreferencesStore.ephemeral()
+        var rememberedState = ScreenshotEditorState.default
+        rememberedState.padding = 12
+        rememberedState.imageRoundness = 2
+        appearanceStore.saveScreenshot(ScreenshotAppearancePreferences(state: rememberedState))
+        let model = AppModel(
+            editorAppearancePreferencesStore: appearanceStore,
+            registerImportedMedia: { _, _, _ in project }
+        )
 
         let importTask = try XCTUnwrap(model.openEditorFile(at: mediaURL))
         await importTask.value
@@ -835,6 +853,107 @@ final class AppModelStateTests: XCTestCase {
         XCTAssertEqual(session.projectPath, projectURL.path)
         XCTAssertEqual(session.title, "Existing Project")
         XCTAssertEqual(session.screenshotEditorState, savedState)
+    }
+
+    func testOpenEditorFileRegistersVideoProjectWithRememberedAppearancePayload() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let mediaURL = directory.appendingPathComponent("remembered-video.mp4")
+        let projectURL = directory.appendingPathComponent("remembered-video.openrecorder")
+        try Data("video".utf8).write(to: mediaURL)
+        let project = makeImportedProjectSummary(path: projectURL.path, screenshotPath: nil)
+        let appearanceStore = EditorAppearancePreferencesStore.ephemeral()
+        var rememberedState = ProjectVideoEditorState.default
+        rememberedState.canvasAspect = .portrait
+        rememberedState.padding = 63
+        rememberedState.borderRadius = 21
+        rememberedState.backgroundBlur = 7
+        rememberedState.scene.pose.tiltX = 25
+        rememberedState.cropSelection = VideoCropSelection(
+            normalizedRect: CGRect(x: 0.1, y: 0.1, width: 0.7, height: 0.7),
+            sizing: .custom(width: 900, height: 900)
+        )
+        rememberedState.cursorOverlay = .hidden
+        rememberedState.facecamSettings = defaultFacecamSettings(enabled: true)
+        let rememberedAppearance = VideoAppearancePreferences(state: rememberedState)
+        appearanceStore.saveVideo(rememberedAppearance)
+        let model = AppModel(
+            editorAppearancePreferencesStore: appearanceStore,
+            registerImportedMedia: { kind, path, editorStateData in
+                let editorState = try JSONDecoder().decode(ProjectEditorState.self, from: editorStateData)
+                let document = ProjectDocument(
+                    schemaVersion: 2,
+                    title: "Remembered Video",
+                    recordingPath: path,
+                    screenshotPath: nil,
+                    sourceName: kind == .video ? "Imported Recording" : "Unexpected",
+                    createdAt: "2026-09-17T00:00:00Z",
+                    updatedAt: "2026-09-17T00:00:00Z",
+                    editorState: editorState,
+                    recordingSession: nil
+                )
+                try JSONEncoder().encode(document).write(to: projectURL)
+                return project
+            }
+        )
+
+        let importTask = try XCTUnwrap(model.openEditorFile(at: mediaURL))
+        await importTask.value
+
+        let session = try XCTUnwrap(model.windowCommand?.editorSession)
+        let videoState = try XCTUnwrap(session.videoEditorState)
+        XCTAssertEqual(VideoAppearancePreferences(state: videoState), rememberedAppearance)
+        XCTAssertEqual(videoState.scene, .identity)
+        XCTAssertEqual(videoState.cropSelection, .fullFrame)
+        XCTAssertEqual(videoState.cursorOverlay, .default)
+        XCTAssertNil(videoState.facecamSettings)
+        let persistedDocument = try JSONDecoder().decode(
+            ProjectDocument.self,
+            from: Data(contentsOf: projectURL)
+        )
+        XCTAssertEqual(persistedDocument.editorState?.video, videoState)
+    }
+
+    func testOpenEditorFileRestoresExistingVideoStateAheadOfRememberedAppearance() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let mediaURL = directory.appendingPathComponent("existing-video.mp4")
+        let projectURL = directory.appendingPathComponent("existing-video.openrecorder")
+        try Data("video".utf8).write(to: mediaURL)
+        var savedState = ProjectVideoEditorState.default
+        savedState.padding = 91
+        savedState.borderRadius = 28
+        savedState.scene.pose.rotation = 11
+        savedState.cursorOverlay = .hidden
+        let document = ProjectDocument(
+            schemaVersion: 2,
+            title: "Existing Video Project",
+            recordingPath: mediaURL.path,
+            screenshotPath: nil,
+            sourceName: "Imported",
+            createdAt: "2026-09-17T00:00:00Z",
+            updatedAt: "2026-09-17T00:00:00Z",
+            editorState: ProjectEditorState(video: savedState),
+            recordingSession: nil
+        )
+        try JSONEncoder().encode(document).write(to: projectURL)
+        let project = makeImportedProjectSummary(path: projectURL.path, screenshotPath: nil)
+        let appearanceStore = EditorAppearancePreferencesStore.ephemeral()
+        var rememberedState = ProjectVideoEditorState.default
+        rememberedState.padding = 14
+        rememberedState.borderRadius = 3
+        appearanceStore.saveVideo(VideoAppearancePreferences(state: rememberedState))
+        let model = AppModel(
+            editorAppearancePreferencesStore: appearanceStore,
+            registerImportedMedia: { _, _, _ in project }
+        )
+
+        let importTask = try XCTUnwrap(model.openEditorFile(at: mediaURL))
+        await importTask.value
+
+        let session = try XCTUnwrap(model.windowCommand?.editorSession)
+        XCTAssertEqual(session.title, "Existing Video Project")
+        XCTAssertEqual(session.videoEditorState, savedState)
     }
 
     func testConcurrentRequestsForSameMediaShareOneProjectImport() async throws {
@@ -849,7 +968,7 @@ final class AppModelStateTests: XCTestCase {
             screenshotPath: mediaURL.path
         )
         let registration = BlockingImportRegistration(summary: project)
-        let model = AppModel(registerImportedMedia: { _, _ in
+        let model = AppModel(registerImportedMedia: { _, _, _ in
             registration.register()
         })
 
@@ -928,7 +1047,7 @@ final class AppModelStateTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: directory) }
         let url = directory.appendingPathComponent("example-recording.mp4")
         XCTAssertTrue(FileManager.default.createFile(atPath: url.path, contents: Data("video".utf8)))
-        let model = AppModel(registerImportedMedia: { _, _ in throw AppModelTestError.importFailed })
+        let model = AppModel(registerImportedMedia: { _, _, _ in throw AppModelTestError.importFailed })
         model.paths = AppPaths(
             recordingsDir: directory.path,
             screenshotsDir: directory.path,
@@ -948,7 +1067,7 @@ final class AppModelStateTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: "\(projectPath).recovery"))
         XCTAssertEqual(model.statusMessage, "Opened example-recording.mp4")
 
-        let relaunchedModel = AppModel(registerImportedMedia: { _, _ in
+        let relaunchedModel = AppModel(registerImportedMedia: { _, _, _ in
             throw AppModelTestError.importFailed
         })
         relaunchedModel.paths = model.paths
@@ -968,7 +1087,7 @@ final class AppModelStateTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: directory) }
         let url = directory.appendingPathComponent("example-screenshot.png")
         XCTAssertTrue(FileManager.default.createFile(atPath: url.path, contents: Data("image".utf8)))
-        let model = AppModel(registerImportedMedia: { _, _ in throw AppModelTestError.importFailed })
+        let model = AppModel(registerImportedMedia: { _, _, _ in throw AppModelTestError.importFailed })
         model.paths = AppPaths(
             recordingsDir: directory.path,
             screenshotsDir: directory.path,
@@ -992,7 +1111,7 @@ final class AppModelStateTests: XCTestCase {
 
     func testOpenEditorFileRejectsMissingMediaBeforeCreatingProject() {
         let url = URL(fileURLWithPath: "/tmp/does-not-exist-\(UUID().uuidString).mp4")
-        let model = AppModel(registerImportedMedia: { _, _ in
+        let model = AppModel(registerImportedMedia: { _, _, _ in
             XCTFail("Registration should not run for a missing file")
             return makeImportedProjectSummary(path: "/tmp/unexpected.openrecorder", screenshotPath: nil)
         })
@@ -1128,8 +1247,15 @@ final class AppModelStateTests: XCTestCase {
             projectsDir: screenshotsDir.path,
             supportDir: screenshotsDir.path
         )
+        let appearanceStore = EditorAppearancePreferencesStore.ephemeral()
+        var rememberedState = ScreenshotEditorState.default
+        rememberedState.canvasAspect = .classic
+        rememberedState.padding = 76
+        rememberedState.backgroundRoundness = 17
+        appearanceStore.saveScreenshot(ScreenshotAppearancePreferences(state: rememberedState))
         let model = AppModel(
             screenRecordingPermission: makeScreenRecordingPermission(isGranted: true),
+            editorAppearancePreferencesStore: appearanceStore,
             captureUIHideDelayNanoseconds: 0,
             screenshotCapture: { source, outputURL in
                 capturedSources.append(source)
@@ -1170,6 +1296,7 @@ final class AppModelStateTests: XCTestCase {
         XCTAssertEqual(model.windowCommand?.action, .showStudio)
         XCTAssertEqual(editorSession.kind, .screenshot)
         XCTAssertEqual(editorSession.url, screenshotURL)
+        XCTAssertEqual(editorSession.screenshotEditorState, rememberedState)
         let projectPath = try XCTUnwrap(editorSession.projectPath)
         XCTAssertTrue(FileManager.default.fileExists(atPath: projectPath))
         let document = try JSONDecoder().decode(
@@ -1177,7 +1304,7 @@ final class AppModelStateTests: XCTestCase {
             from: Data(contentsOf: URL(fileURLWithPath: projectPath))
         )
         XCTAssertEqual(document.screenshotPath, screenshotURL.path)
-        XCTAssertEqual(document.editorState?.screenshot, .default)
+        XCTAssertEqual(document.editorState?.screenshot, rememberedState)
         XCTAssertTrue(screenshotURL.path.hasPrefix(screenshotsDir.path))
         XCTAssertEqual(model.statusMessage, "Captured \(screenshotURL.lastPathComponent)")
     }
@@ -1364,7 +1491,16 @@ final class AppModelStateTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: directory) }
         let outputURL = directory.appendingPathComponent("finished-recording-\(UUID().uuidString).mp4")
         try Data("mp4".utf8).write(to: outputURL)
+        let appearanceStore = EditorAppearancePreferencesStore.ephemeral()
+        var rememberedState = ProjectVideoEditorState.default
+        rememberedState.canvasAspect = .vertical
+        rememberedState.padding = 34
+        rememberedState.borderRadius = 15
+        rememberedState.backgroundBlur = 11
+        let rememberedAppearance = VideoAppearancePreferences(state: rememberedState)
+        appearanceStore.saveVideo(rememberedAppearance)
         let model = AppModel(
+            editorAppearancePreferencesStore: appearanceStore,
             stopRecording: {
                 outputURL
             },
@@ -1392,6 +1528,10 @@ final class AppModelStateTests: XCTestCase {
         XCTAssertEqual(model.selectedSection, .editor)
         XCTAssertEqual(editorSession.kind, .video)
         XCTAssertEqual(editorSession.url, outputURL)
+        XCTAssertEqual(
+            editorSession.videoEditorState.map(VideoAppearancePreferences.init(state:)),
+            rememberedAppearance
+        )
         let projectPath = try XCTUnwrap(editorSession.projectPath)
         XCTAssertTrue(FileManager.default.fileExists(atPath: projectPath))
         let document = try JSONDecoder().decode(
@@ -1400,6 +1540,10 @@ final class AppModelStateTests: XCTestCase {
         )
         XCTAssertEqual(document.recordingPath, outputURL.path)
         XCTAssertEqual(document.recordingSession, editorSession.recordingSession)
+        XCTAssertEqual(
+            document.editorState?.video.map(VideoAppearancePreferences.init(state:)),
+            rememberedAppearance
+        )
         XCTAssertEqual(model.hudState.phase, .setup(.recording))
         XCTAssertEqual(model.hudState.selectedSource, source)
         XCTAssertEqual(model.hudState.presentation, .hidden)
@@ -1458,9 +1602,17 @@ final class AppModelStateTests: XCTestCase {
         let screenStartedAt = Date(timeIntervalSince1970: 10.5)
         var events: [String] = []
         var facecamContinuation: CheckedContinuation<Date, Error>?
+        let appearanceStore = EditorAppearancePreferencesStore.ephemeral()
+        var rememberedState = ProjectVideoEditorState.default
+        rememberedState.padding = 44
+        rememberedState.borderRadius = 12
+        let rememberedAppearance = VideoAppearancePreferences(state: rememberedState)
+        appearanceStore.saveVideo(rememberedAppearance)
+        _ = NSApplication.shared
 
         let model = AppModel(
             screenRecordingPermission: makeScreenRecordingPermission(isGranted: true),
+            editorAppearancePreferencesStore: appearanceStore,
             captureUIHideDelayNanoseconds: 0,
             startRecordingCapture: { _, outputURL, _ in
                 events.append("screen-start")
@@ -1487,6 +1639,7 @@ final class AppModelStateTests: XCTestCase {
         )
         let source = makeSource()
         model.includeCamera = true
+        model.showCursor = false
         model.setCaptureStateForTesting(.ready(.recording, source))
 
         model.captureMachine.send(.recordingFilePrepared(source, outputURL))
@@ -1512,6 +1665,11 @@ final class AppModelStateTests: XCTestCase {
         let editorSession = try XCTUnwrap(model.windowCommand?.editorSession)
         XCTAssertEqual(editorSession.recordingSession?.facecamVideoPath, facecamURL.path)
         XCTAssertEqual(editorSession.recordingSession?.facecamOffsetMs, -500)
+        let videoState = try XCTUnwrap(editorSession.videoEditorState)
+        XCTAssertEqual(VideoAppearancePreferences(state: videoState), rememberedAppearance)
+        XCTAssertFalse(videoState.cursorOverlay.isVisible)
+        XCTAssertEqual(videoState.facecamSettings, editorSession.recordingSession?.facecamSettings)
+        XCTAssertNotNil(videoState.facecamSettings)
     }
 
     func testEditorSessionCanCarryRecordingSessionMetadata() {
@@ -2010,7 +2168,7 @@ final class AppModelStateTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: directory) }
         let mediaURL = directory.appendingPathComponent("late-import.mp4")
         try Data("video".utf8).write(to: mediaURL)
-        let model = AppModel(registerImportedMedia: { _, _ in
+        let model = AppModel(registerImportedMedia: { _, _, _ in
             throw AppModelTestError.importFailed
         })
         let workspace = model.appShell.workspace(for: nil)

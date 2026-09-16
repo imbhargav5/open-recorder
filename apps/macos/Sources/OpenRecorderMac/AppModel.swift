@@ -248,6 +248,7 @@ final class AppModel: ObservableObject {
     private let onboardingStore: OnboardingStateStore
     private let recordingPreferences: RecordingPreferencesStore
     private let captureSetupPreferencesStore: CaptureSetupPreferencesStore
+    private let editorAppearancePreferencesStore: EditorAppearancePreferencesStore
     private let screenSelectionPresenter: ScreenSelectionPresenting
     private let areaSelectionPresenter: AreaSelectionPresenting
     private let screenshotCapture: @MainActor (CaptureSource, URL) throws -> Void
@@ -257,7 +258,7 @@ final class AppModel: ObservableObject {
     private let trashProjectFile: @MainActor (URL) throws -> Void
     private let forgetProject: @Sendable (String) throws -> Void
     private let loadBackendSnapshot: @Sendable () async throws -> BackendSnapshot
-    private let registerImportedMedia: @Sendable (EditorMediaKind, String) throws -> ProjectSummary
+    private let registerImportedMedia: @Sendable (EditorMediaKind, String, Data) throws -> ProjectSummary
     private let registerCapturedMedia: @Sendable (String, Data) throws -> ProjectSummary
     private let prepareRecordingFilePath: @Sendable (String) throws -> PreparedFile
     private let prepareCameraPermission: (@MainActor () async -> Bool)?
@@ -279,6 +280,7 @@ final class AppModel: ObservableObject {
         onboardingStore: OnboardingStateStore = .live,
         recordingPreferences: RecordingPreferencesStore = RecordingPreferencesStore(),
         captureSetupPreferencesStore: CaptureSetupPreferencesStore = .ephemeral(),
+        editorAppearancePreferencesStore: EditorAppearancePreferencesStore = .ephemeral(),
         screenSelectionPresenter: ScreenSelectionPresenting = ScreenSelectionOverlayController(),
         areaSelectionPresenter: AreaSelectionPresenting = AreaSelectionOverlayController(),
         captureUIHideDelayNanoseconds: UInt64 = 180_000_000,
@@ -295,7 +297,7 @@ final class AppModel: ObservableObject {
         trashProjectFile: (@MainActor (URL) throws -> Void)? = nil,
         forgetProject: (@Sendable (String) throws -> Void)? = nil,
         loadBackendSnapshot: (@Sendable () async throws -> BackendSnapshot)? = nil,
-        registerImportedMedia: (@Sendable (EditorMediaKind, String) throws -> ProjectSummary)? = nil,
+        registerImportedMedia: (@Sendable (EditorMediaKind, String, Data) throws -> ProjectSummary)? = nil,
         registerCapturedMedia: (@Sendable (String, Data) throws -> ProjectSummary)? = nil,
         prepareRecordingFilePath: (@Sendable (String) throws -> PreparedFile)? = nil
     ) {
@@ -308,6 +310,7 @@ final class AppModel: ObservableObject {
         self.onboardingStore = onboardingStore
         self.recordingPreferences = recordingPreferences
         self.captureSetupPreferencesStore = captureSetupPreferencesStore
+        self.editorAppearancePreferencesStore = editorAppearancePreferencesStore
         self.storedCaptureSetup = captureSetupPreferencesStore.load()
         self.screenSelectionPresenter = screenSelectionPresenter
         self.areaSelectionPresenter = areaSelectionPresenter
@@ -362,7 +365,7 @@ final class AppModel: ObservableObject {
                 projects: projects
             )
         }
-        self.registerImportedMedia = registerImportedMedia ?? { kind, path in
+        self.registerImportedMedia = registerImportedMedia ?? { kind, path, editorStateData in
             let title = URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent
             if let projects = try? service.call("listProjects", as: [ProjectSummary].self),
                let existing = projects.first(where: { project in
@@ -375,6 +378,7 @@ final class AppModel: ObservableObject {
                }) {
                 return existing
             }
+            let editorState = (try? JSONSerialization.jsonObject(with: editorStateData)) ?? [:]
             switch kind {
             case .video:
                 return try service.call(
@@ -383,7 +387,7 @@ final class AppModel: ObservableObject {
                         "path": path,
                         "sourceName": "Imported Recording",
                         "title": title,
-                        "editorState": serviceJSONObject(for: ProjectEditorState.empty) ?? [:]
+                        "editorState": editorState
                     ],
                     as: ProjectSummary.self
                 )
@@ -394,9 +398,7 @@ final class AppModel: ObservableObject {
                         "path": path,
                         "sourceName": "Imported Screenshot",
                         "title": title,
-                        "editorState": serviceJSONObject(
-                            for: ProjectEditorState(screenshot: ScreenshotEditorState.default)
-                        ) ?? [:]
+                        "editorState": editorState
                     ],
                     as: ProjectSummary.self
                 )
@@ -623,6 +625,12 @@ final class AppModel: ObservableObject {
                 self?.statusMessage = message
             }
         )
+        workspace.screenshot.configureAppearancePersistence { [weak self] preferences in
+            self?.editorAppearancePreferencesStore.saveScreenshot(preferences)
+        }
+        workspace.video.configureAppearancePersistence { [weak self] preferences in
+            self?.editorAppearancePreferencesStore.saveVideo(preferences)
+        }
         workspace.videoExport.configure(
             renderVideo: { sourceURL, targetURL, options, cancellationToken, edits, progressHandler in
                 try await VideoExportRenderer.export(
@@ -660,6 +668,32 @@ final class AppModel: ObservableObject {
                 )))
             }
         )
+    }
+
+    private func newScreenshotEditorState() -> ScreenshotEditorState {
+        editorAppearancePreferencesStore.loadScreenshot().applying(to: .default)
+    }
+
+    private func newVideoEditorState(recordingSession: RecordingSession? = nil) -> ProjectVideoEditorState {
+        var state = editorAppearancePreferencesStore.loadVideo().applying(to: .default)
+        state.cursorOverlay.isVisible = recordingSession?.showCursorOverlay ?? showCursor
+        if recordingSession?.hasRecordedCamera == true {
+            state.facecamSettings = (recordingSession?.facecamSettings
+                ?? defaultFacecamSettings(enabled: true))
+                .clamped
+        } else {
+            state.facecamSettings = nil
+        }
+        return state
+    }
+
+    private func newProjectEditorState(for kind: EditorMediaKind) -> ProjectEditorState {
+        switch kind {
+        case .video:
+            ProjectEditorState(video: newVideoEditorState())
+        case .screenshot:
+            ProjectEditorState(screenshot: newScreenshotEditorState())
+        }
     }
 
     func prepareForTermination() async -> Bool {
@@ -1692,11 +1726,13 @@ final class AppModel: ObservableObject {
                     screenStartedAt: activeScreenStartedAt,
                     facecamStartedAt: activeFacecamStartedAt
                 )
+                let initialVideoState = newVideoEditorState(recordingSession: recordingSession)
                 let summary = await registerRecordingProject(
                     outputURL,
                     sourceName: sourceName,
                     timelineEdits: timelineEdits,
-                    recordingSession: recordingSession
+                    recordingSession: recordingSession,
+                    videoEditorState: initialVideoState
                 )
                 let registered = ProcessInfo.processInfo.systemUptime
                 let title = summary.summary?.title ?? outputURL.deletingPathExtension().lastPathComponent
@@ -1708,7 +1744,8 @@ final class AppModel: ObservableObject {
                         title: title,
                         projectPath: summary.summary?.path,
                         recordingSession: recordingSession,
-                        timelineEditSnapshot: timelineEdits
+                        timelineEditSnapshot: timelineEdits,
+                        videoEditorState: initialVideoState
                     ))
                     let presented = ProcessInfo.processInfo.systemUptime
                     performanceLog.notice("Stop-to-editor dispatch: \(presented - stopStart)s; capture stop: \(captureStopped - stopStart)s; facecam/telemetry: \(telemetrySaved - captureStopped)s; duration/zoom: \(analysisFinished - telemetrySaved)s; registration: \(registered - analysisFinished)s; presentation dispatch: \(presented - registered)s")
@@ -1795,7 +1832,12 @@ final class AppModel: ObservableObject {
             guard isActiveScreenshotCapture(for: selectedSource) else {
                 throw CancellationError()
             }
-            let registration = await registerScreenshotProject(outputURL, sourceName: selectedSource.name)
+            let initialScreenshotState = newScreenshotEditorState()
+            let registration = await registerScreenshotProject(
+                outputURL,
+                sourceName: selectedSource.name,
+                screenshotEditorState: initialScreenshotState
+            )
             try Task.checkCancellation()
             guard isActiveScreenshotCapture(for: selectedSource) else {
                 throw CancellationError()
@@ -1807,7 +1849,7 @@ final class AppModel: ObservableObject {
                 url: outputURL,
                 title: registration.summary?.title,
                 projectPath: registration.summary?.path,
-                screenshotEditorState: .default
+                screenshotEditorState: initialScreenshotState
             ))
             if case .failed(let message) = registration {
                 statusMessage = "Captured \(outputURL.lastPathComponent), but the editable project could not be created: \(message)"
@@ -1854,10 +1896,11 @@ final class AppModel: ObservableObject {
 
     private func registerScreenshotProject(
         _ outputURL: URL,
-        sourceName: String?
+        sourceName: String?,
+        screenshotEditorState: ScreenshotEditorState
     ) async -> CapturedProjectRegistrationOutcome {
         let title = outputURL.deletingPathExtension().lastPathComponent
-        let editorState = ProjectEditorState(screenshot: ScreenshotEditorState.default)
+        let editorState = ProjectEditorState(screenshot: screenshotEditorState)
         do {
             let params: [String: Any] = [
                 "path": outputURL.path,
@@ -1889,10 +1932,11 @@ final class AppModel: ObservableObject {
         _ outputURL: URL,
         sourceName: String?,
         timelineEdits: TimelineEditSnapshot,
-        recordingSession: RecordingSession
+        recordingSession: RecordingSession,
+        videoEditorState: ProjectVideoEditorState
     ) async -> CapturedProjectRegistrationOutcome {
         let title = outputURL.deletingPathExtension().lastPathComponent
-        let editorState = ProjectEditorState(timelineEdits: timelineEdits)
+        let editorState = ProjectEditorState(timelineEdits: timelineEdits, video: videoEditorState)
         do {
             let params: [String: Any] = [
                 "path": outputURL.path,
@@ -2130,6 +2174,8 @@ final class AppModel: ObservableObject {
 
         statusMessage = "Importing \(url.lastPathComponent)…"
         let registerImportedMedia = registerImportedMedia
+        let initialEditorState = newProjectEditorState(for: kind)
+        let initialEditorStateData = (try? JSONEncoder().encode(initialEditorState)) ?? Data()
         let requestID = UUID()
         mediaImportRequestIDsByPath[mediaIdentity] = requestID
         let task = Task { [weak self] in
@@ -2138,7 +2184,7 @@ final class AppModel: ObservableObject {
             }
             let outcome = await Task.detached(priority: .userInitiated) {
                 do {
-                    let summary = try registerImportedMedia(kind, standardizedMediaPath)
+                    let summary = try registerImportedMedia(kind, standardizedMediaPath, initialEditorStateData)
                     let projectData = try? Data(contentsOf: URL(fileURLWithPath: summary.path))
                     return ImportedMediaRegistrationOutcome.success(summary, projectData: projectData)
                 } catch {
@@ -2163,19 +2209,17 @@ final class AppModel: ObservableObject {
                     kind: kind,
                     url: url,
                     summary: summary,
-                    document: document
+                    document: document,
+                    fallbackEditorState: initialEditorState
                 ))
                 self.statusMessage = "Opened \(url.lastPathComponent)"
             case .failure(let message):
-                let editorState: ProjectEditorState = kind == .screenshot
-                    ? ProjectEditorState(screenshot: .default)
-                    : .empty
                 let fallback = await self.persistCapturedProjectLocally(
                     title: url.deletingPathExtension().lastPathComponent,
                     recordingURL: kind == .video ? url : nil,
                     screenshotURL: kind == .screenshot ? url : nil,
                     sourceName: kind == .video ? "Imported Recording" : "Imported Screenshot",
-                    editorState: editorState,
+                    editorState: initialEditorState,
                     recordingSession: nil,
                     registrationError: ProjectRegistrationFailure(message: message)
                 )
@@ -2198,7 +2242,7 @@ final class AppModel: ObservableObject {
                     sourceName: summary.sourceName,
                     createdAt: summary.createdAt,
                     updatedAt: summary.updatedAt,
-                    editorState: editorState,
+                    editorState: initialEditorState,
                     recordingSession: nil
                     )
                 switch kind {
@@ -2213,7 +2257,8 @@ final class AppModel: ObservableObject {
                     kind: kind,
                     url: url,
                     summary: summary,
-                    document: document
+                    document: document,
+                    fallbackEditorState: initialEditorState
                 ))
                 self.statusMessage = "Opened \(url.lastPathComponent)"
             }
@@ -2232,7 +2277,8 @@ final class AppModel: ObservableObject {
         kind: EditorMediaKind,
         url: URL,
         summary: ProjectSummary,
-        document: ProjectDocument?
+        document: ProjectDocument?,
+        fallbackEditorState: ProjectEditorState
     ) -> EditorSession {
         switch kind {
         case .video:
@@ -2243,7 +2289,7 @@ final class AppModel: ObservableObject {
                 projectPath: summary.path,
                 recordingSession: document.map { recordingSession(for: $0, recordingURL: url) },
                 timelineEditSnapshot: document?.editorState?.timelineEdits ?? .empty,
-                videoEditorState: document?.editorState?.video
+                videoEditorState: document?.editorState?.video ?? fallbackEditorState.video
             )
         case .screenshot:
             return EditorSession(
@@ -2251,7 +2297,7 @@ final class AppModel: ObservableObject {
                 url: url,
                 title: document?.title ?? summary.title,
                 projectPath: summary.path,
-                screenshotEditorState: document?.editorState?.screenshot ?? .default
+                screenshotEditorState: document?.editorState?.screenshot ?? fallbackEditorState.screenshot ?? .default
             )
         }
     }

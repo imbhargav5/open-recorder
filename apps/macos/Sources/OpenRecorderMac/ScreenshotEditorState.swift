@@ -170,6 +170,7 @@ final class ScreenshotEditorDriver {
     @ObservationIgnored private var history = EditorHistory<ScreenshotEditorState>()
     @ObservationIgnored private let autosave = ProjectAutosaveCoordinator()
     @ObservationIgnored private var setWorkspaceStatus: (EditorWorkspaceStatus) -> Void = { _ in }
+    @ObservationIgnored private var saveAppearancePreferences: (ScreenshotAppearancePreferences) -> Void = { _ in }
     @ObservationIgnored private var renderPNG: (NSImage, ScreenshotEditorState) -> Data? = { image, state in
         let renderer = ScreenshotExportRenderer(configuration: ScreenshotExportConfiguration(screenshotState: state))
         return renderer.renderPNG(from: image)
@@ -230,25 +231,38 @@ final class ScreenshotEditorDriver {
         autosave.configure(saveHandler: saveHandler, statusHandler: statusHandler)
     }
 
+    func configureAppearancePersistence(
+        save: @escaping (ScreenshotAppearancePreferences) -> Void
+    ) {
+        saveAppearancePreferences = save
+    }
+
     func send(_ event: ScreenshotEditorEvent) {
         let previousScreenshot = state.screenshot
         let effects = state.applying(event)
         if case .sessionChanged = event, previousScreenshot != state.screenshot {
             resetHistory()
         }
+        if case .styleChanged = event {
+            persistAppearanceIfChanged(from: previousScreenshot, to: state.screenshot)
+        }
         perform(effects)
     }
 
     func undo() {
         guard let previous = history.undo(current: state.screenshot) else { return }
+        let current = state.screenshot
         state.screenshot = previous
         historyRevision += 1
+        persistAppearanceIfChanged(from: current, to: previous)
     }
 
     func redo() {
         guard let next = history.redo(current: state.screenshot) else { return }
+        let current = state.screenshot
         state.screenshot = next
         historyRevision += 1
+        persistAppearanceIfChanged(from: current, to: next)
     }
 
     func resetHistory() {
@@ -286,6 +300,16 @@ final class ScreenshotEditorDriver {
             get: { self.state.screenshot[keyPath: keyPath] },
             set: { self.update(keyPath, to: $0) }
         )
+    }
+
+    private func persistAppearanceIfChanged(
+        from previous: ScreenshotEditorState,
+        to next: ScreenshotEditorState
+    ) {
+        let previousPreferences = ScreenshotAppearancePreferences(state: previous)
+        let nextPreferences = ScreenshotAppearancePreferences(state: next)
+        guard previousPreferences != nextPreferences else { return }
+        saveAppearancePreferences(nextPreferences)
     }
 
     var exportDialogBinding: Binding<Bool> {
