@@ -132,7 +132,10 @@ final class OpenRecorderAppDelegate: NSObject, NSApplicationDelegate {
 @main
 struct OpenRecorderApp: App {
     @NSApplicationDelegateAdaptor(OpenRecorderAppDelegate.self) private var appDelegate
-    @StateObject private var model = AppModel(captureSetupPreferencesStore: .live)
+    @StateObject private var model = AppModel(
+        captureSetupPreferencesStore: .live,
+        editorAppearancePreferencesStore: .live
+    )
 
     var body: some Scene {
         let _ = appDelegate.attach(model: model)
