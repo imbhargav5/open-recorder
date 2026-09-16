@@ -356,12 +356,25 @@ final class VideoEditorDriver {
     var sceneHistoryIsActive = false
     private var historyRevision = 0
     @ObservationIgnored private var history = EditorHistory<ProjectVideoEditorState>()
+    @ObservationIgnored private var saveAppearancePreferences: (VideoAppearancePreferences) -> Void = { _ in }
     var canUndo: Bool { _ = historyRevision; return history.canUndo }
     var canRedo: Bool { _ = historyRevision; return history.canRedo }
     func beginUndoTransaction() { history.beginTransaction(current: state.video) }
     func endUndoTransaction() { if history.commitTransaction(current: state.video) { historyRevision += 1 } }
-    func undo() { if let previous = history.undo(current: state.video) { state.video = previous; historyRevision += 1 } }
-    func redo() { if let next = history.redo(current: state.video) { state.video = next; historyRevision += 1 } }
+    func undo() {
+        guard let previous = history.undo(current: state.video) else { return }
+        let current = state.video
+        state.video = previous
+        historyRevision += 1
+        persistAppearanceIfChanged(from: current, to: previous)
+    }
+    func redo() {
+        guard let next = history.redo(current: state.video) else { return }
+        let current = state.video
+        state.video = next
+        historyRevision += 1
+        persistAppearanceIfChanged(from: current, to: next)
+    }
 
 
     @ObservationIgnored private let autosave = ProjectAutosaveCoordinator()
@@ -386,6 +399,12 @@ final class VideoEditorDriver {
         autosave.configure(saveHandler: saveHandler, statusHandler: statusHandler)
     }
 
+    func configureAppearancePersistence(
+        save: @escaping (VideoAppearancePreferences) -> Void
+    ) {
+        saveAppearancePreferences = save
+    }
+
     func send(_ event: VideoEditorEvent) {
         let before = state.video
         let identity = state.appliedVideoStateIdentity
@@ -393,6 +412,12 @@ final class VideoEditorDriver {
         if state.appliedVideoStateIdentity != identity { history.reset() }
         else { history.recordChange(from: before, to: state.video) }
         historyRevision += 1
+        switch event {
+        case .videoStateChanged, .previewAspectChanged:
+            persistAppearanceIfChanged(from: before, to: state.video)
+        default:
+            break
+        }
         perform(effects)
     }
 
@@ -535,6 +560,16 @@ final class VideoEditorDriver {
         facecam[keyPath: keyPath] = value
         next.facecamSettings = facecam.clamped
         send(.videoStateChanged(next))
+    }
+
+    private func persistAppearanceIfChanged(
+        from previous: ProjectVideoEditorState,
+        to next: ProjectVideoEditorState
+    ) {
+        let previousPreferences = VideoAppearancePreferences(state: previous)
+        let nextPreferences = VideoAppearancePreferences(state: next)
+        guard previousPreferences != nextPreferences else { return }
+        saveAppearancePreferences(nextPreferences)
     }
 
     private func perform(_ effects: [VideoEditorEffect]) {
