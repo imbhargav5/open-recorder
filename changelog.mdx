@@ -3,6 +3,18 @@ title: "Open Recorder changelog: releases, features, and fixes"
 description: "Release notes for Open Recorder on macOS. Track new screen recording features, capture improvements, and bug fixes in each version update."
 ---
 
+<Update label="September 17, 2026" description="v0.2.55" tags={["macOS"]}>
+## New features
+
+### Editor remembers appearance settings across captures
+
+The screenshot and video editors now persist appearance settings between sessions. When you capture or import new media, the editor opens with the look you last used, so you can style once and reuse it across every capture.
+
+Screenshots remember canvas aspect, background style, padding, background and image roundness, and background and image shadow. Videos remember canvas aspect, background, padding, border radius, shadow, background blur, and inset amount, color, opacity, and balance. Screenshot and video appearance are stored independently, so tweaking one editor never changes the other.
+
+Scene, crop, cursor, facecam, captions, and timeline stay project-specific and are not carried between captures. Existing projects keep their saved appearance when reopened. If a saved custom wallpaper file has been moved or deleted, the background falls back to the default the next time you open the editor and the rest of your remembered preferences are kept. See [Backgrounds](/editing/backgrounds#reusing-your-appearance-settings) for details.
+</Update>
+
 <Update label="September 16, 2026" description="v0.2.54" tags={["macOS"]}>
 ## New features
 
