@@ -36,3 +36,19 @@ Custom backgrounds are referenced from their original location on disk. They are
 - Video backgrounds, both bundled loops and custom uploads, play on a continuous loop in the editor preview.
 - Exported videos and screenshots render video backgrounds as a still frame taken from the start of the clip.
 - Background blur, stage padding, shadow, and corner roundness from the **Frame** controls apply on top of whichever background you choose, including custom uploads.
+
+## Reusing your appearance settings
+
+Open Recorder remembers the appearance you set in the editor and reuses it the next time you capture or import media, so you don't need to restyle every screenshot or recording.
+
+**What's remembered for screenshots:** canvas aspect, background style, padding, background roundness, background shadow, image roundness, and image shadow.
+
+**What's remembered for videos:** canvas aspect, background, padding, border radius, shadow, background blur, and inset amount, color, opacity, and balance.
+
+Screenshot and video appearance are stored independently. Changing background or padding in the video editor does not affect what a new screenshot looks like, and vice versa.
+
+**What stays project-specific:** scene, crop, cursor, facecam, captions, and timeline settings are saved with each project and are not carried over to new captures.
+
+Existing projects keep the appearance you saved with them. Reopening an older project uses that project's stored look, not the current defaults.
+
+If a custom image or video you set as the background has been moved or deleted since you last used it, Open Recorder loads the default background instead of failing, and keeps the rest of your remembered settings (padding, shadow, roundness, and so on) in place.
