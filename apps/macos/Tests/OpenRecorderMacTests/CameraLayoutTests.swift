@@ -475,6 +475,72 @@ final class CameraLayoutTests: XCTestCase {
         }
     }
 
+    func testSharedShadowAppliesToCameraAndScreenAsNeutralShadows() throws {
+        let source = try pixelBuffer(color: .blue), facecam = try pixelBuffer(color: .red)
+        for layout in [CameraLayout.cameraOnly, .split, .sideBySide, .overlay] {
+            var settings = camera(layout)
+            settings.layoutPadding = 10
+            settings.margin = 10
+            settings.screenFit = "cover"
+            for left in [true, false] {
+                settings.cameraOnLeft = left
+                let plain = shadowInstruction(settings: settings, shadow: 0)
+                let shadowed = shadowInstruction(settings: settings, shadow: 0.7)
+                let compositor = VideoBackgroundCompositor()
+                let before = try compositor.makeComposedImage(source: source, facecam: facecam, instruction: plain, compositionTime: 1)
+                let after = try compositor.makeComposedImage(source: source, facecam: facecam, instruction: shadowed, compositionTime: 1)
+                let pose = CameraLayoutPresentation.layout(settings, canvas: canvas, crop: CGRect(origin: .zero, size: canvas), styling: shadowed.styling)
+                var points = [CGPoint(x: pose.camera.midX, y: pose.camera.maxY + 5)]
+                if layout != .cameraOnly { points.append(CGPoint(x: pose.screen.midX, y: pose.screen.maxY + 5)) }
+                for point in points {
+                    let original = rgb(before, at: point), shaded = rgb(after, at: point)
+                    XCTAssertLessThan(Int(shaded[2]), Int(original[2]) - 5, "\(layout): shadow must darken beneath each panel")
+                    // Both sources are saturated colors; a real shadow stays neutral on white.
+                    if original[0] > 250 && original[2] > 250 {
+                        XCTAssertEqual(Int(shaded[0]), Int(shaded[2]), accuracy: 2)
+                    }
+                }
+                assertColor(after, at: CGPoint(x: pose.camera.midX, y: pose.camera.midY), red: 255, blue: 0)
+            }
+        }
+    }
+
+    func testCameraAndScreenShadowsFadeOutWithTransition() throws {
+        var next = camera(.split)
+        next.layoutTransition = .init(duration: 1, fade: 1)
+        let edits = TimelineEditSnapshot(cameraClips: [
+            .init(span: .init(start: 0, end: 2), settings: camera(.sideBySide)),
+            .init(span: .init(start: 2, end: 4), settings: next)])
+        let instruction = shadowInstruction(settings: nil, edits: edits, shadow: 0.7)
+        let image = try VideoBackgroundCompositor().makeComposedImage(source: pixelBuffer(color: .blue), facecam: pixelBuffer(color: .red),
+            instruction: instruction, compositionTime: 2.5)
+        for x in stride(from: 20.0, through: 620, by: 40) {
+            for y in stride(from: 20.0, through: 340, by: 40) {
+                assertColor(image, at: CGPoint(x: x, y: y), red: 255, blue: 255)
+            }
+        }
+    }
+
+    private func shadowInstruction(settings: FacecamSettings?, edits: TimelineEditSnapshot = .empty,
+                                   shadow: Double) -> VideoBackgroundCompositionInstruction {
+        var styling = VideoBackgroundStyling.none
+        styling.background = .solid(SerializableColor(hex: "FFFFFF"))
+        styling.paddingRatio = 0.2
+        styling.shadowIntensity = shadow
+        return VideoBackgroundCompositionInstruction(timeRange: CMTimeRange(start: .zero, duration: CMTime(seconds: 4, preferredTimescale: 600)),
+            trackID: 1, facecamTrackID: 2, styling: styling, preferredTransform: .identity,
+            normalizedSize: canvas, facecamNormalizedSize: canvas, cropRect: CGRect(origin: .zero, size: canvas),
+            renderSize: canvas, edits: edits, editPlan: .build(duration: 4, edits: edits), facecamFallbackSettings: settings)
+    }
+
+    private func rgb(_ image: CIImage, at point: CGPoint) -> [UInt8] {
+        var pixel = [UInt8](repeating: 0, count: 4)
+        CIContext().render(image, toBitmap: &pixel, rowBytes: 4,
+            bounds: CGRect(x: point.x.rounded(.down), y: (canvas.height - point.y).rounded(.down), width: 1, height: 1),
+            format: .RGBA8, colorSpace: CGColorSpace(name: CGColorSpace.sRGB))
+        return pixel
+    }
+
     func testPreviewUsesSameScreenPlacementWithoutDecodedCameraBuffer() throws {
         let settings = camera(.split)
         let frames = CameraLayoutGeometry.frames(in: canvas, screenAspectRatio: 16 / 9, settings: settings)

@@ -752,8 +752,18 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
         let clipped = applyRoundedMask(image.cropped(to: frame), cornerRadius: radius, in: frame, role: .facecam)
             .applyingFilter("CIColorMatrix", parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: presentation.cameraOpacity)])
 
+        func finish(_ layer: CIImage) -> CIImage {
+            var decorated = layer
+            if instruction.styling.shadowIntensity > 0 {
+                decorated = layer.composited(over: makeShadow(layer,
+                    intensity: instruction.styling.shadowIntensity, in: layer.extent))
+            }
+            // The camera and its shadow fade and blur together during transitions.
+            return applyCameraTransitionEffects(decorated, presentation: presentation, canvas: renderSize)
+        }
+
         guard presentation.borderWidth > 0 else {
-            return applyCameraTransitionEffects(clipped, presentation: presentation, canvas: renderSize)
+            return finish(clipped)
         }
 
         let borderColor = SerializableColor(hex: settings.clamped.borderColor)
@@ -768,7 +778,7 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
             in: frame,
             cornerRadius: radius
         )
-        return applyCameraTransitionEffects(border.composited(over: clipped), presentation: presentation, canvas: renderSize)
+        return finish(border.composited(over: clipped))
     }
 
     private func facecamCornerRadius(for frame: CGRect, settings: FacecamSettings, canvas: CGSize) -> CGFloat {
@@ -1081,7 +1091,14 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
 
     private func makeShadow(_ image: CIImage, intensity: Double, in rect: CGRect) -> CIImage {
         let blurRadius = 38 * intensity
-        let blurred = applyGaussianBlur(image, radius: blurRadius)
+        // Use only the panel's alpha silhouette. Blurring its colors produces a
+        // tinted glow, and clamping the edges can spread opaque pixels indefinitely.
+        let silhouette = image.cropped(to: rect).applyingFilter("CIColorMatrix", parameters: [
+            "inputRVector": CIVector(x: 0, y: 0, z: 0, w: 0),
+            "inputGVector": CIVector(x: 0, y: 0, z: 0, w: 0),
+            "inputBVector": CIVector(x: 0, y: 0, z: 0, w: 0)
+        ])
+        let blurred = silhouette.applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: blurRadius])
         let offset = blurred.transformed(by: CGAffineTransform(translationX: 0, y: -18 * intensity))
         return setOpacity(offset, alpha: 0.55 * intensity)
     }
