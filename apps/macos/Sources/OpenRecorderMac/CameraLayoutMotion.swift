@@ -110,7 +110,7 @@ enum CameraLayoutMotion {
         let previous = spans[index - 1]
         guard abs(previous.span.end - current.span.start) < 0.001 else { return target }
         let transition = current.settings.resolvedLayoutTransition
-        let interval = min(transition.duration, current.span.duration / 2)
+        let interval = min(transition.duration, current.span.duration)
         guard interval > 0, time < current.span.start + interval else { return target }
         let start = CameraLayoutPresentation.layout(previous.settings, canvas: canvas, crop: crop, styling: styling)
         return sample(from: start, to: target, fraction: (time - current.span.start) / interval, transition: transition)

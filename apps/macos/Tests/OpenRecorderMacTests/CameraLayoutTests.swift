@@ -247,9 +247,34 @@ final class CameraLayoutTests: XCTestCase {
         XCTAssertEqual(pose(2.6).transitionBlur, 0.3, accuracy: 0.0001)
         XCTAssertEqual(pose(2.6).transitionFade, 0.4, accuracy: 0.0001)
         XCTAssertEqual(pose(3.21), b)
-        XCTAssertEqual(pose(2.21, end: 2.4), b, "Short segments settle before the next boundary")
+        XCTAssertEqual(pose(2.399, end: 2.4).camera.width, b.camera.width, accuracy: 0.001,
+                       "A segment shorter than the transition settles at its end")
         after.layoutTransition?.duration = 0
         XCTAssertEqual(pose(2), b, "Zero duration is an instant switch without transient effects")
+    }
+
+    func testSelectedTransitionDurationIsIndependentOfIncomingSegmentLength() {
+        let before = camera(.overlay)
+        var after = camera(.split)
+        after.layoutTransition = .init(duration: 1.5, easing: .linear, blur: 0.4, fade: 0.3)
+        let crop = CGRect(origin: .zero, size: canvas)
+        let a = CameraLayoutPresentation.layout(before, canvas: canvas, crop: crop, styling: .none)
+        let b = CameraLayoutPresentation.layout(after, canvas: canvas, crop: crop, styling: .none)
+        for segmentLength in [1.8, 4, 15] {
+            let end = 2 + segmentLength
+            let edits = TimelineEditSnapshot(cameraClips: [.init(span: .init(start: 0, end: 2), settings: before),
+                .init(span: .init(start: 2, end: end), settings: after)])
+            let plan = TimelineExportEditPlan.build(duration: end, edits: edits)
+            func pose(_ time: Double) -> CameraLayoutPresentation {
+                CameraLayoutMotion.presentation(edits: edits, plan: plan, time: time, duration: end,
+                    fallback: nil, canvas: canvas, crop: crop, styling: .none)
+            }
+            XCTAssertEqual(pose(2.75).camera.width, (a.camera.width + b.camera.width) / 2, accuracy: 0.001)
+            XCTAssertEqual(pose(2.75).transitionBlur, 0.4, accuracy: 0.001)
+            XCTAssertEqual(pose(2.75).transitionFade, 0.3, accuracy: 0.001)
+            XCTAssertNotEqual(pose(3.2), b, "A short segment must not silently accelerate the transition")
+            XCTAssertEqual(pose(3.5), b)
+        }
     }
 
     func testTransitionFadeAffectsBothPanelsAndClearsAtEnd() throws {
@@ -492,7 +517,7 @@ final class CameraLayoutTests: XCTestCase {
         var right = camera(.split)
         right.cameraOnLeft = false
         right.cameraWidthPercent = 70
-        right.layoutTransition = .init(duration: 1, motion: .spring, bounce: 0.6, blur: 0.3, fade: 0.4)
+        right.layoutTransition = .init(duration: 0.8, motion: .spring, bounce: 0.6, blur: 0.3, fade: 0.4)
         let settings = [camera(.cameraOnly), camera(.split), camera(.sideBySide), right]
         let clips = settings.enumerated().map { index, settings in
             TimelineCameraClip(span: .init(start: Double(index), end: Double(index + 1)), settings: settings)
@@ -511,7 +536,7 @@ final class CameraLayoutTests: XCTestCase {
         generator.requestedTimeToleranceBefore = .zero
         generator.requestedTimeToleranceAfter = .zero
         for (index, settings) in settings.enumerated() {
-            let frame = try await generator.image(at: CMTime(seconds: Double(index) + 0.5, preferredTimescale: 600)).image
+            let frame = try await generator.image(at: CMTime(seconds: Double(index) + 0.9, preferredTimescale: 600)).image
             let image = CIImage(cgImage: frame)
             let geometry = CameraLayoutGeometry.frames(in: canvas, screenAspectRatio: 16 / 9, settings: settings)
             assertColor(image, at: CGPoint(x: geometry.camera.midX, y: geometry.camera.midY), red: 255, blue: 0, tolerance: 24)
@@ -531,8 +556,8 @@ final class CameraLayoutTests: XCTestCase {
         assertColor(CIImage(cgImage: transitioningFrame), at: CGPoint(x: pose.camera.maxX - 15, y: pose.camera.midY),
             red: 255, blue: 0, tolerance: 24)
         // The final segment uses custom spring timing with blur and fade.
-        let effectFrame = try await generator.image(at: CMTime(seconds: 3.25, preferredTimescale: 600)).image
-        let effectPose = CameraLayoutMotion.presentation(edits: edits, plan: .build(duration: 4, edits: edits), time: 3.25,
+        let effectFrame = try await generator.image(at: CMTime(seconds: 3.4, preferredTimescale: 600)).image
+        let effectPose = CameraLayoutMotion.presentation(edits: edits, plan: .build(duration: 4, edits: edits), time: 3.4,
             duration: 4, fallback: nil, canvas: canvas, crop: CGRect(origin: .zero, size: canvas), styling: options.styling)
         // 60% linear-light intensity is ~203 in sRGB.
         assertColor(CIImage(cgImage: effectFrame), at: CGPoint(x: effectPose.camera.midX, y: effectPose.camera.midY),

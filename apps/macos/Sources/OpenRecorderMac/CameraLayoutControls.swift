@@ -238,7 +238,7 @@ private struct CameraTransitionControls: View {
             VStack(alignment: .leading, spacing: 12) {
                 InspectorSlider(title: "Duration", valueText: transition.duration == 0 ? "Instant" : String(format: "%.2f s", transition.duration),
                     value: value(\.duration), range: 0...2, step: 0.01, onEditingChanged: onEditingChanged)
-                    .help("Shorter is faster. Long transitions are limited to half the incoming segment so the layout has time to settle.")
+                    .help("Shorter is faster. The chosen duration is used in playback and export. If the incoming segment is shorter, the transition uses its full length.")
                 if transition.duration > 0 {
                     Picker("Motion", selection: value(\.motion)) {
                         ForEach(CameraLayoutTransition.Motion.allCases) { Text($0.title).tag($0) }
