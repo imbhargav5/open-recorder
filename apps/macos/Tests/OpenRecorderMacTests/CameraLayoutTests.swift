@@ -117,6 +117,64 @@ final class CameraLayoutTests: XCTestCase {
         }
     }
 
+    func testAllCameraLayoutsFollowSceneOrRemainIndependent() throws {
+        let source = try pixelBuffer(color: .blue), facecam = try pixelBuffer(color: .red)
+        for layout in CameraLayout.allCases {
+            var settings = camera(layout)
+            settings.shape = "square"
+            settings.fixedDuringZoom = true
+            var scene = SceneSettings()
+            scene.pose = ScenePose(rotation: 180, scale: 0.55, x: 0.1)
+            let pose = CameraLayoutPresentation.layout(settings, canvas: canvas,
+                crop: CGRect(origin: .zero, size: canvas), styling: .none)
+            let point = CGPoint(x: pose.camera.minX + pose.camera.width * 0.2,
+                                y: pose.camera.minY + pose.camera.height * 0.3)
+            let ciPoint = CGPoint(x: point.x, y: canvas.height - point.y)
+            let moved = SceneGeometry.evaluate(frame: CGRect(origin: ciPoint, size: .zero), canvas: canvas,
+                pose: scene.pose, referenceFrame: CGRect(origin: .zero, size: canvas)).topLeft
+            let compositor = VideoBackgroundCompositor()
+            let following = try compositor.makeComposedImage(source: source, facecam: facecam,
+                instruction: instruction(settings: settings, scene: scene), compositionTime: 1)
+            assertColor(following, at: CGPoint(x: moved.x, y: canvas.height - moved.y), red: 255, blue: 0)
+            XCTAssertLessThan(rgb(following, at: point)[0], 20, "Camera must move with scene in \(layout)")
+            scene.cameraFollowsScene = false
+            let independent = try compositor.makeComposedImage(source: source, facecam: facecam,
+                instruction: instruction(settings: settings, scene: scene), compositionTime: 1)
+            assertColor(independent, at: point, red: 255, blue: 0)
+        }
+    }
+
+    func testZoomDoesNotReframeAtLayoutTransitionBoundary() throws {
+        var start = camera(.overlay)
+        start.fixedDuringZoom = true
+        var end = camera(.split)
+        end.layoutTransition = .init(duration: 1.5)
+        let edits = TimelineEditSnapshot(zoomRegions: [.init(span: .init(start: 0, end: 4), depth: 2)], cameraClips: [
+            .init(span: .init(start: 0, end: 2), settings: start),
+            .init(span: .init(start: 2, end: 4), settings: end)])
+        let source = try pixelBuffer(color: .blue)
+        let marker = CIImage(color: .red).cropped(to: CGRect(x: 280, y: 145, width: 80, height: 70))
+        CIContext().render(marker.composited(over: CIImage(cvPixelBuffer: source)), to: source)
+        var styling = VideoBackgroundStyling.none
+        styling.paddingRatio = 0.15
+        styling.background = .solid(SerializableColor(hex: "000000"))
+        let instruction = VideoBackgroundCompositionInstruction(timeRange: CMTimeRange(start: .zero, duration: CMTime(seconds: 4, preferredTimescale: 600)),
+            trackID: 1, facecamTrackID: 2, styling: styling, preferredTransform: .identity,
+            normalizedSize: canvas, facecamNormalizedSize: canvas, cropRect: CGRect(origin: .zero, size: canvas),
+            renderSize: canvas, edits: edits, editPlan: .build(duration: 4, edits: edits))
+        let compositor = VideoBackgroundCompositor()
+        let before = try compositor.makeComposedImage(source: source, facecam: nil, instruction: instruction, compositionTime: 1.9999)
+        let after = try compositor.makeComposedImage(source: source, facecam: nil, instruction: instruction, compositionTime: 2.0001)
+        for x in stride(from: 20.0, through: 620, by: 20) {
+            for y in stride(from: 20.0, through: 340, by: 20) {
+                let point = CGPoint(x: x, y: y)
+                for (a, b) in zip(rgb(before, at: point), rgb(after, at: point)) {
+                    XCTAssertEqual(a, b, accuracy: 3, "Zoom jumped at the layout boundary")
+                }
+            }
+        }
+    }
+
     func testLayoutsPersistInTimelineAndSwitchAtClipBoundaries() throws {
         let clips = [CameraLayout.cameraOnly, .split, .sideBySide].enumerated().map { index, layout in
             var settings = camera(layout)
@@ -806,11 +864,11 @@ final class CameraLayoutTests: XCTestCase {
     }
 
     private func instruction(settings: FacecamSettings?, edits: TimelineEditSnapshot = .empty,
-                             transform: CGAffineTransform = .identity) -> VideoBackgroundCompositionInstruction {
+                             transform: CGAffineTransform = .identity, scene: SceneSettings = .identity) -> VideoBackgroundCompositionInstruction {
         var styling = VideoBackgroundStyling.none
         styling.background = .solid(SerializableColor(hex: "000000"))
         return VideoBackgroundCompositionInstruction(timeRange: CMTimeRange(start: .zero, duration: CMTime(seconds: 4, preferredTimescale: 600)),
-            trackID: 1, facecamTrackID: 2, styling: styling, preferredTransform: transform,
+            trackID: 1, facecamTrackID: 2, styling: styling, scene: scene, preferredTransform: transform,
             normalizedSize: canvas, facecamNormalizedSize: canvas, cropRect: CGRect(origin: .zero, size: canvas),
             renderSize: canvas, edits: edits, editPlan: .build(duration: 4, edits: edits), facecamFallbackSettings: settings)
     }

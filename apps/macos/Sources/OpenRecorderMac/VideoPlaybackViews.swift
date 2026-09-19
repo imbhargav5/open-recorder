@@ -280,7 +280,7 @@ struct VideoPreviewPanel: View {
                 }
                 .overlay(alignment: .topLeading) {
                     if let url = facecamVideoURL, let settings = activeFacecamSettings {
-                        let effect = timelineEdits.snapshot.activeZoomEffect(at: playback.currentTime, cursorTrack: cursorTrack)
+                        let effect = TimelineZoomCanvasTransform.previewEffect(edits: timelineEdits.snapshot, sourceTime: playback.currentTime, duration: playback.duration, cursorTrack: cursorTrack)
                         let frame = PreviewStageLayout.recordingFrameRect(forAspectRatio: cropSelection.previewAspectRatio(in: playback.naturalVideoSize),
                             in: proxy.size, paddingValue: padding)
                         FacecamPlaybackOverlay(facecamURL: url, screenPlayback: playback,
@@ -303,7 +303,7 @@ struct VideoPreviewPanel: View {
                 paddingValue: padding
             )
             let cameraFrame = hasAdaptiveCamera ? CGRect(origin: .zero, size: proxy.size) : recordingFrame
-            let zoomEffect = timelineEdits.snapshot.activeZoomEffect(at: playback.currentTime, cursorTrack: cursorTrack)
+            let zoomEffect = TimelineZoomCanvasTransform.previewEffect(edits: timelineEdits.snapshot, sourceTime: playback.currentTime, duration: playback.duration, cursorTrack: cursorTrack)
             let facecamZoomTransform = PreviewStageLayout.previewFullStageZoomTransform(
                 effect: zoomEffect,
                 stageSize: proxy.size,
@@ -785,7 +785,7 @@ struct PlaybackPreview: View {
                 width: centeredOffset.x - cropRect.minX * scale,
                 height: centeredOffset.y - cropRect.minY * scale
             )
-            let zoomEffect = edits.activeZoomEffect(at: playback.currentTime, cursorTrack: cursorTrack)
+            let zoomEffect = TimelineZoomCanvasTransform.previewEffect(edits: edits, sourceTime: playback.currentTime, duration: playback.duration, cursorTrack: cursorTrack)
             let sourceZoomTransform = PreviewStageLayout.previewSourceZoomTransform(
                 effect: zoomAppliedByStage ? nil : zoomEffect,
                 sourceDisplaySize: sourceDisplaySize

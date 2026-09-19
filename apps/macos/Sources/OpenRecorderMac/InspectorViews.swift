@@ -183,7 +183,7 @@ struct SettingsInspector: View {
     private var tabContent: some View {
         switch activeTab {
         case .scene:
-            SceneInspector(settings: $scene, endpoint: $sceneEndpoint, duration: sceneDuration, seek: seekScene, onEditingChanged: onSceneEditingChanged)
+            SceneInspector(settings: $scene, endpoint: $sceneEndpoint, duration: sceneDuration, hasCamera: hasRecordedCamera, seek: seekScene, onEditingChanged: onSceneEditingChanged)
         case .appearance:
             CanvasAspectPicker(selection: $canvasAspect).padding(.bottom, 12)
             BackgroundPickerView(selection: $background, showsTopDivider: false)

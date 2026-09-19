@@ -29,6 +29,21 @@ final class SceneTests: XCTestCase {
         XCTAssertEqual(try JSONDecoder().decode(ScreenshotEditorState.self, from: JSONEncoder().encode(image)), image)
     }
 
+    func testCameraSceneSwitchPersistsAndUndoes() throws {
+        var legacy = try JSONSerialization.jsonObject(with: JSONEncoder().encode(SceneSettings())) as! [String: Any]
+        legacy.removeValue(forKey: "cameraFollowsScene")
+        let decoded = try JSONDecoder().decode(SceneSettings.self, from: JSONSerialization.data(withJSONObject: legacy))
+        XCTAssertTrue(decoded.resolvedCameraFollowsScene)
+        let driver = VideoEditorDriver()
+        driver.binding(\.scene.cameraFollowsScene).wrappedValue = false
+        let saved = try JSONDecoder().decode(ProjectVideoEditorState.self, from: JSONEncoder().encode(driver.state.video))
+        XCTAssertFalse(saved.scene.resolvedCameraFollowsScene)
+        driver.undo()
+        XCTAssertTrue(driver.state.video.scene.resolvedCameraFollowsScene)
+        driver.redo()
+        XCTAssertFalse(driver.state.video.scene.resolvedCameraFollowsScene)
+    }
+
     func testMotionHoldsEndpointsAndClampsShortenedOutput() {
         var motion = SceneMotion(enabled: true, startTime: 2, endTime: 6,
                                  startPose: ScenePose(tiltY: -20, x: -0.2), endPose: ScenePose(tiltY: 20, x: 0.2), easing: .linear)

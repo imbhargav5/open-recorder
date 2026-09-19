@@ -1749,6 +1749,11 @@ struct TimelineRegionItem: View {
         .position(x: startX + itemWidth / 2, y: TimelineMetrics.layerHeight / 2)
         .simultaneousGesture(TapGesture(count: 2).onEnded { performPrimaryEdit() })
         .gesture(moveGesture())
+        .contextMenu {
+            if kind == .zoom, let zoom = edits.zoomRegions.first(where: { $0.id == region.id }) {
+                ZoomTransitionMenu(region: zoom, edits: edits)
+            }
+        }
         .accessibilityLabel("\(kind.title) region")
         .accessibilityValue(regionAccessibilityValue)
         .accessibilityHint(regionAccessibilityHint)

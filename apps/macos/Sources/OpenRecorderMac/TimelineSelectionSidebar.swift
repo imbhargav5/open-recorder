@@ -234,6 +234,12 @@ struct TimelineSelectionSidebar: View {
                     TimelineZoomDepthPicker(depth: zoomDepthBinding(id: id))
                 }
 
+                TimelineZoomTransitionControls(region: zoom, edits: edits,
+                    outputDuration: TimelineExportEditPlan.build(duration: playback.duration, edits: edits.snapshot)
+                        .outputSpans(forSourceSpan: zoom.span).reduce(0) { $0 + $1.duration },
+                    update: { edits.updateZoomTransition(id: id, transition: $0) },
+                    onEditingChanged: handleUndoTransaction)
+
                 InspectorGroup(title: "Focus", symbolName: "scope") {
                     InspectorSlider(
                         title: "X",

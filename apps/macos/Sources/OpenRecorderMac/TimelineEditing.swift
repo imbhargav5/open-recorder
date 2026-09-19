@@ -97,6 +97,7 @@ struct TimelineZoomRegion: Identifiable, Codable, Equatable, Hashable {
     var sourceClickTimestamp: Int?
     var cameraPath: AutoZoomCameraPath?
     var isUserEdited = false
+    var transition: TimelineZoomTransition? = nil
 
     init(
         id: TimelineRegionID = TimelineRegionID(),
@@ -108,7 +109,8 @@ struct TimelineZoomRegion: Identifiable, Codable, Equatable, Hashable {
         animationPreset: TimelineZoomAnimationPreset = .balanced,
         sourceClickTimestamp: Int? = nil,
         cameraPath: AutoZoomCameraPath? = nil,
-        isUserEdited: Bool = false
+        isUserEdited: Bool = false,
+        transition: TimelineZoomTransition? = nil
     ) {
         self.id = id
         self.span = span
@@ -120,6 +122,7 @@ struct TimelineZoomRegion: Identifiable, Codable, Equatable, Hashable {
         self.sourceClickTimestamp = sourceClickTimestamp
         self.cameraPath = cameraPath
         self.isUserEdited = isUserEdited
+        self.transition = transition?.clamped
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -133,6 +136,7 @@ struct TimelineZoomRegion: Identifiable, Codable, Equatable, Hashable {
         case sourceClickTimestamp
         case cameraPath
         case isUserEdited
+        case transition
     }
 
     init(from decoder: Decoder) throws {
@@ -147,6 +151,7 @@ struct TimelineZoomRegion: Identifiable, Codable, Equatable, Hashable {
         sourceClickTimestamp = try container.decodeIfPresent(Int.self, forKey: .sourceClickTimestamp)
         cameraPath = try? container.decodeIfPresent(AutoZoomCameraPath.self, forKey: .cameraPath)
         isUserEdited = try container.decodeIfPresent(Bool.self, forKey: .isUserEdited) ?? false
+        transition = try container.decodeIfPresent(TimelineZoomTransition.self, forKey: .transition)?.clamped
     }
 }
 
@@ -318,7 +323,10 @@ struct TimelineEditSnapshot: Codable, Equatable, Hashable {
 
     func activeZoomEffect(at time: Double, cursorTrack: CursorTelemetryTrack? = nil) -> TimelineZoomEffect? {
         guard let zoom = activeZoom(at: time) else { return nil }
-        if let effect = zoom.cameraPath?.effect(at: time) { return effect }
+        if let path = zoom.cameraPath {
+            if let transition = zoom.transition { return transition.effect(path: path, span: zoom.span, at: time) }
+            if let effect = path.effect(at: time) { return effect }
+        }
         let depth = TimelineZoomAnimator.animatedDepth(for: zoom, at: time)
         let focus = TimelineZoomFocusResolver.focus(
             for: zoom,
@@ -431,6 +439,13 @@ enum TimelineZoomCanvasTransform {
             .concatenating(CGAffineTransform(translationX: focus.x, y: focus.y))
     }
 
+    static func previewEffect(edits: TimelineEditSnapshot, sourceTime: Double, duration: Double,
+                              cursorTrack: CursorTelemetryTrack? = nil) -> TimelineZoomEffect? {
+        let plan = TimelineExportEditPlan.build(duration: duration, edits: edits)
+        guard let outputTime = plan.outputTime(forSourceTime: sourceTime) else { return nil }
+        return activeEffect(edits: edits, editPlan: plan, outputTime: outputTime, cursorTrack: cursorTrack)
+    }
+
     static func activeEffect(
         edits: TimelineEditSnapshot,
         editPlan: TimelineExportEditPlan,
@@ -439,10 +454,18 @@ enum TimelineZoomCanvasTransform {
     ) -> TimelineZoomEffect? {
         guard outputTime.isFinite else { return nil }
         guard let sourceTime = editPlan.sourceTime(forOutputTime: outputTime),
-              let zoom = edits.activeZoom(at: sourceTime),
-              let outputSpan = editPlan.outputSpans(forSourceSpan: zoom.span).last(where: { $0.contains(outputTime) }) else { return nil }
-        if let effect = zoom.cameraPath?.effect(at: sourceTime) { return effect }
-        let progress = TimelineZoomAnimator.animationProgress(for: outputSpan, preset: zoom.animationPreset, at: outputTime)
+              let zoom = edits.activeZoom(at: sourceTime) else { return nil }
+        let spans = editPlan.outputSpans(forSourceSpan: zoom.span)
+        guard let first = spans.first, let last = spans.last else { return nil }
+        // A zoom owns one envelope across cuts, speed changes and layout boundaries.
+        // Export-plan fragments must not restart its entrance or exit.
+        let outputSpan = TimelineSpan(start: first.start, end: last.end)
+        if let path = zoom.cameraPath {
+            if let transition = zoom.transition { return transition.effect(path: path, span: outputSpan, at: outputTime) }
+            if let effect = path.effect(at: sourceTime) { return effect }
+        }
+        let progress = zoom.transition?.envelope(in: outputSpan, at: outputTime)
+            ?? TimelineZoomAnimator.animationProgress(for: outputSpan, preset: zoom.animationPreset, at: outputTime)
         let depth = 1 + (max(1, zoom.depth) - 1) * progress
         let focus = TimelineZoomFocusResolver.focus(
             for: zoom,
@@ -472,7 +495,8 @@ enum TimelineZoomAnimator {
     }
 
     static func animationProgress(for zoom: TimelineZoomRegion, at time: Double) -> Double {
-        animationProgress(for: zoom.span, preset: zoom.animationPreset, at: time)
+        zoom.transition?.envelope(in: zoom.span, at: time)
+            ?? animationProgress(for: zoom.span, preset: zoom.animationPreset, at: time)
     }
 
     static func animationProgress(for span: TimelineSpan, preset: TimelineZoomAnimationPreset, at time: Double) -> Double {
@@ -597,6 +621,8 @@ enum TimelineEditEvent: Equatable {
     case updateZoomDepth(id: TimelineRegionID, depth: Double)
     case updateZoomFocus(id: TimelineRegionID, focusX: Double?, focusY: Double?)
     case updateZoomAnimationPreset(id: TimelineRegionID, preset: TimelineZoomAnimationPreset)
+    case updateZoomTransition(id: TimelineRegionID, transition: TimelineZoomTransition?)
+    case applyZoomTransition(TimelineZoomTransition, ids: [TimelineRegionID])
     case updateAnnotationText(id: TimelineRegionID, text: String)
     case removeClipSplit(splitTime: Double, duration: Double)
 }
@@ -737,6 +763,21 @@ extension TimelineEditState {
 
         case .updateZoomAnimationPreset(let id, let preset):
             updateZoomAnimationPreset(id: id, preset: preset)
+            return []
+
+        case .applyZoomTransition(let transition, let ids):
+            let targets = Set(ids)
+            for index in snapshot.zoomRegions.indices where targets.contains(snapshot.zoomRegions[index].id) {
+                snapshot.zoomRegions[index].transition = transition.clamped
+                snapshot.zoomRegions[index].isUserEdited = true
+            }
+            return []
+
+        case .updateZoomTransition(let id, let transition):
+            mutate(&snapshot.zoomRegions, id: id) { region in
+                region.transition = transition?.clamped
+                region.isUserEdited = true
+            }
             return []
 
         case .updateAnnotationText(let id, let text):
@@ -1185,6 +1226,7 @@ extension TimelineEditState {
                 }
                 region.cameraPath = path
             }
+            region.transition = nil
             region.animationPreset = preset
             region.isUserEdited = true
         }
@@ -1596,6 +1638,14 @@ final class TimelineEditDriver {
 
     func updateZoomFocus(id: TimelineRegionID, focusX: Double? = nil, focusY: Double? = nil) {
         send(.updateZoomFocus(id: id, focusX: focusX, focusY: focusY))
+    }
+
+    func applyZoomTransition(_ transition: TimelineZoomTransition, to ids: [TimelineRegionID]) {
+        send(.applyZoomTransition(transition, ids: ids))
+    }
+
+    func updateZoomTransition(id: TimelineRegionID, transition: TimelineZoomTransition?) {
+        send(.updateZoomTransition(id: id, transition: transition))
     }
 
     func updateZoomAnimationPreset(id: TimelineRegionID, preset: TimelineZoomAnimationPreset) {

@@ -347,10 +347,10 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
         let sourceTime = instruction.editPlan.sourceTime(forOutputTime: compositionTime) ?? compositionTime
         if instruction.cameraLayoutEnabled {
             let presentation = cameraPresentation(for: instruction, time: compositionTime)
-            if presentation.overlayAmount < 1 || presentation.transitionActive {
-                return try makeCameraLayoutImage(source: source, facecam: facecam, instruction: instruction,
-                                                 compositionTime: compositionTime, presentation: presentation)
-            }
+            // Use the same screen surface before, during and after a layout change.
+            // Switching render paths here used to reframe an already-running zoom.
+            return try makeCameraLayoutImage(source: source, facecam: facecam, instruction: instruction,
+                                             compositionTime: compositionTime, presentation: presentation)
         }
 
         var sourceImage = CIImage(cvPixelBuffer: source)
@@ -616,7 +616,7 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
             panelEdits.annotationRegions = []
             panelEdits.captions = nil
             let panel = VideoBackgroundCompositionInstruction(timeRange: instruction.timeRange,
-                trackID: instruction.sourceTrackID, styling: panelStyling, scene: instruction.scene,
+                trackID: instruction.sourceTrackID, styling: panelStyling,
                 preferredTransform: instruction.preferredTransform, normalizedSize: instruction.normalizedSize,
                 cropRect: panelCrop, renderSize: frames.screen.size, edits: panelEdits,
                 editPlan: instruction.editPlan, cursorTrack: instruction.cursorTrack, cursorSettings: instruction.cursorSettings)
@@ -626,19 +626,41 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
             var screen = applyRoundedMask(panelImage, cornerRadius: radius,
                 in: CGRect(origin: .zero, size: frames.screen.size), role: .recording)
                 .transformed(by: CGAffineTransform(translationX: frames.screen.minX, y: canvas.height - frames.screen.maxY))
-                .applyingFilter("CIColorMatrix", parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: presentation.screenOpacity)])
+            if instruction.scene.isActive {
+                screen = sceneRenderer.render(media: screen, mediaRect: screen.extent, frame: screen.extent,
+                    canvas: canvas, settings: instruction.scene.clamped(to: instruction.editPlan.outputDuration),
+                    time: compositionTime, radius: radius, shadow: instruction.styling.shadowIntensity,
+                    referenceFrame: bounds)
+            }
+            screen = screen.applyingFilter("CIColorMatrix", parameters: [
+                "inputAVector": CIVector(x: 0, y: 0, z: 0, w: presentation.screenOpacity)])
             screen = applyCameraTransitionEffects(screen, presentation: presentation, canvas: canvas)
-            if instruction.styling.shadowIntensity > 0 {
+            if !instruction.scene.isActive, instruction.styling.shadowIntensity > 0 {
                 result = makeShadow(screen, intensity: instruction.styling.shadowIntensity, in: screen.extent).composited(over: result)
             }
             result = screen.composited(over: result)
         }
         result = compositeAnnotations(over: result, instruction: instruction, compositionTime: compositionTime)
-        // Camera panels stay in their allotted space when the screen zooms.
-        if let camera = makeFacecamLayer(facecam, for: instruction, compositionTime: compositionTime) {
+        let sourceTime = instruction.editPlan.sourceTime(forOutputTime: compositionTime) ?? compositionTime
+        // Layout panels share a scene plane. An independent camera stays in its
+        // layout position; screen-content zoom remains separate from scene motion.
+        if var camera = makeFacecamLayer(facecam, for: instruction, compositionTime: compositionTime) {
+            let settings = instruction.edits.activeCameraSettings(at: sourceTime,
+                duration: instruction.editPlan.segments.last?.sourceEnd ?? instruction.timeRange.duration.seconds,
+                fallback: instruction.facecamFallbackSettings)
+            if presentation.overlayAmount > 0 && settings?.fixedDuringZoom != true {
+                let screenRect = CGRect(x: frames.screen.minX, y: canvas.height - frames.screen.maxY,
+                                        width: frames.screen.width, height: frames.screen.height)
+                camera = applyZoomTransform(to: camera, renderRect: bounds, instruction: instruction,
+                    compositionTime: compositionTime, placedRect: screenRect, amount: presentation.overlayAmount)
+            }
+            if instruction.scene.isActive && instruction.scene.resolvedCameraFollowsScene {
+                camera = sceneRenderer.project(camera, canvas: canvas,
+                    pose: instruction.scene.clamped(to: instruction.editPlan.outputDuration).pose(at: compositionTime),
+                    referenceFrame: bounds)
+            }
             result = camera.composited(over: result)
         }
-        let sourceTime = instruction.editPlan.sourceTime(forOutputTime: compositionTime) ?? compositionTime
         return compositeCaptions(over: result, instruction: instruction, sourceTime: sourceTime).cropped(to: bounds)
     }
 
@@ -671,7 +693,8 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
         renderRect: CGRect,
         instruction: VideoBackgroundCompositionInstruction,
         compositionTime: Double,
-        placedRect: CGRect
+        placedRect: CGRect,
+        amount: CGFloat = 1
     ) -> CIImage {
         guard instruction.edits.zoomRegions.isEmpty == false else { return image }
         let effect = TimelineZoomCanvasTransform.activeEffect(
@@ -689,8 +712,9 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
             duration: instruction.editPlan.segments.last?.sourceEnd ?? instruction.timeRange.duration.seconds,
             fallback: instruction.facecamFallbackSettings)
         let mapped = geometry.canvasEffect(effect, cameraSettings: settings)
-        let zoomTransform = TimelineZoomCanvasTransform.transform(for: mapped, in: renderRect, flipsY: true)
-
+        let target = TimelineZoomCanvasTransform.transform(for: mapped, in: renderRect, flipsY: true)
+        let zoomTransform = CGAffineTransform(a: 1 + (target.a - 1) * amount, b: target.b * amount,
+            c: target.c * amount, d: 1 + (target.d - 1) * amount, tx: target.tx * amount, ty: target.ty * amount)
         return image.transformed(by: zoomTransform)
     }
 

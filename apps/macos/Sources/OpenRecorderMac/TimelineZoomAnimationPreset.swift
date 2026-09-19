@@ -139,14 +139,32 @@ struct TimelineZoomAnimationConfiguration: Equatable {
     var focusClampRange: ClosedRange<Double>
 }
 
-enum TimelineZoomEasing: Equatable {
+enum TimelineZoomEasing: String, Codable, CaseIterable, Identifiable {
     case smoothstep
     case easeOut
     case easeInOut
+    case easeIn
+    case linear
+    case smooth
+
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .smoothstep: "Balanced"
+        case .easeOut: "Ease out"
+        case .easeInOut: "Ease in & out"
+        case .easeIn: "Ease in"
+        case .linear: "Linear"
+        case .smooth: "Smooth"
+        }
+    }
 
     func value(_ rawValue: Double) -> Double {
         let x = min(max(rawValue, 0), 1)
         switch self {
+        case .easeIn: return x * x * x
+        case .linear: return x
+        case .smooth: return CameraLayoutMotion.ease(x)
         case .smoothstep:
             return x * x * (3 - 2 * x)
         case .easeOut:
