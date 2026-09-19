@@ -58,7 +58,8 @@ final class SceneRenderer {
     }
 
     func render(media: CIImage, mediaRect: CGRect, frame: CGRect, canvas: CGSize,
-                settings: SceneSettings, time: Double, radius: CGFloat, shadow: Double) -> CIImage {
+                settings: SceneSettings, time: Double, radius: CGFloat, shadow: Double,
+                referenceFrame: CGRect? = nil) -> CIImage {
         let layout = SceneMockupLayout.make(in: frame, mediaAspect: mediaRect.width / max(1, mediaRect.height), style: settings.mockup, radius: radius)
         let sx = layout.content.width / max(1, mediaRect.width), sy = layout.content.height / max(1, mediaRect.height)
         let fitted = media.cropped(to: mediaRect)
@@ -71,11 +72,8 @@ final class SceneRenderer {
         if settings.edgeHighlight {
             card = edgeStroke(in: layout.frame, radius: layout.radius).composited(over: card)
         }
-        let geometry = SceneGeometry.evaluate(frame: layout.frame, canvas: canvas, pose: settings.pose(at: time))
-        let projected = card.applyingFilter("CIPerspectiveTransform", parameters: [
-            "inputTopLeft": CIVector(cgPoint: geometry.topLeft), "inputTopRight": CIVector(cgPoint: geometry.topRight),
-            "inputBottomLeft": CIVector(cgPoint: geometry.bottomLeft), "inputBottomRight": CIVector(cgPoint: geometry.bottomRight)
-        ])
+        let projected = project(card, canvas: canvas, pose: settings.pose(at: time),
+                                referenceFrame: referenceFrame ?? layout.frame)
         guard shadow > 0 else { return projected }
         let amount = sceneClamp(shadow, 0...1)
         let unit = min(canvas.width, canvas.height) / 1080
@@ -87,6 +85,18 @@ final class SceneRenderer {
         ]).applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: 38 * amount * unit])
             .transformed(by: CGAffineTransform(translationX: 0, y: -18 * amount * unit))
         return projected.composited(over: drop)
+    }
+
+    /// Project each layer through the same plane, keeping gaps and relative positions
+    /// intact. Use its full extent so shadows and tilted corners are not clipped.
+    func project(_ image: CIImage, canvas: CGSize, pose: ScenePose, referenceFrame: CGRect) -> CIImage {
+        guard !pose.isIdentity, !image.extent.isEmpty else { return image }
+        let geometry = SceneGeometry.evaluate(frame: image.extent, canvas: canvas, pose: pose,
+                                              referenceFrame: referenceFrame)
+        return image.applyingFilter("CIPerspectiveTransform", parameters: [
+            "inputTopLeft": CIVector(cgPoint: geometry.topLeft), "inputTopRight": CIVector(cgPoint: geometry.topRight),
+            "inputBottomLeft": CIVector(cgPoint: geometry.bottomLeft), "inputBottomRight": CIVector(cgPoint: geometry.bottomRight)
+        ])
     }
 
     private func frameArtwork(layout: SceneMockupLayout, settings: SceneSettings) -> CIImage {

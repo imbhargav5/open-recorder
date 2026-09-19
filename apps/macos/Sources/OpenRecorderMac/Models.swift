@@ -524,6 +524,41 @@ struct FacecamSettings: Codable, Hashable {
     var margin: Double
     var anchor: String
     var fixedDuringZoom: Bool? = false
+    var zoomShrinkPercent: Double? = nil
+    // Optional fields keep projects recorded before camera layouts compatible.
+    var layout: String? = nil
+    var cameraWidthPercent: Double? = nil
+    var layoutPadding: Double? = nil
+    var layoutGap: Double? = nil
+    var cameraOnLeft: Bool? = nil
+    var centerFace: Bool? = nil
+    var screenFit: String? = nil
+    var matchCameraCorners: Bool? = nil
+    var screenCornerRadius: Double? = nil
+    // Overlay corners are independent of the split panel’s linked corners.
+    var overlayScreenCornerRadius: Double? = nil
+    var layoutTransition: CameraLayoutTransition? = nil
+
+    var resolvedZoomShrinkPercent: Double {
+        fixedDuringZoom == true ? 0 : CameraLayoutGeometry.clamp(zoomShrinkPercent, to: 0...75, fallback: 15)
+    }
+
+    var resolvedLayoutTransition: CameraLayoutTransition { (layoutTransition ?? .init()).clamped }
+
+    var keepsFaceCentered: Bool { resolvedLayout != .overlay && (centerFace ?? true) }
+    var resolvedScreenFit: CameraScreenFit { CameraScreenFit(rawValue: screenFit ?? "") ?? .fit }
+    var resolvedMatchCameraCorners: Bool { matchCameraCorners ?? true }
+    var resolvedScreenCornerRadius: Double {
+        CameraLayoutGeometry.clamp(resolvedMatchCameraCorners ? cornerRadius : screenCornerRadius, to: 0...100, fallback: 24)
+    }
+
+    var resolvedLayout: CameraLayout { CameraLayout(rawValue: layout ?? "") ?? .overlay }
+    var resolvedCameraWidth: Double {
+        CameraLayoutGeometry.clamp(cameraWidthPercent, to: 10...70, fallback: resolvedLayout == .split ? 50 : 20)
+    }
+    var resolvedLayoutPadding: Double { CameraLayoutGeometry.clamp(layoutPadding, to: 0...20, fallback: 4) }
+    var resolvedLayoutGap: Double { CameraLayoutGeometry.clamp(layoutGap, to: 0...12, fallback: 3) }
+    var resolvedCameraOnLeft: Bool { cameraOnLeft ?? (resolvedLayout == .split) }
 
     var clamped: FacecamSettings {
         FacecamSettings(
@@ -535,7 +570,19 @@ struct FacecamSettings: Codable, Hashable {
             borderColor: normalizedBorderColor,
             margin: max(0, min(margin, 24)),
             anchor: FacecamAnchor.resolve(anchor).rawValue,
-            fixedDuringZoom: fixedDuringZoom
+            fixedDuringZoom: fixedDuringZoom,
+            zoomShrinkPercent: zoomShrinkPercent.map { CameraLayoutGeometry.clamp($0, to: 0...75, fallback: 15) },
+            layout: layout,
+            cameraWidthPercent: cameraWidthPercent.map { _ in resolvedCameraWidth },
+            layoutPadding: layoutPadding.map { _ in resolvedLayoutPadding },
+            layoutGap: layoutGap.map { _ in resolvedLayoutGap },
+            cameraOnLeft: cameraOnLeft,
+            centerFace: centerFace,
+            screenFit: screenFit,
+            matchCameraCorners: matchCameraCorners,
+            screenCornerRadius: screenCornerRadius.map { CameraLayoutGeometry.clamp($0, to: 0...100, fallback: 24) },
+            overlayScreenCornerRadius: overlayScreenCornerRadius.map { CameraLayoutGeometry.clamp($0, to: 0...100, fallback: 24) },
+            layoutTransition: layoutTransition?.clamped
         )
     }
 
@@ -549,7 +596,7 @@ struct FacecamSettings: Codable, Hashable {
     }
 
     var isCircle: Bool {
-        normalizedShape == "circle"
+        resolvedLayout == .overlay && normalizedShape == "circle"
     }
 
     private var normalizedBorderColor: String {
@@ -571,7 +618,6 @@ struct RecordingSession: Codable, Hashable {
     var sourceName: String?
     var showCursorOverlay: Bool
     var cursorTelemetryPath: String?
-
     var hasRecordedCamera: Bool {
         guard let facecamVideoPath else { return false }
         return !facecamVideoPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty

@@ -117,6 +117,30 @@ struct TimelinePanel: View {
             HStack(spacing: 8) {
                 TimelineTimeDisplay(currentTime: playback.currentTime, duration: playback.duration)
 
+                if hasRecordedCamera {
+                    Menu {
+                        Button("Start New Camera Segment Here") {
+                            playback.pause()
+                            edits.splitCameraClip(at: playback.currentTime, duration: playback.duration, fallback: defaultCameraSettings)
+                        }
+                        Divider()
+                        ForEach(CameraLayout.allCases) { layout in
+                            Button(layout.title) {
+                                playback.pause()
+                                edits.setCameraLayout(layout, at: playback.currentTime,
+                                    duration: playback.duration, fallback: defaultCameraSettings)
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "rectangle.split.2x1")
+                    }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                    .disabled(playback.duration <= 0 || playback.currentTime >= playback.duration)
+                    .accessibilityLabel("Camera layout at playhead")
+                    .help("Change camera layout from the playhead. Earlier camera settings are kept.")
+                }
+
                 Spacer()
 
                 TimelineEditToolButton(
@@ -1088,6 +1112,7 @@ struct TimelineClipRow: View {
 }
 
 struct TimelineResizeHandle: View {
+    var usesResizeCursor = false
     @State private var isHovering = false
 
     var body: some View {
@@ -1107,7 +1132,16 @@ struct TimelineResizeHandle: View {
             .shadow(color: Color.black.opacity(0.35), radius: 3, y: 1)
             .scaleEffect(isHovering ? 1.15 : 1.0)
             .animation(.snappy(duration: 0.15), value: isHovering)
-            .onHover { isHovering = $0 }
+            .onHover { hovering in
+                guard hovering != isHovering else { return }
+                isHovering = hovering
+                if usesResizeCursor {
+                    if hovering { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
+                }
+            }
+            .onDisappear {
+                if usesResizeCursor && isHovering { NSCursor.pop() }
+            }
     }
 }
 
@@ -1423,12 +1457,16 @@ private struct TimelineCameraClipItem: View {
     var fallbackSettings: FacecamSettings?
     var edits: TimelineEditDriver
 
+    @State private var resizeStartTime: Double?
+    @State private var isHovering = false
+
     private var accentColor: Color {
         Color(red: 0.18, green: 0.82, blue: 0.48)
     }
 
     private var shapeTitle: String {
         guard clip.settings.clamped.enabled else { return "Hidden" }
+        if clip.settings.resolvedLayout != .overlay { return clip.settings.resolvedLayout.title }
         switch clip.settings.clamped.normalizedShape {
         case "circle": return "Circle"
         case "square": return "Square"
@@ -1439,6 +1477,12 @@ private struct TimelineCameraClipItem: View {
 
     private var shapeSymbolName: String {
         guard clip.settings.clamped.enabled else { return "camera.slash.fill" }
+        switch clip.settings.resolvedLayout {
+        case .cameraOnly: return "camera.fill"
+        case .split: return "rectangle.split.2x1"
+        case .sideBySide: return "rectangle.inset.filled.trailing"
+        case .overlay: break
+        }
         switch clip.settings.clamped.normalizedShape {
         case "circle": return "circle.fill"
         case "square": return "square.fill"
@@ -1480,13 +1524,109 @@ private struct TimelineCameraClipItem: View {
             }
         }
         .buttonStyle(.plain)
-        .frame(width: itemWidth, height: TimelineMetrics.regionItemHeight)
-        .position(x: startX + itemWidth / 2, y: TimelineMetrics.layerHeight / 2)
         .accessibilityLabel(clip.settings.clamped.enabled ? "Camera clip" : "Hidden camera clip")
-        .accessibilityValue(timeRangeDescription)
-        .accessibilityHint("Selects this camera clip.")
+        .accessibilityValue("\(shapeTitle), \(timeRangeDescription)")
+        .accessibilityHint("Select to edit this segment’s layout. Drag either edge to change its timing.")
         .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .frame(width: itemWidth, height: TimelineMetrics.regionItemHeight)
+        .overlay(alignment: .leading) {
+            if (isSelected || isHovering), clip.span.start >= viewport.visibleStart - 0.001 {
+                resizeHandle(edge: .leading, hitWidth: min(18, itemWidth / 2))
+            }
+        }
+        .overlay(alignment: .trailing) {
+            if (isSelected || isHovering), clip.span.end <= viewport.visibleEnd + 0.001 {
+                resizeHandle(edge: .trailing, hitWidth: min(18, itemWidth / 2))
+            }
+        }
+        .onHover { isHovering = $0 }
+        .onDisappear {
+            if resizeStartTime != nil {
+                edits.endUndoTransaction()
+                resizeStartTime = nil
+            }
+        }
+        .zIndex(isSelected ? 1 : 0)
+        .position(x: startX + itemWidth / 2, y: TimelineMetrics.layerHeight / 2)
         .contextMenu {
+            Button {
+                CameraTransitionStore.shared.copy(clip.settings.resolvedLayoutTransition)
+            } label: {
+                Label("Copy Transition", systemImage: "doc.on.doc")
+            }
+            Button {
+                if let transition = CameraTransitionStore.shared.copiedTransition {
+                    edits.applyCameraTransition(transition, to: [clip.id])
+                }
+            } label: {
+                Label("Paste Transition", systemImage: "doc.on.clipboard")
+            }
+            .disabled(CameraTransitionStore.shared.copiedTransition == nil)
+            Button {
+                edits.applyCameraTransition(clip.settings.resolvedLayoutTransition, to: edits.cameraClips.map(\.id))
+            } label: {
+                Label("Copy to All Transitions", systemImage: "rectangle.stack")
+            }
+            .disabled(edits.cameraClips.count < 2)
+            Divider()
+            Menu("Layout for This Segment") {
+                ForEach(CameraLayout.allCases) { layout in
+                    Button {
+                        var settings = clip.settings
+                        settings.layout = layout.rawValue
+                        edits.updateCameraClipSettings(id: clip.id, settings: settings)
+                    } label: {
+                        if clip.settings.resolvedLayout == layout {
+                            Label(layout.title, systemImage: "checkmark")
+                        } else {
+                            Text(layout.title)
+                        }
+                    }
+                }
+            }
+            if clip.settings.resolvedLayout == .overlay {
+                Menu("Camera Position for This Segment") {
+                    ForEach(FacecamAnchor.allCases) { anchor in
+                        Button {
+                            var settings = clip.settings
+                            settings.anchor = anchor.rawValue
+                            edits.updateCameraClipSettings(id: clip.id, settings: settings)
+                        } label: {
+                            if clip.settings.resolvedAnchor == anchor {
+                                Label(anchor.title, systemImage: "checkmark")
+                            } else {
+                                Text(anchor.title)
+                            }
+                        }
+                    }
+                }
+            } else if clip.settings.resolvedLayout.hasScreenPanel {
+                Menu("Camera Side for This Segment") {
+                    ForEach([true, false], id: \.self) { left in
+                        Button {
+                            var settings = clip.settings
+                            settings.cameraOnLeft = left
+                            edits.updateCameraClipSettings(id: clip.id, settings: settings)
+                        } label: {
+                            if clip.settings.resolvedCameraOnLeft == left {
+                                Label(left ? "Left" : "Right", systemImage: "checkmark")
+                            } else {
+                                Text(left ? "Left" : "Right")
+                            }
+                        }
+                    }
+                }
+            }
+            if clip.settings.resolvedLayout != .overlay {
+                Toggle("Keep Face Centered", isOn: Binding(
+                    get: { clip.settings.keepsFaceCentered },
+                    set: { value in
+                        var settings = clip.settings
+                        settings.centerFace = value
+                        edits.updateCameraClipSettings(id: clip.id, settings: settings)
+                    }))
+            }
+            Divider()
             Button {
                 edits.splitCameraClip(at: currentTime, duration: duration, fallback: fallbackSettings)
             } label: {
@@ -1501,6 +1641,42 @@ private struct TimelineCameraClipItem: View {
             }
             .disabled(!edits.canDeleteCameraClip(id: clip.id, duration: duration, fallback: fallbackSettings))
         }
+    }
+
+    private func resizeHandle(edge: TimelineCameraResizeEdge, hitWidth: CGFloat) -> some View {
+        TimelineResizeHandle(usesResizeCursor: true)
+            .frame(width: max(1, hitWidth), height: TimelineMetrics.regionItemHeight)
+            .clipped()
+            .contentShape(Rectangle())
+            .highPriorityGesture(
+                DragGesture(minimumDistance: 2, coordinateSpace: .global)
+                    .onChanged { value in
+                        guard width > 0, viewport.visibleDuration.isFinite else { return }
+                        if resizeStartTime == nil {
+                            edits.beginUndoTransaction()
+                            resizeStartTime = edge == .leading ? clip.span.start : clip.span.end
+                            edits.selectCameraClip(id: clip.id)
+                        }
+                        let delta = Double(value.translation.width / width) * viewport.visibleDuration
+                        edits.resizeCameraClip(id: clip.id, edge: edge, time: (resizeStartTime ?? 0) + delta, duration: duration)
+                    }
+                    .onEnded { _ in
+                        edits.endUndoTransaction()
+                        resizeStartTime = nil
+                    }
+            )
+            .help(edge == .leading ? "Drag to change layout start" : "Drag to change layout end")
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(edge == .leading ? "Layout start" : "Layout end")
+            .accessibilityValue(String(format: "%.2f seconds", edge == .leading ? clip.span.start : clip.span.end))
+            .accessibilityAdjustableAction { direction in
+                let time = edge == .leading ? clip.span.start : clip.span.end
+                switch direction {
+                case .increment: edits.resizeCameraClip(id: clip.id, edge: edge, time: time + 0.1, duration: duration)
+                case .decrement: edits.resizeCameraClip(id: clip.id, edge: edge, time: time - 0.1, duration: duration)
+                @unknown default: break
+                }
+            }
     }
 
     @ViewBuilder
@@ -1557,7 +1733,7 @@ struct TimelineRegionItem: View {
     var width: CGFloat
     var isSelected: Bool
     var edits: TimelineEditDriver
-    @State private var dragStartSpan: TimelineSpan?
+    @State private var drag: TimelineRegionDrag?
 
     var body: some View {
         let startX = x(for: region.span.start)
@@ -1570,9 +1746,23 @@ struct TimelineRegionItem: View {
         }
         .buttonStyle(.plain)
         .frame(width: itemWidth, height: TimelineMetrics.regionItemHeight)
-        .position(x: startX + itemWidth / 2, y: TimelineMetrics.layerHeight / 2)
         .simultaneousGesture(TapGesture(count: 2).onEnded { performPrimaryEdit() })
-        .gesture(moveGesture())
+        .gesture(dragGesture(operation: .move))
+        // Handles are siblings of the movable button, so resizing cannot also move it.
+        .overlay(alignment: .leading) {
+            if showsLeadingHandle { resizeHandle(operation: .leading).offset(x: -18) }
+        }
+        .overlay(alignment: .trailing) {
+            if showsTrailingHandle { resizeHandle(operation: .trailing).offset(x: 18) }
+        }
+        .position(x: startX + itemWidth / 2, y: TimelineMetrics.layerHeight / 2)
+        .transaction { $0.animation = nil }
+        .onDisappear { finishDrag() }
+        .contextMenu {
+            if kind == .zoom, let zoom = edits.zoomRegions.first(where: { $0.id == region.id }) {
+                ZoomTransitionMenu(region: zoom, edits: edits)
+            }
+        }
         .accessibilityLabel("\(kind.title) region")
         .accessibilityValue(regionAccessibilityValue)
         .accessibilityHint(regionAccessibilityHint)
@@ -1608,16 +1798,7 @@ struct TimelineRegionItem: View {
             }
         }
         .overlay { regionLabel(width: width) }
-        .overlay(alignment: .leading) {
-            if showsLeadingHandle {
-                TimelineResizeHandle().offset(x: -9).gesture(resizeGesture(edge: .leading))
-            }
-        }
-        .overlay(alignment: .trailing) {
-            if showsTrailingHandle {
-                TimelineResizeHandle().offset(x: 9).gesture(resizeGesture(edge: .trailing))
-            }
-        }
+
     }
 
     private func regionLabel(width: CGFloat) -> some View {
@@ -1647,57 +1828,52 @@ struct TimelineRegionItem: View {
         .frame(maxWidth: max(0, width - 8))
     }
 
-    private enum ResizeEdge { case leading, trailing }
-
     private var showsLeadingHandle: Bool {
-        region.span.start >= viewport.visibleStart - 0.001
+        region.span.start >= viewport.visibleStart - 0.001 || drag?.operation == .leading
     }
 
     private var showsTrailingHandle: Bool {
-        region.span.end <= viewport.visibleEnd + 0.001
+        region.span.end <= viewport.visibleEnd + 0.001 || drag?.operation == .trailing
     }
 
-    private func moveGesture() -> some Gesture {
-        DragGesture()
+    private func resizeHandle(operation: TimelineRegionDrag.Operation) -> some View {
+        TimelineResizeHandle(usesResizeCursor: true)
+            .frame(width: 18, height: TimelineMetrics.regionItemHeight)
+            .contentShape(Rectangle())
+            .gesture(dragGesture(operation: operation))
+            .accessibilityLabel(operation == .leading ? "Resize start" : "Resize end")
+    }
+
+    private func dragGesture(operation: TimelineRegionDrag.Operation) -> some Gesture {
+        // Local coordinates change when the dragged edge moves. Freeze both the
+        // original span and time-per-point before selection can resize the sidebar.
+        DragGesture(minimumDistance: 2, coordinateSpace: .global)
             .onChanged { value in
-                if dragStartSpan == nil {
+                if drag == nil {
+                    drag = TimelineRegionDrag(span: region.span, operation: operation,
+                        secondsPerPoint: width > 0 ? viewport.visibleDuration / Double(width) : 0)
                     edits.beginUndoTransaction()
-                    dragStartSpan = region.span
                     edits.select(kind, id: region.id)
                 }
-                let base = dragStartSpan ?? region.span
-                let delta = time(forDeltaX: value.translation.width)
-                let length = base.duration
-                let start = min(max(base.start + delta, 0), max(0, duration - length))
-                edits.updateSpan(kind: kind, id: region.id, span: TimelineSpan(start: start, end: start + length), duration: duration)
+                updateDrag(translation: value.translation.width)
             }
-            .onEnded { _ in
-                edits.endUndoTransaction()
-                dragStartSpan = nil
+            .onEnded { value in
+                updateDrag(translation: value.translation.width)
+                finishDrag()
             }
     }
 
-    private func resizeGesture(edge: ResizeEdge) -> some Gesture {
-        DragGesture()
-            .onChanged { value in
-                if dragStartSpan == nil {
-                    edits.beginUndoTransaction()
-                    dragStartSpan = region.span
-                    edits.select(kind, id: region.id)
-                }
-                let base = dragStartSpan ?? region.span
-                let delta = time(forDeltaX: value.translation.width)
-                switch edge {
-                case .leading:
-                    edits.updateSpan(kind: kind, id: region.id, span: TimelineSpan(start: base.start + delta, end: base.end), duration: duration)
-                case .trailing:
-                    edits.updateSpan(kind: kind, id: region.id, span: TimelineSpan(start: base.start, end: base.end + delta), duration: duration)
-                }
-            }
-            .onEnded { _ in
-                edits.endUndoTransaction()
-                dragStartSpan = nil
-            }
+    private func updateDrag(translation: CGFloat) {
+        guard let drag else { return }
+        let span = drag.span(at: Double(translation), duration: duration)
+        guard span != region.span else { return }
+        edits.updateSpan(kind: kind, id: region.id, span: span, duration: duration)
+    }
+
+    private func finishDrag() {
+        guard drag != nil else { return }
+        edits.endUndoTransaction()
+        drag = nil
     }
 
     private func performPrimaryEdit() {
@@ -1709,11 +1885,6 @@ struct TimelineRegionItem: View {
 
     private func x(for time: Double) -> CGFloat {
         viewport.x(for: time, width: width, clamped: true) ?? 0
-    }
-
-    private func time(forDeltaX deltaX: CGFloat) -> Double {
-        guard width > 0, viewport.visibleDuration.isFinite else { return 0 }
-        return Double(deltaX / width) * viewport.visibleDuration
     }
 
     private var regionAccessibilityValue: String {

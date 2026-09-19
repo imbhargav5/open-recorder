@@ -9,6 +9,7 @@ struct SceneInspector: View {
     @Binding var endpoint: SceneEndpoint
     var duration: Double
     var isImage = false
+    var hasCamera = false
     var seek: (Double) -> Void = { _ in }
     var onEditingChanged: (Bool) -> Void = { _ in }
     @State private var advanced = false
@@ -46,6 +47,18 @@ struct SceneInspector: View {
                             }.frame(maxWidth: .infinity).padding(.vertical, 10)
                         }.buttonStyle(.bordered)
                     }
+                }
+            }
+            if hasCamera {
+                InspectorGroup(title: "Camera", symbolName: "camera.fill") {
+                    InspectorSwitch(title: "Camera follows scene", isOn: Binding(
+                        get: { settings.resolvedCameraFollowsScene },
+                        set: { settings.cameraFollowsScene = $0 }))
+                    Text(settings.resolvedCameraFollowsScene
+                         ? "Screen and camera rotate, tilt, scale and move together."
+                         : "The camera stays upright and keeps its layout position while the screen moves.")
+                        .font(.system(size: 11)).foregroundStyle(Theme.fgMuted)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
             InspectorGroup(title: "Transform", symbolName: "rotate.3d", onReset: { pose.wrappedValue = .identity }) {

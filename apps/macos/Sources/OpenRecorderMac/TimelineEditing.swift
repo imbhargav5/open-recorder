@@ -86,6 +86,30 @@ struct TimelineSpan: Codable, Equatable, Hashable {
     }
 }
 
+/// Immutable drag origin prevents cumulative drift as a region's frame changes.
+struct TimelineRegionDrag {
+    enum Operation { case move, leading, trailing }
+    var span: TimelineSpan
+    var operation: Operation
+    var secondsPerPoint: Double
+
+    func span(at translation: Double, duration: Double) -> TimelineSpan {
+        guard translation.isFinite, secondsPerPoint.isFinite, duration.isFinite, duration > 0 else { return span }
+        let base = span.normalized(duration: duration)
+        let delta = translation * secondsPerPoint
+        let minimum = min(0.1, base.duration)
+        switch operation {
+        case .move:
+            let start = min(max(base.start + delta, 0), max(0, duration - base.duration))
+            return TimelineSpan(start: start, end: start + base.duration)
+        case .leading:
+            return TimelineSpan(start: min(max(base.start + delta, 0), base.end - minimum), end: base.end)
+        case .trailing:
+            return TimelineSpan(start: base.start, end: min(max(base.end + delta, base.start + minimum), duration))
+        }
+    }
+}
+
 struct TimelineZoomRegion: Identifiable, Codable, Equatable, Hashable {
     var id = TimelineRegionID()
     var span: TimelineSpan
@@ -97,6 +121,7 @@ struct TimelineZoomRegion: Identifiable, Codable, Equatable, Hashable {
     var sourceClickTimestamp: Int?
     var cameraPath: AutoZoomCameraPath?
     var isUserEdited = false
+    var transition: TimelineZoomTransition? = nil
 
     init(
         id: TimelineRegionID = TimelineRegionID(),
@@ -108,7 +133,8 @@ struct TimelineZoomRegion: Identifiable, Codable, Equatable, Hashable {
         animationPreset: TimelineZoomAnimationPreset = .balanced,
         sourceClickTimestamp: Int? = nil,
         cameraPath: AutoZoomCameraPath? = nil,
-        isUserEdited: Bool = false
+        isUserEdited: Bool = false,
+        transition: TimelineZoomTransition? = nil
     ) {
         self.id = id
         self.span = span
@@ -120,6 +146,7 @@ struct TimelineZoomRegion: Identifiable, Codable, Equatable, Hashable {
         self.sourceClickTimestamp = sourceClickTimestamp
         self.cameraPath = cameraPath
         self.isUserEdited = isUserEdited
+        self.transition = transition?.clamped
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -133,6 +160,7 @@ struct TimelineZoomRegion: Identifiable, Codable, Equatable, Hashable {
         case sourceClickTimestamp
         case cameraPath
         case isUserEdited
+        case transition
     }
 
     init(from decoder: Decoder) throws {
@@ -147,6 +175,7 @@ struct TimelineZoomRegion: Identifiable, Codable, Equatable, Hashable {
         sourceClickTimestamp = try container.decodeIfPresent(Int.self, forKey: .sourceClickTimestamp)
         cameraPath = try? container.decodeIfPresent(AutoZoomCameraPath.self, forKey: .cameraPath)
         isUserEdited = try container.decodeIfPresent(Bool.self, forKey: .isUserEdited) ?? false
+        transition = try container.decodeIfPresent(TimelineZoomTransition.self, forKey: .transition)?.clamped
     }
 }
 
@@ -318,7 +347,10 @@ struct TimelineEditSnapshot: Codable, Equatable, Hashable {
 
     func activeZoomEffect(at time: Double, cursorTrack: CursorTelemetryTrack? = nil) -> TimelineZoomEffect? {
         guard let zoom = activeZoom(at: time) else { return nil }
-        if let effect = zoom.cameraPath?.effect(at: time) { return effect }
+        if let path = zoom.cameraPath {
+            if let transition = zoom.transition { return transition.effect(path: path, span: zoom.span, at: time) }
+            if let effect = path.effect(at: time) { return effect }
+        }
         let depth = TimelineZoomAnimator.animatedDepth(for: zoom, at: time)
         let focus = TimelineZoomFocusResolver.focus(
             for: zoom,
@@ -431,6 +463,13 @@ enum TimelineZoomCanvasTransform {
             .concatenating(CGAffineTransform(translationX: focus.x, y: focus.y))
     }
 
+    static func previewEffect(edits: TimelineEditSnapshot, sourceTime: Double, duration: Double,
+                              cursorTrack: CursorTelemetryTrack? = nil) -> TimelineZoomEffect? {
+        let plan = TimelineExportEditPlan.build(duration: duration, edits: edits)
+        guard let outputTime = plan.outputTime(forSourceTime: sourceTime) else { return nil }
+        return activeEffect(edits: edits, editPlan: plan, outputTime: outputTime, cursorTrack: cursorTrack)
+    }
+
     static func activeEffect(
         edits: TimelineEditSnapshot,
         editPlan: TimelineExportEditPlan,
@@ -439,10 +478,18 @@ enum TimelineZoomCanvasTransform {
     ) -> TimelineZoomEffect? {
         guard outputTime.isFinite else { return nil }
         guard let sourceTime = editPlan.sourceTime(forOutputTime: outputTime),
-              let zoom = edits.activeZoom(at: sourceTime),
-              let outputSpan = editPlan.outputSpans(forSourceSpan: zoom.span).last(where: { $0.contains(outputTime) }) else { return nil }
-        if let effect = zoom.cameraPath?.effect(at: sourceTime) { return effect }
-        let progress = TimelineZoomAnimator.animationProgress(for: outputSpan, preset: zoom.animationPreset, at: outputTime)
+              let zoom = edits.activeZoom(at: sourceTime) else { return nil }
+        let spans = editPlan.outputSpans(forSourceSpan: zoom.span)
+        guard let first = spans.first, let last = spans.last else { return nil }
+        // A zoom owns one envelope across cuts, speed changes and layout boundaries.
+        // Export-plan fragments must not restart its entrance or exit.
+        let outputSpan = TimelineSpan(start: first.start, end: last.end)
+        if let path = zoom.cameraPath {
+            if let transition = zoom.transition { return transition.effect(path: path, span: outputSpan, at: outputTime) }
+            if let effect = path.effect(at: sourceTime) { return effect }
+        }
+        let progress = zoom.transition?.envelope(in: outputSpan, at: outputTime)
+            ?? TimelineZoomAnimator.animationProgress(for: outputSpan, preset: zoom.animationPreset, at: outputTime)
         let depth = 1 + (max(1, zoom.depth) - 1) * progress
         let focus = TimelineZoomFocusResolver.focus(
             for: zoom,
@@ -472,7 +519,8 @@ enum TimelineZoomAnimator {
     }
 
     static func animationProgress(for zoom: TimelineZoomRegion, at time: Double) -> Double {
-        animationProgress(for: zoom.span, preset: zoom.animationPreset, at: time)
+        zoom.transition?.envelope(in: zoom.span, at: time)
+            ?? animationProgress(for: zoom.span, preset: zoom.animationPreset, at: time)
     }
 
     static func animationProgress(for span: TimelineSpan, preset: TimelineZoomAnimationPreset, at time: Double) -> Double {
@@ -564,6 +612,8 @@ struct TimelineEditState: Equatable {
     }
 }
 
+enum TimelineCameraResizeEdge { case leading, trailing }
+
 enum TimelineEditEvent: Equatable {
     case applySnapshot(TimelineEditSnapshot)
     case replaceCaptions(CaptionTrack?)
@@ -575,8 +625,11 @@ enum TimelineEditEvent: Equatable {
     case ensureCameraClips(duration: Double, fallback: FacecamSettings?)
     case splitCameraClip(currentTime: Double, duration: Double, fallback: FacecamSettings?)
     case deleteRecordingClip(index: Int, duration: Double)
+    case setCameraLayout(CameraLayout, currentTime: Double, duration: Double, fallback: FacecamSettings?)
     case selectCameraClip(TimelineRegionID)
     case updateCameraClipSettings(id: TimelineRegionID, settings: FacecamSettings)
+    case resizeCameraClip(id: TimelineRegionID, edge: TimelineCameraResizeEdge, time: Double, duration: Double)
+    case applyCameraTransition(CameraLayoutTransition, ids: [TimelineRegionID])
     case mergeCameraClip(id: TimelineRegionID, direction: TimelineCameraMergeDirection)
     case deleteCameraClip(id: TimelineRegionID, duration: Double, fallback: FacecamSettings?)
     case select(TimelineRegionKind?, TimelineRegionID?)
@@ -592,6 +645,8 @@ enum TimelineEditEvent: Equatable {
     case updateZoomDepth(id: TimelineRegionID, depth: Double)
     case updateZoomFocus(id: TimelineRegionID, focusX: Double?, focusY: Double?)
     case updateZoomAnimationPreset(id: TimelineRegionID, preset: TimelineZoomAnimationPreset)
+    case updateZoomTransition(id: TimelineRegionID, transition: TimelineZoomTransition?)
+    case applyZoomTransition(TimelineZoomTransition, ids: [TimelineRegionID])
     case updateAnnotationText(id: TimelineRegionID, text: String)
     case removeClipSplit(splitTime: Double, duration: Double)
 }
@@ -646,6 +701,10 @@ extension TimelineEditState {
             splitCameraClip(at: currentTime, duration: duration, fallback: fallback)
             return []
 
+        case .setCameraLayout(let layout, let currentTime, let duration, let fallback):
+            setCameraLayout(layout, at: currentTime, duration: duration, fallback: fallback)
+            return []
+
         case .deleteRecordingClip(let index, let duration):
             deleteRecordingClip(index: index, duration: duration)
             return []
@@ -656,6 +715,18 @@ extension TimelineEditState {
 
         case .updateCameraClipSettings(let id, let settings):
             updateCameraClipSettings(id: id, settings: settings)
+            return []
+
+        case .resizeCameraClip(let id, let edge, let time, let duration):
+            resizeCameraClip(id: id, edge: edge, time: time, duration: duration)
+            return []
+
+        case .applyCameraTransition(let transition, let ids):
+            let targets = Set(ids)
+            for index in snapshot.cameraClips.indices where targets.contains(snapshot.cameraClips[index].id) {
+                snapshot.cameraClips[index].settings.layoutTransition = transition.clamped
+            }
+            statusMessage = "Applied camera transition."
             return []
 
         case .mergeCameraClip(let id, let direction):
@@ -716,6 +787,21 @@ extension TimelineEditState {
 
         case .updateZoomAnimationPreset(let id, let preset):
             updateZoomAnimationPreset(id: id, preset: preset)
+            return []
+
+        case .applyZoomTransition(let transition, let ids):
+            let targets = Set(ids)
+            for index in snapshot.zoomRegions.indices where targets.contains(snapshot.zoomRegions[index].id) {
+                snapshot.zoomRegions[index].transition = transition.clamped
+                snapshot.zoomRegions[index].isUserEdited = true
+            }
+            return []
+
+        case .updateZoomTransition(let id, let transition):
+            mutate(&snapshot.zoomRegions, id: id) { region in
+                region.transition = transition?.clamped
+                region.isUserEdited = true
+            }
             return []
 
         case .updateAnnotationText(let id, let text):
@@ -893,6 +979,35 @@ extension TimelineEditState {
         snapshot.cameraClips = clips
         selectCameraClip(id: right.id)
         statusMessage = "Split camera at \(formatPlaybackTime(splitTime))."
+    }
+
+    private mutating func setCameraLayout(_ layout: CameraLayout, at time: Double, duration: Double, fallback: FacecamSettings?) {
+        guard time.isFinite, duration.isFinite, duration > 0, time >= 0, time < duration else { return }
+        ensureCameraClips(duration: duration, fallback: fallback)
+        let time = min(max(time, 0), duration)
+        guard let original = snapshot.cameraClips.last(where: {
+            time >= $0.span.start && time < $0.span.end
+        }) else { return }
+        // Choosing the current layout should not create an unnecessary boundary.
+        guard original.settings.resolvedLayout != layout else {
+            selectCameraClip(id: original.id)
+            return
+        }
+        let minimumDistance = min(0.05, duration / 4)
+        if time > original.span.start {
+            guard time > original.span.start + minimumDistance && time < original.span.end - minimumDistance else {
+                statusMessage = "Move the playhead farther from the camera segment’s edge to change layouts."
+                return
+            }
+            splitCameraClip(at: time, duration: duration, fallback: fallback)
+        }
+        guard let clip = snapshot.cameraClips.last(where: {
+            time >= $0.span.start && time < $0.span.end
+        }) else { return }
+        var settings = clip.settings
+        settings.layout = layout.rawValue
+        updateCameraClipSettings(id: clip.id, settings: settings)
+        statusMessage = "Changed camera layout to \(layout.title) at \(formatPlaybackTime(clip.span.start))."
     }
 
     private mutating func select(_ kind: TimelineRegionKind?, id: TimelineRegionID?) {
@@ -1135,6 +1250,7 @@ extension TimelineEditState {
                 }
                 region.cameraPath = path
             }
+            region.transition = nil
             region.animationPreset = preset
             region.isUserEdited = true
         }
@@ -1151,6 +1267,39 @@ extension TimelineEditState {
         }
         selectedCameraClipID = id
         statusMessage = "Updated camera settings."
+    }
+
+    private mutating func resizeCameraClip(id: TimelineRegionID, edge: TimelineCameraResizeEdge,
+                                          time: Double, duration: Double) {
+        guard time.isFinite, duration.isFinite, duration > 0 else { return }
+        var clips = snapshot.cameraClips.sorted { $0.span.start < $1.span.start }
+        guard let index = clips.firstIndex(where: { $0.id == id }) else { return }
+        let span = clips[index].span
+        let minimum = min(0.1, span.duration)
+        guard minimum > 0 else { return }
+        switch edge {
+        case .leading:
+            let previous = index > 0 ? clips[index - 1].span : nil
+            let linked = previous.map { abs($0.end - span.start) < 0.001 } ?? false
+            let lower = previous.map { linked ? $0.start + min(0.1, $0.duration) : $0.end } ?? 0
+            let upper = span.end - minimum
+            guard lower <= upper else { return }
+            let boundary = min(upper, max(lower, time))
+            clips[index].span.start = boundary
+            if linked { clips[index - 1].span.end = boundary }
+        case .trailing:
+            let next = index + 1 < clips.count ? clips[index + 1].span : nil
+            let linked = next.map { abs($0.start - span.end) < 0.001 } ?? false
+            let lower = span.start + minimum
+            let upper = next.map { linked ? $0.end - min(0.1, $0.duration) : $0.start } ?? duration
+            guard lower <= upper else { return }
+            let boundary = min(upper, max(lower, time))
+            clips[index].span.end = boundary
+            if linked { clips[index + 1].span.start = boundary }
+        }
+        snapshot.cameraClips = clips
+        selectCameraClip(id: id)
+        statusMessage = "Resized camera layout."
     }
 
     private mutating func mergeCameraClip(id: TimelineRegionID, direction: TimelineCameraMergeDirection) {
@@ -1515,6 +1664,14 @@ final class TimelineEditDriver {
         send(.updateZoomFocus(id: id, focusX: focusX, focusY: focusY))
     }
 
+    func applyZoomTransition(_ transition: TimelineZoomTransition, to ids: [TimelineRegionID]) {
+        send(.applyZoomTransition(transition, ids: ids))
+    }
+
+    func updateZoomTransition(id: TimelineRegionID, transition: TimelineZoomTransition?) {
+        send(.updateZoomTransition(id: id, transition: transition))
+    }
+
     func updateZoomAnimationPreset(id: TimelineRegionID, preset: TimelineZoomAnimationPreset) {
         send(.updateZoomAnimationPreset(id: id, preset: preset))
     }
@@ -1535,8 +1692,20 @@ final class TimelineEditDriver {
         state.snapshot.resolvedCameraClips(duration: duration, fallback: fallback)
     }
 
+    func setCameraLayout(_ layout: CameraLayout, at time: Double, duration: Double, fallback: FacecamSettings?) {
+        send(.setCameraLayout(layout, currentTime: time, duration: duration, fallback: fallback))
+    }
+
     func updateCameraClipSettings(id: TimelineRegionID, settings: FacecamSettings) {
         send(.updateCameraClipSettings(id: id, settings: settings))
+    }
+
+    func resizeCameraClip(id: TimelineRegionID, edge: TimelineCameraResizeEdge, time: Double, duration: Double) {
+        send(.resizeCameraClip(id: id, edge: edge, time: time, duration: duration))
+    }
+
+    func applyCameraTransition(_ transition: CameraLayoutTransition, to ids: [TimelineRegionID]) {
+        send(.applyCameraTransition(transition, ids: ids))
     }
 
     func mergeCameraClip(id: TimelineRegionID, direction: TimelineCameraMergeDirection) {
