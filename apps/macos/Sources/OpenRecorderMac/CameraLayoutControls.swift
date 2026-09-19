@@ -6,12 +6,7 @@ struct CameraLayoutControls: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Picker("Layout", selection: layoutBinding) {
-                ForEach(CameraLayout.allCases) { layout in
-                    Text(layout.title).tag(layout)
-                }
-            }
-            .pickerStyle(.menu)
+            CameraLayoutPicker(selection: layoutBinding)
             if layoutBinding.wrappedValue.hasScreenPanel {
                 Picker("Camera side", selection: sideBinding) {
                     Text("Left").tag(true)
@@ -77,6 +72,88 @@ struct CameraLayoutControls: View {
     private var widthBinding: Binding<Double> { value(\.cameraWidthPercent, resolved: \.resolvedCameraWidth) }
     private var gapBinding: Binding<Double> { value(\.layoutGap, resolved: \.resolvedLayoutGap) }
     private var paddingBinding: Binding<Double> { value(\.layoutPadding, resolved: \.resolvedLayoutPadding) }
+}
+
+
+private struct CameraLayoutPicker: View {
+    @Binding var selection: CameraLayout
+    private let columns = Array(repeating: GridItem(.flexible(minimum: 0), spacing: 6), count: 2)
+
+    var body: some View {
+        LazyVGrid(columns: columns, spacing: 6) {
+            ForEach(CameraLayout.allCases) { layout in
+                let isSelected = selection == layout
+                StudioButton(hitTarget: .rounded(Theme.radiusMd), help: layout.title) {
+                    selection = layout
+                } label: {
+                    VStack(spacing: 5) {
+                        CameraLayoutThumbnail(layout: layout)
+                            .frame(width: 50, height: 34)
+                            .accessibilityHidden(true)
+                        Text(layout == .sideBySide ? "Screen + camera" : layout.title)
+                            .font(.system(size: 10, weight: .semibold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.78)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 58)
+                    .foregroundStyle(isSelected ? Color.white : Color.primary.opacity(0.86))
+                    .background(isSelected ? Color.white.opacity(0.18) : Theme.overlay,
+                                in: RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous)
+                            .stroke(isSelected ? Color.white.opacity(0.85) : Theme.overlay)
+                    }
+                }
+                .accessibilityLabel(layout.title)
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Camera layout")
+    }
+}
+
+private struct CameraLayoutThumbnail: View {
+    var layout: CameraLayout
+
+    var body: some View {
+        Group {
+            switch layout {
+            case .overlay:
+                panel(width: 48, height: 28, camera: false)
+                    .overlay(alignment: .bottomTrailing) {
+                        panel(width: 16, height: 16, camera: true).padding(2)
+                    }
+            case .cameraOnly:
+                panel(width: 48, height: 28, camera: true)
+            case .split:
+                HStack(spacing: 4) {
+                    panel(width: 22, height: 28, camera: true)
+                    panel(width: 22, height: 28, camera: false)
+                }
+            case .sideBySide:
+                HStack(spacing: 4) {
+                    panel(width: 30, height: 28, camera: false)
+                    panel(width: 14, height: 14, camera: true)
+                }
+            }
+        }
+    }
+
+    private func panel(width: CGFloat, height: CGFloat, camera: Bool) -> some View {
+        RoundedRectangle(cornerRadius: 3, style: .continuous)
+            .fill(Color.primary.opacity(camera ? 0.35 : 0.08))
+            .overlay {
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .stroke(Color.primary.opacity(camera ? 0.85 : 0.45), lineWidth: 1)
+            }
+            .overlay {
+                Image(systemName: camera ? "person.fill" : "rectangle")
+                    .font(.system(size: min(width, height) * (camera ? 0.55 : 0.4), weight: .medium))
+            }
+            .frame(width: width, height: height)
+    }
 }
 
 
