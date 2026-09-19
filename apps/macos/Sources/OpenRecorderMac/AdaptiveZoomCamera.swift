@@ -103,7 +103,7 @@ struct AutoZoomGeometry {
             let normalizedHeight = context.height * sourceSize.height / cropRect.height * contentRect.height / canvasSize.height
             let fitDepth = max(1, min(1 / max(0.001, normalizedWidth), 1 / max(0.001, normalizedHeight)))
             depth = min(depth, fitDepth)
-            if let cameraSettings, cameraSettings.enabled {
+            if let cameraSettings, cameraSettings.enabled, cameraSettings.resolvedLayout == .overlay {
                 let camera = FacecamOverlayLayout.frame(in: canvasSize, settings: cameraSettings)
                 let required = CGRect(x: x - normalizedWidth * canvasSize.width / 2,
                     y: y - normalizedHeight * canvasSize.height / 2,

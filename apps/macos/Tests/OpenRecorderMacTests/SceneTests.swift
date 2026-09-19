@@ -114,7 +114,7 @@ final class SceneTests: XCTestCase {
         XCTAssertLessThan(try XCTUnwrap(bitmap.colorAt(x: 0, y: 0)).alphaComponent, 0.05)
     }
 
-    func testMetalPreviewOrientationMatchesPNG() throws {
+    func testMetalPreviewPreservesNativeImageCoordinates() throws {
         let device = try XCTUnwrap(MTLCreateSystemDefaultDevice())
         let queue = try XCTUnwrap(device.makeCommandQueue())
         let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm, width: 320, height: 180, mipmapped: false)
@@ -132,9 +132,33 @@ final class SceneTests: XCTestCase {
         }
         command.commit(); command.waitUntilCompleted()
         var pixel = [UInt8](repeating: 0, count: 4)
-        texture.getBytes(&pixel, bytesPerRow: 4, from: MTLRegionMake2D(80, 45, 1, 1), mipmapLevel: 0)
-        XCTAssertGreaterThan(pixel[2], 200, "Metal's displayed top-left must match the red top-left in PNG")
+        texture.getBytes(&pixel, bytesPerRow: 4, from: MTLRegionMake2D(80, 135, 1, 1), mipmapLevel: 0)
+        XCTAssertGreaterThan(pixel[2], 200, "Keep the red upper-left in native Core Image coordinates; presentation must not pre-flip it")
         XCTAssertLessThan(pixel[0], 30)
+    }
+
+    func testIOSurfaceMetalPreviewPreservesNativeImageCoordinates() throws {
+        let device = try XCTUnwrap(MTLCreateSystemDefaultDevice())
+        var buffer: CVPixelBuffer?
+        XCTAssertEqual(CVPixelBufferCreate(nil, 320, 180, kCVPixelFormatType_32BGRA,
+            [kCVPixelBufferIOSurfacePropertiesKey: [:], kCVPixelBufferMetalCompatibilityKey: true] as CFDictionary, &buffer), kCVReturnSuccess)
+        let pixels = try XCTUnwrap(buffer)
+        var cache: CVMetalTextureCache?
+        XCTAssertEqual(CVMetalTextureCacheCreate(nil, nil, device, nil, &cache), kCVReturnSuccess)
+        var wrapper: CVMetalTexture?
+        XCTAssertEqual(CVMetalTextureCacheCreateTextureFromImage(nil, try XCTUnwrap(cache), pixels, nil,
+            .bgra8Unorm, 320, 180, 0, &wrapper), kCVReturnSuccess)
+        let texture = try XCTUnwrap(CVMetalTextureGetTexture(try XCTUnwrap(wrapper)))
+        let command = try XCTUnwrap(device.makeCommandQueue()?.makeCommandBuffer())
+        let cg = try XCTUnwrap(try fixtureImage().cgImage(forProposedRect: nil, context: nil, hints: nil))
+        SceneMetalDisplay.render(CIImage(cgImage: cg), context: CIContext(mtlDevice: device), texture: texture, commandBuffer: command)
+        command.commit(); command.waitUntilCompleted()
+        CVPixelBufferLockBaseAddress(pixels, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(pixels, .readOnly) }
+        let base = try XCTUnwrap(CVPixelBufferGetBaseAddress(pixels)).assumingMemoryBound(to: UInt8.self)
+        let offset = 135 * CVPixelBufferGetBytesPerRow(pixels) + 80 * 4
+        XCTAssertGreaterThan(base[offset + 2], 200, "IOSurface-backed drawables must preserve native Core Image coordinates")
+        XCTAssertLessThan(base[offset], 30)
     }
 
     func testAnimatedStillCopyUsesDisplayedPose() {

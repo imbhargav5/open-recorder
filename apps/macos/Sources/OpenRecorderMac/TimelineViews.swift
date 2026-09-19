@@ -117,6 +117,30 @@ struct TimelinePanel: View {
             HStack(spacing: 8) {
                 TimelineTimeDisplay(currentTime: playback.currentTime, duration: playback.duration)
 
+                if hasRecordedCamera {
+                    Menu {
+                        Button("Start New Camera Segment Here") {
+                            playback.pause()
+                            edits.splitCameraClip(at: playback.currentTime, duration: playback.duration, fallback: defaultCameraSettings)
+                        }
+                        Divider()
+                        ForEach(CameraLayout.allCases) { layout in
+                            Button(layout.title) {
+                                playback.pause()
+                                edits.setCameraLayout(layout, at: playback.currentTime,
+                                    duration: playback.duration, fallback: defaultCameraSettings)
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "rectangle.split.2x1")
+                    }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                    .disabled(playback.duration <= 0 || playback.currentTime >= playback.duration)
+                    .accessibilityLabel("Camera layout at playhead")
+                    .help("Change camera layout from the playhead. Earlier camera settings are kept.")
+                }
+
                 Spacer()
 
                 TimelineEditToolButton(
@@ -1429,6 +1453,7 @@ private struct TimelineCameraClipItem: View {
 
     private var shapeTitle: String {
         guard clip.settings.clamped.enabled else { return "Hidden" }
+        if clip.settings.resolvedLayout != .overlay { return clip.settings.resolvedLayout.title }
         switch clip.settings.clamped.normalizedShape {
         case "circle": return "Circle"
         case "square": return "Square"
@@ -1439,6 +1464,12 @@ private struct TimelineCameraClipItem: View {
 
     private var shapeSymbolName: String {
         guard clip.settings.clamped.enabled else { return "camera.slash.fill" }
+        switch clip.settings.resolvedLayout {
+        case .cameraOnly: return "camera.fill"
+        case .split: return "rectangle.split.2x1"
+        case .sideBySide: return "rectangle.inset.filled.trailing"
+        case .overlay: break
+        }
         switch clip.settings.clamped.normalizedShape {
         case "circle": return "circle.fill"
         case "square": return "square.fill"
@@ -1483,10 +1514,35 @@ private struct TimelineCameraClipItem: View {
         .frame(width: itemWidth, height: TimelineMetrics.regionItemHeight)
         .position(x: startX + itemWidth / 2, y: TimelineMetrics.layerHeight / 2)
         .accessibilityLabel(clip.settings.clamped.enabled ? "Camera clip" : "Hidden camera clip")
-        .accessibilityValue(timeRangeDescription)
-        .accessibilityHint("Selects this camera clip.")
+        .accessibilityValue("\(shapeTitle), \(timeRangeDescription)")
+        .accessibilityHint("Select to edit this segment’s layout, width, corners, and face centering.")
         .accessibilityAddTraits(isSelected ? .isSelected : [])
         .contextMenu {
+            Menu("Layout for This Segment") {
+                ForEach(CameraLayout.allCases) { layout in
+                    Button {
+                        var settings = clip.settings
+                        settings.layout = layout.rawValue
+                        edits.updateCameraClipSettings(id: clip.id, settings: settings)
+                    } label: {
+                        if clip.settings.resolvedLayout == layout {
+                            Label(layout.title, systemImage: "checkmark")
+                        } else {
+                            Text(layout.title)
+                        }
+                    }
+                }
+            }
+            if clip.settings.resolvedLayout != .overlay {
+                Toggle("Keep Face Centered", isOn: Binding(
+                    get: { clip.settings.keepsFaceCentered },
+                    set: { value in
+                        var settings = clip.settings
+                        settings.centerFace = value
+                        edits.updateCameraClipSettings(id: clip.id, settings: settings)
+                    }))
+            }
+            Divider()
             Button {
                 edits.splitCameraClip(at: currentTime, duration: duration, fallback: fallbackSettings)
             } label: {

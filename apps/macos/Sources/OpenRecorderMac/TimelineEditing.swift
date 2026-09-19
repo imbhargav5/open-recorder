@@ -575,6 +575,7 @@ enum TimelineEditEvent: Equatable {
     case ensureCameraClips(duration: Double, fallback: FacecamSettings?)
     case splitCameraClip(currentTime: Double, duration: Double, fallback: FacecamSettings?)
     case deleteRecordingClip(index: Int, duration: Double)
+    case setCameraLayout(CameraLayout, currentTime: Double, duration: Double, fallback: FacecamSettings?)
     case selectCameraClip(TimelineRegionID)
     case updateCameraClipSettings(id: TimelineRegionID, settings: FacecamSettings)
     case mergeCameraClip(id: TimelineRegionID, direction: TimelineCameraMergeDirection)
@@ -644,6 +645,10 @@ extension TimelineEditState {
 
         case .splitCameraClip(let currentTime, let duration, let fallback):
             splitCameraClip(at: currentTime, duration: duration, fallback: fallback)
+            return []
+
+        case .setCameraLayout(let layout, let currentTime, let duration, let fallback):
+            setCameraLayout(layout, at: currentTime, duration: duration, fallback: fallback)
             return []
 
         case .deleteRecordingClip(let index, let duration):
@@ -893,6 +898,35 @@ extension TimelineEditState {
         snapshot.cameraClips = clips
         selectCameraClip(id: right.id)
         statusMessage = "Split camera at \(formatPlaybackTime(splitTime))."
+    }
+
+    private mutating func setCameraLayout(_ layout: CameraLayout, at time: Double, duration: Double, fallback: FacecamSettings?) {
+        guard time.isFinite, duration.isFinite, duration > 0, time >= 0, time < duration else { return }
+        ensureCameraClips(duration: duration, fallback: fallback)
+        let time = min(max(time, 0), duration)
+        guard let original = snapshot.cameraClips.last(where: {
+            time >= $0.span.start && time < $0.span.end
+        }) else { return }
+        // Choosing the current layout should not create an unnecessary boundary.
+        guard original.settings.resolvedLayout != layout else {
+            selectCameraClip(id: original.id)
+            return
+        }
+        let minimumDistance = min(0.05, duration / 4)
+        if time > original.span.start {
+            guard time > original.span.start + minimumDistance && time < original.span.end - minimumDistance else {
+                statusMessage = "Move the playhead farther from the camera segment’s edge to change layouts."
+                return
+            }
+            splitCameraClip(at: time, duration: duration, fallback: fallback)
+        }
+        guard let clip = snapshot.cameraClips.last(where: {
+            time >= $0.span.start && time < $0.span.end
+        }) else { return }
+        var settings = clip.settings
+        settings.layout = layout.rawValue
+        updateCameraClipSettings(id: clip.id, settings: settings)
+        statusMessage = "Changed camera layout to \(layout.title) at \(formatPlaybackTime(clip.span.start))."
     }
 
     private mutating func select(_ kind: TimelineRegionKind?, id: TimelineRegionID?) {
@@ -1533,6 +1567,10 @@ final class TimelineEditDriver {
 
     func resolvedCameraClips(duration: Double, fallback: FacecamSettings?) -> [TimelineCameraClip] {
         state.snapshot.resolvedCameraClips(duration: duration, fallback: fallback)
+    }
+
+    func setCameraLayout(_ layout: CameraLayout, at time: Double, duration: Double, fallback: FacecamSettings?) {
+        send(.setCameraLayout(layout, currentTime: time, duration: duration, fallback: fallback))
     }
 
     func updateCameraClipSettings(id: TimelineRegionID, settings: FacecamSettings) {

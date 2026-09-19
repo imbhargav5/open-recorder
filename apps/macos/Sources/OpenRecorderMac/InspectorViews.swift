@@ -25,6 +25,7 @@ struct SettingsInspector: View {
     @Binding var cursorSmoothing: Double
     @Binding var cursorStyleID: CursorStyleID
     var cameraSettings: Binding<FacecamSettings?>? = nil
+    var onCameraLayoutEditingChanged: (Bool) -> Void = { _ in }
     var recordingSession: RecordingSession?
     var captionController: CaptionController? = nil
     var captionEdits: TimelineEditDriver? = nil
@@ -271,18 +272,26 @@ struct SettingsInspector: View {
                     InspectorSwitch(title: "Show Facecam", isOn: cameraEnabledBinding)
                 }
 
-                InspectorGroup(title: "Position", symbolName: "square.grid.3x3") {
-                    PositionGrid(selection: cameraAnchorBinding)
+                InspectorGroup(title: "Layout", symbolName: "rectangle.split.2x1") {
+                    CameraLayoutControls(settings: resolvedCameraSettingsBinding, onEditingChanged: onCameraLayoutEditingChanged)
+                }
+
+                if (cameraSettings?.wrappedValue?.resolvedLayout ?? .overlay) == .overlay {
+                    InspectorGroup(title: "Position", symbolName: "square.grid.3x3") {
+                        PositionGrid(selection: cameraAnchorBinding)
+                    }
                 }
 
                 InspectorGroup(title: "Style", symbolName: "slider.horizontal.3") {
-                    InspectorSlider(
-                        title: "Size",
-                        valueText: "\(Int(cameraSizeBinding.wrappedValue.rounded()))%",
-                        value: cameraSizeBinding,
-                        range: 8...75,
-                        step: 1
-                    )
+                    if (cameraSettings?.wrappedValue?.resolvedLayout ?? .overlay) == .overlay {
+                        InspectorSlider(
+                            title: "Size",
+                            valueText: "\(Int(cameraSizeBinding.wrappedValue.rounded()))%",
+                            value: cameraSizeBinding,
+                            range: 8...75,
+                            step: 1
+                        )
+                    }
                     InspectorSlider(
                         title: "Corner Radius",
                         valueText: "\(Int(cameraCornerRadiusBinding.wrappedValue.rounded()))px",
@@ -290,13 +299,15 @@ struct SettingsInspector: View {
                         range: 0...100,
                         step: 1
                     )
-                    InspectorSlider(
-                        title: "Margin",
-                        valueText: "\(Int(cameraMarginBinding.wrappedValue.rounded()))%",
-                        value: cameraMarginBinding,
-                        range: 0...24,
-                        step: 1
-                    )
+                    if (cameraSettings?.wrappedValue?.resolvedLayout ?? .overlay) == .overlay {
+                        InspectorSlider(
+                            title: "Margin",
+                            valueText: "\(Int(cameraMarginBinding.wrappedValue.rounded()))%",
+                            value: cameraMarginBinding,
+                            range: 0...24,
+                            step: 1
+                        )
+                    }
                     InspectorSlider(
                         title: "Border",
                         valueText: "\(Int(cameraBorderWidthBinding.wrappedValue.rounded()))px",
@@ -340,6 +351,11 @@ struct SettingsInspector: View {
                 SessionAssetRow(title: "Source", path: sourceName)
             }
         }
+    }
+
+    private var resolvedCameraSettingsBinding: Binding<FacecamSettings> {
+        Binding(get: { cameraSettings?.wrappedValue ?? defaultFacecamSettings(enabled: true) },
+                set: { cameraSettings?.wrappedValue = $0.clamped })
     }
 
     private var cameraEnabledBinding: Binding<Bool> {

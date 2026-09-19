@@ -1,6 +1,7 @@
 import AVFoundation
 import AppKit
 import CoreGraphics
+import CoreImage
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -134,7 +135,9 @@ struct VideoPreviewPanel: View {
                 if videoURL != nil {
                     AspectRatioFitContainer(aspectRatio: previewAspectRatio) {
                         Group {
-                            if scene.isActive { sceneStage } else { styledStage }
+                            if facecamVideoURL != nil {
+                                cameraLayoutStage
+                            } else if scene.isActive { sceneStage } else { styledStage }
                         }
                         .modifier(SceneCanvasGesture(enabled: showsSceneTools, tool: sceneTool,
                             pose: scenePoseBinding(settings: $scene, endpoint: sceneEndpoint), onEditingChanged: onSceneEditingChanged))
@@ -246,6 +249,23 @@ struct VideoPreviewPanel: View {
         VideoExportOptions.default.with(background: background, padding: padding, borderRadius: borderRadius,
             shadow: shadow, backgroundBlur: backgroundBlur, inset: inset, insetColor: insetColor,
             insetOpacity: insetOpacity, insetBalance: insetBalance).styling
+    }
+
+    private var cameraLayoutStage: some View {
+        SceneVideoPreview(player: playback.player, sourceSize: playback.naturalVideoSize,
+            cropSelection: cropSelection, settings: scene, styling: sceneStyling,
+            edits: timelineEdits.snapshot, duration: playback.duration, cursorTrack: cursorTrack,
+            cursorSettings: cursorSettings, cameraSettings: cameraTimelineFallback ?? facecamSettings,
+            usesCameraLayout: true, facecamURL: facecamVideoURL, facecamOffsetMs: recordingSession?.facecamOffsetMs,
+            onPreviewStatus: { scenePreviewStatus = $0 })
+            .overlay {
+                if let scenePreviewStatus {
+                    Text(scenePreviewStatus).font(.callout).padding(20).background(Theme.sidebarBg)
+                }
+            }
+            .onAppear { playback.setTimelineEdits(timelineEdits.snapshot) }
+            .onChange(of: timelineEdits.snapshot) { _, edits in playback.setTimelineEdits(edits) }
+            .clipped()
     }
 
     private var sceneStage: some View {
@@ -833,6 +853,10 @@ struct FacecamOverlayLayout {
             return .zero
         }
 
+        if resolved.resolvedLayout != .overlay {
+            return CameraLayoutGeometry.frames(in: containerSize, screenAspectRatio: 1, settings: resolved).camera
+        }
+
         let baseLength = min(containerSize.width, containerSize.height)
         let baseSide = max(1, min(baseLength * CGFloat(resolved.size / 100), baseLength))
         let width: CGFloat
@@ -908,17 +932,17 @@ private struct FacecamPlaybackOverlay: View {
                resolvedSettings.enabled,
                isActiveAtCurrentTime,
                !frame.isEmpty {
-                FacecamPlayerView(player: player)
+                FacecamPlayerView(player: player, keepsFaceCentered: resolvedSettings.keepsFaceCentered)
                     .frame(width: frame.width, height: frame.height)
-                    .clipShape(RoundedRectangle(cornerRadius: cornerRadius(for: frame, settings: resolvedSettings), style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: cornerRadius(for: frame, settings: resolvedSettings, canvas: proxy.size), style: .continuous))
                     .overlay {
-                        RoundedRectangle(cornerRadius: cornerRadius(for: frame, settings: resolvedSettings), style: .continuous)
+                        RoundedRectangle(cornerRadius: cornerRadius(for: frame, settings: resolvedSettings, canvas: proxy.size), style: .continuous)
                             .stroke(
                                 SerializableColor(hex: resolvedSettings.borderColor).color,
-                                lineWidth: CGFloat(resolvedSettings.borderWidth)
+                                lineWidth: CGFloat(resolvedSettings.borderWidth) * CameraLayoutGeometry.decorationScale(in: proxy.size, settings: resolvedSettings)
                             )
                     }
-                    .shadow(color: Color.black.opacity(0.34), radius: 16, y: 8)
+                    .shadow(color: Color.black.opacity(resolvedSettings.resolvedLayout == .overlay ? 0.34 : 0), radius: 16, y: 8)
                     .position(x: frame.midX, y: frame.midY)
                     .accessibilityLabel("Facecam preview")
             }
@@ -1003,12 +1027,12 @@ private struct FacecamPlaybackOverlay: View {
         screenTime - (Double(offsetMs ?? 0) / 1000)
     }
 
-    private func cornerRadius(for frame: CGRect, settings: FacecamSettings) -> CGFloat {
+    private func cornerRadius(for frame: CGRect, settings: FacecamSettings, canvas: CGSize) -> CGFloat {
         if settings.isCircle {
             return min(frame.width, frame.height) / 2
         }
 
-        return min(CGFloat(settings.cornerRadius), min(frame.width, frame.height) / 2)
+        return min(CGFloat(settings.cornerRadius) * CameraLayoutGeometry.decorationScale(in: canvas, settings: settings), min(frame.width, frame.height) / 2)
     }
 }
 
@@ -1235,6 +1259,10 @@ final class PlayerLayerView: NSView {
         }
     }
 
+    var faceFocus: CGPoint? {
+        didSet { layoutPlayerLayers() }
+    }
+
     private func layoutPlayerLayers() {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
@@ -1245,7 +1273,13 @@ final class PlayerLayerView: NSView {
         contentLayer.anchorPoint = .zero
         contentLayer.position = .zero
         contentLayer.setAffineTransform(zoomTransform)
-        playbackLayer.frame = layerBounds
+        if let focus = faceFocus, let sourceSize = playbackLayer.player?.currentItem?.presentationSize,
+           sourceSize.width > 0, sourceSize.height > 0 {
+            playbackLayer.frame = CameraFaceFraming.imageFrame(source: sourceSize, target: layerBounds,
+                focus: CGPoint(x: focus.x, y: 1 - focus.y))
+        } else {
+            playbackLayer.frame = layerBounds
+        }
 
         CATransaction.commit()
     }
@@ -1286,20 +1320,97 @@ struct NativeVideoPlayer: NSViewRepresentable {
 
 struct FacecamPlayerView: NSViewRepresentable {
     var player: AVPlayer?
+    var keepsFaceCentered = false
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
 
     func makeNSView(context: Context) -> PlayerLayerView {
         let view = PlayerLayerView()
         view.videoGravity = .resizeAspectFill
         view.update(player: player)
+        context.coordinator.update(view: view, player: player, enabled: keepsFaceCentered)
         return view
     }
 
     func updateNSView(_ nsView: PlayerLayerView, context: Context) {
         nsView.videoGravity = .resizeAspectFill
         nsView.update(player: player)
+        context.coordinator.update(view: nsView, player: player, enabled: keepsFaceCentered)
     }
 
-    static func dismantleNSView(_ nsView: PlayerLayerView, coordinator: ()) {
+    static func dismantleNSView(_ nsView: PlayerLayerView, coordinator: Coordinator) {
+        coordinator.stop()
         nsView.playerLayer.player = nil
+    }
+
+    @MainActor
+    final class Coordinator {
+        private weak var view: PlayerLayerView?
+        private var item: AVPlayerItem?
+        private var output: AVPlayerItemVideoOutput?
+        private var timer: Timer?
+        private var metadataTask: Task<Void, Never>?
+        private var transform = CGAffineTransform.identity
+        private var processing = false
+        private var generation = 0
+        private let queue = DispatchQueue(label: "open-recorder.camera-face-focus", qos: .userInitiated)
+        private var tracker = CameraFaceTracker()
+
+        func update(view: PlayerLayerView, player: AVPlayer?, enabled: Bool) {
+            self.view = view
+            guard enabled, let nextItem = player?.currentItem else {
+                stop()
+                view.faceFocus = nil
+                return
+            }
+            guard item !== nextItem else { return }
+            stop()
+            item = nextItem
+            tracker = CameraFaceTracker()
+            view.faceFocus = CGPoint(x: 0.5, y: 0.5)
+            let nextOutput = AVPlayerItemVideoOutput(pixelBufferAttributes: [
+                kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32BGRA)])
+            output = nextOutput
+            nextItem.add(nextOutput)
+            metadataTask = Task { [weak self] in
+                let track = try? await nextItem.asset.loadTracks(withMediaType: .video).first
+                let preferred = try? await track?.load(.preferredTransform)
+                guard !Task.isCancelled, let self, self.item === nextItem else { return }
+                self.transform = preferred ?? .identity
+                self.sample()
+            }
+            timer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated { self?.sample() }
+            }
+            if let timer { RunLoop.main.add(timer, forMode: .common) }
+        }
+
+        func stop() {
+            timer?.invalidate(); timer = nil
+            metadataTask?.cancel(); metadataTask = nil
+            if let output { item?.remove(output) }
+            output = nil; item = nil
+            generation += 1
+            processing = false
+            transform = .identity
+        }
+
+        private func sample() {
+            guard !processing, let item, let output,
+                  let frame = output.copyPixelBuffer(forItemTime: item.currentTime(), itemTimeForDisplay: nil) else { return }
+            let image = CIImage(cvPixelBuffer: frame).transformed(by: transform)
+            let time = item.currentTime().seconds
+            let generation = generation
+            let tracker = tracker
+            processing = true
+            queue.async { [weak self] in
+                let focus = tracker.focus(in: image, at: time)
+                DispatchQueue.main.async {
+                    guard let self, self.generation == generation else { return }
+                    self.processing = false
+                    self.view?.faceFocus = focus
+                }
+            }
+        }
     }
 }
