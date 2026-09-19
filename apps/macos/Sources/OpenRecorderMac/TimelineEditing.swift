@@ -578,6 +578,7 @@ enum TimelineEditEvent: Equatable {
     case setCameraLayout(CameraLayout, currentTime: Double, duration: Double, fallback: FacecamSettings?)
     case selectCameraClip(TimelineRegionID)
     case updateCameraClipSettings(id: TimelineRegionID, settings: FacecamSettings)
+    case applyCameraTransition(CameraLayoutTransition, ids: [TimelineRegionID])
     case mergeCameraClip(id: TimelineRegionID, direction: TimelineCameraMergeDirection)
     case deleteCameraClip(id: TimelineRegionID, duration: Double, fallback: FacecamSettings?)
     case select(TimelineRegionKind?, TimelineRegionID?)
@@ -661,6 +662,14 @@ extension TimelineEditState {
 
         case .updateCameraClipSettings(let id, let settings):
             updateCameraClipSettings(id: id, settings: settings)
+            return []
+
+        case .applyCameraTransition(let transition, let ids):
+            let targets = Set(ids)
+            for index in snapshot.cameraClips.indices where targets.contains(snapshot.cameraClips[index].id) {
+                snapshot.cameraClips[index].settings.layoutTransition = transition.clamped
+            }
+            statusMessage = "Applied camera transition."
             return []
 
         case .mergeCameraClip(let id, let direction):
@@ -1575,6 +1584,10 @@ final class TimelineEditDriver {
 
     func updateCameraClipSettings(id: TimelineRegionID, settings: FacecamSettings) {
         send(.updateCameraClipSettings(id: id, settings: settings))
+    }
+
+    func applyCameraTransition(_ transition: CameraLayoutTransition, to ids: [TimelineRegionID]) {
+        send(.applyCameraTransition(transition, ids: ids))
     }
 
     func mergeCameraClip(id: TimelineRegionID, direction: TimelineCameraMergeDirection) {

@@ -25,6 +25,19 @@ struct CameraLayoutTransition: Codable, Hashable, Sendable {
     var bounce: Double = 0.25
     var blur: Double = 0
     var fade: Double = 0
+    var blurStart: Double? = nil
+    var blurDuration: Double? = nil
+
+    var resolvedBlurStart: Double { CameraLayoutGeometry.clamp(blurStart, to: 0...2, fallback: 0) }
+    var resolvedBlurDuration: Double { CameraLayoutGeometry.clamp(blurDuration, to: 0.05...2, fallback: 0.2) }
+
+    /// Seconds are measured on the playback clock, independent of motion duration.
+    func blurEnvelope(at elapsed: Double, transitionDuration: Double) -> Double {
+        let start = resolvedBlurStart
+        let end = min(transitionDuration, start + resolvedBlurDuration)
+        guard elapsed > start, elapsed < end, end > start else { return 0 }
+        return pow(sin(.pi * (elapsed - start) / (end - start)), 2)
+    }
 
     var clamped: Self {
         var result = self
@@ -32,6 +45,8 @@ struct CameraLayoutTransition: Codable, Hashable, Sendable {
         result.bounce = CameraLayoutGeometry.clamp(bounce, to: 0...1, fallback: 0.25)
         result.blur = CameraLayoutGeometry.clamp(blur, to: 0...1, fallback: 0)
         result.fade = CameraLayoutGeometry.clamp(fade, to: 0...1, fallback: 0)
+        result.blurStart = blurStart.map { _ in resolvedBlurStart }
+        result.blurDuration = blurDuration.map { _ in resolvedBlurDuration }
         return result
     }
 

@@ -67,14 +67,20 @@ enum CameraLayoutMotion {
     static let duration = CameraLayoutTransition().duration
 
     static func sample(from start: CameraLayoutPresentation, to target: CameraLayoutPresentation,
-                       fraction: Double, transition: CameraLayoutTransition) -> CameraLayoutPresentation {
+                       fraction: Double, transition: CameraLayoutTransition, effectiveDuration: Double? = nil) -> CameraLayoutPresentation {
         guard fraction > 0 else { return start }
         guard fraction < 1 else { return target }
         let transition = transition.clamped
         var result = start.interpolated(to: target, progress: transition.progress(at: fraction))
         result.transitionActive = true
         let pulse = CGFloat(pow(sin(.pi * fraction), 2))
-        result.transitionBlur += CGFloat(transition.blur) * pulse
+        let interval = effectiveDuration ?? transition.duration
+        let elapsed = fraction * interval
+        // Carry an interrupted live blur briefly, then clear it independently of
+        // the new layout's spring settling. It must never leak past the boundary.
+        let carry = 1 - ease(elapsed / max(0.001, min(0.12, interval)))
+        result.transitionBlur = CGFloat(transition.blur * transition.blurEnvelope(at: elapsed, transitionDuration: interval))
+            + start.transitionBlur * CGFloat(carry)
         result.transitionFade += CGFloat(transition.fade) * pulse
         return result
     }
@@ -113,7 +119,7 @@ enum CameraLayoutMotion {
         let interval = min(transition.duration, current.span.duration)
         guard interval > 0, time < current.span.start + interval else { return target }
         let start = CameraLayoutPresentation.layout(previous.settings, canvas: canvas, crop: crop, styling: styling)
-        return sample(from: start, to: target, fraction: (time - current.span.start) / interval, transition: transition)
+        return sample(from: start, to: target, fraction: (time - current.span.start) / interval, transition: transition, effectiveDuration: interval)
     }
 }
 
@@ -139,7 +145,7 @@ struct CameraLayoutLiveMotion {
     func value(at time: Double) -> CameraLayoutPresentation? {
         guard let target, let start else { return target }
         guard interval > 0 else { return target }
-        return CameraLayoutMotion.sample(from: start, to: target, fraction: (time - startTime) / interval, transition: transition)
+        return CameraLayoutMotion.sample(from: start, to: target, fraction: (time - startTime) / interval, transition: transition, effectiveDuration: interval)
     }
 
     func isAnimating(at time: Double) -> Bool { interval > 0 && time < startTime + interval }

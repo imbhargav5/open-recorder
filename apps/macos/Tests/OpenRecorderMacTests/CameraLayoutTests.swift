@@ -230,7 +230,7 @@ final class CameraLayoutTests: XCTestCase {
     func testCustomTransitionTimingMatchesLivePreviewAndShortSegmentsSettle() throws {
         let before = camera(.overlay)
         var after = camera(.split)
-        after.layoutTransition = .init(duration: 1.2, motion: .spring, bounce: 0.6, blur: 0.3, fade: 0.4)
+        after.layoutTransition = .init(duration: 1.2, motion: .spring, bounce: 0.6, blur: 0.3, fade: 0.4, blurDuration: 1.2)
         let crop = CGRect(origin: .zero, size: canvas)
         let a = CameraLayoutPresentation.layout(before, canvas: canvas, crop: crop, styling: .none)
         let b = CameraLayoutPresentation.layout(after, canvas: canvas, crop: crop, styling: .none)
@@ -256,7 +256,7 @@ final class CameraLayoutTests: XCTestCase {
     func testSelectedTransitionDurationIsIndependentOfIncomingSegmentLength() {
         let before = camera(.overlay)
         var after = camera(.split)
-        after.layoutTransition = .init(duration: 1.5, easing: .linear, blur: 0.4, fade: 0.3)
+        after.layoutTransition = .init(duration: 1.5, easing: .linear, blur: 0.4, fade: 0.3, blurDuration: 1.5)
         let crop = CGRect(origin: .zero, size: canvas)
         let a = CameraLayoutPresentation.layout(before, canvas: canvas, crop: crop, styling: .none)
         let b = CameraLayoutPresentation.layout(after, canvas: canvas, crop: crop, styling: .none)

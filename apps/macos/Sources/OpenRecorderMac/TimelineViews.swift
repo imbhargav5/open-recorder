@@ -1518,6 +1518,26 @@ private struct TimelineCameraClipItem: View {
         .accessibilityHint("Select to edit this segment’s layout, width, corners, and face centering.")
         .accessibilityAddTraits(isSelected ? .isSelected : [])
         .contextMenu {
+            Button {
+                CameraTransitionStore.shared.copy(clip.settings.resolvedLayoutTransition)
+            } label: {
+                Label("Copy Transition", systemImage: "doc.on.doc")
+            }
+            Button {
+                if let transition = CameraTransitionStore.shared.copiedTransition {
+                    edits.applyCameraTransition(transition, to: [clip.id])
+                }
+            } label: {
+                Label("Paste Transition", systemImage: "doc.on.clipboard")
+            }
+            .disabled(CameraTransitionStore.shared.copiedTransition == nil)
+            Button {
+                edits.applyCameraTransition(clip.settings.resolvedLayoutTransition, to: edits.cameraClips.map(\.id))
+            } label: {
+                Label("Copy to All Transitions", systemImage: "rectangle.stack")
+            }
+            .disabled(edits.cameraClips.count < 2)
+            Divider()
             Menu("Layout for This Segment") {
                 ForEach(CameraLayout.allCases) { layout in
                     Button {

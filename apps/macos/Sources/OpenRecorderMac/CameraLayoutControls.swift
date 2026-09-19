@@ -232,10 +232,44 @@ private struct CameraLayoutThumbnail: View {
 private struct CameraTransitionControls: View {
     @Binding var settings: FacecamSettings
     var onEditingChanged: (Bool) -> Void
+    @State private var showsSavePreset = false
+    @State private var presetName = ""
+    private var store: CameraTransitionStore { .shared }
 
     var body: some View {
         DisclosureGroup("Layout transition") {
             VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Menu {
+                        Button("Smooth default") { settings.layoutTransition = nil }
+                        if !store.presets.isEmpty {
+                            Divider()
+                            ForEach(store.presets) { preset in
+                                Button {
+                                    settings.layoutTransition = preset.transition.clamped
+                                } label: {
+                                    if transition == preset.transition {
+                                        Label(preset.name, systemImage: "checkmark")
+                                    } else {
+                                        Text(preset.name)
+                                    }
+                                }
+                            }
+                            Divider()
+                            Menu("Delete Preset") {
+                                ForEach(store.presets) { preset in
+                                    Button(preset.name, role: .destructive) { store.delete(id: preset.id) }
+                                }
+                            }
+                        }
+                    } label: {
+                        Label("Presets", systemImage: "slider.horizontal.3")
+                    }
+                    Button("Save Preset…") {
+                        presetName = ""
+                        showsSavePreset = true
+                    }
+                }
                 InspectorSlider(title: "Duration", valueText: transition.duration == 0 ? "Instant" : String(format: "%.2f s", transition.duration),
                     value: value(\.duration), range: 0...2, step: 0.01, onEditingChanged: onEditingChanged)
                     .help("Shorter is faster. The chosen duration is used in playback and export. If the incoming segment is shorter, the transition uses its full length.")
@@ -256,10 +290,23 @@ private struct CameraTransitionControls: View {
                     }
                     InspectorSlider(title: "Blur", valueText: percent(transition.blur),
                         value: value(\.blur), range: 0...1, step: 0.01, onEditingChanged: onEditingChanged)
+                    if transition.blur > 0 {
+                        InspectorSlider(title: "Blur start", valueText: String(format: "%.2f s", transition.resolvedBlurStart),
+                            value: blurTime(\.blurStart, resolved: \.resolvedBlurStart), range: 0...2, step: 0.01,
+                            onEditingChanged: onEditingChanged)
+                        InspectorSlider(title: "Blur duration", valueText: String(format: "%.2f s", transition.resolvedBlurDuration),
+                            value: blurTime(\.blurDuration, resolved: \.resolvedBlurDuration), range: 0.05...2, step: 0.01,
+                            onEditingChanged: onEditingChanged)
+                        Text(transition.resolvedBlurStart >= transition.duration
+                             ? "Blur starts after the transition ends, so it won't be visible."
+                             : "Blur has its own timing and always clears by the end of the transition.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
                     InspectorSlider(title: "Fade", valueText: percent(transition.fade),
                         value: value(\.fade), range: 0...1, step: 0.01, onEditingChanged: onEditingChanged)
                 }
-                Text("Controls how the screen and camera move into this layout. Blur and fade peak midway, then clear.")
+                Text("Controls how the screen and camera move into this layout. Fade peaks midway; blur follows its own timing.")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                 Button("Reset transition") { settings.layoutTransition = nil }
@@ -268,10 +315,26 @@ private struct CameraTransitionControls: View {
             }
             .padding(.top, 8)
         }
+        .alert("Save Transition Preset", isPresented: $showsSavePreset) {
+            TextField("Preset name", text: $presetName)
+            Button("Cancel", role: .cancel) { }
+            Button("Save") { store.save(name: presetName, transition: transition) }
+                .disabled(presetName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        } message: {
+            Text("Save duration, motion, blur and fade to reuse in any project.")
+        }
     }
 
     private var transition: CameraLayoutTransition { settings.resolvedLayoutTransition }
     private func percent(_ value: Double) -> String { "\(Int((value * 100).rounded()))%" }
+    private func blurTime(_ keyPath: WritableKeyPath<CameraLayoutTransition, Double?>,
+                          resolved: KeyPath<CameraLayoutTransition, Double>) -> Binding<Double> {
+        Binding(get: { transition[keyPath: resolved] }, set: {
+            var next = transition
+            next[keyPath: keyPath] = $0
+            settings.layoutTransition = next.clamped
+        })
+    }
     private func value<T>(_ keyPath: WritableKeyPath<CameraLayoutTransition, T>) -> Binding<T> {
         Binding(get: { transition[keyPath: keyPath] }, set: {
             var next = transition
