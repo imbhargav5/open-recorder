@@ -1584,6 +1584,39 @@ private struct TimelineCameraClipItem: View {
                     }
                 }
             }
+            if clip.settings.resolvedLayout == .overlay {
+                Menu("Camera Position for This Segment") {
+                    ForEach(FacecamAnchor.allCases) { anchor in
+                        Button {
+                            var settings = clip.settings
+                            settings.anchor = anchor.rawValue
+                            edits.updateCameraClipSettings(id: clip.id, settings: settings)
+                        } label: {
+                            if clip.settings.resolvedAnchor == anchor {
+                                Label(anchor.title, systemImage: "checkmark")
+                            } else {
+                                Text(anchor.title)
+                            }
+                        }
+                    }
+                }
+            } else if clip.settings.resolvedLayout.hasScreenPanel {
+                Menu("Camera Side for This Segment") {
+                    ForEach([true, false], id: \.self) { left in
+                        Button {
+                            var settings = clip.settings
+                            settings.cameraOnLeft = left
+                            edits.updateCameraClipSettings(id: clip.id, settings: settings)
+                        } label: {
+                            if clip.settings.resolvedCameraOnLeft == left {
+                                Label(left ? "Left" : "Right", systemImage: "checkmark")
+                            } else {
+                                Text(left ? "Left" : "Right")
+                            }
+                        }
+                    }
+                }
+            }
             if clip.settings.resolvedLayout != .overlay {
                 Toggle("Keep Face Centered", isOn: Binding(
                     get: { clip.settings.keepsFaceCentered },

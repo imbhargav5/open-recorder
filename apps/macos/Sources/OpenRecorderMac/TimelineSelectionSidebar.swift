@@ -165,9 +165,7 @@ struct TimelineSelectionSidebar: View {
         }
 
         InspectorGroup(title: "Style", symbolName: "slider.horizontal.3") {
-            InspectorSlider(title: "Corner Radius", valueText: "\(Int(clip.settings.clamped.cornerRadius))px",
-                value: cameraBinding(id: clip.id, keyPath: \.cornerRadius, default: 24), range: 0...100, step: 1,
-                onEditingChanged: handleUndoTransaction)
+            CameraCornerControls(settings: cameraSettingsBinding(id: clip.id), onEditingChanged: handleUndoTransaction)
             if clip.settings.resolvedLayout == .overlay {
                 InspectorSlider(
                     title: "Size",

@@ -125,6 +125,8 @@ struct SceneVideoPreview: NSViewRepresentable {
                     animateLiveEdit = before?.resolvedLayout != after?.resolvedLayout
                         || before?.resolvedScreenFit != after?.resolvedScreenFit
                         || before?.resolvedCameraOnLeft != after?.resolvedCameraOnLeft
+                        || before?.resolvedAnchor != after?.resolvedAnchor
+                        || before?.normalizedShape != after?.normalizedShape
                         || before?.enabled != after?.enabled
                         || before?.keepsFaceCentered != after?.keepsFaceCentered
                     liveSourceTime = time

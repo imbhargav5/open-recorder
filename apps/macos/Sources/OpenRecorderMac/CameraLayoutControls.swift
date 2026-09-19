@@ -67,6 +67,40 @@ struct CameraLayoutControls: View {
 }
 
 
+/// Shared by the whole-recording inspector and the selected timeline segment.
+struct CameraCornerControls: View {
+    @Binding var settings: FacecamSettings
+    var onEditingChanged: (Bool) -> Void = { _ in }
+
+    var body: some View {
+        if settings.resolvedLayout == .overlay {
+            InspectorSwitch(title: "Circle camera", isOn: Binding(
+                get: { settings.isCircle },
+                set: { settings.shape = $0 ? "circle" : "square" }))
+        }
+        InspectorSlider(title: "Camera radius", valueText: settings.isCircle ? "Circle" : "\(Int(settings.clamped.cornerRadius))px",
+            value: Binding(get: { settings.clamped.cornerRadius }, set: {
+                // A legacy circle has a fixed radius. Editing radius explicitly
+                // opts into rounded corners without changing its square bounds.
+                if settings.isCircle { settings.shape = "square" }
+                settings.cornerRadius = $0
+            }), range: 0...100, step: 1, onEditingChanged: onEditingChanged)
+        if settings.resolvedLayout == .overlay {
+            InspectorSwitch(title: "Use frame corners", isOn: Binding(
+                get: { settings.overlayScreenCornerRadius == nil },
+                set: { settings.overlayScreenCornerRadius = $0 ? nil : 24 }))
+                .help("Turn off to give this segment its own screen corner radius.")
+            if settings.overlayScreenCornerRadius != nil {
+                InspectorSlider(title: "Screen radius", valueText: "\(Int(settings.overlayScreenCornerRadius ?? 24))px",
+                    value: Binding(get: { settings.overlayScreenCornerRadius ?? 24 },
+                                   set: { settings.overlayScreenCornerRadius = $0 }),
+                    range: 0...100, step: 1, onEditingChanged: onEditingChanged)
+            }
+        }
+    }
+}
+
+
 private struct CameraLayoutPicker: View {
     @Binding var selection: CameraLayout
     private let columns = Array(repeating: GridItem(.flexible(minimum: 0), spacing: 6), count: 2)

@@ -401,7 +401,9 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
             width: scaledSize.width,
             height: scaledSize.height
         )
-        let cornerRadius = instruction.styling.borderRadiusRatio * minDim
+        let cornerRadius = instruction.cameraLayoutEnabled
+            ? cameraPresentation(for: instruction, time: compositionTime).screenRadius
+            : instruction.styling.borderRadiusRatio * minDim
         let maskedSource = applyRoundedMask(positionedImage, cornerRadius: cornerRadius, in: placedRect, role: .recording)
 
         let blurRadius = instruction.styling.backgroundBlurRatio * minDim

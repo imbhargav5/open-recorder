@@ -534,6 +534,8 @@ struct FacecamSettings: Codable, Hashable {
     var screenFit: String? = nil
     var matchCameraCorners: Bool? = nil
     var screenCornerRadius: Double? = nil
+    // Overlay corners are independent of the split panel’s linked corners.
+    var overlayScreenCornerRadius: Double? = nil
     var layoutTransition: CameraLayoutTransition? = nil
 
     var resolvedLayoutTransition: CameraLayoutTransition { (layoutTransition ?? .init()).clamped }
@@ -573,6 +575,7 @@ struct FacecamSettings: Codable, Hashable {
             screenFit: screenFit,
             matchCameraCorners: matchCameraCorners,
             screenCornerRadius: screenCornerRadius.map { CameraLayoutGeometry.clamp($0, to: 0...100, fallback: 24) },
+            overlayScreenCornerRadius: overlayScreenCornerRadius.map { CameraLayoutGeometry.clamp($0, to: 0...100, fallback: 24) },
             layoutTransition: layoutTransition?.clamped
         )
     }

@@ -292,13 +292,8 @@ struct SettingsInspector: View {
                             step: 1
                         )
                     }
-                    InspectorSlider(
-                        title: "Corner Radius",
-                        valueText: "\(Int(cameraCornerRadiusBinding.wrappedValue.rounded()))px",
-                        value: cameraCornerRadiusBinding,
-                        range: 0...100,
-                        step: 1
-                    )
+                    CameraCornerControls(settings: resolvedCameraSettingsBinding,
+                        onEditingChanged: onCameraLayoutEditingChanged)
                     if (cameraSettings?.wrappedValue?.resolvedLayout ?? .overlay) == .overlay {
                         InspectorSlider(
                             title: "Margin",
@@ -386,17 +381,6 @@ struct SettingsInspector: View {
             set: { size in
                 var current = cameraSettings?.wrappedValue ?? defaultFacecamSettings(enabled: true)
                 current.size = size
-                cameraSettings?.wrappedValue = current
-            }
-        )
-    }
-
-    private var cameraCornerRadiusBinding: Binding<Double> {
-        Binding(
-            get: { cameraSettings?.wrappedValue?.cornerRadius ?? 100 },
-            set: { radius in
-                var current = cameraSettings?.wrappedValue ?? defaultFacecamSettings(enabled: true)
-                current.cornerRadius = radius
                 cameraSettings?.wrappedValue = current
             }
         )

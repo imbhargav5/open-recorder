@@ -16,6 +16,107 @@ final class CameraLayoutTests: XCTestCase {
                        FacecamOverlayLayout.frame(in: canvas, settings: defaultFacecamSettings(enabled: true)))
     }
 
+    func testOverlayCornersAreIndependentInPresentationAndRenderedFrames() throws {
+        var settings = camera(.overlay)
+        settings.shape = "square"
+        settings.size = 50
+        settings.cornerRadius = 40
+        settings.overlayScreenCornerRadius = 0
+        let frame = FacecamOverlayLayout.frame(in: canvas, settings: settings)
+        let cameraCorner = CGPoint(x: frame.minX + 2, y: frame.minY + 2)
+        let source = try pixelBuffer(color: .blue), facecam = try pixelBuffer(color: .red)
+        let compositor = VideoBackgroundCompositor()
+        func render(_ settings: FacecamSettings) throws -> CIImage {
+            try compositor.makeComposedImage(source: source, facecam: facecam,
+                instruction: instruction(settings: settings), compositionTime: 1)
+        }
+        let roundedCamera = try render(settings)
+        assertColor(roundedCamera, at: cameraCorner, red: 0, blue: 255)
+        assertColor(roundedCamera, at: CGPoint(x: 2, y: 2), red: 0, blue: 255)
+        settings.cornerRadius = 0
+        settings.overlayScreenCornerRadius = 60
+        // Split-screen corner linking must never override independent overlay corners.
+        settings.matchCameraCorners = true
+        let roundedScreen = try render(settings)
+        assertColor(roundedScreen, at: cameraCorner, red: 255, blue: 0)
+        assertColor(roundedScreen, at: CGPoint(x: 2, y: 2), red: 0, blue: 0)
+        let pose = CameraLayoutPresentation.layout(settings, canvas: canvas,
+            crop: CGRect(origin: .zero, size: canvas), styling: .none)
+        XCTAssertEqual(pose.cameraRadius, 0)
+        XCTAssertEqual(pose.screenRadius, 60)
+    }
+
+    func testLegacyOverlayInheritsFrameCornersAndPreservesCircle() {
+        var settings = camera(.overlay)
+        var styling = VideoBackgroundStyling.none
+        styling.borderRadiusRatio = 0.1
+        func pose() -> CameraLayoutPresentation {
+            .layout(settings, canvas: canvas, crop: CGRect(origin: .zero, size: canvas), styling: styling)
+        }
+        XCTAssertEqual(pose().screenRadius, 36)
+        XCTAssertEqual(pose().cameraRadius, pose().camera.width / 2)
+        settings.overlayScreenCornerRadius = 80
+        XCTAssertEqual(pose().screenRadius, 80)
+        settings.enabled = false
+        XCTAssertEqual(pose().screenRadius, 36)
+    }
+
+    @MainActor
+    func testOverlayPositionAndCornersPersistAndUndoTogether() throws {
+        let driver = TimelineEditDriver()
+        driver.ensureCameraClips(duration: 4, fallback: camera(.overlay))
+        let original = driver.cameraClips[0]
+        var settings = original.settings
+        settings.anchor = FacecamAnchor.topLeft.rawValue
+        settings.shape = "square"
+        settings.cornerRadius = 12
+        settings.overlayScreenCornerRadius = 65
+        driver.updateCameraClipSettings(id: original.id, settings: settings)
+        let saved = try JSONDecoder().decode(TimelineEditSnapshot.self, from: JSONEncoder().encode(driver.snapshot))
+        XCTAssertEqual(saved.cameraClips[0].settings, settings)
+        driver.undo()
+        XCTAssertEqual(driver.cameraClips[0], original)
+        driver.redo()
+        XCTAssertEqual(driver.cameraClips[0].settings, settings)
+        settings.overlayScreenCornerRadius = 200
+        XCTAssertEqual(settings.clamped.overlayScreenCornerRadius, 100)
+    }
+
+    func testOverlayPositionChangesAnimateOnTimelineWithIncomingTransition() throws {
+        var startSettings = camera(.overlay)
+        startSettings.anchor = FacecamAnchor.bottomRight.rawValue
+        let crop = CGRect(origin: .zero, size: canvas)
+        let source = try pixelBuffer(color: .blue), facecam = try pixelBuffer(color: .red)
+        for anchor in FacecamAnchor.allCases where anchor != .bottomRight {
+            var targetSettings = startSettings
+            targetSettings.anchor = anchor.rawValue
+            targetSettings.layoutTransition = .init(duration: 1.5)
+            let edits = TimelineEditSnapshot(cameraClips: [
+                .init(span: .init(start: 0, end: 2), settings: startSettings),
+                .init(span: .init(start: 2, end: 4), settings: targetSettings)])
+            let plan = TimelineExportEditPlan.build(duration: 4, edits: edits)
+            func pose(_ time: Double) -> CameraLayoutPresentation {
+                CameraLayoutMotion.presentation(edits: edits, plan: plan, time: time, duration: 4,
+                    fallback: nil, canvas: canvas, crop: crop, styling: .none)
+            }
+            let start = CameraLayoutPresentation.layout(startSettings, canvas: canvas, crop: crop, styling: .none)
+            let end = CameraLayoutPresentation.layout(targetSettings, canvas: canvas, crop: crop, styling: .none)
+            XCTAssertEqual(pose(2), start)
+            XCTAssertEqual(pose(3.5), end)
+            XCTAssertTrue(pose(3.49).transitionActive)
+            let middle = pose(2.75)
+            XCTAssertEqual(middle.camera.midX, (start.camera.midX + end.camera.midX) / 2, accuracy: 0.001)
+            XCTAssertEqual(middle.camera.midY, (start.camera.midY + end.camera.midY) / 2, accuracy: 0.001)
+            let image = try VideoBackgroundCompositor().makeComposedImage(source: source, facecam: facecam,
+                instruction: instruction(settings: nil, edits: edits), compositionTime: 2.75)
+            assertColor(image, at: CGPoint(x: middle.camera.midX, y: middle.camera.midY), red: 255, blue: 0)
+            var live = CameraLayoutLiveMotion()
+            live.retarget(start, at: 0, animated: false)
+            live.retarget(end, at: 1, animated: true, transition: targetSettings.resolvedLayoutTransition)
+            XCTAssertEqual(live.value(at: 1.75), middle)
+        }
+    }
+
     func testLayoutsPersistInTimelineAndSwitchAtClipBoundaries() throws {
         let clips = [CameraLayout.cameraOnly, .split, .sideBySide].enumerated().map { index, layout in
             var settings = camera(layout)

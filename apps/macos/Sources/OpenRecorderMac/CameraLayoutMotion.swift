@@ -35,7 +35,9 @@ struct CameraLayoutPresentation: Equatable, Sendable {
         let radius = settings.isCircle ? min(camera.width, camera.height) / 2 : CGFloat(settings.cornerRadius) * scale
         return Self(screen: isOverlay ? regularScreen : (panels.screen.isEmpty ? regularScreen : panels.screen),
                     camera: camera,
-                    screenRadius: isOverlay ? styling.borderRadiusRatio * base : CameraLayoutGeometry.screenCornerRadius(in: canvas, settings: settings),
+                    screenRadius: isOverlay
+                        ? (settings.enabled ? settings.overlayScreenCornerRadius.map { CGFloat($0) } : nil) ?? styling.borderRadiusRatio * base
+                        : CameraLayoutGeometry.screenCornerRadius(in: canvas, settings: settings),
                     cameraRadius: min(radius, min(camera.width, camera.height) / 2),
                     borderWidth: CGFloat(settings.borderWidth) * scale,
                     screenOpacity: settings.enabled && settings.resolvedLayout == .cameraOnly ? 0 : 1,
