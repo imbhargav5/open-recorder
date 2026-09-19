@@ -645,16 +645,13 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
         // Layout panels share a scene plane. An independent camera stays in its
         // layout position; screen-content zoom remains separate from scene motion.
         if var camera = makeFacecamLayer(facecam, for: instruction, compositionTime: compositionTime) {
-            let settings = instruction.edits.activeCameraSettings(at: sourceTime,
-                duration: instruction.editPlan.segments.last?.sourceEnd ?? instruction.timeRange.duration.seconds,
-                fallback: instruction.facecamFallbackSettings)
-            if presentation.overlayAmount > 0 && settings?.fixedDuringZoom != true {
+            if presentation.overlayZoomShrink > 0 {
                 let effect = TimelineZoomCanvasTransform.activeEffect(edits: instruction.edits,
                     editPlan: instruction.editPlan, outputTime: compositionTime, cursorTrack: instruction.cursorTrack)
                 let cameraRect = CGRect(x: frames.camera.minX, y: canvas.height - frames.camera.maxY,
                                         width: frames.camera.width, height: frames.camera.height)
                 camera = camera.transformed(by: CameraLayoutGeometry.overlayZoomTransform(frame: cameraRect,
-                    depth: effect?.depth ?? 1, overlayAmount: presentation.overlayAmount))
+                    depth: effect?.depth ?? 1, overlayAmount: 1, shrinkAmount: presentation.overlayZoomShrink))
             }
             if instruction.scene.isActive && instruction.scene.resolvedCameraFollowsScene {
                 camera = sceneRenderer.project(camera, canvas: canvas,

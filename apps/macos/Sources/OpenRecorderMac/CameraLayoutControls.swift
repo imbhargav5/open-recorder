@@ -8,6 +8,14 @@ struct CameraLayoutControls: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             CameraLayoutPicker(selection: layoutBinding)
+            if layoutBinding.wrappedValue == .overlay {
+                InspectorSlider(title: "Scale down on zoom", valueText: "\(Int(settings.resolvedZoomShrinkPercent.rounded()))%",
+                    value: Binding(get: { settings.resolvedZoomShrinkPercent }, set: {
+                        settings.fixedDuringZoom = false
+                        settings.zoomShrinkPercent = $0
+                    }), range: 0...75, step: 1, defaultValue: 15, onEditingChanged: onEditingChanged)
+                    .help("Maximum reduction from the camera’s normal size during a screen zoom. 0% keeps its size; the default is 15%.")
+            }
             if layoutBinding.wrappedValue.hasScreenPanel {
                 CameraSidePicker(selection: sideBinding, layout: settings.resolvedLayout)
                 CameraScreenFitPicker(selection: screenFitBinding)

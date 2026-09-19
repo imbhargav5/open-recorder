@@ -1733,7 +1733,7 @@ struct TimelineRegionItem: View {
     var width: CGFloat
     var isSelected: Bool
     var edits: TimelineEditDriver
-    @State private var dragStartSpan: TimelineSpan?
+    @State private var drag: TimelineRegionDrag?
 
     var body: some View {
         let startX = x(for: region.span.start)
@@ -1746,9 +1746,18 @@ struct TimelineRegionItem: View {
         }
         .buttonStyle(.plain)
         .frame(width: itemWidth, height: TimelineMetrics.regionItemHeight)
-        .position(x: startX + itemWidth / 2, y: TimelineMetrics.layerHeight / 2)
         .simultaneousGesture(TapGesture(count: 2).onEnded { performPrimaryEdit() })
-        .gesture(moveGesture())
+        .gesture(dragGesture(operation: .move))
+        // Handles are siblings of the movable button, so resizing cannot also move it.
+        .overlay(alignment: .leading) {
+            if showsLeadingHandle { resizeHandle(operation: .leading).offset(x: -18) }
+        }
+        .overlay(alignment: .trailing) {
+            if showsTrailingHandle { resizeHandle(operation: .trailing).offset(x: 18) }
+        }
+        .position(x: startX + itemWidth / 2, y: TimelineMetrics.layerHeight / 2)
+        .transaction { $0.animation = nil }
+        .onDisappear { finishDrag() }
         .contextMenu {
             if kind == .zoom, let zoom = edits.zoomRegions.first(where: { $0.id == region.id }) {
                 ZoomTransitionMenu(region: zoom, edits: edits)
@@ -1789,16 +1798,7 @@ struct TimelineRegionItem: View {
             }
         }
         .overlay { regionLabel(width: width) }
-        .overlay(alignment: .leading) {
-            if showsLeadingHandle {
-                TimelineResizeHandle().offset(x: -9).gesture(resizeGesture(edge: .leading))
-            }
-        }
-        .overlay(alignment: .trailing) {
-            if showsTrailingHandle {
-                TimelineResizeHandle().offset(x: 9).gesture(resizeGesture(edge: .trailing))
-            }
-        }
+
     }
 
     private func regionLabel(width: CGFloat) -> some View {
@@ -1828,57 +1828,52 @@ struct TimelineRegionItem: View {
         .frame(maxWidth: max(0, width - 8))
     }
 
-    private enum ResizeEdge { case leading, trailing }
-
     private var showsLeadingHandle: Bool {
-        region.span.start >= viewport.visibleStart - 0.001
+        region.span.start >= viewport.visibleStart - 0.001 || drag?.operation == .leading
     }
 
     private var showsTrailingHandle: Bool {
-        region.span.end <= viewport.visibleEnd + 0.001
+        region.span.end <= viewport.visibleEnd + 0.001 || drag?.operation == .trailing
     }
 
-    private func moveGesture() -> some Gesture {
-        DragGesture()
+    private func resizeHandle(operation: TimelineRegionDrag.Operation) -> some View {
+        TimelineResizeHandle(usesResizeCursor: true)
+            .frame(width: 18, height: TimelineMetrics.regionItemHeight)
+            .contentShape(Rectangle())
+            .gesture(dragGesture(operation: operation))
+            .accessibilityLabel(operation == .leading ? "Resize start" : "Resize end")
+    }
+
+    private func dragGesture(operation: TimelineRegionDrag.Operation) -> some Gesture {
+        // Local coordinates change when the dragged edge moves. Freeze both the
+        // original span and time-per-point before selection can resize the sidebar.
+        DragGesture(minimumDistance: 2, coordinateSpace: .global)
             .onChanged { value in
-                if dragStartSpan == nil {
+                if drag == nil {
+                    drag = TimelineRegionDrag(span: region.span, operation: operation,
+                        secondsPerPoint: width > 0 ? viewport.visibleDuration / Double(width) : 0)
                     edits.beginUndoTransaction()
-                    dragStartSpan = region.span
                     edits.select(kind, id: region.id)
                 }
-                let base = dragStartSpan ?? region.span
-                let delta = time(forDeltaX: value.translation.width)
-                let length = base.duration
-                let start = min(max(base.start + delta, 0), max(0, duration - length))
-                edits.updateSpan(kind: kind, id: region.id, span: TimelineSpan(start: start, end: start + length), duration: duration)
+                updateDrag(translation: value.translation.width)
             }
-            .onEnded { _ in
-                edits.endUndoTransaction()
-                dragStartSpan = nil
+            .onEnded { value in
+                updateDrag(translation: value.translation.width)
+                finishDrag()
             }
     }
 
-    private func resizeGesture(edge: ResizeEdge) -> some Gesture {
-        DragGesture()
-            .onChanged { value in
-                if dragStartSpan == nil {
-                    edits.beginUndoTransaction()
-                    dragStartSpan = region.span
-                    edits.select(kind, id: region.id)
-                }
-                let base = dragStartSpan ?? region.span
-                let delta = time(forDeltaX: value.translation.width)
-                switch edge {
-                case .leading:
-                    edits.updateSpan(kind: kind, id: region.id, span: TimelineSpan(start: base.start + delta, end: base.end), duration: duration)
-                case .trailing:
-                    edits.updateSpan(kind: kind, id: region.id, span: TimelineSpan(start: base.start, end: base.end + delta), duration: duration)
-                }
-            }
-            .onEnded { _ in
-                edits.endUndoTransaction()
-                dragStartSpan = nil
-            }
+    private func updateDrag(translation: CGFloat) {
+        guard let drag else { return }
+        let span = drag.span(at: Double(translation), duration: duration)
+        guard span != region.span else { return }
+        edits.updateSpan(kind: kind, id: region.id, span: span, duration: duration)
+    }
+
+    private func finishDrag() {
+        guard drag != nil else { return }
+        edits.endUndoTransaction()
+        drag = nil
     }
 
     private func performPrimaryEdit() {
@@ -1890,11 +1885,6 @@ struct TimelineRegionItem: View {
 
     private func x(for time: Double) -> CGFloat {
         viewport.x(for: time, width: width, clamped: true) ?? 0
-    }
-
-    private func time(forDeltaX deltaX: CGFloat) -> Double {
-        guard width > 0, viewport.visibleDuration.isFinite else { return 0 }
-        return Double(deltaX / width) * viewport.visibleDuration
     }
 
     private var regionAccessibilityValue: String {

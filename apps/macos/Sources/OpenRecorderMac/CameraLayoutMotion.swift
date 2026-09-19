@@ -13,6 +13,7 @@ struct CameraLayoutPresentation: Equatable, Sendable {
     var cameraOpacity: CGFloat
     var faceCentering: CGFloat
     var overlayAmount: CGFloat
+    var overlayZoomShrink: CGFloat = 0.15
     var transitionActive = false
     var transitionBlur: CGFloat = 0
     var transitionFade: CGFloat = 0
@@ -43,7 +44,8 @@ struct CameraLayoutPresentation: Equatable, Sendable {
                     screenOpacity: settings.enabled && settings.resolvedLayout == .cameraOnly ? 0 : 1,
                     cameraOpacity: settings.enabled ? 1 : 0,
                     faceCentering: settings.keepsFaceCentered ? 1 : 0,
-                    overlayAmount: isOverlay ? 1 : 0)
+                    overlayAmount: isOverlay ? 1 : 0,
+                    overlayZoomShrink: isOverlay ? CGFloat(settings.resolvedZoomShrinkPercent / 100) : 0)
     }
 
     func interpolated(to other: Self, progress: Double) -> Self {
@@ -60,6 +62,7 @@ struct CameraLayoutPresentation: Equatable, Sendable {
                     borderWidth: max(0, mix(borderWidth, other.borderWidth)), screenOpacity: min(1, max(0, mix(screenOpacity, other.screenOpacity))),
                     cameraOpacity: min(1, max(0, mix(cameraOpacity, other.cameraOpacity))), faceCentering: min(1, max(0, mix(faceCentering, other.faceCentering))),
                     overlayAmount: min(1, max(0, mix(overlayAmount, other.overlayAmount))),
+                    overlayZoomShrink: min(0.75, max(0, mix(overlayZoomShrink, other.overlayZoomShrink))),
                     transitionActive: transitionActive || other.transitionActive,
                     transitionBlur: mix(transitionBlur, other.transitionBlur), transitionFade: mix(transitionFade, other.transitionFade))
     }

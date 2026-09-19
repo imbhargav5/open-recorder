@@ -86,6 +86,30 @@ struct TimelineSpan: Codable, Equatable, Hashable {
     }
 }
 
+/// Immutable drag origin prevents cumulative drift as a region's frame changes.
+struct TimelineRegionDrag {
+    enum Operation { case move, leading, trailing }
+    var span: TimelineSpan
+    var operation: Operation
+    var secondsPerPoint: Double
+
+    func span(at translation: Double, duration: Double) -> TimelineSpan {
+        guard translation.isFinite, secondsPerPoint.isFinite, duration.isFinite, duration > 0 else { return span }
+        let base = span.normalized(duration: duration)
+        let delta = translation * secondsPerPoint
+        let minimum = min(0.1, base.duration)
+        switch operation {
+        case .move:
+            let start = min(max(base.start + delta, 0), max(0, duration - base.duration))
+            return TimelineSpan(start: start, end: start + base.duration)
+        case .leading:
+            return TimelineSpan(start: min(max(base.start + delta, 0), base.end - minimum), end: base.end)
+        case .trailing:
+            return TimelineSpan(start: base.start, end: min(max(base.end + delta, base.start + minimum), duration))
+        }
+    }
+}
+
 struct TimelineZoomRegion: Identifiable, Codable, Equatable, Hashable {
     var id = TimelineRegionID()
     var span: TimelineSpan

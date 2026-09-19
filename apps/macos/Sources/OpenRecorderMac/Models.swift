@@ -524,6 +524,7 @@ struct FacecamSettings: Codable, Hashable {
     var margin: Double
     var anchor: String
     var fixedDuringZoom: Bool? = false
+    var zoomShrinkPercent: Double? = nil
     // Optional fields keep projects recorded before camera layouts compatible.
     var layout: String? = nil
     var cameraWidthPercent: Double? = nil
@@ -537,6 +538,10 @@ struct FacecamSettings: Codable, Hashable {
     // Overlay corners are independent of the split panel’s linked corners.
     var overlayScreenCornerRadius: Double? = nil
     var layoutTransition: CameraLayoutTransition? = nil
+
+    var resolvedZoomShrinkPercent: Double {
+        fixedDuringZoom == true ? 0 : CameraLayoutGeometry.clamp(zoomShrinkPercent, to: 0...75, fallback: 15)
+    }
 
     var resolvedLayoutTransition: CameraLayoutTransition { (layoutTransition ?? .init()).clamped }
 
@@ -566,6 +571,7 @@ struct FacecamSettings: Codable, Hashable {
             margin: max(0, min(margin, 24)),
             anchor: FacecamAnchor.resolve(anchor).rawValue,
             fixedDuringZoom: fixedDuringZoom,
+            zoomShrinkPercent: zoomShrinkPercent.map { CameraLayoutGeometry.clamp($0, to: 0...75, fallback: 15) },
             layout: layout,
             cameraWidthPercent: cameraWidthPercent.map { _ in resolvedCameraWidth },
             layoutPadding: layoutPadding.map { _ in resolvedLayoutPadding },

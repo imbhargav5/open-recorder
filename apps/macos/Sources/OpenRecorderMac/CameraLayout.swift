@@ -46,10 +46,11 @@ struct CameraLayoutGeometry {
     /// The screen zoom must never pan the overlay camera off canvas. Gently
     /// shrink its existing frame in place, including its border and shadow.
     /// Blending by overlayAmount keeps layout transitions continuous.
-    static func overlayZoomTransform(frame: CGRect, depth: Double, overlayAmount: CGFloat) -> CGAffineTransform {
+    static func overlayZoomTransform(frame: CGRect, depth: Double, overlayAmount: CGFloat, shrinkAmount: CGFloat = 0.15) -> CGAffineTransform {
         guard !frame.isEmpty, depth.isFinite, depth > 1 else { return .identity }
         let zoom = CameraLayoutMotion.ease(min(1, (depth - 1) / 0.75))
-        let scale = 1 - 0.15 * CGFloat(zoom) * min(1, max(0, overlayAmount))
+        let amount = CGFloat(clamp(Double(shrinkAmount), to: 0...0.75, fallback: 0.15))
+        let scale = 1 - amount * CGFloat(zoom) * min(1, max(0, overlayAmount))
         return CGAffineTransform(a: scale, b: 0, c: 0, d: scale,
                                 tx: frame.midX * (1 - scale), ty: frame.midY * (1 - scale))
     }

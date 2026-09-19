@@ -11,6 +11,7 @@ final class CameraLayoutTests: XCTestCase {
         let settings = try JSONDecoder().decode(FacecamSettings.self, from: Data(json.utf8))
         XCTAssertEqual(settings.resolvedLayout, .overlay)
         XCTAssertTrue(settings.isCircle)
+        XCTAssertEqual(settings.resolvedZoomShrinkPercent, 15)
         XCTAssertEqual(settings.resolvedLayoutTransition, CameraLayoutTransition())
         XCTAssertEqual(FacecamOverlayLayout.frame(in: canvas, settings: settings),
                        FacecamOverlayLayout.frame(in: canvas, settings: defaultFacecamSettings(enabled: true)))
@@ -196,6 +197,66 @@ final class CameraLayoutTests: XCTestCase {
                 instruction: instruction(settings: settings, edits: edits), compositionTime: 2)
             assertColor(image, at: CGPoint(x: frame.midX, y: frame.midY), red: 255, blue: 0)
             assertColor(image, at: CGPoint(x: frame.minX + 2, y: frame.midY), red: 0, blue: 255)
+        }
+    }
+
+    func testCustomZoomShrinkRendersAndBlendsAcrossSegments() throws {
+        let source = try pixelBuffer(color: .blue), facecam = try pixelBuffer(color: .red)
+        var settings = camera(.overlay)
+        settings.shape = "square"
+        let frame = FacecamOverlayLayout.frame(in: canvas, settings: settings)
+        let edits = TimelineEditSnapshot(zoomRegions: [.init(span: .init(start: 0, end: 4), depth: 3)])
+        for amount in [0.0, 15, 50, 75] {
+            settings.zoomShrinkPercent = amount
+            let transform = CameraLayoutGeometry.overlayZoomTransform(frame: frame, depth: 3,
+                overlayAmount: 1, shrinkAmount: CGFloat(amount / 100))
+            let scaled = frame.applying(transform)
+            XCTAssertEqual(scaled.width, frame.width * (1 - amount / 100), accuracy: 0.0001)
+            XCTAssertEqual(scaled.midX, frame.midX, accuracy: 0.0001)
+            let image = try VideoBackgroundCompositor().makeComposedImage(source: source, facecam: facecam,
+                instruction: instruction(settings: settings, edits: edits), compositionTime: 2)
+            assertColor(image, at: CGPoint(x: scaled.minX + 2, y: scaled.midY), red: 255, blue: 0)
+            if amount > 0 {
+                assertColor(image, at: CGPoint(x: scaled.minX - 2, y: scaled.midY), red: 0, blue: 255)
+            }
+        }
+        func pose(_ settings: FacecamSettings) -> CameraLayoutPresentation {
+            .layout(settings, canvas: canvas, crop: CGRect(origin: .zero, size: canvas), styling: .none)
+        }
+        let start = pose(settings)
+        settings.zoomShrinkPercent = 0
+        let end = pose(settings)
+        XCTAssertEqual(start.interpolated(to: end, progress: 0.5).overlayZoomShrink, 0.375, accuracy: 0.0001)
+        settings.zoomShrinkPercent = 50
+        settings.fixedDuringZoom = true
+        XCTAssertEqual(pose(settings).overlayZoomShrink, 0)
+        settings.fixedDuringZoom = false
+        settings.layout = CameraLayout.split.rawValue
+        XCTAssertEqual(pose(settings).overlayZoomShrink, 0)
+    }
+
+    @MainActor
+    func testZoomShrinkPersistsAndSliderUndoesAsOneEdit() throws {
+        let driver = TimelineEditDriver()
+        driver.ensureCameraClips(duration: 4, fallback: camera(.overlay))
+        let original = driver.cameraClips[0]
+        driver.beginUndoTransaction()
+        for percent in [0.0, 30, 75] {
+            var settings = original.settings
+            settings.zoomShrinkPercent = percent
+            driver.updateCameraClipSettings(id: original.id, settings: settings)
+        }
+        driver.endUndoTransaction()
+        let decoded = try JSONDecoder().decode(TimelineEditSnapshot.self, from: JSONEncoder().encode(driver.snapshot))
+        XCTAssertEqual(decoded.cameraClips[0].settings.resolvedZoomShrinkPercent, 75)
+        driver.undo()
+        XCTAssertEqual(driver.cameraClips[0], original)
+        driver.redo()
+        XCTAssertEqual(driver.cameraClips[0].settings.resolvedZoomShrinkPercent, 75)
+        var settings = original.settings
+        for (input, expected) in [(-10.0, 0.0), (100, 75), (.nan, 15), (.infinity, 15)] {
+            settings.zoomShrinkPercent = input
+            XCTAssertEqual(settings.clamped.resolvedZoomShrinkPercent, expected)
         }
     }
 
