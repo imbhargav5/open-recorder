@@ -280,7 +280,8 @@ struct SceneVideoPreview: NSViewRepresentable {
                     let settings = configuration.edits.activeCameraSettings(at: sourceTime, duration: configuration.duration, fallback: configuration.cameraSettings)
                     let target = CameraLayoutPresentation.layout(settings, canvas: canvas, crop: crop, styling: configuration.styling)
                     liveMotion.retarget(lastPresentation ?? timelinePose, at: clock, animated: false)
-                    liveMotion.retarget(target, at: clock, animated: animateLiveEdit)
+                    liveMotion.retarget(target, at: clock, animated: animateLiveEdit && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
+                                        transition: settings?.resolvedLayoutTransition ?? .init())
                     pendingLiveEdit = false
                 }
                 presentation = liveSourceTime == nil ? timelinePose : (liveMotion.value(at: clock) ?? timelinePose)

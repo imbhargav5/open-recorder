@@ -11,6 +11,7 @@ final class CameraLayoutTests: XCTestCase {
         let settings = try JSONDecoder().decode(FacecamSettings.self, from: Data(json.utf8))
         XCTAssertEqual(settings.resolvedLayout, .overlay)
         XCTAssertTrue(settings.isCircle)
+        XCTAssertEqual(settings.resolvedLayoutTransition, CameraLayoutTransition())
         XCTAssertEqual(FacecamOverlayLayout.frame(in: canvas, settings: settings),
                        FacecamOverlayLayout.frame(in: canvas, settings: defaultFacecamSettings(enabled: true)))
     }
@@ -172,6 +173,114 @@ final class CameraLayoutTests: XCTestCase {
         XCTAssertEqual(motion.value(at: 2), c)
         motion.retarget(b, at: 2.1, animated: false)
         XCTAssertEqual(motion.value(at: 2.1), b, "Slider changes update screen and camera on the same frame")
+    }
+
+    func testTransitionSettingsPersistAndClampInvalidValues() throws {
+        var settings = camera(.split)
+        settings.layoutTransition = .init(duration: 1.25, motion: .spring, easing: .easeOut, bounce: 0.65, blur: 0.3, fade: 0.4)
+        let edits = TimelineEditSnapshot(cameraClips: [.init(span: .init(start: 0, end: 4), settings: settings)])
+        XCTAssertEqual(try JSONDecoder().decode(TimelineEditSnapshot.self, from: JSONEncoder().encode(edits)), edits)
+        settings.layoutTransition = .init(duration: .infinity, bounce: -1, blur: 5, fade: .nan)
+        let clamped = settings.clamped.resolvedLayoutTransition
+        XCTAssertEqual(clamped.duration, 0.42)
+        XCTAssertEqual(clamped.bounce, 0)
+        XCTAssertEqual(clamped.blur, 1)
+        XCTAssertEqual(clamped.fade, 0)
+    }
+
+    @MainActor
+    func testTransitionSliderUndoPreservesOtherSegments() {
+        let driver = TimelineEditDriver()
+        driver.ensureCameraClips(duration: 4, fallback: camera(.split))
+        driver.splitCameraClip(at: 2, duration: 4, fallback: nil)
+        let first = driver.cameraClips[0]
+        let second = driver.cameraClips[1]
+        driver.beginUndoTransaction()
+        for duration in [0.5, 0.8, 1.2] {
+            var settings = second.settings
+            settings.layoutTransition = .init(duration: duration, motion: .spring, blur: 0.5)
+            driver.updateCameraClipSettings(id: second.id, settings: settings)
+        }
+        driver.endUndoTransaction()
+        XCTAssertEqual(driver.cameraClips[0], first)
+        XCTAssertEqual(driver.cameraClips[1].settings.resolvedLayoutTransition.duration, 1.2)
+        driver.undo()
+        XCTAssertEqual(driver.cameraClips[1], second)
+        driver.redo()
+        XCTAssertEqual(driver.cameraClips[1].settings.resolvedLayoutTransition.blur, 0.5)
+    }
+
+    func testEasingAndSpringControlsReachExactEndpoints() {
+        for easing in CameraLayoutTransition.Easing.allCases {
+            let transition = CameraLayoutTransition(easing: easing)
+            XCTAssertEqual(transition.progress(at: 0), 0)
+            XCTAssertEqual(transition.progress(at: 1), 1)
+        }
+        XCTAssertLessThan(CameraLayoutTransition(easing: .easeIn).progress(at: 0.5), 0.5)
+        XCTAssertGreaterThan(CameraLayoutTransition(easing: .easeOut).progress(at: 0.5), 0.5)
+        let spring = CameraLayoutTransition(motion: .spring, bounce: 1)
+        let damped = CameraLayoutTransition(motion: .spring, bounce: 0)
+        XCTAssertEqual(spring.progress(at: 0), 0)
+        XCTAssertEqual(spring.progress(at: 1), 1)
+        XCTAssertGreaterThan(spring.progress(at: 0.3), 1, "Spring can overshoot instead of stopping abruptly")
+        XCTAssertLessThan(damped.progress(at: 0.3), 1)
+        XCTAssertEqual(spring.progress(at: 0.999), 1, accuracy: 0.00001)
+    }
+
+    func testCustomTransitionTimingMatchesLivePreviewAndShortSegmentsSettle() throws {
+        let before = camera(.overlay)
+        var after = camera(.split)
+        after.layoutTransition = .init(duration: 1.2, motion: .spring, bounce: 0.6, blur: 0.3, fade: 0.4)
+        let crop = CGRect(origin: .zero, size: canvas)
+        let a = CameraLayoutPresentation.layout(before, canvas: canvas, crop: crop, styling: .none)
+        let b = CameraLayoutPresentation.layout(after, canvas: canvas, crop: crop, styling: .none)
+        func pose(_ time: Double, end: Double = 6) -> CameraLayoutPresentation {
+            let edits = TimelineEditSnapshot(cameraClips: [.init(span: .init(start: 0, end: 2), settings: before),
+                .init(span: .init(start: 2, end: end), settings: after)])
+            return CameraLayoutMotion.presentation(edits: edits, plan: .build(duration: end, edits: edits), time: time,
+                duration: end, fallback: nil, canvas: canvas, crop: crop, styling: .none)
+        }
+        var live = CameraLayoutLiveMotion()
+        live.retarget(a, at: 0, animated: false)
+        live.retarget(b, at: 2, animated: true, transition: after.resolvedLayoutTransition)
+        XCTAssertEqual(pose(2.6), try XCTUnwrap(live.value(at: 2.6)))
+        XCTAssertEqual(pose(2.6).transitionBlur, 0.3, accuracy: 0.0001)
+        XCTAssertEqual(pose(2.6).transitionFade, 0.4, accuracy: 0.0001)
+        XCTAssertEqual(pose(3.21), b)
+        XCTAssertEqual(pose(2.21, end: 2.4), b, "Short segments settle before the next boundary")
+        after.layoutTransition?.duration = 0
+        XCTAssertEqual(pose(2), b, "Zero duration is an instant switch without transient effects")
+    }
+
+    func testTransitionFadeAffectsBothPanelsAndClearsAtEnd() throws {
+        var before = camera(.split), after = camera(.sideBySide)
+        before.cameraOnLeft = false
+        after.layoutTransition = .init(duration: 1, easing: .linear, fade: 1)
+        let edits = TimelineEditSnapshot(cameraClips: [.init(span: .init(start: 0, end: 2), settings: before),
+            .init(span: .init(start: 2, end: 4), settings: after)])
+        let compositor = VideoBackgroundCompositor()
+        let source = try pixelBuffer(color: .blue), cameraBuffer = try pixelBuffer(color: .red)
+        let instruction = instruction(settings: nil, edits: edits)
+        let faded = try compositor.makeComposedImage(source: source, facecam: cameraBuffer, instruction: instruction, compositionTime: 2.5)
+        let pose = CameraLayoutMotion.presentation(edits: edits, plan: .build(duration: 4, edits: edits), time: 2.5,
+            duration: 4, fallback: nil, canvas: canvas, crop: CGRect(origin: .zero, size: canvas), styling: .none)
+        assertColor(faded, at: CGPoint(x: pose.camera.midX, y: pose.camera.midY), red: 0, blue: 0)
+        assertColor(faded, at: CGPoint(x: pose.screen.midX, y: pose.screen.midY), red: 0, blue: 0)
+        let settled = try compositor.makeComposedImage(source: source, facecam: cameraBuffer, instruction: instruction, compositionTime: 3)
+        let frames = CameraLayoutGeometry.frames(in: canvas, screenAspectRatio: 16 / 9, settings: after)
+        assertColor(settled, at: CGPoint(x: frames.camera.midX, y: frames.camera.midY), red: 255, blue: 0)
+        assertColor(settled, at: CGPoint(x: frames.screen.midX, y: frames.screen.midY), red: 0, blue: 255)
+    }
+
+    func testTransitionBlurSoftensDetailWithoutSmearingPanelsAcrossCanvas() {
+        var pose = CameraLayoutPresentation.layout(camera(.split), canvas: canvas, crop: CGRect(origin: .zero, size: canvas), styling: .none)
+        pose.transitionBlur = 1
+        let left = CIImage(color: .red).cropped(to: CGRect(x: 100, y: 100, width: 100, height: 100))
+        let right = CIImage(color: .blue).cropped(to: CGRect(x: 200, y: 100, width: 100, height: 100))
+        let image = VideoBackgroundCompositor().applyCameraTransitionEffects(left.composited(over: right), presentation: pose, canvas: canvas)
+        // Core Image blends in linear light; a half-intensity channel is ~188 in sRGB.
+        assertColor(image, at: CGPoint(x: 200, y: 210), red: 188, blue: 188, tolerance: 12)
+        assertColor(image, at: CGPoint(x: 2, y: 210), red: 0, blue: 0)
     }
 
     func testFaceMotionRejectsJitterAndEasesAtAnyFrameRate() {
@@ -383,6 +492,7 @@ final class CameraLayoutTests: XCTestCase {
         var right = camera(.split)
         right.cameraOnLeft = false
         right.cameraWidthPercent = 70
+        right.layoutTransition = .init(duration: 1, motion: .spring, bounce: 0.6, blur: 0.3, fade: 0.4)
         let settings = [camera(.cameraOnly), camera(.split), camera(.sideBySide), right]
         let clips = settings.enumerated().map { index, settings in
             TimelineCameraClip(span: .init(start: Double(index), end: Double(index + 1)), settings: settings)
@@ -420,6 +530,13 @@ final class CameraLayoutTests: XCTestCase {
         XCTAssertGreaterThan(pose.camera.maxX, finalCamera.maxX + 20)
         assertColor(CIImage(cgImage: transitioningFrame), at: CGPoint(x: pose.camera.maxX - 15, y: pose.camera.midY),
             red: 255, blue: 0, tolerance: 24)
+        // The final segment uses custom spring timing with blur and fade.
+        let effectFrame = try await generator.image(at: CMTime(seconds: 3.25, preferredTimescale: 600)).image
+        let effectPose = CameraLayoutMotion.presentation(edits: edits, plan: .build(duration: 4, edits: edits), time: 3.25,
+            duration: 4, fallback: nil, canvas: canvas, crop: CGRect(origin: .zero, size: canvas), styling: options.styling)
+        // 60% linear-light intensity is ~203 in sRGB.
+        assertColor(CIImage(cgImage: effectFrame), at: CGPoint(x: effectPose.camera.midX, y: effectPose.camera.midY),
+            red: 203, blue: 0, tolerance: 24)
         let project = ProjectDocument(schemaVersion: 2, title: "Camera Layout Review", recordingPath: screenURL.path,
             screenshotPath: nil, sourceName: "Synthetic layout check", createdAt: "2026-09-19T00:00:00Z",
             updatedAt: "2026-09-19T00:00:00Z", editorState: ProjectEditorState(timelineEdits: edits),

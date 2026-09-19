@@ -13,6 +13,9 @@ struct CameraLayoutPresentation: Equatable, Sendable {
     var cameraOpacity: CGFloat
     var faceCentering: CGFloat
     var overlayAmount: CGFloat
+    var transitionActive = false
+    var transitionBlur: CGFloat = 0
+    var transitionFade: CGFloat = 0
 
     static func layout(_ settings: FacecamSettings?, canvas: CGSize, crop: CGRect,
                        styling: VideoBackgroundStyling) -> Self {
@@ -42,24 +45,39 @@ struct CameraLayoutPresentation: Equatable, Sendable {
     }
 
     func interpolated(to other: Self, progress: Double) -> Self {
-        if progress <= 0 { return self }
-        if progress >= 1 { return other }
+        if progress == 0 { return self }
+        if progress == 1 { return other }
         let t = CGFloat(progress)
         func mix(_ a: CGFloat, _ b: CGFloat) -> CGFloat { a + (b - a) * t }
         func rect(_ a: CGRect, _ b: CGRect) -> CGRect {
             CGRect(x: mix(a.minX, b.minX), y: mix(a.minY, b.minY),
-                   width: mix(a.width, b.width), height: mix(a.height, b.height))
+                   width: max(2, mix(a.width, b.width)), height: max(2, mix(a.height, b.height)))
         }
         return Self(screen: rect(screen, other.screen), camera: rect(camera, other.camera),
-                    screenRadius: mix(screenRadius, other.screenRadius), cameraRadius: mix(cameraRadius, other.cameraRadius),
-                    borderWidth: mix(borderWidth, other.borderWidth), screenOpacity: mix(screenOpacity, other.screenOpacity),
-                    cameraOpacity: mix(cameraOpacity, other.cameraOpacity), faceCentering: mix(faceCentering, other.faceCentering),
-                    overlayAmount: mix(overlayAmount, other.overlayAmount))
+                    screenRadius: max(0, mix(screenRadius, other.screenRadius)), cameraRadius: max(0, mix(cameraRadius, other.cameraRadius)),
+                    borderWidth: max(0, mix(borderWidth, other.borderWidth)), screenOpacity: min(1, max(0, mix(screenOpacity, other.screenOpacity))),
+                    cameraOpacity: min(1, max(0, mix(cameraOpacity, other.cameraOpacity))), faceCentering: min(1, max(0, mix(faceCentering, other.faceCentering))),
+                    overlayAmount: min(1, max(0, mix(overlayAmount, other.overlayAmount))),
+                    transitionActive: transitionActive || other.transitionActive,
+                    transitionBlur: mix(transitionBlur, other.transitionBlur), transitionFade: mix(transitionFade, other.transitionFade))
     }
 }
 
 enum CameraLayoutMotion {
-    static let duration = 0.42
+    static let duration = CameraLayoutTransition().duration
+
+    static func sample(from start: CameraLayoutPresentation, to target: CameraLayoutPresentation,
+                       fraction: Double, transition: CameraLayoutTransition) -> CameraLayoutPresentation {
+        guard fraction > 0 else { return start }
+        guard fraction < 1 else { return target }
+        let transition = transition.clamped
+        var result = start.interpolated(to: target, progress: transition.progress(at: fraction))
+        result.transitionActive = true
+        let pulse = CGFloat(pow(sin(.pi * fraction), 2))
+        result.transitionBlur += CGFloat(transition.blur) * pulse
+        result.transitionFade += CGFloat(transition.fade) * pulse
+        return result
+    }
 
     static func ease(_ progress: Double) -> Double {
         let t = max(0, min(1, progress))
@@ -91,10 +109,11 @@ enum CameraLayoutMotion {
         let current = spans[index]
         let previous = spans[index - 1]
         guard abs(previous.span.end - current.span.start) < 0.001 else { return target }
-        let interval = min(Self.duration, current.span.duration / 2)
+        let transition = current.settings.resolvedLayoutTransition
+        let interval = min(transition.duration, current.span.duration / 2)
         guard interval > 0, time < current.span.start + interval else { return target }
         let start = CameraLayoutPresentation.layout(previous.settings, canvas: canvas, crop: crop, styling: styling)
-        return start.interpolated(to: target, progress: ease((time - current.span.start) / interval))
+        return sample(from: start, to: target, fraction: (time - current.span.start) / interval, transition: transition)
     }
 }
 
@@ -105,20 +124,22 @@ struct CameraLayoutLiveMotion {
     private(set) var target: CameraLayoutPresentation?
     private var startTime = 0.0
     private var interval = 0.0
+    private var transition = CameraLayoutTransition()
 
-    mutating func retarget(_ next: CameraLayoutPresentation, at time: Double, animated: Bool) {
+    mutating func retarget(_ next: CameraLayoutPresentation, at time: Double, animated: Bool, transition: CameraLayoutTransition = .init()) {
         guard target != next else { return }
         let visible = value(at: time) ?? next
         start = visible
         target = next
         startTime = time
-        interval = animated ? CameraLayoutMotion.duration : 0
+        self.transition = transition.clamped
+        interval = animated ? self.transition.duration : 0
     }
 
     func value(at time: Double) -> CameraLayoutPresentation? {
         guard let target, let start else { return target }
         guard interval > 0 else { return target }
-        return start.interpolated(to: target, progress: CameraLayoutMotion.ease((time - startTime) / interval))
+        return CameraLayoutMotion.sample(from: start, to: target, fraction: (time - startTime) / interval, transition: transition)
     }
 
     func isAnimating(at time: Double) -> Bool { interval > 0 && time < startTime + interval }

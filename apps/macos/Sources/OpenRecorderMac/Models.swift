@@ -534,6 +534,9 @@ struct FacecamSettings: Codable, Hashable {
     var screenFit: String? = nil
     var matchCameraCorners: Bool? = nil
     var screenCornerRadius: Double? = nil
+    var layoutTransition: CameraLayoutTransition? = nil
+
+    var resolvedLayoutTransition: CameraLayoutTransition { (layoutTransition ?? .init()).clamped }
 
     var keepsFaceCentered: Bool { resolvedLayout != .overlay && (centerFace ?? true) }
     var resolvedScreenFit: CameraScreenFit { CameraScreenFit(rawValue: screenFit ?? "") ?? .fit }
@@ -569,7 +572,8 @@ struct FacecamSettings: Codable, Hashable {
             centerFace: centerFace,
             screenFit: screenFit,
             matchCameraCorners: matchCameraCorners,
-            screenCornerRadius: screenCornerRadius.map { CameraLayoutGeometry.clamp($0, to: 0...100, fallback: 24) }
+            screenCornerRadius: screenCornerRadius.map { CameraLayoutGeometry.clamp($0, to: 0...100, fallback: 24) },
+            layoutTransition: layoutTransition?.clamped
         )
     }
 

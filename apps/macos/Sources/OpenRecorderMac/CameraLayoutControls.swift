@@ -47,6 +47,8 @@ struct CameraLayoutControls: View {
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
             }
+            Divider()
+            CameraTransitionControls(settings: $settings, onEditingChanged: onEditingChanged)
         }
     }
 
@@ -75,4 +77,57 @@ struct CameraLayoutControls: View {
     private var widthBinding: Binding<Double> { value(\.cameraWidthPercent, resolved: \.resolvedCameraWidth) }
     private var gapBinding: Binding<Double> { value(\.layoutGap, resolved: \.resolvedLayoutGap) }
     private var paddingBinding: Binding<Double> { value(\.layoutPadding, resolved: \.resolvedLayoutPadding) }
+}
+
+
+private struct CameraTransitionControls: View {
+    @Binding var settings: FacecamSettings
+    var onEditingChanged: (Bool) -> Void
+
+    var body: some View {
+        DisclosureGroup("Layout transition") {
+            VStack(alignment: .leading, spacing: 12) {
+                InspectorSlider(title: "Duration", valueText: transition.duration == 0 ? "Instant" : String(format: "%.2f s", transition.duration),
+                    value: value(\.duration), range: 0...2, step: 0.01, onEditingChanged: onEditingChanged)
+                    .help("Shorter is faster. Long transitions are limited to half the incoming segment so the layout has time to settle.")
+                if transition.duration > 0 {
+                    Picker("Motion", selection: value(\.motion)) {
+                        ForEach(CameraLayoutTransition.Motion.allCases) { Text($0.title).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                    if transition.motion == .ease {
+                        Picker("Easing", selection: value(\.easing)) {
+                            ForEach(CameraLayoutTransition.Easing.allCases) { Text($0.title).tag($0) }
+                        }
+                        .pickerStyle(.menu)
+                    } else {
+                        InspectorSlider(title: "Bounce", valueText: percent(transition.bounce),
+                            value: value(\.bounce), range: 0...1, step: 0.01, onEditingChanged: onEditingChanged)
+                            .help("Low bounce is gently damped. Higher bounce adds a playful spring.")
+                    }
+                    InspectorSlider(title: "Blur", valueText: percent(transition.blur),
+                        value: value(\.blur), range: 0...1, step: 0.01, onEditingChanged: onEditingChanged)
+                    InspectorSlider(title: "Fade", valueText: percent(transition.fade),
+                        value: value(\.fade), range: 0...1, step: 0.01, onEditingChanged: onEditingChanged)
+                }
+                Text("Controls how the screen and camera move into this layout. Blur and fade peak midway, then clear.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                Button("Reset transition") { settings.layoutTransition = nil }
+                    .disabled(settings.layoutTransition == nil)
+                    .help("Restore the smooth 0.42-second default, with blur and fade off.")
+            }
+            .padding(.top, 8)
+        }
+    }
+
+    private var transition: CameraLayoutTransition { settings.resolvedLayoutTransition }
+    private func percent(_ value: Double) -> String { "\(Int((value * 100).rounded()))%" }
+    private func value<T>(_ keyPath: WritableKeyPath<CameraLayoutTransition, T>) -> Binding<T> {
+        Binding(get: { transition[keyPath: keyPath] }, set: {
+            var next = transition
+            next[keyPath: keyPath] = $0
+            settings.layoutTransition = next.clamped
+        })
+    }
 }
