@@ -30,12 +30,12 @@ struct TimelineZoomTransitionControls: View {
                     value: value(\.bounce), range: 0...1, step: 0.01, onEditingChanged: onEditingChanged)
             }
             if region.transition != nil, transition.enterDuration + transition.exitDuration > outputDuration {
-                Text("Both transitions are shortened proportionally to fit this zoom.")
+                Text("Fits this zoom: \(seconds(transition.durations(in: .init(start: 0, end: outputDuration)).enter)) in · \(seconds(transition.durations(in: .init(start: 0, end: outputDuration)).exit)) out.")
                     .font(.system(size: 11)).foregroundStyle(.secondary)
             }
             Text(region.transition == nil
                  ? "Using the saved zoom style. Adjust a control to customize this zoom’s entrance and exit."
-                 : "Times use playback seconds. The zoom continues through camera layout and scene transitions.")
+                 : "Each duration includes the full movement and settling. Easing changes the pace; spring adds bounce.")
                 .font(.system(size: 11)).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }

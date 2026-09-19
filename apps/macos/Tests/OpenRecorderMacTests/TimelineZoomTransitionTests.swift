@@ -54,14 +54,68 @@ final class TimelineZoomTransitionTests: XCTestCase {
         }
     }
 
-    func testCopyingPresetTransitionPreservesItsCurve() {
+    func testPresetTransitionKeepsEntranceCurveAndUsesForwardExit() {
         let span = TimelineSpan(start: 0, end: 5)
         for preset in TimelineZoomAnimationPreset.allCases {
-            let copied = TimelineZoomTransition.defaults(for: preset)
-            for time in stride(from: 0.0, through: 5, by: 0.05) {
-                XCTAssertEqual(copied.envelope(in: span, at: time),
-                    TimelineZoomAnimator.animationProgress(for: span, preset: preset, at: time), accuracy: 0.00001)
+            let transition = TimelineZoomTransition.defaults(for: preset)
+            let ramps = transition.durations(in: span)
+            for fraction in [0.1, 0.25, 0.5, 0.75, 0.9] {
+                XCTAssertEqual(transition.envelope(in: span, at: ramps.enter * fraction),
+                    preset.configuration.easing.value(fraction), accuracy: 0.00001)
+                XCTAssertEqual(transition.envelope(in: span, at: span.end - ramps.exit + ramps.exit * fraction),
+                    1 - preset.configuration.easing.value(fraction), accuracy: 0.00001)
             }
+        }
+    }
+
+    func testManualAndAdaptiveZoomUseSameInAndOutTimingForEveryCurve() throws {
+        let span = TimelineSpan(start: 2, end: 8)
+        let path = AutoZoomCameraPath(keyframes: [
+            .init(time: 2, centerX: 0.5, centerY: 0.5, depth: 1),
+            .init(time: 2.4, centerX: 0.5, centerY: 0.5, depth: 2),
+            .init(time: 7.6, centerX: 0.5, centerY: 0.5, depth: 2),
+            .init(time: 8, centerX: 0.5, centerY: 0.5, depth: 1)])
+        for motion in CameraLayoutTransition.Motion.allCases {
+            for easing in TimelineZoomEasing.allCases {
+                for bounce in [0.0, 0.25, 0.58, 1] {
+                    let transition = TimelineZoomTransition(enterDuration: 1.5, exitDuration: 1.5,
+                        motion: motion, easing: easing, bounce: bounce)
+                    XCTAssertEqual(transition.durations(in: span).enter, 1.5)
+                    XCTAssertEqual(transition.durations(in: span).exit, 1.5)
+                    XCTAssertEqual(transition.envelope(in: span, at: 2), 0)
+                    XCTAssertEqual(transition.envelope(in: span, at: 3.5), 1)
+                    XCTAssertEqual(transition.envelope(in: span, at: 6.5), 1)
+                    XCTAssertEqual(transition.envelope(in: span, at: 8), 0)
+                    for time in stride(from: 2.0, through: 8, by: 0.025) {
+                        let manualDepth = 1 + transition.envelope(in: span, at: time)
+                        let adaptiveDepth = try XCTUnwrap(transition.effect(path: path, span: span, at: time)).depth
+                        XCTAssertEqual(manualDepth, adaptiveDepth, accuracy: 0.0001,
+                            "Manual and generated zooms must use the same curve direction and duration")
+                    }
+                }
+            }
+        }
+    }
+
+    func testEaseInAndEaseOutApplyToElapsedExitTime() {
+        let span = TimelineSpan(start: 0, end: 6)
+        let slowStart = TimelineZoomTransition(enterDuration: 1.5, exitDuration: 1.5, easing: .easeIn)
+        let fastStart = TimelineZoomTransition(enterDuration: 1.5, exitDuration: 1.5, easing: .easeOut)
+        XCTAssertEqual(slowStart.envelope(in: span, at: 4.875), 0.984375, accuracy: 0.00001)
+        XCTAssertEqual(fastStart.envelope(in: span, at: 4.875), 0.421875, accuracy: 0.00001)
+    }
+
+    func testZoomSpringStillMovesLateInItsDurationAndSettlesAtEnd() {
+        for bounce in [0.0, 0.25, 0.58, 1] {
+            let transition = TimelineZoomTransition(enterDuration: 1.5, exitDuration: 1.5, motion: .spring, bounce: bounce)
+            XCTAssertGreaterThan(abs(transition.progress(0.75) - 1), 0.005)
+            for fraction in stride(from: 0.01, through: 0.99, by: 0.01) {
+                XCTAssertGreaterThan(transition.progress(fraction), 0)
+                XCTAssertLessThan(transition.progress(fraction), 1, "Zoom-out must not hit the renderer’s 1x clamp early")
+            }
+            XCTAssertEqual(transition.progress(1), 1)
+            XCTAssertEqual(transition.progress(1.2), 1)
+            XCTAssertEqual(transition.progress(0.99999), 1, accuracy: 0.000001)
         }
     }
 

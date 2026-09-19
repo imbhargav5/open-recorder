@@ -649,10 +649,12 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
                 duration: instruction.editPlan.segments.last?.sourceEnd ?? instruction.timeRange.duration.seconds,
                 fallback: instruction.facecamFallbackSettings)
             if presentation.overlayAmount > 0 && settings?.fixedDuringZoom != true {
-                let screenRect = CGRect(x: frames.screen.minX, y: canvas.height - frames.screen.maxY,
-                                        width: frames.screen.width, height: frames.screen.height)
-                camera = applyZoomTransform(to: camera, renderRect: bounds, instruction: instruction,
-                    compositionTime: compositionTime, placedRect: screenRect, amount: presentation.overlayAmount)
+                let effect = TimelineZoomCanvasTransform.activeEffect(edits: instruction.edits,
+                    editPlan: instruction.editPlan, outputTime: compositionTime, cursorTrack: instruction.cursorTrack)
+                let cameraRect = CGRect(x: frames.camera.minX, y: canvas.height - frames.camera.maxY,
+                                        width: frames.camera.width, height: frames.camera.height)
+                camera = camera.transformed(by: CameraLayoutGeometry.overlayZoomTransform(frame: cameraRect,
+                    depth: effect?.depth ?? 1, overlayAmount: presentation.overlayAmount))
             }
             if instruction.scene.isActive && instruction.scene.resolvedCameraFollowsScene {
                 camera = sceneRenderer.project(camera, canvas: canvas,
@@ -693,8 +695,7 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
         renderRect: CGRect,
         instruction: VideoBackgroundCompositionInstruction,
         compositionTime: Double,
-        placedRect: CGRect,
-        amount: CGFloat = 1
+        placedRect: CGRect
     ) -> CIImage {
         guard instruction.edits.zoomRegions.isEmpty == false else { return image }
         let effect = TimelineZoomCanvasTransform.activeEffect(
@@ -712,9 +713,7 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
             duration: instruction.editPlan.segments.last?.sourceEnd ?? instruction.timeRange.duration.seconds,
             fallback: instruction.facecamFallbackSettings)
         let mapped = geometry.canvasEffect(effect, cameraSettings: settings)
-        let target = TimelineZoomCanvasTransform.transform(for: mapped, in: renderRect, flipsY: true)
-        let zoomTransform = CGAffineTransform(a: 1 + (target.a - 1) * amount, b: target.b * amount,
-            c: target.c * amount, d: 1 + (target.d - 1) * amount, tx: target.tx * amount, ty: target.ty * amount)
+        let zoomTransform = TimelineZoomCanvasTransform.transform(for: mapped, in: renderRect, flipsY: true)
         return image.transformed(by: zoomTransform)
     }
 

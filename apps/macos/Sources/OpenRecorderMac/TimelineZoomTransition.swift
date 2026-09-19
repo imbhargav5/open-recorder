@@ -30,9 +30,30 @@ struct TimelineZoomTransition: Codable, Hashable {
     }
 
     func progress(_ fraction: Double) -> Double {
-        motion == .spring
-            ? CameraLayoutTransition(motion: .spring, bounce: clamped.bounce).progress(at: fraction)
-            : easing.value(fraction)
+        let t = sceneClamp(fraction, 0...1)
+        guard t > 0, t < 1 else { return t }
+        guard motion == .spring else { return easing.value(t) }
+        // Zoom uses a duration-based spring. The faster layout spring spent most
+        // of this interval already at rest, making identical times feel shorter.
+        let bounce = clamped.bounce
+        let damping = 1 - 0.55 * bounce
+        let frequency = 6 + 2 * bounce
+        let response: Double
+        if damping >= 0.999 {
+            response = 1 - (1 + frequency * t) * exp(-frequency * t)
+        } else {
+            let oscillation = frequency * sqrt(1 - damping * damping)
+            response = 1 - exp(-damping * frequency * t)
+                * (cos(oscillation * t) + damping * frequency / oscillation * sin(oscillation * t))
+        }
+        // Finish at the exact endpoint with zero velocity, regardless of bounce.
+        let settle = CameraLayoutMotion.ease((t - 0.75) / 0.25)
+        let settled = response + (1 - response) * settle
+        // Zoom cannot shrink below 1x. Unbounded overshoot gets clipped there,
+        // making zoom-out appear finished halfway through its duration. Round
+        // that rebound inside the endpoint range, with a smooth vanishing tail.
+        let residual = 0.08 * pow(sin(.pi * t), 2)
+        return max(0, 1 - sqrt(pow(1 - settled, 2) + residual * residual))
     }
 
     func envelope(in span: TimelineSpan, at time: Double) -> Double {
@@ -42,7 +63,7 @@ struct TimelineZoomTransition: Codable, Hashable {
             return progress((time - span.start) / ramps.enter)
         }
         if ramps.exit > 0, time > span.end - ramps.exit {
-            return max(0, progress((span.end - time) / ramps.exit))
+            return max(0, 1 - progress((time - (span.end - ramps.exit)) / ramps.exit))
         }
         return 1
     }

@@ -175,6 +175,48 @@ final class CameraLayoutTests: XCTestCase {
         }
     }
 
+    func testOverlayCameraShrinksInPlaceAndStaysVisibleAtEveryAnchor() throws {
+        let source = try pixelBuffer(color: .blue), facecam = try pixelBuffer(color: .red)
+        for anchor in FacecamAnchor.allCases {
+            var settings = camera(.overlay)
+            settings.shape = "square"
+            settings.anchor = anchor.rawValue
+            let frame = FacecamOverlayLayout.frame(in: canvas, settings: settings)
+            for depth in [1.0, 1.2, 1.75, 3, 5] {
+                let transform = CameraLayoutGeometry.overlayZoomTransform(frame: frame, depth: depth, overlayAmount: 1)
+                let smaller = frame.applying(transform)
+                XCTAssertEqual(smaller.midX, frame.midX, accuracy: 0.0001)
+                XCTAssertEqual(smaller.midY, frame.midY, accuracy: 0.0001)
+                XCTAssertGreaterThanOrEqual(smaller.width, frame.width * 0.85 - 0.0001)
+                XCTAssertLessThanOrEqual(smaller.width, frame.width + 0.0001)
+                XCTAssertTrue(CGRect(origin: .zero, size: canvas).contains(smaller))
+            }
+            let edits = TimelineEditSnapshot(zoomRegions: [.init(span: .init(start: 0, end: 4), depth: 3, focusX: 0.1, focusY: 0.9)])
+            let image = try VideoBackgroundCompositor().makeComposedImage(source: source, facecam: facecam,
+                instruction: instruction(settings: settings, edits: edits), compositionTime: 2)
+            assertColor(image, at: CGPoint(x: frame.midX, y: frame.midY), red: 255, blue: 0)
+            assertColor(image, at: CGPoint(x: frame.minX + 2, y: frame.midY), red: 0, blue: 255)
+        }
+    }
+
+    func testOverlayCameraZoomScaleRestoresAtExitAndBlendsAcrossLayouts() {
+        let frame = CGRect(x: 510, y: 220, width: 100, height: 100)
+        let zoom = TimelineZoomTransition(enterDuration: 1, exitDuration: 1, easing: .linear)
+        let span = TimelineSpan(start: 0, end: 4)
+        func transform(at time: Double, overlay: CGFloat = 1) -> CGAffineTransform {
+            CameraLayoutGeometry.overlayZoomTransform(frame: frame,
+                depth: 1 + 0.75 * zoom.envelope(in: span, at: time), overlayAmount: overlay)
+        }
+        XCTAssertEqual(transform(at: 0), .identity)
+        XCTAssertEqual(transform(at: 4), .identity)
+        XCTAssertEqual(transform(at: 2).a, 0.85, accuracy: 0.0001)
+        XCTAssertEqual(transform(at: 2, overlay: 0.5).a, 0.925, accuracy: 0.0001)
+        XCTAssertEqual(transform(at: 2, overlay: 0), .identity)
+        XCTAssertEqual(transform(at: 0.5), transform(at: 3.5))
+        XCTAssertEqual(transform(at: 0.0001).a, 1, accuracy: 0.0001)
+        XCTAssertEqual(transform(at: 3.9999).a, 1, accuracy: 0.0001)
+    }
+
     func testLayoutsPersistInTimelineAndSwitchAtClipBoundaries() throws {
         let clips = [CameraLayout.cameraOnly, .split, .sideBySide].enumerated().map { index, layout in
             var settings = camera(layout)

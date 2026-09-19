@@ -43,6 +43,17 @@ struct CameraLayoutGeometry {
         settings.resolvedLayout == .overlay ? 1 : min(canvas.width, canvas.height) / 1080
     }
 
+    /// The screen zoom must never pan the overlay camera off canvas. Gently
+    /// shrink its existing frame in place, including its border and shadow.
+    /// Blending by overlayAmount keeps layout transitions continuous.
+    static func overlayZoomTransform(frame: CGRect, depth: Double, overlayAmount: CGFloat) -> CGAffineTransform {
+        guard !frame.isEmpty, depth.isFinite, depth > 1 else { return .identity }
+        let zoom = CameraLayoutMotion.ease(min(1, (depth - 1) / 0.75))
+        let scale = 1 - 0.15 * CGFloat(zoom) * min(1, max(0, overlayAmount))
+        return CGAffineTransform(a: scale, b: 0, c: 0, d: scale,
+                                tx: frame.midX * (1 - scale), ty: frame.midY * (1 - scale))
+    }
+
     static func frames(in canvas: CGSize, screenAspectRatio: CGFloat, settings: FacecamSettings) -> Self {
         guard canvas.width.isFinite, canvas.height.isFinite, canvas.width > 0, canvas.height > 0,
               settings.enabled, settings.resolvedLayout != .overlay else {
