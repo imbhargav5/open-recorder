@@ -8,17 +8,8 @@ struct CameraLayoutControls: View {
         VStack(alignment: .leading, spacing: 12) {
             CameraLayoutPicker(selection: layoutBinding)
             if layoutBinding.wrappedValue.hasScreenPanel {
-                Picker("Camera side", selection: sideBinding) {
-                    Text("Left").tag(true)
-                    Text("Right").tag(false)
-                }
-                .pickerStyle(.segmented)
-                Picker("Screen sizing", selection: screenFitBinding) {
-                    ForEach(CameraScreenFit.allCases) { fit in
-                        Text(fit.title).tag(fit)
-                    }
-                }
-                .pickerStyle(.segmented)
+                CameraSidePicker(selection: sideBinding, layout: settings.resolvedLayout)
+                CameraScreenFitPicker(selection: screenFitBinding)
                 InspectorSwitch(title: "Match camera corners", isOn: matchCornersBinding)
                 if !settings.resolvedMatchCameraCorners {
                     InspectorSlider(title: "Screen Radius", valueText: "\(Int(settings.resolvedScreenCornerRadius))px",
@@ -82,35 +73,116 @@ private struct CameraLayoutPicker: View {
     var body: some View {
         LazyVGrid(columns: columns, spacing: 6) {
             ForEach(CameraLayout.allCases) { layout in
-                let isSelected = selection == layout
-                StudioButton(hitTarget: .rounded(Theme.radiusMd), help: layout.title) {
+                CameraOptionTile(title: layout == .sideBySide ? "Screen + camera" : layout.title,
+                                 help: layout.title, isSelected: selection == layout) {
                     selection = layout
-                } label: {
-                    VStack(spacing: 5) {
-                        CameraLayoutThumbnail(layout: layout)
-                            .frame(width: 50, height: 34)
-                            .accessibilityHidden(true)
-                        Text(layout == .sideBySide ? "Screen + camera" : layout.title)
-                            .font(.system(size: 10, weight: .semibold))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.78)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 58)
-                    .foregroundStyle(isSelected ? Color.white : Color.primary.opacity(0.86))
-                    .background(isSelected ? Color.white.opacity(0.18) : Theme.overlay,
-                                in: RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous)
-                            .stroke(isSelected ? Color.white.opacity(0.85) : Theme.overlay)
-                    }
+                } thumbnail: {
+                    CameraLayoutThumbnail(layout: layout)
                 }
-                .accessibilityLabel(layout.title)
-                .accessibilityAddTraits(isSelected ? .isSelected : [])
             }
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Camera layout")
+    }
+}
+
+/// Shares the cursor-style tile appearance across layout, side and sizing choices.
+private struct CameraOptionTile<Thumbnail: View>: View {
+    var title: String
+    var help: String
+    var isSelected: Bool
+    var action: () -> Void
+    @ViewBuilder var thumbnail: () -> Thumbnail
+
+    var body: some View {
+        StudioButton(hitTarget: .rounded(Theme.radiusMd), help: help, action: action) {
+            VStack(spacing: 5) {
+                thumbnail()
+                    .frame(width: 50, height: 34)
+                    .accessibilityHidden(true)
+                Text(title)
+                    .font(.system(size: 10, weight: .semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 58)
+            .foregroundStyle(isSelected ? Color.white : Color.primary.opacity(0.86))
+            .background(isSelected ? Color.white.opacity(0.18) : Theme.overlay,
+                        in: RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous)
+                    .stroke(isSelected ? Color.white.opacity(0.85) : Theme.overlay)
+            }
+        }
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+}
+
+private struct CameraSidePicker: View {
+    @Binding var selection: Bool
+    var layout: CameraLayout
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Camera side")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(.secondary)
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(minimum: 0), spacing: 6), count: 2), spacing: 6) {
+                ForEach([true, false], id: \.self) { left in
+                    CameraOptionTile(title: left ? "Left" : "Right", help: left ? "Camera on the left" : "Camera on the right",
+                                     isSelected: selection == left) {
+                        selection = left
+                    } thumbnail: {
+                        CameraLayoutThumbnail(layout: layout)
+                            .scaleEffect(x: left == (layout == .split) ? 1 : -1, y: 1)
+                    }
+                }
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Camera side")
+    }
+}
+
+private struct CameraScreenFitPicker: View {
+    @Binding var selection: CameraScreenFit
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Screen sizing")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(.secondary)
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(minimum: 0), spacing: 6), count: 2), spacing: 6) {
+                ForEach(CameraScreenFit.allCases) { fit in
+                    CameraOptionTile(title: fit.title,
+                                     help: fit == .fit ? "Keep the full screen visible" : "Fill the panel, cropping the edges",
+                                     isSelected: selection == fit) {
+                        selection = fit
+                    } thumbnail: {
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(Color.primary.opacity(0.08))
+                            .frame(width: 48, height: 28)
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 2)
+                                    .fill(Color.primary.opacity(0.3))
+                                    .frame(width: 44, height: fit == .fit ? 14 : 24)
+                                    .overlay {
+                                        Image(systemName: "photo")
+                                            .font(.system(size: fit == .fit ? 11 : 18))
+                                    }
+                            }
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 3)
+                                    .stroke(Color.primary.opacity(0.65), lineWidth: 1)
+                            }
+                    }
+                }
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Screen sizing")
     }
 }
 
