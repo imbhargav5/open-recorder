@@ -309,6 +309,32 @@ struct VideoEditorStudioView: View {
         else { editor.endUndoTransaction() }
     }
 
+    private var cameraClipAtPlayhead: TimelineCameraClip? {
+        timelineEdits.cameraClips.last { clip in
+            playback.currentTime >= clip.span.start &&
+                (playback.currentTime < clip.span.end || abs(clip.span.end - playback.duration) < 0.001)
+        }
+    }
+
+    private var inspectorCameraSettingsBinding: Binding<FacecamSettings?> {
+        Binding(get: { cameraClipAtPlayhead?.settings ?? editor.state.currentFacecamSettings }, set: { settings in
+            if let clip = cameraClipAtPlayhead, let settings {
+                timelineEdits.updateCameraClipSettings(id: clip.id, settings: settings)
+            } else {
+                editor.binding(\.facecamSettings).wrappedValue = settings
+            }
+        })
+    }
+
+    private func cameraLayoutUndoTransaction(_ editing: Bool) {
+        playback.pause()
+        if cameraClipAtPlayhead != nil {
+            if editing { timelineEdits.beginUndoTransaction() } else { timelineEdits.endUndoTransaction() }
+        } else {
+            if editing { editor.beginUndoTransaction() } else { editor.endUndoTransaction() }
+        }
+    }
+
     private var sidebarContent: some View {
         SettingsInspector(
             borderRadius: editor.binding(\.borderRadius), padding: editor.binding(\.padding),
@@ -318,7 +344,8 @@ struct VideoEditorStudioView: View {
             insetBalance: editor.binding(\.insetBalance), showCursor: editor.binding(\.cursorOverlay.isVisible),
             loopCursor: editor.binding(\.cursorOverlay.loops), cursorSize: editor.binding(\.cursorOverlay.size),
             cursorSmoothing: editor.binding(\.cursorOverlay.smoothing), cursorStyleID: editor.binding(\.cursorOverlay.styleID),
-            cameraSettings: editor.binding(\.facecamSettings), recordingSession: recordingSession,
+            cameraSettings: inspectorCameraSettingsBinding, onCameraLayoutEditingChanged: cameraLayoutUndoTransaction,
+            recordingSession: recordingSession,
             captionController: workspace.captions, captionEdits: timelineEdits, captionPlayback: playback,
             activeTab: $activeInspector, scene: editor.binding(\.scene), canvasAspect: editor.previewAspectPresetBinding,
             sceneEndpoint: $sceneEndpoint, showsSelection: $showsTimelineSelection,

@@ -110,6 +110,9 @@ struct SceneSettings: Codable, Equatable, Hashable {
     var edgeHighlight = false
     var motion = SceneMotion()
     var imageDuration = 3.0
+    var cameraFollowsScene: Bool? = nil
+
+    var resolvedCameraFollowsScene: Bool { cameraFollowsScene ?? true }
 
     static let identity = SceneSettings()
     var isActive: Bool { !pose.isIdentity || mockup != .none || edgeHighlight || motion.enabled }
@@ -142,20 +145,23 @@ struct SceneGeometry {
     var bottomRight: CGPoint
     var bounds: CGRect
 
-    static func evaluate(frame: CGRect, canvas: CGSize, pose: ScenePose) -> Self {
+    static func evaluate(frame: CGRect, canvas: CGSize, pose: ScenePose, referenceFrame: CGRect? = nil) -> Self {
         let p = pose.clamped
         let rx = p.tiltX * .pi / 180, ry = p.tiltY * .pi / 180, rz = p.rotation * .pi / 180
-        let distance = max(frame.width, frame.height) * (4 - 2.5 * p.perspective)
+        let reference = referenceFrame ?? frame
+        let distance = max(reference.width, reference.height) * (4 - 2.5 * p.perspective)
         func project(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
             let xx = x * cos(ry) + y * sin(rx) * sin(ry)
             let yy = y * cos(rx)
             let z = -x * sin(ry) + y * sin(rx) * cos(ry)
             let factor = distance / max(distance * 0.1, distance - z)
-            return CGPoint(x: frame.midX + (xx * cos(rz) - yy * sin(rz)) * factor * p.scale + p.x * canvas.width,
-                           y: frame.midY + (xx * sin(rz) + yy * cos(rz)) * factor * p.scale - p.y * canvas.height)
+            return CGPoint(x: reference.midX + (xx * cos(rz) - yy * sin(rz)) * factor * p.scale + p.x * canvas.width,
+                           y: reference.midY + (xx * sin(rz) + yy * cos(rz)) * factor * p.scale - p.y * canvas.height)
         }
-        let tl = project(-frame.width / 2, frame.height / 2), tr = project(frame.width / 2, frame.height / 2)
-        let bl = project(-frame.width / 2, -frame.height / 2), br = project(frame.width / 2, -frame.height / 2)
+        let left = frame.minX - reference.midX, right = frame.maxX - reference.midX
+        let bottom = frame.minY - reference.midY, top = frame.maxY - reference.midY
+        let tl = project(left, top), tr = project(right, top)
+        let bl = project(left, bottom), br = project(right, bottom)
         let xs = [tl.x, tr.x, bl.x, br.x], ys = [tl.y, tr.y, bl.y, br.y]
         return Self(topLeft: tl, topRight: tr, bottomLeft: bl, bottomRight: br,
                     bounds: CGRect(x: xs.min()!, y: ys.min()!, width: xs.max()! - xs.min()!, height: ys.max()! - ys.min()!))

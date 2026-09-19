@@ -46,7 +46,7 @@ struct AutoZoomCameraPath: Codable, Equatable, Hashable {
         }
     }
 
-    func effect(at time: Double) -> TimelineZoomEffect? {
+    func effect(at time: Double, boundaryProgress: ((Double) -> Double)? = nil) -> TimelineZoomEffect? {
         guard version == 1, time.isFinite, let first = keyframes.first, let last = keyframes.last else { return nil }
         let frame: AutoZoomCameraKeyframe
         if time <= first.time { frame = first }
@@ -59,7 +59,9 @@ struct AutoZoomCameraPath: Codable, Equatable, Hashable {
                 if keyframes[mid].time <= time { low = mid } else { high = mid }
             }
             let a = keyframes[low], b = keyframes[high]
-            let t = Self.ease((time - a.time) / max(0.0001, b.time - a.time))
+            let fraction = (time - a.time) / max(0.0001, b.time - a.time)
+            let t = (low == 0 || high == keyframes.count - 1)
+                ? (boundaryProgress?(fraction) ?? Self.ease(fraction)) : Self.ease(fraction)
             frame = AutoZoomCameraKeyframe(time: time,
                 centerX: a.centerX + (b.centerX - a.centerX) * t,
                 centerY: a.centerY + (b.centerY - a.centerY) * t,
@@ -103,7 +105,7 @@ struct AutoZoomGeometry {
             let normalizedHeight = context.height * sourceSize.height / cropRect.height * contentRect.height / canvasSize.height
             let fitDepth = max(1, min(1 / max(0.001, normalizedWidth), 1 / max(0.001, normalizedHeight)))
             depth = min(depth, fitDepth)
-            if let cameraSettings, cameraSettings.enabled {
+            if let cameraSettings, cameraSettings.enabled, cameraSettings.resolvedLayout == .overlay {
                 let camera = FacecamOverlayLayout.frame(in: canvasSize, settings: cameraSettings)
                 let required = CGRect(x: x - normalizedWidth * canvasSize.width / 2,
                     y: y - normalizedHeight * canvasSize.height / 2,

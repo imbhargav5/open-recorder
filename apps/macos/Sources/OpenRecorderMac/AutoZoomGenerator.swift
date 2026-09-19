@@ -158,7 +158,7 @@ enum AutoZoomGenerator {
                 let camera = cameraClips.isEmpty ? cameraSettings
                     : cameraClips.last(where: { $0.span.contains(target.time) })?.settings
                 // These bounds are only an initial conservative hint. Render-time geometry handles placement.
-                if let camera, camera.enabled {
+                if let camera, camera.enabled, camera.resolvedLayout == .overlay {
                     let frame = FacecamOverlayLayout.frame(in: CGSize(width: width, height: height), settings: camera)
                     let normalized = CGRect(x: frame.minX / width, y: frame.minY / height,
                         width: frame.width / width, height: frame.height / height)

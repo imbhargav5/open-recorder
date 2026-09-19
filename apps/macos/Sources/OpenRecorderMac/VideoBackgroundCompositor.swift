@@ -118,6 +118,8 @@ final class VideoBackgroundCompositionInstruction: NSObject, AVVideoCompositionI
 
     let sourceTrackID: CMPersistentTrackID
     let facecamTrackID: CMPersistentTrackID?
+    let cameraLayoutEnabled: Bool
+    let cameraPresentation: CameraLayoutPresentation?
     let scene: SceneSettings
     let styling: VideoBackgroundStyling
     let preferredTransform: CGAffineTransform
@@ -148,11 +150,15 @@ final class VideoBackgroundCompositionInstruction: NSObject, AVVideoCompositionI
         editPlan: TimelineExportEditPlan = TimelineExportEditPlan(segments: [], outputDuration: 0),
         cursorTrack: CursorTelemetryTrack? = nil,
         cursorSettings: CursorOverlaySettings = .hidden,
-        facecamFallbackSettings: FacecamSettings? = nil
+        facecamFallbackSettings: FacecamSettings? = nil,
+        cameraLayoutEnabled: Bool? = nil,
+        cameraPresentation: CameraLayoutPresentation? = nil
     ) {
         self.timeRange = timeRange
         self.sourceTrackID = trackID
         self.facecamTrackID = facecamTrackID
+        self.cameraPresentation = cameraPresentation
+        self.cameraLayoutEnabled = cameraLayoutEnabled ?? (facecamTrackID != nil)
         self.requiredSourceTrackIDs = ([trackID] + (facecamTrackID.map { [$0] } ?? [])).map { NSNumber(value: $0) }
         self.scene = scene
         self.styling = styling
@@ -338,6 +344,14 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
     ) throws -> CIImage {
         let renderSize = instruction.renderSize
         let renderRect = CGRect(origin: .zero, size: renderSize)
+        let sourceTime = instruction.editPlan.sourceTime(forOutputTime: compositionTime) ?? compositionTime
+        if instruction.cameraLayoutEnabled {
+            let presentation = cameraPresentation(for: instruction, time: compositionTime)
+            // Use the same screen surface before, during and after a layout change.
+            // Switching render paths here used to reframe an already-running zoom.
+            return try makeCameraLayoutImage(source: source, facecam: facecam, instruction: instruction,
+                                             compositionTime: compositionTime, presentation: presentation)
+        }
 
         var sourceImage = CIImage(cvPixelBuffer: source)
         sourceImage = sourceImage.transformed(by: instruction.preferredTransform)
@@ -387,7 +401,9 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
             width: scaledSize.width,
             height: scaledSize.height
         )
-        let cornerRadius = instruction.styling.borderRadiusRatio * minDim
+        let cornerRadius = instruction.cameraLayoutEnabled
+            ? cameraPresentation(for: instruction, time: compositionTime).screenRadius
+            : instruction.styling.borderRadiusRatio * minDim
         let maskedSource = applyRoundedMask(positionedImage, cornerRadius: cornerRadius, in: placedRect, role: .recording)
 
         let blurRadius = instruction.styling.backgroundBlurRatio * minDim
@@ -483,23 +499,10 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
             composed = cursor.composited(over: composed)
         }
 
-        // Keep saved annotations in the compositor as well: Core Animation cannot
-        // post-process a custom video compositor.
-        for annotation in instruction.edits.annotationRegions {
-            guard let span = instruction.editPlan.outputSpans(forSourceSpan: annotation.span).first(where: { $0.contains(compositionTime) }),
-                  let layer = annotationImage(annotation, canvasSize: renderSize) else { continue }
-            let progress = (compositionTime - span.start) / max(0.001, span.duration)
-            let opacity = min(1, min(progress / 0.08, (1 - progress) / 0.08))
-            let positioned = layer.transformed(by: CGAffineTransform(
-                translationX: renderSize.width * annotation.x - layer.extent.width / 2,
-                y: renderSize.height * (1 - annotation.y) - layer.extent.height / 2))
-                .applyingFilter("CIColorMatrix", parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: opacity)])
-            composed = positioned.composited(over: composed)
-        }
+        composed = compositeAnnotations(over: composed, instruction: instruction, compositionTime: compositionTime)
 
         // When fixedDuringZoom is false (default), composite the camera bubble before applying
         // the zoom so it moves with the zoomed screen content.
-        let sourceTime = instruction.editPlan.sourceTime(forOutputTime: compositionTime) ?? compositionTime
         let cameraIsFixed = instruction.edits.activeCameraSettings(at: sourceTime,
             duration: instruction.editPlan.segments.last?.sourceEnd ?? instruction.timeRange.duration.seconds,
             fallback: instruction.facecamFallbackSettings)?.fixedDuringZoom == true
@@ -526,6 +529,32 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
             composed = facecam.composited(over: composed)
         }
 
+        composed = compositeCaptions(over: composed, instruction: instruction, sourceTime: sourceTime)
+        return composed.cropped(to: renderRect)
+    }
+
+    private func compositeAnnotations(over image: CIImage, instruction: VideoBackgroundCompositionInstruction,
+                                      compositionTime: Double) -> CIImage {
+        var composed = image
+        let renderSize = instruction.renderSize
+        for annotation in instruction.edits.annotationRegions {
+            guard let span = instruction.editPlan.outputSpans(forSourceSpan: annotation.span).first(where: { $0.contains(compositionTime) }),
+                  let layer = annotationImage(annotation, canvasSize: renderSize) else { continue }
+            let progress = (compositionTime - span.start) / max(0.001, span.duration)
+            let opacity = min(1, min(progress / 0.08, (1 - progress) / 0.08))
+            let positioned = layer.transformed(by: CGAffineTransform(
+                translationX: renderSize.width * annotation.x - layer.extent.width / 2,
+                y: renderSize.height * (1 - annotation.y) - layer.extent.height / 2))
+                .applyingFilter("CIColorMatrix", parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: opacity)])
+            composed = positioned.composited(over: composed)
+        }
+        return composed
+    }
+
+    private func compositeCaptions(over image: CIImage, instruction: VideoBackgroundCompositionInstruction,
+                                   sourceTime: Double) -> CIImage {
+        var composed = image
+        let renderSize = instruction.renderSize
         if let captions = instruction.edits.captions, let segment = captions.active(at: sourceTime) {
             let key = CaptionRenderer.Key(text: segment.text, style: captions.style, width: Int(renderSize.width), height: Int(renderSize.height))
             if captionRasterKey != key {
@@ -538,7 +567,100 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
                     .composited(over: composed)
             }
         }
-        return composed.cropped(to: renderRect)
+        return composed
+    }
+
+    // A separate compositor keeps the panel's transparent background and masks from
+    // evicting the full canvas background cache on every frame.
+    private let cameraFaceTracker = CameraFaceTracker()
+    private lazy var cameraPanelCompositor = VideoBackgroundCompositor()
+
+    /// Effects only touch the moving panels; the background and captions stay sharp.
+    func applyCameraTransitionEffects(_ image: CIImage, presentation: CameraLayoutPresentation, canvas: CGSize) -> CIImage {
+        guard presentation.transitionBlur > 0 || presentation.transitionFade > 0 else { return image }
+        var result = image
+        let blur = min(1, max(0, presentation.transitionBlur)) * min(canvas.width, canvas.height) * 0.035
+        if blur > 0.01 {
+            result = result.applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: blur])
+        }
+        let opacity = 1 - min(1, max(0, presentation.transitionFade))
+        if opacity < 1 {
+            result = result.applyingFilter("CIColorMatrix", parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: opacity)])
+        }
+        return result.cropped(to: CGRect(origin: .zero, size: canvas))
+    }
+
+    private func makeCameraLayoutImage(source: CVPixelBuffer, facecam: CVPixelBuffer?,
+                                      instruction: VideoBackgroundCompositionInstruction,
+                                      compositionTime: Double, presentation: CameraLayoutPresentation) throws -> CIImage {
+        let canvas = instruction.renderSize
+        let bounds = CGRect(origin: .zero, size: canvas)
+        let frames = CameraLayoutGeometry(screen: presentation.screen, camera: presentation.camera)
+        let blur = instruction.styling.backgroundBlurRatio * min(canvas.width, canvas.height)
+        var result = backgroundCache.image(style: instruction.styling.background, extent: bounds, blurRadius: blur) {
+            let background = makeBackground(instruction.styling.background, extent: bounds)
+            return blur > 0 && !instruction.styling.background.isTransparent
+                ? applyGaussianBlur(background, radius: blur).cropped(to: bounds) : background
+        }
+        if !frames.screen.isEmpty && presentation.screenOpacity > 0 {
+            var panelStyling = instruction.styling
+            panelStyling.background = .transparent
+            panelStyling.paddingRatio = 0
+            panelStyling.backgroundBlurRatio = 0
+            panelStyling.shadowIntensity = 0
+            let radius = presentation.screenRadius
+            panelStyling.borderRadiusRatio = radius / min(frames.screen.width, frames.screen.height)
+            let panelCrop = CameraLayoutGeometry.screenCrop(in: instruction.cropRect, panel: frames.screen.size, fit: .cover)
+            var panelEdits = instruction.edits
+            panelEdits.cameraClips = []
+            panelEdits.annotationRegions = []
+            panelEdits.captions = nil
+            let panel = VideoBackgroundCompositionInstruction(timeRange: instruction.timeRange,
+                trackID: instruction.sourceTrackID, styling: panelStyling,
+                preferredTransform: instruction.preferredTransform, normalizedSize: instruction.normalizedSize,
+                cropRect: panelCrop, renderSize: frames.screen.size, edits: panelEdits,
+                editPlan: instruction.editPlan, cursorTrack: instruction.cursorTrack, cursorSettings: instruction.cursorSettings)
+            let panelImage = try cameraPanelCompositor.makeComposedImage(source: source, facecam: nil,
+                instruction: panel, compositionTime: compositionTime)
+            // Clip after zooming so the panel corners remain fixed alongside the camera.
+            var screen = applyRoundedMask(panelImage, cornerRadius: radius,
+                in: CGRect(origin: .zero, size: frames.screen.size), role: .recording)
+                .transformed(by: CGAffineTransform(translationX: frames.screen.minX, y: canvas.height - frames.screen.maxY))
+            if instruction.scene.isActive {
+                screen = sceneRenderer.render(media: screen, mediaRect: screen.extent, frame: screen.extent,
+                    canvas: canvas, settings: instruction.scene.clamped(to: instruction.editPlan.outputDuration),
+                    time: compositionTime, radius: radius, shadow: instruction.styling.shadowIntensity,
+                    referenceFrame: bounds)
+            }
+            screen = screen.applyingFilter("CIColorMatrix", parameters: [
+                "inputAVector": CIVector(x: 0, y: 0, z: 0, w: presentation.screenOpacity)])
+            screen = applyCameraTransitionEffects(screen, presentation: presentation, canvas: canvas)
+            if !instruction.scene.isActive, instruction.styling.shadowIntensity > 0 {
+                result = makeShadow(screen, intensity: instruction.styling.shadowIntensity, in: screen.extent).composited(over: result)
+            }
+            result = screen.composited(over: result)
+        }
+        result = compositeAnnotations(over: result, instruction: instruction, compositionTime: compositionTime)
+        let sourceTime = instruction.editPlan.sourceTime(forOutputTime: compositionTime) ?? compositionTime
+        // Layout panels share a scene plane. An independent camera stays in its
+        // layout position; screen-content zoom remains separate from scene motion.
+        if var camera = makeFacecamLayer(facecam, for: instruction, compositionTime: compositionTime) {
+            if presentation.overlayZoomShrink > 0 {
+                let effect = TimelineZoomCanvasTransform.activeEffect(edits: instruction.edits,
+                    editPlan: instruction.editPlan, outputTime: compositionTime, cursorTrack: instruction.cursorTrack)
+                let cameraRect = CGRect(x: frames.camera.minX, y: canvas.height - frames.camera.maxY,
+                                        width: frames.camera.width, height: frames.camera.height)
+                camera = camera.transformed(by: CameraLayoutGeometry.overlayZoomTransform(frame: cameraRect,
+                    depth: effect?.depth ?? 1, overlayAmount: 1, shrinkAmount: presentation.overlayZoomShrink))
+            }
+            if instruction.scene.isActive && instruction.scene.resolvedCameraFollowsScene {
+                camera = sceneRenderer.project(camera, canvas: canvas,
+                    pose: instruction.scene.clamped(to: instruction.editPlan.outputDuration).pose(at: compositionTime),
+                    referenceFrame: bounds)
+            }
+            result = camera.composited(over: result)
+        }
+        return compositeCaptions(over: result, instruction: instruction, sourceTime: sourceTime).cropped(to: bounds)
     }
 
     private func annotationImage(_ annotation: TimelineAnnotationRegion, canvasSize: CGSize) -> CIImage? {
@@ -589,8 +711,15 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
             fallback: instruction.facecamFallbackSettings)
         let mapped = geometry.canvasEffect(effect, cameraSettings: settings)
         let zoomTransform = TimelineZoomCanvasTransform.transform(for: mapped, in: renderRect, flipsY: true)
-
         return image.transformed(by: zoomTransform)
+    }
+
+    private func cameraPresentation(for instruction: VideoBackgroundCompositionInstruction, time: Double) -> CameraLayoutPresentation {
+        instruction.cameraPresentation ?? CameraLayoutMotion.presentation(edits: instruction.edits,
+            plan: instruction.editPlan, time: time,
+            duration: instruction.editPlan.segments.last?.sourceEnd ?? instruction.timeRange.duration.seconds,
+            fallback: instruction.facecamFallbackSettings, canvas: instruction.renderSize,
+            crop: instruction.cropRect, styling: instruction.styling)
     }
 
     private func makeFacecamLayer(
@@ -604,16 +733,16 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
         }
 
         let sourceTime = instruction.editPlan.sourceTime(forOutputTime: compositionTime) ?? compositionTime
-        guard let settings = instruction.edits.activeCameraSettings(
+        let presentation = cameraPresentation(for: instruction, time: compositionTime)
+        guard presentation.cameraOpacity > 0 else { return nil }
+        let settings = instruction.edits.activeCameraSettings(
             at: sourceTime,
             duration: max(instruction.editPlan.segments.last?.sourceEnd ?? instruction.timeRange.duration.seconds, 0),
             fallback: instruction.facecamFallbackSettings
-        ) else {
-            return nil
-        }
+        ) ?? instruction.facecamFallbackSettings ?? defaultFacecamSettings(enabled: true)
 
         let renderSize = instruction.renderSize
-        let topLeftFrame = FacecamOverlayLayout.frame(in: renderSize, settings: settings)
+        let topLeftFrame = presentation.camera
         guard !topLeftFrame.isEmpty else { return nil }
 
         let frame = CGRect(
@@ -622,7 +751,7 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
             width: topLeftFrame.width,
             height: topLeftFrame.height
         )
-        let radius = facecamCornerRadius(for: frame, settings: settings)
+        let radius = presentation.cameraRadius
 
         var image = CIImage(cvPixelBuffer: facecam)
         image = image.transformed(by: instruction.facecamPreferredTransform)
@@ -634,15 +763,29 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
             .cropped(to: CGRect(origin: normalizedRect.origin, size: normalizedSize))
             .transformed(by: CGAffineTransform(translationX: -normalizedRect.minX, y: -normalizedRect.minY))
 
-        let scale = max(frame.width / max(normalizedSize.width, 1), frame.height / max(normalizedSize.height, 1))
+        let detectedFocus = presentation.faceCentering > 0
+            ? cameraFaceTracker.focus(in: image, at: compositionTime) : CGPoint(x: 0.5, y: 0.5)
+        let focus = CGPoint(x: 0.5 + (detectedFocus.x - 0.5) * presentation.faceCentering,
+                            y: 0.5 + (detectedFocus.y - 0.5) * presentation.faceCentering)
+        let placement = CameraFaceFraming.imageFrame(source: normalizedSize, target: frame, focus: focus)
+        let scale = placement.width / max(1, normalizedSize.width)
         image = image.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
-        let dx = frame.midX - image.extent.midX
-        let dy = frame.midY - image.extent.midY
-        image = image.transformed(by: CGAffineTransform(translationX: dx, y: dy))
+            .transformed(by: CGAffineTransform(translationX: placement.minX, y: placement.minY))
         let clipped = applyRoundedMask(image.cropped(to: frame), cornerRadius: radius, in: frame, role: .facecam)
+            .applyingFilter("CIColorMatrix", parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: presentation.cameraOpacity)])
 
-        guard settings.clamped.borderWidth > 0 else {
-            return clipped
+        func finish(_ layer: CIImage) -> CIImage {
+            var decorated = layer
+            if instruction.styling.shadowIntensity > 0 {
+                decorated = layer.composited(over: makeShadow(layer,
+                    intensity: instruction.styling.shadowIntensity, in: layer.extent))
+            }
+            // The camera and its shadow fade and blur together during transitions.
+            return applyCameraTransitionEffects(decorated, presentation: presentation, canvas: renderSize)
+        }
+
+        guard presentation.borderWidth > 0 else {
+            return finish(clipped)
         }
 
         let borderColor = SerializableColor(hex: settings.clamped.borderColor)
@@ -651,21 +794,21 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
                 red: CGFloat(borderColor.red),
                 green: CGFloat(borderColor.green),
                 blue: CGFloat(borderColor.blue),
-                alpha: CGFloat(borderColor.alpha)
+                alpha: CGFloat(borderColor.alpha) * presentation.cameraOpacity
             ),
-            lineWidth: CGFloat(settings.clamped.borderWidth),
+            lineWidth: presentation.borderWidth,
             in: frame,
             cornerRadius: radius
         )
-        return border.composited(over: clipped)
+        return finish(border.composited(over: clipped))
     }
 
-    private func facecamCornerRadius(for frame: CGRect, settings: FacecamSettings) -> CGFloat {
+    private func facecamCornerRadius(for frame: CGRect, settings: FacecamSettings, canvas: CGSize) -> CGFloat {
         if settings.clamped.isCircle {
             return min(frame.width, frame.height) / 2
         }
 
-        return min(CGFloat(settings.clamped.cornerRadius), min(frame.width, frame.height) / 2)
+        return min(CGFloat(settings.clamped.cornerRadius) * CameraLayoutGeometry.decorationScale(in: canvas, settings: settings), min(frame.width, frame.height) / 2)
     }
 
     private func sourceLayout(frameRect: CGRect, styling: VideoBackgroundStyling) -> VideoInsetLayout {
@@ -970,7 +1113,14 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
 
     private func makeShadow(_ image: CIImage, intensity: Double, in rect: CGRect) -> CIImage {
         let blurRadius = 38 * intensity
-        let blurred = applyGaussianBlur(image, radius: blurRadius)
+        // Use only the panel's alpha silhouette. Blurring its colors produces a
+        // tinted glow, and clamping the edges can spread opaque pixels indefinitely.
+        let silhouette = image.cropped(to: rect).applyingFilter("CIColorMatrix", parameters: [
+            "inputRVector": CIVector(x: 0, y: 0, z: 0, w: 0),
+            "inputGVector": CIVector(x: 0, y: 0, z: 0, w: 0),
+            "inputBVector": CIVector(x: 0, y: 0, z: 0, w: 0)
+        ])
+        let blurred = silhouette.applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: blurRadius])
         let offset = blurred.transformed(by: CGAffineTransform(translationX: 0, y: -18 * intensity))
         return setOpacity(offset, alpha: 0.55 * intensity)
     }

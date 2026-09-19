@@ -139,25 +139,43 @@ struct TimelineSelectionSidebar: View {
             TimelineSelectionInfoRow(title: "Start", value: formatPlaybackTime(clip.span.start))
             TimelineSelectionInfoRow(title: "End", value: formatPlaybackTime(clip.span.end))
             TimelineSelectionInfoRow(title: "Duration", value: formatClipDuration(clip.span.duration))
+            TimelineSelectionActionButton(title: "Start New Segment Here", symbolName: "scissors") {
+                playback.pause()
+                edits.splitCameraClip(at: playback.currentTime, duration: playback.duration, fallback: defaultCameraSettings)
+            }
+            .disabled(playback.currentTime <= clip.span.start + 0.05 || playback.currentTime >= clip.span.end - 0.05)
         }
 
         InspectorGroup(title: "Visibility", symbolName: "eye") {
             InspectorSwitch(title: "Visible", isOn: cameraEnabledBinding(id: clip.id))
         }
 
-        InspectorGroup(title: "Position", symbolName: "square.grid.3x3") {
-            PositionGrid(selection: cameraAnchorBinding(id: clip.id))
+        InspectorGroup(title: "Layout", symbolName: "rectangle.split.2x1") {
+            CameraLayoutControls(settings: cameraSettingsBinding(id: clip.id), onEditingChanged: handleUndoTransaction,
+                transitionAvailableDuration: TimelineExportEditPlan.build(duration: playback.duration, edits: edits.snapshot)
+                    .outputSpans(forSourceSpan: clip.span).reduce(0) { $0 + $1.duration })
+            Text("Changes apply only to this camera segment. Use the timeline’s camera layout menu to start a different layout at the playhead.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+        }
+        if clip.settings.resolvedLayout == .overlay {
+            InspectorGroup(title: "Position", symbolName: "square.grid.3x3") {
+                PositionGrid(selection: cameraAnchorBinding(id: clip.id))
+            }
         }
 
         InspectorGroup(title: "Style", symbolName: "slider.horizontal.3") {
-            InspectorSlider(
-                title: "Size",
-                valueText: "\(Int(clip.settings.clamped.size.rounded()))%",
-                value: cameraSizeBinding(id: clip.id),
-                range: 8...75,
-                step: 1,
-                onEditingChanged: handleUndoTransaction
-            )
+            CameraCornerControls(settings: cameraSettingsBinding(id: clip.id), onEditingChanged: handleUndoTransaction)
+            if clip.settings.resolvedLayout == .overlay {
+                InspectorSlider(
+                    title: "Size",
+                    valueText: "\(Int(clip.settings.clamped.size.rounded()))%",
+                    value: cameraSizeBinding(id: clip.id),
+                    range: 8...75,
+                    step: 1,
+                    onEditingChanged: handleUndoTransaction
+                )
+            }
             InspectorSlider(
                 title: "Border",
                 valueText: "\(Int(clip.settings.clamped.borderWidth.rounded()))px",
@@ -166,14 +184,16 @@ struct TimelineSelectionSidebar: View {
                 step: 1,
                 onEditingChanged: handleUndoTransaction
             )
-            InspectorSlider(
-                title: "Margin",
-                valueText: "\(Int(clip.settings.clamped.margin.rounded()))%",
-                value: cameraMarginBinding(id: clip.id),
-                range: 0...24,
-                step: 1,
-                onEditingChanged: handleUndoTransaction
-            )
+            if clip.settings.resolvedLayout == .overlay {
+                InspectorSlider(
+                    title: "Margin",
+                    valueText: "\(Int(clip.settings.clamped.margin.rounded()))%",
+                    value: cameraMarginBinding(id: clip.id),
+                    range: 0...24,
+                    step: 1,
+                    onEditingChanged: handleUndoTransaction
+                )
+            }
         }
 
         InspectorGroup(title: "Split", symbolName: "timeline.selection") {
@@ -213,6 +233,12 @@ struct TimelineSelectionSidebar: View {
                     TimelineZoomStylePicker(preset: zoomAnimationPresetBinding(id: id))
                     TimelineZoomDepthPicker(depth: zoomDepthBinding(id: id))
                 }
+
+                TimelineZoomTransitionControls(region: zoom, edits: edits,
+                    outputDuration: TimelineExportEditPlan.build(duration: playback.duration, edits: edits.snapshot)
+                        .outputSpans(forSourceSpan: zoom.span).reduce(0) { $0 + $1.duration },
+                    update: { edits.updateZoomTransition(id: id, transition: $0) },
+                    onEditingChanged: handleUndoTransaction)
 
                 InspectorGroup(title: "Focus", symbolName: "scope") {
                     InspectorSlider(
@@ -355,6 +381,11 @@ struct TimelineSelectionSidebar: View {
             get: { edits.clipSpeed(index: index) },
             set: { edits.updateClipSpeed(index: index, speed: $0) }
         )
+    }
+
+    private func cameraSettingsBinding(id: TimelineRegionID) -> Binding<FacecamSettings> {
+        Binding(get: { edits.cameraClips.first(where: { $0.id == id })?.settings ?? defaultFacecamSettings(enabled: true) },
+                set: { edits.updateCameraClipSettings(id: id, settings: $0.clamped) })
     }
 
     private func cameraEnabledBinding(id: TimelineRegionID) -> Binding<Bool> {
