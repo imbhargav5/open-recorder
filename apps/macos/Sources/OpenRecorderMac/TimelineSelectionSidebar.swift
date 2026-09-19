@@ -151,7 +151,9 @@ struct TimelineSelectionSidebar: View {
         }
 
         InspectorGroup(title: "Layout", symbolName: "rectangle.split.2x1") {
-            CameraLayoutControls(settings: cameraSettingsBinding(id: clip.id), onEditingChanged: handleUndoTransaction)
+            CameraLayoutControls(settings: cameraSettingsBinding(id: clip.id), onEditingChanged: handleUndoTransaction,
+                transitionAvailableDuration: TimelineExportEditPlan.build(duration: playback.duration, edits: edits.snapshot)
+                    .outputSpans(forSourceSpan: clip.span).reduce(0) { $0 + $1.duration })
             Text("Changes apply only to this camera segment. Use the timeline’s camera layout menu to start a different layout at the playhead.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)

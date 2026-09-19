@@ -564,6 +564,8 @@ struct TimelineEditState: Equatable {
     }
 }
 
+enum TimelineCameraResizeEdge { case leading, trailing }
+
 enum TimelineEditEvent: Equatable {
     case applySnapshot(TimelineEditSnapshot)
     case replaceCaptions(CaptionTrack?)
@@ -578,6 +580,7 @@ enum TimelineEditEvent: Equatable {
     case setCameraLayout(CameraLayout, currentTime: Double, duration: Double, fallback: FacecamSettings?)
     case selectCameraClip(TimelineRegionID)
     case updateCameraClipSettings(id: TimelineRegionID, settings: FacecamSettings)
+    case resizeCameraClip(id: TimelineRegionID, edge: TimelineCameraResizeEdge, time: Double, duration: Double)
     case applyCameraTransition(CameraLayoutTransition, ids: [TimelineRegionID])
     case mergeCameraClip(id: TimelineRegionID, direction: TimelineCameraMergeDirection)
     case deleteCameraClip(id: TimelineRegionID, duration: Double, fallback: FacecamSettings?)
@@ -662,6 +665,10 @@ extension TimelineEditState {
 
         case .updateCameraClipSettings(let id, let settings):
             updateCameraClipSettings(id: id, settings: settings)
+            return []
+
+        case .resizeCameraClip(let id, let edge, let time, let duration):
+            resizeCameraClip(id: id, edge: edge, time: time, duration: duration)
             return []
 
         case .applyCameraTransition(let transition, let ids):
@@ -1196,6 +1203,39 @@ extension TimelineEditState {
         statusMessage = "Updated camera settings."
     }
 
+    private mutating func resizeCameraClip(id: TimelineRegionID, edge: TimelineCameraResizeEdge,
+                                          time: Double, duration: Double) {
+        guard time.isFinite, duration.isFinite, duration > 0 else { return }
+        var clips = snapshot.cameraClips.sorted { $0.span.start < $1.span.start }
+        guard let index = clips.firstIndex(where: { $0.id == id }) else { return }
+        let span = clips[index].span
+        let minimum = min(0.1, span.duration)
+        guard minimum > 0 else { return }
+        switch edge {
+        case .leading:
+            let previous = index > 0 ? clips[index - 1].span : nil
+            let linked = previous.map { abs($0.end - span.start) < 0.001 } ?? false
+            let lower = previous.map { linked ? $0.start + min(0.1, $0.duration) : $0.end } ?? 0
+            let upper = span.end - minimum
+            guard lower <= upper else { return }
+            let boundary = min(upper, max(lower, time))
+            clips[index].span.start = boundary
+            if linked { clips[index - 1].span.end = boundary }
+        case .trailing:
+            let next = index + 1 < clips.count ? clips[index + 1].span : nil
+            let linked = next.map { abs($0.start - span.end) < 0.001 } ?? false
+            let lower = span.start + minimum
+            let upper = next.map { linked ? $0.end - min(0.1, $0.duration) : $0.start } ?? duration
+            guard lower <= upper else { return }
+            let boundary = min(upper, max(lower, time))
+            clips[index].span.end = boundary
+            if linked { clips[index + 1].span.start = boundary }
+        }
+        snapshot.cameraClips = clips
+        selectCameraClip(id: id)
+        statusMessage = "Resized camera layout."
+    }
+
     private mutating func mergeCameraClip(id: TimelineRegionID, direction: TimelineCameraMergeDirection) {
         let clips = snapshot.cameraClips.sorted { $0.span.start < $1.span.start }
         guard let index = clips.firstIndex(where: { $0.id == id }) else { return }
@@ -1584,6 +1624,10 @@ final class TimelineEditDriver {
 
     func updateCameraClipSettings(id: TimelineRegionID, settings: FacecamSettings) {
         send(.updateCameraClipSettings(id: id, settings: settings))
+    }
+
+    func resizeCameraClip(id: TimelineRegionID, edge: TimelineCameraResizeEdge, time: Double, duration: Double) {
+        send(.resizeCameraClip(id: id, edge: edge, time: time, duration: duration))
     }
 
     func applyCameraTransition(_ transition: CameraLayoutTransition, to ids: [TimelineRegionID]) {

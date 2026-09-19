@@ -1112,6 +1112,7 @@ struct TimelineClipRow: View {
 }
 
 struct TimelineResizeHandle: View {
+    var usesResizeCursor = false
     @State private var isHovering = false
 
     var body: some View {
@@ -1131,7 +1132,16 @@ struct TimelineResizeHandle: View {
             .shadow(color: Color.black.opacity(0.35), radius: 3, y: 1)
             .scaleEffect(isHovering ? 1.15 : 1.0)
             .animation(.snappy(duration: 0.15), value: isHovering)
-            .onHover { isHovering = $0 }
+            .onHover { hovering in
+                guard hovering != isHovering else { return }
+                isHovering = hovering
+                if usesResizeCursor {
+                    if hovering { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
+                }
+            }
+            .onDisappear {
+                if usesResizeCursor && isHovering { NSCursor.pop() }
+            }
     }
 }
 
@@ -1447,6 +1457,9 @@ private struct TimelineCameraClipItem: View {
     var fallbackSettings: FacecamSettings?
     var edits: TimelineEditDriver
 
+    @State private var resizeStartTime: Double?
+    @State private var isHovering = false
+
     private var accentColor: Color {
         Color(red: 0.18, green: 0.82, blue: 0.48)
     }
@@ -1511,12 +1524,30 @@ private struct TimelineCameraClipItem: View {
             }
         }
         .buttonStyle(.plain)
-        .frame(width: itemWidth, height: TimelineMetrics.regionItemHeight)
-        .position(x: startX + itemWidth / 2, y: TimelineMetrics.layerHeight / 2)
         .accessibilityLabel(clip.settings.clamped.enabled ? "Camera clip" : "Hidden camera clip")
         .accessibilityValue("\(shapeTitle), \(timeRangeDescription)")
-        .accessibilityHint("Select to edit this segment’s layout, width, corners, and face centering.")
+        .accessibilityHint("Select to edit this segment’s layout. Drag either edge to change its timing.")
         .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .frame(width: itemWidth, height: TimelineMetrics.regionItemHeight)
+        .overlay(alignment: .leading) {
+            if (isSelected || isHovering), clip.span.start >= viewport.visibleStart - 0.001 {
+                resizeHandle(edge: .leading, hitWidth: min(18, itemWidth / 2))
+            }
+        }
+        .overlay(alignment: .trailing) {
+            if (isSelected || isHovering), clip.span.end <= viewport.visibleEnd + 0.001 {
+                resizeHandle(edge: .trailing, hitWidth: min(18, itemWidth / 2))
+            }
+        }
+        .onHover { isHovering = $0 }
+        .onDisappear {
+            if resizeStartTime != nil {
+                edits.endUndoTransaction()
+                resizeStartTime = nil
+            }
+        }
+        .zIndex(isSelected ? 1 : 0)
+        .position(x: startX + itemWidth / 2, y: TimelineMetrics.layerHeight / 2)
         .contextMenu {
             Button {
                 CameraTransitionStore.shared.copy(clip.settings.resolvedLayoutTransition)
@@ -1577,6 +1608,42 @@ private struct TimelineCameraClipItem: View {
             }
             .disabled(!edits.canDeleteCameraClip(id: clip.id, duration: duration, fallback: fallbackSettings))
         }
+    }
+
+    private func resizeHandle(edge: TimelineCameraResizeEdge, hitWidth: CGFloat) -> some View {
+        TimelineResizeHandle(usesResizeCursor: true)
+            .frame(width: max(1, hitWidth), height: TimelineMetrics.regionItemHeight)
+            .clipped()
+            .contentShape(Rectangle())
+            .highPriorityGesture(
+                DragGesture(minimumDistance: 2, coordinateSpace: .global)
+                    .onChanged { value in
+                        guard width > 0, viewport.visibleDuration.isFinite else { return }
+                        if resizeStartTime == nil {
+                            edits.beginUndoTransaction()
+                            resizeStartTime = edge == .leading ? clip.span.start : clip.span.end
+                            edits.selectCameraClip(id: clip.id)
+                        }
+                        let delta = Double(value.translation.width / width) * viewport.visibleDuration
+                        edits.resizeCameraClip(id: clip.id, edge: edge, time: (resizeStartTime ?? 0) + delta, duration: duration)
+                    }
+                    .onEnded { _ in
+                        edits.endUndoTransaction()
+                        resizeStartTime = nil
+                    }
+            )
+            .help(edge == .leading ? "Drag to change layout start" : "Drag to change layout end")
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(edge == .leading ? "Layout start" : "Layout end")
+            .accessibilityValue(String(format: "%.2f seconds", edge == .leading ? clip.span.start : clip.span.end))
+            .accessibilityAdjustableAction { direction in
+                let time = edge == .leading ? clip.span.start : clip.span.end
+                switch direction {
+                case .increment: edits.resizeCameraClip(id: clip.id, edge: edge, time: time + 0.1, duration: duration)
+                case .decrement: edits.resizeCameraClip(id: clip.id, edge: edge, time: time - 0.1, duration: duration)
+                @unknown default: break
+                }
+            }
     }
 
     @ViewBuilder

@@ -3,6 +3,7 @@ import SwiftUI
 struct CameraLayoutControls: View {
     @Binding var settings: FacecamSettings
     var onEditingChanged: (Bool) -> Void = { _ in }
+    var transitionAvailableDuration: Double? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -34,7 +35,7 @@ struct CameraLayoutControls: View {
                     .foregroundStyle(.secondary)
             }
             Divider()
-            CameraTransitionControls(settings: $settings, onEditingChanged: onEditingChanged)
+            CameraTransitionControls(settings: $settings, onEditingChanged: onEditingChanged, availableDuration: transitionAvailableDuration)
         }
     }
 
@@ -232,6 +233,7 @@ private struct CameraLayoutThumbnail: View {
 private struct CameraTransitionControls: View {
     @Binding var settings: FacecamSettings
     var onEditingChanged: (Bool) -> Void
+    var availableDuration: Double?
     @State private var showsSavePreset = false
     @State private var presetName = ""
     private var store: CameraTransitionStore { .shared }
@@ -273,6 +275,12 @@ private struct CameraTransitionControls: View {
                 InspectorSlider(title: "Duration", valueText: transition.duration == 0 ? "Instant" : String(format: "%.2f s", transition.duration),
                     value: value(\.duration), range: 0...2, step: 0.01, onEditingChanged: onEditingChanged)
                     .help("Shorter is faster. The chosen duration is used in playback and export. If the incoming segment is shorter, the transition uses its full length.")
+                if let availableDuration, availableDuration < transition.duration {
+                    Text("Uses \(String(format: "%.2f", max(0, availableDuration))) s here. Extend this layout segment to at least \(String(format: "%.2f", transition.duration)) s for the full transition.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 if transition.duration > 0 {
                     Picker("Motion", selection: value(\.motion)) {
                         ForEach(CameraLayoutTransition.Motion.allCases) { Text($0.title).tag($0) }
