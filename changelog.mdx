@@ -3,6 +3,26 @@ title: "Open Recorder changelog: releases, features, and fixes"
 description: "Release notes for Open Recorder on macOS. Track new screen recording features, capture improvements, and bug fixes in each version update."
 ---
 
+<Update label="September 19, 2026" description="v0.2.56" tags={["macOS"]}>
+## New features
+
+### Timeline camera layouts
+
+Vary how the camera and screen share the frame across a single recording. The **Camera** inspector adds visual tiles for the floating overlay, camera-only view, full-height split screen, and screen with a smaller camera beside it. Set camera width from 10 to 70 percent, reverse which side the camera sits on, and adjust padding and gap. Choose **Fit** to preserve the full screen or **Cover** to fill its panel, match screen corners to the camera or adjust them separately, and keep the detected face centered as the camera width changes.
+
+Use the camera layout menu next to the timeline clock to start a new layout at the playhead. Earlier segments keep their settings. Each camera segment on the timeline shows its layout and can be selected to tweak width, corners, or face centering, or right-clicked to change its layout. **Start New Camera Segment Here** lets you vary settings within the same layout. Layout changes ease between segments in both preview and export, and face tracking filters detection jitter so the framing stays steady. Layouts save with the camera clip and carry through to export.
+
+### Editable zoom transitions
+
+Zoom regions on the timeline now have configurable transitions. Adjust in and out timing, spring response, and blur and fade behavior per zoom so magnification eases in and out the way you want. See [Zoom effects](/editing/zoom-effects) for how to work with zoom regions.
+
+## Bug fixes
+
+- Zoom regions resize smoothly when you drag their edges on the timeline, and the overlay camera stays inside the canvas as zoom levels change.
+- Overlay camera corners can be rounded independently of the screen, and camera position transitions between segments are smoother.
+- Zoom timing is honored across every segment length, so shorter clips no longer clip the transition.
+</Update>
+
 <Update label="September 17, 2026" description="v0.2.55" tags={["macOS"]}>
 ## New features
 
