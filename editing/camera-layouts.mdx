@@ -1,0 +1,71 @@
+---
+title: "Timeline camera layouts and per-segment editing"
+description: "Choose how the camera and screen share the frame, vary layouts across a recording from the timeline, and adjust each camera segment on its own."
+---
+
+Open Recorder can place the camera as a floating overlay, fill the canvas with camera only, or share the frame between the screen and camera. Layouts are set in the **Layout** section of the **Camera** inspector, and can change across a single recording using camera segments on the timeline.
+
+## Choose a camera layout
+
+Open the **Camera** inspector and expand **Layout**. The **Camera layout** tiles offer four options:
+
+| Layout | Behavior |
+| --- | --- |
+| **Overlay** | The camera floats over the full-screen recording. Use the **Position**, **Size**, and **Margin** controls in the Style section to place it. |
+| **Camera only** | The camera fills the canvas. Screen audio is kept, but the screen is not shown. |
+| **Split screen** | Full-height camera panel next to the screen. |
+| **Screen + camera** | Screen with a smaller square camera beside it. |
+
+Layouts that show a screen panel (**Split screen** and **Screen + camera**) reveal these extra controls:
+
+- **Camera side** puts the camera on the **Left** or **Right** of the screen.
+- **Screen sizing** switches between **Fit** (keep the full screen visible at its original aspect ratio) and **Cover** (fill the panel and crop the edges).
+- **Match camera corners** rounds the screen with the same radius as the camera. Turn it off to reveal a separate **Screen Radius** slider (0–100 px).
+- **Camera Width** sets the camera panel width from 10 to 70 percent of the usable area.
+- **Gap** adds spacing between the screen and camera, from 0 to 12 percent.
+
+Any layout other than **Overlay** also exposes:
+
+- **Keep face centered** enables on-device face tracking so the camera reframes as you move. Detection jitter is filtered and framing eases toward deliberate movement, so preview and export stay steady.
+- **Padding** insets the whole layout from the canvas edge, from 0 to 20 percent.
+
+## Vary layouts across the recording
+
+The timeline shows a camera row for each segment. Change layout at the playhead without disturbing earlier segments:
+
+1. Move the playhead to where you want the new layout to start.
+2. Click the camera layout menu (the split-rectangles icon) next to the timeline clock.
+3. Pick a layout, or choose **Start New Camera Segment Here** to keep the current layout and vary its settings instead.
+
+Each split creates an independent camera segment. Earlier segments keep their layout, corners, width, and other settings.
+
+Layout changes ease between segments during playback and export. When a new segment is very short, the transition scales down to fit the segment's length.
+
+## Edit a specific camera segment
+
+Select a camera segment on the timeline to open it in the sidebar. The inspector mirrors the whole-recording **Layout**, **Style**, and **Position** controls, but changes apply only to the selected segment.
+
+The **Camera** group also shows the segment's start, end, and duration. Use it to:
+
+- **Start New Segment Here** splits the segment at the playhead so each half can be styled separately.
+- **Split at Playhead**, **Merge Previous**, and **Merge Next** in the **Split** group rearrange segment boundaries.
+- **Visible** hides the camera for the segment without deleting it.
+
+Drag either edge of a camera segment on the timeline to resize it. Adjacent segments share the moved boundary, so no gaps open up.
+
+## Scene transforms and the camera
+
+When a scene applies a transform (tilt, rotation, scale, or position) to the recording, the **Camera** group in the **Scene** inspector controls whether the camera follows:
+
+- **Camera follows scene** on: screen and camera rotate, tilt, scale, and move together.
+- **Camera follows scene** off: the camera stays upright and keeps its layout position while the screen moves.
+
+This switch appears only when a camera is present in the recording.
+
+## Overlay camera behavior during zoom
+
+When a **zoom region** is active, the overlay camera stays visible instead of being clipped. It shrinks in place so the border and shadow stay inside the canvas.
+
+Use **Scale down on zoom** in the Layout section to tune the effect. It appears when the camera layout is **Overlay** and ranges from 0 to 75 percent, with a default of 15 percent. At 0 percent the camera keeps its normal size during zooms. Higher values make more room for the magnified screen.
+
+See [Zoom effects](/editing/zoom-effects) for zoom timing, presets, and per-region transitions.
