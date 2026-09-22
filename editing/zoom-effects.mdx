@@ -30,6 +30,35 @@ The result applies as a single edit, so one undo restores the previous zooms.
 
 Editing an automatic region protects it from future regeneration. Changing its timing retimes the saved camera path, changing its depth rescales the magnification, and changing its focus pins the target.
 
+## Zoom transitions
+
+Each zoom region has its own **Zoom transition** group in the sidebar. Use it to change how the zoom eases in and out without touching the saved camera path or focus. Legacy regions use the timing from their saved zoom style until you adjust a control.
+
+**Zoom in** and **Zoom out** set the entrance and exit durations, each from 0 to 3 seconds. Setting a duration to 0 makes that side instant. If the sum exceeds the zoom's playback length, the inspector shows the trimmed durations that will actually be used.
+
+**Motion** picks the shape of the movement:
+
+- **Ease** uses a fixed easing curve. Choose **Ease in & out**, **Ease in**, **Ease out**, or **Linear** from the **Easing** menu.
+- **Spring** adds physical settling. Use the **Bounce** slider (0–100 percent) to tune how playful the spring feels. Low bounce is gently damped; higher bounce adds a livelier rebound. Spring zooms are clamped so they never appear to shrink below 1×.
+
+Both entrance and exit include the full movement and settle, so a segment reaches its target with no visible overshoot at the boundary.
+
+Click **Reset** at the top right of the group to clear your changes and fall back to the saved zoom style's timing.
+
+### Copy transitions between zooms
+
+Open the **Copy / Paste** menu in the **Zoom transition** group to reuse a transition across regions:
+
+- **Copy Zoom Transition** puts the current settings on an in-app clipboard.
+- **Paste Zoom Transition** applies the copied settings to the selected zoom. Enabled once something is copied.
+- **Copy to All Zoom Transitions** applies the current zoom's transition to every zoom region in the project. Enabled when the project has more than one zoom.
+
+The zoom transition clipboard is separate from the camera layout transition clipboard, so pasting one never overwrites the other.
+
+### Overlay camera during zoom
+
+When the camera layout is **Overlay**, the camera stays on screen during a zoom and shrinks in place so its border and shadow remain inside the canvas. The **Scale down on zoom** slider in the **Layout** section of the **Camera** inspector controls the maximum reduction, from 0 to 75 percent, with a default of 15 percent. At 0 percent the camera keeps its normal size through the zoom. See [Timeline camera layouts](/editing/camera-layouts) for the rest of the camera layout controls.
+
 ## Delete zoom regions
 
 Select a zoom region on the timeline to open it in the inspector. The **Delete** button removes the selected region.
