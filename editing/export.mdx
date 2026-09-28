@@ -1,0 +1,58 @@
+---
+title: "Export videos, GIFs, and screenshots"
+description: "Export Open Recorder projects as MOV, MP4, or animated GIF with resolution, frame rate, and quality options, or save composed screenshots as PNG."
+---
+
+Open Recorder exports from the editor toolbar. Video projects open the export dialog. Screenshots open the screenshot editor's Export menu.
+
+## Export a video
+
+1. Open a recording in the editor.
+2. Click **Export** in the top-right of the editor toolbar.
+3. Choose a **Format** and the options for that format.
+4. Click **Export Video**.
+5. When rendering finishes, choose where to save the file in the save panel.
+
+The export includes your crop, background, frame styling, cursor overlay, timeline speed and deletion edits, zoom effects, and camera layout settings.
+
+### Movie options (MOV and MP4)
+
+| Setting | Options | Default |
+| --- | --- | --- |
+| **Resolution** | 480p, 720p, 1080p, 4K | 1080p |
+| **Frame Rate** | 15, 24, 30, 60 FPS | 30 FPS |
+| **Quality** (MP4 only) | Low, Medium, High | High |
+
+Resolution presets scale the short edge of the output to 480, 720, 1080, or 2160 pixels.
+
+### GIF options
+
+| Setting | Options | Default |
+| --- | --- | --- |
+| **Size** | Medium (480 px short edge), Large (720 px short edge), Original (source dimensions) | Medium |
+| **Frame Rate** | 15, 20, 25, 30 FPS | 15 FPS |
+| **Loop** | On repeats continuously. Off plays once. | |
+
+### Captions
+
+If the project has captions, the dialog shows an **Include captions** toggle. See [Captions](/editing/captions#include-captions-on-export).
+
+### During and after export
+
+- The dialog shows rendering progress as a percentage. Click **Cancel Export** to stop rendering.
+- After saving, click **Show in Finder** to reveal the file, or **Done** to close the dialog.
+- If you cancel the save panel after rendering, Open Recorder keeps the rendered file. Click **Save Again** to save it without rendering again, or **Discard Export** to close the dialog without saving.
+
+If an export fails, see the [FAQ](/reference/faq#why-does-my-export-fail-with-source-video-frame-is-unavailable).
+
+## Export a screenshot
+
+Open a screenshot in the editor and click **Export** to open the Export menu:
+
+| Action | Shortcut | Result |
+| --- | --- | --- |
+| **Save PNG** | <kbd>⌘</kbd> <kbd>S</kbd> | Saves the composed PNG next to the source screenshot and copies it to the clipboard. |
+| **Save PNG As…** | <kbd>⇧</kbd> <kbd>⌘</kbd> <kbd>S</kbd> | Opens a save panel so you can choose a location and filename. |
+| **Copy PNG and Close** | <kbd>⌘</kbd> <kbd>C</kbd> | Copies the composed PNG to the clipboard and closes the editor. |
+
+Screenshots are saved under `~/Pictures/Open Recorder` by default. See [Keyboard shortcuts](/reference/keyboard-shortcuts) for other editor shortcuts.
