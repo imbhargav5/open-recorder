@@ -383,9 +383,9 @@ struct BrowserMockupSettings: Codable, Equatable, Hashable {
 }
 
 enum BrowserMockupStyle: String, Codable, CaseIterable, Identifiable {
-    case safari, chrome, minimal
+    case safari, chrome, glass, minimal
     var id: String { rawValue }
-    var title: String { rawValue.capitalized }
+    var title: String { self == .glass ? "Liquid Glass" : rawValue.capitalized }
 }
 
 enum BrowserAddressAlignment: String, Codable, CaseIterable, Identifiable {
