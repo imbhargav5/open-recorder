@@ -108,6 +108,7 @@ struct VideoPreviewPanel: View {
     var cropSelection: VideoCropSelection = .fullFrame
     var facecamSettings: FacecamSettings?
     var cameraTimelineFallback: FacecamSettings?
+    var browserMockup: BrowserMockupSettings = .default
     @Binding var previewAspectPreset: VideoPreviewAspectPreset
     @Binding var scene: SceneSettings
     var sceneEndpoint: SceneEndpoint
@@ -133,7 +134,7 @@ struct VideoPreviewPanel: View {
             if showsSceneTools { SceneCanvasTools(tool: $sceneTool) }
             ZStack {
                 if videoURL != nil {
-                    AspectRatioFitContainer(aspectRatio: previewAspectRatio) {
+                    AspectRatioFitContainer(aspectRatio: browserCanvasAspectRatio) {
                         Group {
                             if facecamVideoURL != nil {
                                 cameraLayoutStage
@@ -298,7 +299,7 @@ struct VideoPreviewPanel: View {
         GeometryReader { proxy in
             let hasAdaptiveCamera = timelineEdits.snapshot.hasAdaptiveCamera
             let recordingFrame = PreviewStageLayout.recordingFrameRect(
-                forAspectRatio: hasAdaptiveCamera ? cropSelection.previewAspectRatio(in: playback.naturalVideoSize) : previewAspectRatio,
+                forAspectRatio: hasAdaptiveCamera ? cropSelection.previewAspectRatio(in: playback.naturalVideoSize) : browserCanvasAspectRatio,
                 in: proxy.size,
                 paddingValue: padding
             )
@@ -321,12 +322,13 @@ struct VideoPreviewPanel: View {
                     .clipped()
 
                 VideoInsetRecordingFrame(
-                    inset: inset,
+                    inset: browserMockup.enabled ? 0 : inset,
                     insetColor: insetColor,
                     insetOpacity: insetOpacity,
                     insetBalance: insetBalance,
                     cornerRadius: CGFloat(borderRadius)
                 ) {
+                    BrowserMockupFrame(settings: browserMockup) {
                     PlaybackPreview(
                         playback: playback,
                         edits: timelineEdits.snapshot,
@@ -336,8 +338,11 @@ struct VideoPreviewPanel: View {
                         cropSelection: cropSelection,
                         sourceSize: playback.naturalVideoSize,
                         letterboxFill: previewLetterboxFill,
-                        zoomAppliedByStage: zoomEffect?.usesViewportCenter == true
+                        zoomAppliedByStage: zoomEffect?.usesViewportCenter == true,
+                        fillsViewport: browserMockup.enabled
                     )
+                    }
+                    .padding(browserMockup.enabled ? CGFloat(browserMockup.outerPadding) : 0)
                 }
                 .frame(width: recordingFrame.width, height: recordingFrame.height)
                 .shadow(
@@ -384,6 +389,11 @@ struct VideoPreviewPanel: View {
 
     private var previewAspectRatio: CGFloat {
         previewAspectPreset.aspectRatio(for: cropSelection, sourceSize: playback.naturalVideoSize)
+    }
+
+    private var browserCanvasAspectRatio: CGFloat {
+        guard browserMockup.enabled else { return previewAspectRatio }
+        return previewAspectRatio * (browserMockup.style == .minimal ? 0.935 : 0.87)
     }
 
     private var previewLetterboxFill: VideoPreviewLetterboxFill {
@@ -767,15 +777,15 @@ struct PlaybackPreview: View {
     var sourceSize: CGSize = .zero
     var letterboxFill: VideoPreviewLetterboxFill = .black
     var zoomAppliedByStage = false
+    var fillsViewport = false
 
     var body: some View {
         GeometryReader { proxy in
             let sourceSize = VideoCropSelection.safeSourceSize(sourceSize)
             let cropRect = cropSelection.pixelRect(in: sourceSize)
-            let scale = min(
-                proxy.size.width / max(cropRect.width, 1),
-                proxy.size.height / max(cropRect.height, 1)
-            )
+            let widthScale = proxy.size.width / max(cropRect.width, 1)
+            let heightScale = proxy.size.height / max(cropRect.height, 1)
+            let scale = fillsViewport ? max(widthScale, heightScale) : min(widthScale, heightScale)
             let sourceDisplaySize = CGSize(width: sourceSize.width * scale, height: sourceSize.height * scale)
             let centeredOffset = CGPoint(
                 x: (proxy.size.width - cropRect.width * scale) / 2,
@@ -839,6 +849,62 @@ struct PlaybackPreview: View {
                     .shadow(color: .black.opacity(0.45), radius: 8, y: 4)
             }
         }
+    }
+}
+
+private struct BrowserMockupFrame<Content: View>: View {
+    var settings: BrowserMockupSettings
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        if settings.enabled {
+            GeometryReader { proxy in
+                let chromeHeight = proxy.size.height * (settings.style == .minimal ? 0.065 : 0.13)
+                VStack(spacing: 0) {
+                    browserChrome(height: chromeHeight)
+                    content().frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
+            .background(.white)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay { RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(.black.opacity(0.13)) }
+            .shadow(color: .black.opacity(0.24), radius: 18, y: 8)
+        } else { content() }
+    }
+
+    private func browserChrome(height: CGFloat) -> some View {
+        let navHeight = settings.style == .minimal ? height : height * 0.56
+        return VStack(spacing: 0) {
+            if settings.style != .minimal {
+                HStack(spacing: 7) {
+                    HStack(spacing: 6) {
+                        Circle().fill(.red).frame(width: 10, height: 10)
+                        Circle().fill(.orange).frame(width: 10, height: 10)
+                        Circle().fill(.green).frame(width: 10, height: 10)
+                    }.padding(.leading, 12)
+                    HStack(spacing: 7) {
+                        Image(systemName: "globe").foregroundStyle(.blue)
+                        Text(URL(string: settings.url)?.host ?? "New tab").lineLimit(1)
+                        Image(systemName: "xmark")
+                    }.font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(.black.opacity(0.68)).padding(.horizontal, 12)
+                        .frame(width: min(190, max(100, height * 3.5)), maxHeight: .infinity)
+                        .background(.white, in: UnevenRoundedRectangle(topLeadingRadius: 9, bottomLeadingRadius: 0, bottomTrailingRadius: 0, topTrailingRadius: 9))
+                    Image(systemName: "plus").font(.system(size: 11)).foregroundStyle(.black.opacity(0.45)); Spacer()
+                }.frame(height: height - navHeight).background(Color(red: 0.87, green: 0.89, blue: 0.92))
+            }
+            HStack(spacing: 10) {
+                Image(systemName: "chevron.left"); Image(systemName: "chevron.right").opacity(0.45); Image(systemName: "arrow.clockwise")
+                HStack(spacing: 6) {
+                    Image(systemName: "lock.fill").font(.system(size: 8))
+                    Text(settings.url.isEmpty ? "your-product.com" : settings.url).lineLimit(1).truncationMode(.middle)
+                        .frame(maxWidth: .infinity, alignment: settings.addressAlignment == .center ? .center : .leading)
+                }.font(.system(size: 10, weight: .medium)).foregroundStyle(.black.opacity(0.65))
+                    .padding(.horizontal, 10).frame(height: navHeight * 0.64).background(.black.opacity(0.06), in: Capsule())
+                Image(systemName: "square.and.arrow.up"); Image(systemName: "ellipsis")
+            }.font(.system(size: max(7, navHeight * 0.25), weight: .semibold)).foregroundStyle(.black.opacity(0.55))
+                .padding(.horizontal, 12).frame(height: navHeight).background(.white)
+        }.overlay(alignment: .bottom) { Rectangle().fill(.black.opacity(0.1)).frame(height: 0.5) }
     }
 }
 

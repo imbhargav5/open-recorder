@@ -113,14 +113,19 @@ struct VideoEditorState: Equatable {
     func styledExportOptions(from options: VideoExportOptions, cursorTelemetryURL: URL?) -> VideoExportOptions {
         options.with(
             background: video.background,
-            padding: video.padding,
+            // Browser chrome has its own modest, intentional card inset. It is
+            // separate from generic frame padding, which would create large gutters.
+            padding: video.browserMockup.enabled ? video.browserMockup.outerPadding : video.padding,
             borderRadius: video.borderRadius,
             shadow: video.shadow,
             backgroundBlur: video.backgroundBlur,
-            inset: video.inset,
+            // Browser Mockup owns the complete card. Generic inset styling must
+            // never create a gap between its chrome and recorded screen.
+            inset: video.browserMockup.enabled ? 0 : video.inset,
             insetColor: video.insetColor,
             insetOpacity: video.insetOpacity,
-            insetBalance: video.insetBalance
+            insetBalance: video.insetBalance,
+            browserMockup: video.browserMockup
         )
         .withScene(video.scene)
         .withAspectPreset(previewAspectPreset)
@@ -345,6 +350,7 @@ extension VideoEditorState {
         next.cursorOverlay = video.cursorOverlay.clamped
         next.insetBalance = video.insetBalance.clamped
         next.facecamSettings = hasRecordedCamera ? (video.facecamSettings ?? defaultFacecamSettings(enabled: true)).clamped : nil
+        next.browserMockup = video.browserMockup.clamped
         return next
     }
 }

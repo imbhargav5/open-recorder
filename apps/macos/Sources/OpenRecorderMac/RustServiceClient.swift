@@ -143,10 +143,19 @@ struct RustServiceClient: Sendable {
     private static func discoverServiceExecutable() -> URL? {
         let fileManager = FileManager.default
         let currentDirectory = URL(fileURLWithPath: fileManager.currentDirectoryPath)
+        // `swift build` produces a bare executable in .build/.../debug. Unlike an
+        // installed .app it does not bundle the service, and Finder-launched
+        // executables do not retain the package working directory. Walk from the
+        // executable to the sibling rust-service project so development launches
+        // work just like packaged builds.
+        let executableDirectory = URL(fileURLWithPath: CommandLine.arguments.first ?? "")
+            .standardizedFileURL
+            .deletingLastPathComponent()
         let candidates = [
             currentDirectory.appendingPathComponent("../rust-service/target/debug/open-recorder-service"),
             currentDirectory.appendingPathComponent("apps/rust-service/target/debug/open-recorder-service"),
             currentDirectory.appendingPathComponent("../../apps/rust-service/target/debug/open-recorder-service"),
+            executableDirectory.appendingPathComponent("../../../rust-service/target/debug/open-recorder-service"),
             Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/open-recorder-service"),
             Bundle.main.bundleURL.appendingPathComponent("Contents/Resources/open-recorder-service")
         ]

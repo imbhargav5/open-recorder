@@ -345,6 +345,7 @@ struct VideoEditorStudioView: View {
             loopCursor: editor.binding(\.cursorOverlay.loops), cursorSize: editor.binding(\.cursorOverlay.size),
             cursorSmoothing: editor.binding(\.cursorOverlay.smoothing), cursorStyleID: editor.binding(\.cursorOverlay.styleID),
             cameraSettings: inspectorCameraSettingsBinding, onCameraLayoutEditingChanged: cameraLayoutUndoTransaction,
+            browserMockup: editor.binding(\.browserMockup),
             recordingSession: recordingSession,
             captionController: workspace.captions, captionEdits: timelineEdits, captionPlayback: playback,
             activeTab: $activeInspector, scene: editor.binding(\.scene), canvasAspect: editor.previewAspectPresetBinding,
