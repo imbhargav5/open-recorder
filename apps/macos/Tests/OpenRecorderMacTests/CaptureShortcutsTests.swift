@@ -27,6 +27,9 @@ final class CaptureShortcutsTests: XCTestCase {
         XCTAssertTrue(dragRecord.isEnabled)
         XCTAssertEqual(dragRecord.keyCombination.displayString, "⌥⇧6")
 
+        XCTAssertEqual(defaults.item(for: .windowScreenshot).keyCombination.displayString, "⌥⇧7")
+        XCTAssertEqual(defaults.item(for: .windowScreenRecord).keyCombination.displayString, "⌥⇧8")
+
         let toggleRecording = defaults.item(for: .toggleRecording)
         XCTAssertTrue(toggleRecording.isEnabled)
         XCTAssertEqual(toggleRecording.keyCombination.displayString, "⌥⇧R")
@@ -291,7 +294,7 @@ final class CaptureShortcutsTests: XCTestCase {
         model.cancelCapture()
         model.triggerDragScreenRecord()
         XCTAssertEqual(model.captureMode, .recording)
-        XCTAssertTrue(model.isDragRecordingPending)
+        XCTAssertFalse(model.isDragRecordingPending)
 
         model.cancelCapture()
         XCTAssertFalse(model.isDragRecordingPending)

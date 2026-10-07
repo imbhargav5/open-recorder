@@ -21,7 +21,7 @@ struct StudioWindowCloseInterceptor: NSViewRepresentable {
         _ nsView: StudioWindowCloseInterceptionView,
         coordinator: Void
     ) {
-        nsView.detach()
+        nsView.dismantle()
     }
 }
 
@@ -35,8 +35,13 @@ final class StudioWindowCloseInterceptionView: NSView, NSWindowDelegate {
     nonisolated(unsafe) private weak var forwardedDelegate: (any NSWindowDelegate)?
     private var closeTask: Task<Void, Never>?
     private var allowsNextClose = false
+    private var isMovingBetweenWindows = false
+    private var isDismantled = false
+    private var isWindowClosing = false
 
     override func viewWillMove(toWindow newWindow: NSWindow?) {
+        // SwiftUI may update this view reentrantly while its old window is deallocating.
+        isMovingBetweenWindows = true
         if newWindow !== window {
             detach()
         }
@@ -45,11 +50,13 @@ final class StudioWindowCloseInterceptionView: NSView, NSWindowDelegate {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        isMovingBetweenWindows = false
         attachToCurrentWindow()
     }
 
     func attachToCurrentWindow() {
-        guard let window else { return }
+        guard !isMovingBetweenWindows, !isDismantled, !isWindowClosing,
+              let window else { return }
         if interceptedWindow !== window {
             detach()
             interceptedWindow = window
@@ -70,9 +77,22 @@ final class StudioWindowCloseInterceptionView: NSView, NSWindowDelegate {
         allowsNextClose = false
     }
 
+    func dismantle() {
+        isDismantled = true
+        detach()
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        isWindowClosing = true
+        let delegate = forwardedDelegate
+        detach()
+        delegate?.windowWillClose?(notification)
+    }
+
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         if allowsNextClose {
             allowsNextClose = false
+            isWindowClosing = true
             return true
         }
 
@@ -84,6 +104,7 @@ final class StudioWindowCloseInterceptionView: NSView, NSWindowDelegate {
         let closeRequest = onCloseRequest
         closeTask = Task { @MainActor [weak self, weak sender] in
             let shouldClose = await closeRequest()
+            guard !Task.isCancelled else { return }
             if shouldClose {
                 self?.completeApprovedClose(sender: sender)
             } else if !Task.isCancelled {

@@ -8,26 +8,32 @@ public enum CaptureShortcutAction: String, CaseIterable, Identifiable, Codable, 
     case deviceScreenRecord = "deviceScreenRecord"
     case dragScreenRecord = "dragScreenRecord"
     case toggleRecording = "toggleRecording"
+    case windowScreenshot = "windowScreenshot"
+    case windowScreenRecord = "windowScreenRecord"
 
     public var id: String { rawValue }
 
     public var title: String {
         switch self {
-        case .deviceScreenshot: "Device Screenshot"
-        case .dragScreenshot: "Drag Screenshot"
-        case .deviceScreenRecord: "Device Screen Record"
-        case .dragScreenRecord: "Drag Screen Record"
-        case .toggleRecording: "Toggle Recording"
+        case .deviceScreenshot: "Screenshot current display"
+        case .dragScreenshot: "Screenshot selected area"
+        case .deviceScreenRecord: "Record current display"
+        case .dragScreenRecord: "Record selected area"
+        case .toggleRecording: "Open recorder / Start / Stop"
+        case .windowScreenshot: "Screenshot current window"
+        case .windowScreenRecord: "Record current window"
         }
     }
 
     public var subtitle: String {
         switch self {
-        case .deviceScreenshot: "Capture full screen instantly"
-        case .dragScreenshot: "Select and capture custom area"
-        case .deviceScreenRecord: "Open screen recorder with full screen selected"
-        case .dragScreenRecord: "Select area to record with Open Recorder"
-        case .toggleRecording: "Start or stop active recording"
+        case .deviceScreenshot: "Capture the display containing the pointer"
+        case .dragScreenshot: "Draw an area, then capture it"
+        case .deviceScreenRecord: "Open recording setup for the display containing the pointer"
+        case .dragScreenRecord: "Draw an area, review setup, then press Record"
+        case .toggleRecording: "Open setup from idle; start when ready; stop while recording"
+        case .windowScreenshot: "Capture the frontmost window of the active app"
+        case .windowScreenRecord: "Open recording setup for the active app’s frontmost window"
         }
     }
 
@@ -43,6 +49,10 @@ public enum CaptureShortcutAction: String, CaseIterable, Identifiable, Codable, 
             return KeyCombination(keyCode: UInt32(kVK_ANSI_6), modifiers: [.option, .shift])
         case .toggleRecording:
             return KeyCombination(keyCode: UInt32(kVK_ANSI_R), modifiers: [.option, .shift])
+        case .windowScreenshot:
+            return KeyCombination(keyCode: UInt32(kVK_ANSI_7), modifiers: [.option, .shift])
+        case .windowScreenRecord:
+            return KeyCombination(keyCode: UInt32(kVK_ANSI_8), modifiers: [.option, .shift])
         }
     }
 }
