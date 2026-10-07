@@ -135,16 +135,13 @@ struct VideoPreviewPanel: View {
             ZStack {
                 if videoURL != nil {
                     AspectRatioFitContainer(aspectRatio: browserCanvasAspectRatio) {
-                        BrowserMockupFrame(settings: browserMockup) {
-                            Group {
-                                if facecamVideoURL != nil {
-                                    cameraLayoutStage
-                                } else if scene.isActive { sceneStage } else { styledStage }
-                            }
-                            .modifier(SceneCanvasGesture(enabled: showsSceneTools, tool: sceneTool,
-                                pose: scenePoseBinding(settings: $scene, endpoint: sceneEndpoint), onEditingChanged: onSceneEditingChanged))
+                        Group {
+                            if facecamVideoURL != nil {
+                                cameraLayoutStage
+                            } else if scene.isActive { sceneStage } else { styledStage }
                         }
-                        .padding(browserMockup.enabled ? CGFloat(browserMockup.outerPadding) : 0)
+                        .modifier(SceneCanvasGesture(enabled: showsSceneTools, tool: sceneTool,
+                            pose: scenePoseBinding(settings: $scene, endpoint: sceneEndpoint), onEditingChanged: onSceneEditingChanged))
                     } overlay: {
                         recordingSessionBadges
                     }
@@ -302,7 +299,7 @@ struct VideoPreviewPanel: View {
         GeometryReader { proxy in
             let hasAdaptiveCamera = timelineEdits.snapshot.hasAdaptiveCamera
             let recordingFrame = PreviewStageLayout.recordingFrameRect(
-                forAspectRatio: hasAdaptiveCamera ? cropSelection.previewAspectRatio(in: playback.naturalVideoSize) : previewAspectRatio,
+                forAspectRatio: hasAdaptiveCamera ? cropSelection.previewAspectRatio(in: playback.naturalVideoSize) : browserCanvasAspectRatio,
                 in: proxy.size,
                 paddingValue: browserMockup.enabled ? 0 : padding
             )
@@ -331,6 +328,7 @@ struct VideoPreviewPanel: View {
                     insetBalance: insetBalance,
                     cornerRadius: CGFloat(borderRadius)
                 ) {
+                    BrowserMockupFrame(settings: browserMockup) {
                     PlaybackPreview(
                         playback: playback,
                         edits: timelineEdits.snapshot,
@@ -343,6 +341,10 @@ struct VideoPreviewPanel: View {
                         zoomAppliedByStage: zoomEffect?.usesViewportCenter == true,
                         fillsViewport: browserMockup.enabled
                     )
+                    }
+                    // This padding belongs to the whole browser card; the selected
+                    // background is drawn behind it by this stage.
+                    .padding(browserMockup.enabled ? CGFloat(browserMockup.outerPadding) : 0)
                 }
                 .frame(width: recordingFrame.width, height: recordingFrame.height)
                 .shadow(
@@ -875,7 +877,7 @@ private struct BrowserMockupFrame<Content: View>: View {
     private func browserChrome(height: CGFloat) -> some View {
         let navHeight = settings.style == .minimal ? height : height * 0.56
         return VStack(spacing: 0) {
-            if settings.style != .minimal {
+            if settings.style == .chrome {
                 HStack(spacing: 7) {
                     HStack(spacing: 6) {
                         Circle().fill(.red).frame(width: 10, height: 10)
@@ -895,6 +897,13 @@ private struct BrowserMockupFrame<Content: View>: View {
                 }.frame(height: height - navHeight).background(Color(red: 0.87, green: 0.89, blue: 0.92))
             }
             HStack(spacing: 10) {
+                if settings.style == .safari {
+                    HStack(spacing: 6) {
+                        Circle().fill(.red).frame(width: 10, height: 10)
+                        Circle().fill(.orange).frame(width: 10, height: 10)
+                        Circle().fill(.green).frame(width: 10, height: 10)
+                    }
+                }
                 Image(systemName: "chevron.left"); Image(systemName: "chevron.right").opacity(0.45); Image(systemName: "arrow.clockwise")
                 HStack(spacing: 6) {
                     Image(systemName: "lock.fill").font(.system(size: 8))
@@ -904,7 +913,8 @@ private struct BrowserMockupFrame<Content: View>: View {
                     .padding(.horizontal, 10).frame(height: navHeight * 0.64).background(.black.opacity(0.06), in: Capsule())
                 Image(systemName: "square.and.arrow.up"); Image(systemName: "ellipsis")
             }.font(.system(size: max(7, navHeight * 0.25), weight: .semibold)).foregroundStyle(.black.opacity(0.55))
-                .padding(.horizontal, 12).frame(height: navHeight).background(.white)
+                .padding(.horizontal, 12).frame(height: navHeight)
+                .background(settings.style == .safari ? Color(red: 0.94, green: 0.95, blue: 0.97) : .white)
         }.overlay(alignment: .bottom) { Rectangle().fill(.black.opacity(0.1)).frame(height: 0.5) }
     }
 }
