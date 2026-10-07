@@ -67,6 +67,47 @@ final class StudioWindowCloseInterceptorTests: XCTestCase {
         XCTAssertTrue(window.delegate === originalDelegate)
     }
 
+    func testReentrantUpdateCannotReattachWhileLeavingWindow() {
+        let window = NSWindow()
+        let delegate = VetoingWindowDelegate()
+        window.delegate = delegate
+        let interceptor = StudioWindowCloseInterceptionView()
+        window.contentView = interceptor
+        XCTAssertTrue(window.delegate === interceptor)
+
+        interceptor.viewWillMove(toWindow: nil)
+        interceptor.attachToCurrentWindow()
+        XCTAssertTrue(window.delegate === delegate)
+        window.contentView = nil
+    }
+
+    func testDismantledViewCannotReattachDuringSwiftUIUpdate() {
+        let window = NSWindow()
+        let delegate = VetoingWindowDelegate()
+        window.delegate = delegate
+        let interceptor = StudioWindowCloseInterceptionView()
+        window.contentView = interceptor
+
+        interceptor.dismantle()
+        interceptor.attachToCurrentWindow()
+        XCTAssertTrue(window.delegate === delegate)
+        window.contentView = nil
+    }
+
+    func testClosingWindowForwardsNotificationAndCannotReattach() {
+        let window = NSWindow()
+        let delegate = VetoingWindowDelegate()
+        window.delegate = delegate
+        let interceptor = StudioWindowCloseInterceptionView()
+        window.contentView = interceptor
+
+        interceptor.windowWillClose(Notification(name: NSWindow.willCloseNotification, object: window))
+        interceptor.attachToCurrentWindow()
+        XCTAssertEqual(delegate.closeNotificationCount, 1)
+        XCTAssertTrue(window.delegate === delegate)
+        window.contentView = nil
+    }
+
 }
 
 @MainActor
@@ -83,6 +124,11 @@ private final class CloseRecordingWindow: NSWindow {
 @MainActor
 private final class VetoingWindowDelegate: NSObject, NSWindowDelegate {
     private(set) var requestCount = 0
+    private(set) var closeNotificationCount = 0
+
+    func windowWillClose(_ notification: Notification) {
+        closeNotificationCount += 1
+    }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         requestCount += 1

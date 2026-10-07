@@ -2306,17 +2306,17 @@ final class AppModelStateTests: XCTestCase {
         let controller = OpenRecorderStatusItemController(model: model, windowActions: actions)
 
         func titles(in menu: NSMenu) -> [String] {
-            menu.items.map { $0.isSeparatorItem ? "-" : $0.title }
+            menu.items.filter { $0.representedObject == nil }.map { $0.isSeparatorItem ? "-" : $0.title }
         }
 
         XCTAssertEqual(
             titles(in: controller.makeMenu(updateChecksEnabled: false)),
-            ["New Recording", "New Screenshot", "-", "Show Recorder", "-", "Settings…", "-", "Quit Open Recorder"]
+            ["New Recording", "New Screenshot", "-", "-", "Show Recorder", "-", "Settings…", "-", "Quit Open Recorder"]
         )
         XCTAssertEqual(
             titles(in: controller.makeMenu(updateChecksEnabled: true)),
             [
-                "New Recording", "New Screenshot", "-", "Show Recorder", "-", "Settings…",
+                "New Recording", "New Screenshot", "-", "-", "Show Recorder", "-", "Settings…",
                 "Check for Updates…", "-", "Quit Open Recorder",
             ]
         )
