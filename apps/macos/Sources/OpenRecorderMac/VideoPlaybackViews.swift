@@ -393,7 +393,7 @@ struct VideoPreviewPanel: View {
 
     private var browserCanvasAspectRatio: CGFloat {
         guard browserMockup.enabled else { return previewAspectRatio }
-        return previewAspectRatio * (browserMockup.style == .minimal ? 0.935 : 0.85)
+        return previewAspectRatio * (browserMockup.style == .minimal ? 0.935 : 0.87)
     }
 
     private var previewLetterboxFill: VideoPreviewLetterboxFill {
@@ -859,21 +859,21 @@ private struct BrowserMockupFrame<Content: View>: View {
     var body: some View {
         if settings.enabled {
             GeometryReader { proxy in
-                let chromeHeight = proxy.size.height * (settings.style == .minimal ? 0.065 : 0.15)
+                let chromeHeight = proxy.size.height * (settings.style == .minimal ? 0.065 : 0.13)
                 VStack(spacing: 0) {
                     browserChrome(height: chromeHeight)
                     content().frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
-            .background(settings.style == .glass ? AnyShapeStyle(.ultraThinMaterial) : AnyShapeStyle(.white))
+            .background(.white)
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .overlay { RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(settings.style == .glass ? .white.opacity(0.58) : .black.opacity(0.13)) }
-            .shadow(color: settings.style == .glass ? .black.opacity(0.30) : .black.opacity(0.24), radius: 18, y: 8)
+            .overlay { RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(.black.opacity(0.13)) }
+            .shadow(color: .black.opacity(0.24), radius: 18, y: 8)
         } else { content() }
     }
 
     private func browserChrome(height: CGFloat) -> some View {
-        let navHeight = settings.style == .minimal ? height : height * 0.52
+        let navHeight = settings.style == .minimal ? height : height * 0.56
         return VStack(spacing: 0) {
             if settings.style != .minimal {
                 HStack(spacing: 7) {
@@ -890,9 +890,9 @@ private struct BrowserMockupFrame<Content: View>: View {
                         .foregroundStyle(.black.opacity(0.68)).padding(.horizontal, 12)
                         .frame(width: CGFloat(min(190, max(100, height * 3.5))))
                         .frame(maxHeight: .infinity)
-                        .background(tabBackground, in: UnevenRoundedRectangle(topLeadingRadius: 10, bottomLeadingRadius: 0, bottomTrailingRadius: 0, topTrailingRadius: 10))
+                        .background(.white, in: UnevenRoundedRectangle(topLeadingRadius: 9, bottomLeadingRadius: 0, bottomTrailingRadius: 0, topTrailingRadius: 9))
                     Image(systemName: "plus").font(.system(size: 11)).foregroundStyle(.black.opacity(0.45)); Spacer()
-                }.frame(height: height - navHeight).background(chromeBackground)
+                }.frame(height: height - navHeight).background(Color(red: 0.87, green: 0.89, blue: 0.92))
             }
             HStack(spacing: 10) {
                 Image(systemName: "chevron.left"); Image(systemName: "chevron.right").opacity(0.45); Image(systemName: "arrow.clockwise")
@@ -901,21 +901,11 @@ private struct BrowserMockupFrame<Content: View>: View {
                     Text(settings.url.isEmpty ? "your-product.com" : settings.url).lineLimit(1).truncationMode(.middle)
                         .frame(maxWidth: .infinity, alignment: settings.addressAlignment == .center ? .center : .leading)
                 }.font(.system(size: 10, weight: .medium)).foregroundStyle(.black.opacity(0.65))
-                    .padding(.horizontal, 10).frame(height: navHeight * 0.64)
-                    .background(settings.style == .glass ? AnyShapeStyle(.thinMaterial) : AnyShapeStyle(.black.opacity(0.06)), in: Capsule())
-                    .overlay { Capsule().stroke(settings.style == .glass ? .white.opacity(0.58) : .clear, lineWidth: 0.8) }
+                    .padding(.horizontal, 10).frame(height: navHeight * 0.64).background(.black.opacity(0.06), in: Capsule())
                 Image(systemName: "square.and.arrow.up"); Image(systemName: "ellipsis")
             }.font(.system(size: max(7, navHeight * 0.25), weight: .semibold)).foregroundStyle(.black.opacity(0.55))
-                .padding(.horizontal, 12).frame(height: navHeight).background(settings.style == .glass ? AnyShapeStyle(.ultraThinMaterial) : AnyShapeStyle(.white))
+                .padding(.horizontal, 12).frame(height: navHeight).background(.white)
         }.overlay(alignment: .bottom) { Rectangle().fill(.black.opacity(0.1)).frame(height: 0.5) }
-    }
-
-    private var chromeBackground: AnyShapeStyle {
-        settings.style == .glass ? AnyShapeStyle(LinearGradient(colors: [.white.opacity(0.58), .white.opacity(0.20)], startPoint: .topLeading, endPoint: .bottomTrailing)) : AnyShapeStyle(Color(red: 0.87, green: 0.89, blue: 0.92))
-    }
-
-    private var tabBackground: AnyShapeStyle {
-        settings.style == .glass ? AnyShapeStyle(.regularMaterial) : AnyShapeStyle(.white)
     }
 }
 
