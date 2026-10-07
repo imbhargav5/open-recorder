@@ -17,6 +17,7 @@ enum AreaSelectionOverlayChrome {
 
 @MainActor
 protocol AreaSelectionPresenting: AnyObject {
+    var adjustsSelectionBeforeCapture: Bool { get set }
     func present(
         mode: CaptureMode,
         onSelect: @escaping (CaptureArea) -> Void,
@@ -26,8 +27,16 @@ protocol AreaSelectionPresenting: AnyObject {
     func dismiss()
 }
 
+extension AreaSelectionPresenting {
+    var adjustsSelectionBeforeCapture: Bool {
+        get { false }
+        set { }
+    }
+}
+
 @MainActor
 final class AreaSelectionOverlayController: AreaSelectionPresenting {
+    var adjustsSelectionBeforeCapture = false
     private var windows: [NSWindow] = []
     private var keyMonitor: Any?
     private var globalKeyMonitor: Any?
@@ -119,6 +128,7 @@ final class AreaSelectionOverlayController: AreaSelectionPresenting {
             window.contentView = AreaSelectionHostingView(rootView: AreaSelectionScreenOverlayView(
                 screen: screen,
                 mode: mode,
+                adjustsSelectionBeforeCapture: adjustsSelectionBeforeCapture,
                 onSelect: { [weak self] area in
                     self?.handleSelect(area)
                 },
@@ -219,12 +229,15 @@ private extension NSEvent {
 struct AreaSelectionScreenOverlayView: View {
     var screen: NSScreen
     var mode: CaptureMode
+    var adjustsSelectionBeforeCapture = false
     var onSelect: (CaptureArea) -> Void
     var onCancel: () -> Void
 
     @State private var dragStart: CGPoint?
     @State private var dragCurrent: CGPoint?
     @State private var isFinishingSelection = false
+    @State private var adjustedRect: CGRect?
+    @State private var adjustmentOrigin: CGRect?
     @FocusState private var selectionHasFocus: Bool
 
     var body: some View {
@@ -244,8 +257,42 @@ struct AreaSelectionScreenOverlayView: View {
                         .background(Theme.border.opacity(0.12))
                         .frame(width: selectionRect.width, height: selectionRect.height)
                         .position(x: selectionRect.midX, y: selectionRect.midY)
+                        .gesture(moveGesture(in: proxy.size))
+                        .accessibilityLabel("Selected capture area")
+                        .accessibilityValue("\(Int(selectionRect.width)) by \(Int(selectionRect.height)) pixels")
 
                     dimensionBadge(for: selectionRect)
+                    if adjustedRect != nil {
+                        ForEach(AreaSelectionResizeCorner.allCases) { corner in
+                            Circle().fill(.white).frame(width: 12, height: 12)
+                                .frame(width: 28, height: 28)
+                                .contentShape(Rectangle())
+                                .position(corner.point(in: selectionRect))
+                                .highPriorityGesture(resizeGesture(corner: corner, in: proxy.size))
+                                .accessibilityLabel("Resize \(corner.title) corner")
+                                .accessibilityValue("\(Int(selectionRect.width)) by \(Int(selectionRect.height)) pixels")
+                                .accessibilityAdjustableAction { direction in
+                                    let delta: CGFloat = direction == .increment ? 1 : -1
+                                    let left = corner == .topLeft || corner == .bottomLeft
+                                    let top = corner == .topLeft || corner == .topRight
+                                    adjustedRect = AreaSelectionGeometry.resized(selectionRect, corner: corner, translation: CGSize(width: left ? -delta : delta, height: top ? -delta : delta), bounds: proxy.size)
+                                }
+                        }
+                        VStack(spacing: 8) {
+                            Text("Drag the area to move it or its handles to resize. Arrow keys move; Shift moves 10 px.")
+                                .font(.caption)
+                            HStack {
+                                Button("Redraw") { adjustedRect = nil; dragStart = nil; dragCurrent = nil }
+                                Button("Cancel", action: onCancel)
+                                Button(mode == .screenshot ? "Capture" : "Use area") { finishSelection(selectionRect) }
+                                    .keyboardShortcut(.defaultAction)
+                            }
+                        }
+                        .padding(12)
+                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                        .padding(.bottom, 32)
+                    }
                 }
 
                 VStack(spacing: 8) {
@@ -253,9 +300,11 @@ struct AreaSelectionScreenOverlayView: View {
                         .font(.system(size: 26, weight: .medium))
                     Text("Drag to select an area")
                         .font(.system(size: 18, weight: .semibold))
-                    Text(mode == .recording
-                        ? "Release to set the recording area. Press Esc to cancel."
-                        : "Release to capture this area. Press Esc to cancel.")
+                    Text(adjustsSelectionBeforeCapture
+                        ? "Release to adjust the area, then press Return. Esc cancels."
+                        : (mode == .recording
+                            ? "Release to set the area, review inputs, then press Record. Esc cancels."
+                            : "Release to capture this area. Press Esc to cancel."))
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(.secondary)
                 }
@@ -270,7 +319,7 @@ struct AreaSelectionScreenOverlayView: View {
                 .opacity(selectionRect == nil && !isFinishingSelection ? 1 : 0)
             }
             .rectangularHitTarget()
-            .gesture(selectionGesture(in: proxy.size))
+            .gesture(selectionGesture(in: proxy.size), including: adjustedRect == nil ? .all : .subviews)
         }
         .focusable()
         .focused($selectionHasFocus)
@@ -279,10 +328,20 @@ struct AreaSelectionScreenOverlayView: View {
             return .handled
         }
         .onExitCommand(perform: onCancel)
+        .onKeyPress(keys: [.leftArrow, .rightArrow, .upArrow, .downArrow], phases: [.down, .repeat]) { press in
+            guard let rect = adjustedRect else { return .ignored }
+            let amount: CGFloat = press.modifiers.contains(.shift) ? 10 : 1
+            let delta = CGSize(width: press.key == .leftArrow ? -amount : (press.key == .rightArrow ? amount : 0),
+                               height: press.key == .upArrow ? -amount : (press.key == .downArrow ? amount : 0))
+            adjustedRect = AreaSelectionGeometry.moved(rect, translation: delta, bounds: screen.frame.size)
+            return .handled
+        }
         .onAppear {
             dragStart = nil
             dragCurrent = nil
             isFinishingSelection = false
+            adjustedRect = nil
+            adjustmentOrigin = nil
             DispatchQueue.main.async {
                 selectionHasFocus = true
             }
@@ -290,6 +349,7 @@ struct AreaSelectionScreenOverlayView: View {
     }
 
     private var selectionRect: CGRect? {
+        if let adjustedRect { return adjustedRect }
         guard let dragStart, let dragCurrent else { return nil }
         return AreaSelectionGeometry.alignedSelectionRect(between: dragStart, and: dragCurrent)
     }
@@ -329,19 +389,42 @@ struct AreaSelectionScreenOverlayView: View {
                     return
                 }
 
-                let area = captureArea(for: rect)
-                var transaction = Transaction()
-                transaction.disablesAnimations = true
-                withTransaction(transaction) {
-                    dragStart = nil
-                    dragCurrent = nil
-                    isFinishingSelection = true
-                }
-
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    onSelect(area)
+                if adjustsSelectionBeforeCapture {
+                    adjustedRect = rect
+                } else {
+                    finishSelection(rect)
                 }
             }
+    }
+
+    private func finishSelection(_ rect: CGRect) {
+        guard !isFinishingSelection else { return }
+        let area = captureArea(for: rect)
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            adjustedRect = nil
+            dragStart = nil
+            dragCurrent = nil
+            isFinishingSelection = true
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { onSelect(area) }
+    }
+
+    private func moveGesture(in size: CGSize) -> some Gesture {
+        DragGesture().onChanged { value in
+            guard let rect = adjustedRect else { return }
+            if adjustmentOrigin == nil { adjustmentOrigin = rect }
+            adjustedRect = AreaSelectionGeometry.moved(adjustmentOrigin ?? rect, translation: value.translation, bounds: size)
+        }.onEnded { _ in adjustmentOrigin = nil }
+    }
+
+    private func resizeGesture(corner: AreaSelectionResizeCorner, in size: CGSize) -> some Gesture {
+        DragGesture().onChanged { value in
+            guard let rect = adjustedRect else { return }
+            if adjustmentOrigin == nil { adjustmentOrigin = rect }
+            adjustedRect = AreaSelectionGeometry.resized(adjustmentOrigin ?? rect, corner: corner, translation: value.translation, bounds: size)
+        }.onEnded { _ in adjustmentOrigin = nil }
     }
 
     private func clamped(_ point: CGPoint, to size: CGSize) -> CGPoint {

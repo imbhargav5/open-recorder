@@ -72,7 +72,7 @@ final class ScreenshotEditorShortcutActionTests: XCTestCase {
                 modifiers: [.command],
                 isTextInputActive: false
             ),
-            .copyAndClose
+            .copy
         )
         XCTAssertEqual(
             ScreenshotEditorShortcutAction.resolve(
@@ -80,7 +80,7 @@ final class ScreenshotEditorShortcutActionTests: XCTestCase {
                 modifiers: [.command],
                 isTextInputActive: false
             ),
-            .saveAndCopy
+            .save
         )
         XCTAssertEqual(
             ScreenshotEditorShortcutAction.resolve(

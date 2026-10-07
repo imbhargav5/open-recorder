@@ -11,17 +11,31 @@ These shortcuts trigger captures without switching to the Open Recorder window.
 
 | Shortcut | Action | What it does |
 | --- | --- | --- |
-| <kbd>⌥</kbd> <kbd>⇧</kbd> <kbd>3</kbd> | Device Screenshot | Captures a screenshot of a display. |
-| <kbd>⌥</kbd> <kbd>⇧</kbd> <kbd>4</kbd> | Drag Screenshot | Lets you select a custom area and captures it as a screenshot. |
-| <kbd>⌥</kbd> <kbd>⇧</kbd> <kbd>5</kbd> | Device Screen Record | Opens the screen recorder with a display selected and shows the capture HUD in pre-recording mode. |
-| <kbd>⌥</kbd> <kbd>⇧</kbd> <kbd>6</kbd> | Drag Screen Record | Lets you drag an area to record. Recording starts once you finish drawing the selection, using your current capture settings. |
-| <kbd>⌥</kbd> <kbd>⇧</kbd> <kbd>R</kbd> | Toggle Recording | Starts the recording that is set up in the HUD, or stops the active recording. |
+| <kbd>⌥</kbd> <kbd>⇧</kbd> <kbd>3</kbd> | Screenshot current display | Captures the display containing the pointer without opening a chooser. |
+| <kbd>⌥</kbd> <kbd>⇧</kbd> <kbd>4</kbd> | Screenshot selected area | Draw an area and release to capture. |
+| <kbd>⌥</kbd> <kbd>⇧</kbd> <kbd>5</kbd> | Record current display | Opens setup with the display containing the pointer selected. |
+| <kbd>⌥</kbd> <kbd>⇧</kbd> <kbd>6</kbd> | Record selected area | Draw an area, review the setup, then press Record. |
+| <kbd>⌥</kbd> <kbd>⇧</kbd> <kbd>7</kbd> | Screenshot current window | Captures the active app's frontmost capturable window. |
+| <kbd>⌥</kbd> <kbd>⇧</kbd> <kbd>8</kbd> | Record current window | Opens recording setup for the active app's frontmost capturable window. |
+| <kbd>⌥</kbd> <kbd>⇧</kbd> <kbd>R</kbd> | Open recorder / Start / Stop | Opens setup when idle, starts a ready recording, cancels a countdown, or stops recording. |
 
-Pressing <kbd>⌥</kbd> <kbd>⇧</kbd> <kbd>5</kbd> or <kbd>⌥</kbd> <kbd>⇧</kbd> <kbd>6</kbd> while a recording is in progress stops that recording instead of starting a new capture.
+Capture-target shortcuts do not stop an existing recording. Use the start/stop shortcut, the HUD's **Stop** button, or the menu-bar icon to finish it. If the current display or window cannot be resolved, Open Recorder opens the appropriate source chooser.
+
+### After taking a screenshot
+
+Choose **Settings → General → Capture → After taking a screenshot**:
+
+- **Open editor** preserves the editing workflow.
+- **Copy to clipboard** copies the raw capture immediately so you can paste it without entering the editor.
+- **Save to screenshots folder** saves without opening the editor or changing the clipboard.
+
+Screenshots are saved locally in every mode. A brief HUD message confirms Copy or Save. Choose **Edit Last Screenshot** from the menu bar or HUD context menu to edit the most recent quick capture.
+
+Enable **Adjust selected area before capture** to move the selection, drag its resize handles, and press Return to confirm. Arrow keys move by one pixel; Shift moves by ten. Leave it off to retain quick capture on release.
 
 ### Pre-recording HUD
 
-The Device Screen Record shortcut no longer starts an instant recording. It opens the capture HUD in pre-recording mode so you can review the setup before capture begins. From the HUD you can:
+Display, window, and area recording shortcuts open the capture HUD in pre-recording mode so you can review inputs before capture begins. From the HUD you can:
 
 - Change the capture source (display, window, or area).
 - Toggle system audio on or off.
@@ -49,7 +63,9 @@ You can record any key combination instead of picking from presets. Open Recorde
 - The combination cannot match an Open Recorder menu command, such as <kbd>⌘</kbd> <kbd>N</kbd>.
 - The combination cannot be reserved by macOS or registered by another application.
 
-**Restore Default Shortcuts** resets all five actions to the defaults listed above.
+Each shortcut shows **Active**, **Off**, or an **Unavailable** warning based on registration. If another app owns a key, quit that app and choose **Retry unavailable shortcuts**, or assign a different combination. Shortcut handling pauses while you record a replacement key. The menu bar and HUD show your configured shortcut hints.
+
+**Restore Default Shortcuts** resets all seven actions to the defaults listed above. Nightly builds keep global shortcuts disabled by default; enable them here when needed.
 
 ## In-app shortcuts
 
@@ -74,8 +90,8 @@ These shortcuts work while the screenshot editor is focused. Each action is also
 
 | Shortcut | Action | What it does |
 | --- | --- | --- |
-| <kbd>⌘</kbd> <kbd>S</kbd> | Save PNG | Saves the composed PNG next to the source screenshot and copies it to the clipboard. |
+| <kbd>⌘</kbd> <kbd>S</kbd> | Save PNG | Saves the composed PNG next to the source screenshot without changing the clipboard. |
 | <kbd>⇧</kbd> <kbd>⌘</kbd> <kbd>S</kbd> | Save PNG As… | Opens a save panel so you can choose a location and filename for the composed PNG. |
-| <kbd>⌘</kbd> <kbd>C</kbd> | Copy PNG and Close | Copies the composed PNG to the clipboard and closes the editor. |
+| <kbd>⌘</kbd> <kbd>C</kbd> | Copy PNG | Copies the composed PNG to the clipboard and keeps the editor open. |
 
 These shortcuts are suppressed while you are typing in a text field, so they don't interrupt annotation entry.

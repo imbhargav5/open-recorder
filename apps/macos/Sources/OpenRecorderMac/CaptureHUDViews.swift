@@ -23,6 +23,9 @@ struct CaptureHUD: View {
         }
         .contentShape(Rectangle())
         .contextMenu {
+            if model.hasQuickScreenshot {
+                Button("Edit last screenshot") { model.editLastQuickScreenshot() }
+            }
             Button("Quit Open Recorder") {
                 NSApp.terminate(nil)
             }
@@ -93,7 +96,7 @@ struct CaptureHUD: View {
                 title: "Stop",
                 symbolName: "stop.fill",
                 isDestructive: true,
-                shortcutText: nil
+                shortcutText: recordingShortcutText
             ) {
                 model.stopRecording()
             }
@@ -126,7 +129,7 @@ struct CaptureHUD: View {
                         title: model.capture.isRecording ? "Stop" : startStopTitle,
                         symbolName: model.capture.isRecording ? "stop.fill" : "record.circle",
                         isDestructive: model.capture.isRecording,
-                        shortcutText: nil
+                        shortcutText: recordingShortcutText
                     ) {
                         toggleRecording()
                     }
@@ -472,11 +475,12 @@ struct CaptureHUD: View {
     private var recordingShortcutHelpTitle: String {
         let title = model.capture.isRecording ? "Stop" : startStopTitle
         guard recordingShortcutText != nil else { return title }
-        return "\(title) (⌘R)"
+        return "\(title) (\(recordingShortcutText ?? ""))"
     }
 
     private var recordingShortcutText: String? {
-        model.captureState.shouldRegisterRecordingHotKey(runtimeIsRecording: model.capture.isRecording) ? "⌘R" : nil
+        let item = model.shortcutPreferences.item(for: .toggleRecording)
+        return item.isEnabled ? item.keyCombination.displayString : nil
     }
 
     private func toggleRecording() {

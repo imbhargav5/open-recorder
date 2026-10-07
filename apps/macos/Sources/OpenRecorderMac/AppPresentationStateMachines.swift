@@ -676,6 +676,9 @@ struct SettingsMachineState: Equatable {
     var autoZoomMaximumDepth = 2.0
     var autoZoomAnimationPreset: TimelineZoomAnimationPreset = .balanced
     var shortcuts: ShortcutPreferences = .defaultPreferences
+    var screenshotAfterCapture: ScreenshotAfterCapture = .edit
+    var adjustsAreaBeforeCapture = false
+    var shortcutRegistrationStates: [CaptureShortcutAction: CaptureShortcutRegistrationState] = [:]
     var statusMessage = ""
     var isRefreshingService = false
 }
@@ -691,6 +694,11 @@ enum SettingsEvent: Equatable {
     case autoZoomMaximumDepthChanged(Double)
     case autoZoomAnimationPresetSynced(TimelineZoomAnimationPreset)
     case autoZoomAnimationPresetChanged(TimelineZoomAnimationPreset)
+    case screenshotAfterCaptureChanged(ScreenshotAfterCapture)
+    case adjustsAreaBeforeCaptureChanged(Bool)
+    case capturePreferencesSynced(ScreenshotAfterCapture, Bool)
+    case shortcutRegistrationStatesSynced([CaptureShortcutAction: CaptureShortcutRegistrationState])
+    case shortcutRegistrationRetryRequested
     case shortcutsSynced(ShortcutPreferences)
     case shortcutItemChanged(ShortcutItem)
     case shortcutsResetToDefaults
@@ -705,6 +713,9 @@ enum SettingsEffect: Equatable {
     case persistAutoZoomPreference(Bool)
     case persistAutoZoomMaximumDepth(Double)
     case persistAutoZoomAnimationPreset(TimelineZoomAnimationPreset)
+    case persistScreenshotAfterCapture(ScreenshotAfterCapture)
+    case persistAdjustsAreaBeforeCapture(Bool)
+    case retryShortcutRegistration
     case persistShortcuts(ShortcutPreferences)
     case openFolder(String)
     case openScreenRecordingSettings
@@ -759,6 +770,22 @@ extension SettingsMachineState {
             autoZoomAnimationPreset = preset
             return [.persistAutoZoomAnimationPreset(preset)]
 
+        case .screenshotAfterCaptureChanged(let value):
+            screenshotAfterCapture = value
+            return [.persistScreenshotAfterCapture(value)]
+        case .adjustsAreaBeforeCaptureChanged(let value):
+            adjustsAreaBeforeCapture = value
+            return [.persistAdjustsAreaBeforeCapture(value)]
+        case .capturePreferencesSynced(let behavior, let adjustsArea):
+            screenshotAfterCapture = behavior
+            adjustsAreaBeforeCapture = adjustsArea
+            return []
+        case .shortcutRegistrationStatesSynced(let states):
+            shortcutRegistrationStates = states
+            return []
+        case .shortcutRegistrationRetryRequested:
+            return [.retryShortcutRegistration]
+
         case .shortcutsSynced(let shortcuts):
             self.shortcuts = shortcuts
             return []
@@ -796,6 +823,9 @@ final class SettingsDriver {
     @ObservationIgnored private var persistAutoZoomPreference: (Bool) -> Void = { _ in }
     @ObservationIgnored private var persistAutoZoomMaximumDepth: (Double) -> Void = { _ in }
     @ObservationIgnored private var persistAutoZoomAnimationPreset: (TimelineZoomAnimationPreset) -> Void = { _ in }
+    @ObservationIgnored private var persistScreenshotAfterCapture: (ScreenshotAfterCapture) -> Void = { _ in }
+    @ObservationIgnored private var persistAdjustsAreaBeforeCapture: (Bool) -> Void = { _ in }
+    @ObservationIgnored private var retryShortcutRegistration: () -> Void = {}
     @ObservationIgnored private var persistShortcuts: (ShortcutPreferences) -> Void = { _ in }
     @ObservationIgnored private var setShortcutRecorderActive: (Bool) -> Void = { _ in }
     @ObservationIgnored private var openFolder: (String) -> Void = { _ in }
@@ -821,6 +851,9 @@ final class SettingsDriver {
         persistAutoZoomPreference: @escaping (Bool) -> Void = { _ in },
         persistAutoZoomMaximumDepth: @escaping (Double) -> Void = { _ in },
         persistAutoZoomAnimationPreset: @escaping (TimelineZoomAnimationPreset) -> Void = { _ in },
+        persistScreenshotAfterCapture: @escaping (ScreenshotAfterCapture) -> Void = { _ in },
+        persistAdjustsAreaBeforeCapture: @escaping (Bool) -> Void = { _ in },
+        retryShortcutRegistration: @escaping () -> Void = {},
         persistShortcuts: @escaping (ShortcutPreferences) -> Void = { _ in },
         setShortcutRecorderActive: @escaping (Bool) -> Void = { _ in },
         openFolder: @escaping (String) -> Void = { _ in },
@@ -833,6 +866,9 @@ final class SettingsDriver {
         self.persistAutoZoomPreference = persistAutoZoomPreference
         self.persistAutoZoomMaximumDepth = persistAutoZoomMaximumDepth
         self.persistAutoZoomAnimationPreset = persistAutoZoomAnimationPreset
+        self.persistScreenshotAfterCapture = persistScreenshotAfterCapture
+        self.persistAdjustsAreaBeforeCapture = persistAdjustsAreaBeforeCapture
+        self.retryShortcutRegistration = retryShortcutRegistration
         self.persistShortcuts = persistShortcuts
         self.setShortcutRecorderActive = setShortcutRecorderActive
         self.openFolder = openFolder
@@ -870,6 +906,14 @@ final class SettingsDriver {
         )
     }
 
+    var screenshotAfterCaptureBinding: Binding<ScreenshotAfterCapture> {
+        Binding(get: { self.state.screenshotAfterCapture }, set: { self.send(.screenshotAfterCaptureChanged($0)) })
+    }
+
+    var adjustsAreaBeforeCaptureBinding: Binding<Bool> {
+        Binding(get: { self.state.adjustsAreaBeforeCapture }, set: { self.send(.adjustsAreaBeforeCaptureChanged($0)) })
+    }
+
     func shortcutBinding(for action: CaptureShortcutAction) -> Binding<ShortcutItem> {
         Binding(
             get: { self.state.shortcuts.item(for: action) },
@@ -892,6 +936,12 @@ final class SettingsDriver {
                 persistAutoZoomMaximumDepth(value)
             case .persistAutoZoomAnimationPreset(let preset):
                 persistAutoZoomAnimationPreset(preset)
+            case .persistScreenshotAfterCapture(let value):
+                persistScreenshotAfterCapture(value)
+            case .persistAdjustsAreaBeforeCapture(let value):
+                persistAdjustsAreaBeforeCapture(value)
+            case .retryShortcutRegistration:
+                retryShortcutRegistration()
             case .persistShortcuts(let shortcuts):
                 persistShortcuts(shortcuts)
             case .openFolder(let path):
