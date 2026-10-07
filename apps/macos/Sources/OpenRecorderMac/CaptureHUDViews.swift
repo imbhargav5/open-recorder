@@ -15,7 +15,16 @@ struct CaptureHUD: View {
 
     var body: some View {
         HUDSurface(isRecording: isRecordingActive) {
-            if isRecordingActive {
+            if showsQuickScreenshotConfirmation {
+                HStack(spacing: 10) {
+                    DragHandle()
+                    Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                    Text(model.statusMessage).font(.system(size: 12, weight: .medium))
+                    Button("Edit") { model.editLastQuickScreenshot() }
+                        .help("Edit this screenshot")
+                    HUDIconActionButton(symbolName: "xmark", title: "Dismiss confirmation", tint: Theme.fgMuted) { model.hideHUD() }
+                }
+            } else if isRecordingActive {
                 activeRecordingControls
             } else {
                 idleControls
@@ -23,6 +32,9 @@ struct CaptureHUD: View {
         }
         .contentShape(Rectangle())
         .contextMenu {
+            if model.hasQuickScreenshot {
+                Button("Edit last screenshot") { model.editLastQuickScreenshot() }
+            }
             Button("Quit Open Recorder") {
                 NSApp.terminate(nil)
             }
@@ -31,6 +43,11 @@ struct CaptureHUD: View {
         .animation(.spring(response: 0.35, dampingFraction: 0.82), value: isRecordingActive)
         .environment(\.layoutDirection, .leftToRight)
         .flipsForRightToLeftLayoutDirection(false)
+    }
+
+    private var showsQuickScreenshotConfirmation: Bool {
+        model.hasQuickScreenshot && !isRecordingActive
+            && (model.statusMessage == "Screenshot copied" || model.statusMessage == "Screenshot saved")
     }
 
     private var activeRecordingControls: some View {
@@ -93,7 +110,7 @@ struct CaptureHUD: View {
                 title: "Stop",
                 symbolName: "stop.fill",
                 isDestructive: true,
-                shortcutText: nil
+                shortcutText: recordingShortcutText
             ) {
                 model.stopRecording()
             }
@@ -126,7 +143,7 @@ struct CaptureHUD: View {
                         title: model.capture.isRecording ? "Stop" : startStopTitle,
                         symbolName: model.capture.isRecording ? "stop.fill" : "record.circle",
                         isDestructive: model.capture.isRecording,
-                        shortcutText: nil
+                        shortcutText: recordingShortcutText
                     ) {
                         toggleRecording()
                     }
@@ -472,11 +489,12 @@ struct CaptureHUD: View {
     private var recordingShortcutHelpTitle: String {
         let title = model.capture.isRecording ? "Stop" : startStopTitle
         guard recordingShortcutText != nil else { return title }
-        return "\(title) (⌘R)"
+        return "\(title) (\(recordingShortcutText ?? ""))"
     }
 
     private var recordingShortcutText: String? {
-        model.captureState.shouldRegisterRecordingHotKey(runtimeIsRecording: model.capture.isRecording) ? "⌘R" : nil
+        let item = model.shortcutPreferences.item(for: .toggleRecording)
+        return item.isEnabled ? item.keyCombination.displayString : nil
     }
 
     private func toggleRecording() {

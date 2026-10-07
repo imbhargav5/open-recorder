@@ -137,6 +137,19 @@ private struct SettingsGeneralPane: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
+            SettingsSection(title: "Capture") {
+                Picker("After taking a screenshot", selection: driver.screenshotAfterCaptureBinding) {
+                    ForEach(ScreenshotAfterCapture.allCases) { behavior in
+                        Text(behavior.title).tag(behavior)
+                    }
+                }
+                Text("Screenshots are always saved locally. Choose whether to edit, copy immediately, or save without opening the editor.")
+                    .font(.caption).foregroundStyle(.secondary)
+                SettingsToggleRow(title: "Adjust selected area before capture", isOn: driver.adjustsAreaBeforeCaptureBinding)
+                Text("Resize or move the selected area, then press Return. Leave this off for quick capture on release.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+
             SettingsSection(title: "Recording") {
                 SettingsToggleRow(title: "Create zooms automatically", isOn: driver.autoZoomBinding)
                 SettingsZoomPresetPicker(selection: driver.autoZoomAnimationPresetBinding)
@@ -192,9 +205,16 @@ private struct SettingsShortcutsPane: View {
                         isAwaitingRelease: recorderSession.isAwaitingRelease(action),
                         previewModifiers: recorderSession.previewModifiers,
                         errorMessage: recorderSession.isRecording(action) ? recorderSession.errorMessage : nil,
+                        registrationState: driver.state.shortcutRegistrationStates[action],
                         onRecordRequested: { toggleRecording(for: action) },
                         onRecordingCancelled: cancelRecording
                     )
+                }
+
+                if driver.state.shortcutRegistrationStates.values.contains(.unavailable) {
+                    Button("Retry unavailable shortcuts") { driver.send(.shortcutRegistrationRetryRequested) }
+                    Text("Quit the app using the same shortcut, retry, or assign a different key below.")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
 
                 Button("Restore Default Shortcuts") {
@@ -343,6 +363,7 @@ private struct SettingsShortcutRow: View {
     var isAwaitingRelease: Bool
     var previewModifiers: ShortcutModifiers
     var errorMessage: String?
+    var registrationState: CaptureShortcutRegistrationState?
     var onRecordRequested: () -> Void
     var onRecordingCancelled: () -> Void
 
@@ -356,6 +377,12 @@ private struct SettingsShortcutRow: View {
                     .font(.system(size: 11))
                     .foregroundStyle(Theme.fgMuted.opacity(0.8))
                     .fixedSize(horizontal: false, vertical: true)
+                if let registrationState {
+                    Text(registrationState.title)
+                        .font(.caption)
+                        .foregroundStyle(registrationState == .unavailable ? Color.orange : Color.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
 

@@ -18,7 +18,7 @@ description: "Start, pause, and stop macOS screen recordings from the Open Recor
 
 After you start, Open Recorder shows a countdown overlay before capture begins. Press <kbd>Esc</kbd> during the countdown to cancel. The overlay closes, no recording starts, and the HUD returns to its ready state so you can adjust the setup and start again.
 
-Choosing a display always goes through the unified **Choose Source** picker. This includes starting an entire-screen recording or screenshot from a shortcut. Open Recorder shows the picker with the **Screens** tab selected so you can confirm which display to capture.
+The current-display shortcut selects the display containing your pointer; the current-window shortcut selects the active app's frontmost capturable window. Both open the HUD before recording. Area recording also opens the HUD after selection. If a direct target is unavailable, Open Recorder opens the source chooser.
 
 ## The recording HUD
 
@@ -32,7 +32,7 @@ The HUD is the floating control strip that holds the mode switcher, source chip,
 
 ## Stop a recording
 
-Stop the recording from the HUD or with the same shortcut that started it. Open Recorder saves the capture and opens it in the editor.
+Stop from the HUD, the menu-bar icon, or the start/stop shortcut (default <kbd>⌥</kbd> <kbd>⇧</kbd> <kbd>R</kbd>). Capture-target shortcuts do not stop an existing recording. Open Recorder saves the capture and opens it in the editor.
 
 ## Troubleshooting
 

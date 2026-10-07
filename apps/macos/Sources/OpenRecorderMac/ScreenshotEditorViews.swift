@@ -84,7 +84,7 @@ struct ScreenshotEditorStudioView: View {
                             Button("Copy & Close", action: copyPNGAndClose)
                             Spacer()
                             Menu("Export") {
-                                Button("Save PNG", action: saveAndCopyPNG)
+                                Button("Save PNG", action: savePNG)
                                 Button("Save PNG As…", action: savePNGAs)
                                 Button("Export Animation…") { presentAnimationExport() }
                             }
@@ -110,13 +110,13 @@ struct ScreenshotEditorStudioView: View {
                             editor.send(.exportRequested)
                         },
                         onSave: {
-                            saveAndCopyPNG()
+                            savePNG()
                         },
                         onSaveAs: {
                             savePNGAs()
                         },
                         onCopy: {
-                            copyPNGAndClose()
+                            copyPNG()
                         }
                     )
                 }
@@ -127,13 +127,13 @@ struct ScreenshotEditorStudioView: View {
         .sheet(isPresented: editor.exportDialogBinding) {
             ScreenshotExportDialog(
                 onSave: {
-                    saveAndCopyPNG()
+                    savePNG()
                 },
                 onSaveAs: {
                     savePNGAs()
                 },
                 onCopy: {
-                    copyPNGAndClose()
+                    copyPNG()
                 }
             )
             .frame(width: 420)
@@ -225,8 +225,8 @@ struct ScreenshotEditorStudioView: View {
         ScreenshotExportRenderer.suggestedFileName(for: screenshotURL)
     }
 
-    private func saveAndCopyPNG() {
-        editor.saveAndCopyComposedPNG(
+    private func savePNG() {
+        editor.saveComposedPNG(
             image: image,
             suggestedFileName: suggestedExportFileName,
             sourceURL: screenshotURL
@@ -241,12 +241,14 @@ struct ScreenshotEditorStudioView: View {
         )
     }
 
+    private func copyPNG() {
+        editor.copyComposedPNG(image: image)
+    }
+
     private func copyPNGAndClose() {
         guard editor.copyComposedPNG(image: image) else { return }
         let editorWindow = NSApp.keyWindow?.sheetParent ?? NSApp.keyWindow
-        DispatchQueue.main.async {
-            editorWindow?.performClose(nil)
-        }
+        DispatchQueue.main.async { editorWindow?.performClose(nil) }
     }
 
     private func handleEditorShortcut(_ event: NSEvent) -> Bool {
@@ -260,10 +262,10 @@ struct ScreenshotEditorStudioView: View {
         guard !event.isARepeat else { return true }
 
         switch action {
-        case .copyAndClose:
-            copyPNGAndClose()
-        case .saveAndCopy:
-            saveAndCopyPNG()
+        case .copy:
+            copyPNG()
+        case .save:
+            savePNG()
         case .saveAs:
             savePNGAs()
         }
@@ -323,7 +325,7 @@ struct ScreenshotExportDialog: View {
             HStack(spacing: 10) {
                 ScreenshotExportActionCard(
                     title: "Save",
-                    subtitle: "Save beside original and copy",
+                    subtitle: "Save PNG beside original",
                     symbolName: "square.and.arrow.down",
                     isPrimary: true
                 ) {
@@ -334,7 +336,7 @@ struct ScreenshotExportDialog: View {
 
                 ScreenshotExportActionCard(
                     title: "Copy",
-                    subtitle: "Copy PNG and close editor",
+                    subtitle: "Copy PNG to clipboard",
                     symbolName: "doc.on.doc",
                     isPrimary: false
                 ) {
@@ -406,9 +408,9 @@ struct ScreenshotExportDialog: View {
         guard !event.isARepeat else { return true }
 
         switch action {
-        case .copyAndClose:
+        case .copy:
             select(.copy)
-        case .saveAndCopy:
+        case .save:
             select(.save)
         case .saveAs:
             select(.saveAs)
@@ -459,8 +461,8 @@ enum ScreenshotExportChoice: Equatable {
 }
 
 enum ScreenshotEditorShortcutAction: Equatable {
-    case copyAndClose
-    case saveAndCopy
+    case copy
+    case save
     case saveAs
 
     static func resolve(
@@ -474,9 +476,9 @@ enum ScreenshotEditorShortcutAction: Equatable {
 
         switch (key, relevantModifiers) {
         case ("c", [.command]):
-            return .copyAndClose
+            return .copy
         case ("s", [.command]):
-            return .saveAndCopy
+            return .save
         case ("s", [.command, .shift]):
             return .saveAs
         default:
@@ -750,7 +752,7 @@ private struct ScreenshotExportMenu: View {
             }
 
             Button(action: onCopy) {
-                Label("Copy PNG and Close", systemImage: "doc.on.doc")
+                Label("Copy PNG", systemImage: "doc.on.doc")
             }
             .keyboardShortcut("c", modifiers: .command)
         } label: {
