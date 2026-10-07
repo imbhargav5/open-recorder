@@ -15,7 +15,16 @@ struct CaptureHUD: View {
 
     var body: some View {
         HUDSurface(isRecording: isRecordingActive) {
-            if isRecordingActive {
+            if showsQuickScreenshotConfirmation {
+                HStack(spacing: 10) {
+                    DragHandle()
+                    Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                    Text(model.statusMessage).font(.system(size: 12, weight: .medium))
+                    Button("Edit") { model.editLastQuickScreenshot() }
+                        .help("Edit this screenshot")
+                    HUDIconActionButton(symbolName: "xmark", title: "Dismiss confirmation", tint: Theme.fgMuted) { model.hideHUD() }
+                }
+            } else if isRecordingActive {
                 activeRecordingControls
             } else {
                 idleControls
@@ -34,6 +43,11 @@ struct CaptureHUD: View {
         .animation(.spring(response: 0.35, dampingFraction: 0.82), value: isRecordingActive)
         .environment(\.layoutDirection, .leftToRight)
         .flipsForRightToLeftLayoutDirection(false)
+    }
+
+    private var showsQuickScreenshotConfirmation: Bool {
+        model.hasQuickScreenshot && !isRecordingActive
+            && (model.statusMessage == "Screenshot copied" || model.statusMessage == "Screenshot saved")
     }
 
     private var activeRecordingControls: some View {

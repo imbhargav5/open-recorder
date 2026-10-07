@@ -104,6 +104,8 @@ final class QuickCaptureTests: XCTestCase {
             model.triggerDeviceScreenshot()
             for _ in 0..<100 where !model.hasQuickScreenshot { try await Task.sleep(for: .milliseconds(10)) }
             XCTAssertTrue(model.hasQuickScreenshot)
+            XCTAssertTrue(model.isHUDVisible)
+            XCTAssertEqual(model.statusMessage, behavior == .copy ? "Screenshot copied" : "Screenshot saved")
             XCTAssertNotEqual(model.windowCommand?.action, .showStudio)
             XCTAssertEqual(copied != nil, behavior == .copy)
             XCTAssertTrue(FileManager.default.fileExists(atPath: try XCTUnwrap(model.currentScreenshotURL).path))
