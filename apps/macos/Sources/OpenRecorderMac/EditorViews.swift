@@ -267,6 +267,7 @@ struct VideoEditorStudioView: View {
                 cropSelection: editor.state.video.cropSelection,
                 facecamSettings: editor.state.currentFacecamSettings,
                 cameraTimelineFallback: editor.state.currentFacecamSettings,
+                browserMockup: editor.binding(\.browserMockup),
                 previewAspectPreset: editor.previewAspectPresetBinding,
                 scene: editor.binding(\.scene),
                 sceneEndpoint: sceneEndpoint,

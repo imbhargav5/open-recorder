@@ -108,7 +108,7 @@ struct VideoPreviewPanel: View {
     var cropSelection: VideoCropSelection = .fullFrame
     var facecamSettings: FacecamSettings?
     var cameraTimelineFallback: FacecamSettings?
-    var browserMockup: BrowserMockupSettings = .default
+    @Binding var browserMockup: BrowserMockupSettings
     @Binding var previewAspectPreset: VideoPreviewAspectPreset
     @Binding var scene: SceneSettings
     var sceneEndpoint: SceneEndpoint
