@@ -227,7 +227,7 @@ struct SettingsInspector: View {
             if let browserMockup {
                 InspectorGroup(title: "Browser Mockup", symbolName: "globe") {
                     Toggle("Show browser frame", isOn: browserBinding(\.enabled))
-                    if browserMockup.wrappedValue.enabled {
+                    Group {
                         TextField("https://your-product.com", text: browserBinding(\.url))
                             .textFieldStyle(.roundedBorder)
                         Picker("Style", selection: browserBinding(\.style)) {
@@ -238,6 +238,8 @@ struct SettingsInspector: View {
                         }.pickerStyle(.segmented).labelsHidden()
                         InspectorSlider(title: "Frame Padding", valueText: "\(Int(browserMockup.wrappedValue.outerPadding.rounded()))px", value: browserBinding(\.outerPadding), range: 0...32, step: 1, defaultValue: 0)
                     }
+                    .disabled(!browserMockup.wrappedValue.enabled)
+                    .opacity(browserMockup.wrappedValue.enabled ? 1 : 0.42)
                 }
             }
         case .cursor:
