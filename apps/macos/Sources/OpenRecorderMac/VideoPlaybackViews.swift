@@ -399,7 +399,11 @@ struct VideoPreviewPanel: View {
     }
 
     private var previewLetterboxFill: VideoPreviewLetterboxFill {
-        PreviewStageLayout.letterboxFill(
+        // The browser document must never reveal the editor background. If a
+        // source has an unusual display transform, keep any residual area inside
+        // the browser neutral rather than showing the scene gradient.
+        if browserMockup.enabled { return .black }
+        return PreviewStageLayout.letterboxFill(
             background: background,
             inset: inset,
             insetOpacity: insetOpacity
@@ -805,7 +809,7 @@ struct PlaybackPreview: View {
 
             ZStack(alignment: .topLeading) {
                 ZStack(alignment: .topLeading) {
-                    NativeVideoPlayer(playback: playback, zoomTransform: sourceZoomTransform)
+                    NativeVideoPlayer(playback: playback, zoomTransform: sourceZoomTransform, fillsViewport: fillsViewport)
                         .frame(width: sourceDisplaySize.width, height: sourceDisplaySize.height)
 
                     sourceOverlays(size: sourceDisplaySize)
@@ -1377,16 +1381,17 @@ final class PlayerLayerView: NSView {
 struct NativeVideoPlayer: NSViewRepresentable {
     var playback: VideoPlaybackController
     var zoomTransform: CGAffineTransform = .identity
+    var fillsViewport = false
 
     func makeNSView(context: Context) -> PlayerLayerView {
         let view = PlayerLayerView()
-        view.videoGravity = .resizeAspect
+        view.videoGravity = fillsViewport ? .resizeAspectFill : .resizeAspect
         view.update(player: playback.player, zoomTransform: zoomTransform)
         return view
     }
 
     func updateNSView(_ nsView: PlayerLayerView, context: Context) {
-        nsView.videoGravity = .resizeAspect
+        nsView.videoGravity = fillsViewport ? .resizeAspectFill : .resizeAspect
         nsView.update(player: playback.player, zoomTransform: zoomTransform)
     }
 
