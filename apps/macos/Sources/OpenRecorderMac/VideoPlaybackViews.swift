@@ -135,13 +135,16 @@ struct VideoPreviewPanel: View {
             ZStack {
                 if videoURL != nil {
                     AspectRatioFitContainer(aspectRatio: browserCanvasAspectRatio) {
-                        Group {
-                            if facecamVideoURL != nil {
-                                cameraLayoutStage
-                            } else if scene.isActive { sceneStage } else { styledStage }
+                        BrowserMockupFrame(settings: browserMockup) {
+                            Group {
+                                if facecamVideoURL != nil {
+                                    cameraLayoutStage
+                                } else if scene.isActive { sceneStage } else { styledStage }
+                            }
+                            .modifier(SceneCanvasGesture(enabled: showsSceneTools, tool: sceneTool,
+                                pose: scenePoseBinding(settings: $scene, endpoint: sceneEndpoint), onEditingChanged: onSceneEditingChanged))
                         }
-                        .modifier(SceneCanvasGesture(enabled: showsSceneTools, tool: sceneTool,
-                            pose: scenePoseBinding(settings: $scene, endpoint: sceneEndpoint), onEditingChanged: onSceneEditingChanged))
+                        .padding(browserMockup.enabled ? CGFloat(browserMockup.outerPadding) : 0)
                     } overlay: {
                         recordingSessionBadges
                     }
@@ -299,9 +302,9 @@ struct VideoPreviewPanel: View {
         GeometryReader { proxy in
             let hasAdaptiveCamera = timelineEdits.snapshot.hasAdaptiveCamera
             let recordingFrame = PreviewStageLayout.recordingFrameRect(
-                forAspectRatio: hasAdaptiveCamera ? cropSelection.previewAspectRatio(in: playback.naturalVideoSize) : browserCanvasAspectRatio,
+                forAspectRatio: hasAdaptiveCamera ? cropSelection.previewAspectRatio(in: playback.naturalVideoSize) : previewAspectRatio,
                 in: proxy.size,
-                paddingValue: padding
+                paddingValue: browserMockup.enabled ? 0 : padding
             )
             let cameraFrame = hasAdaptiveCamera ? CGRect(origin: .zero, size: proxy.size) : recordingFrame
             let zoomEffect = TimelineZoomCanvasTransform.previewEffect(edits: timelineEdits.snapshot, sourceTime: playback.currentTime, duration: playback.duration, cursorTrack: cursorTrack)
@@ -328,7 +331,6 @@ struct VideoPreviewPanel: View {
                     insetBalance: insetBalance,
                     cornerRadius: CGFloat(borderRadius)
                 ) {
-                    BrowserMockupFrame(settings: browserMockup) {
                     PlaybackPreview(
                         playback: playback,
                         edits: timelineEdits.snapshot,
@@ -341,8 +343,6 @@ struct VideoPreviewPanel: View {
                         zoomAppliedByStage: zoomEffect?.usesViewportCenter == true,
                         fillsViewport: browserMockup.enabled
                     )
-                    }
-                    .padding(browserMockup.enabled ? CGFloat(browserMockup.outerPadding) : 0)
                 }
                 .frame(width: recordingFrame.width, height: recordingFrame.height)
                 .shadow(
