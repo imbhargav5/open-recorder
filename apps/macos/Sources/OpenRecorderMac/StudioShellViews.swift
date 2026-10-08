@@ -378,6 +378,10 @@ struct StudioTitleBar: View {
     var editorSession: EditorSession?
     var workspace: EditorWorkspaceDriver
     @State private var isTitleHovered = false
+    @State private var projectPresetStore = ProjectPresetStore()
+    @State private var savedProjectPresets: [ProjectPreset] = []
+    @State private var isSavingProjectPreset = false
+    @State private var projectPresetName = ""
 
     var body: some View {
         ZStack {
@@ -422,6 +426,15 @@ struct StudioTitleBar: View {
                 workspace.send(.timelineSelectionClearRequested)
             }
         )
+        .onAppear { savedProjectPresets = projectPresetStore.load() }
+        .alert("Save Project Preset", isPresented: $isSavingProjectPreset) {
+            TextField("Preset name", text: $projectPresetName)
+            Button("Save") { saveProjectPreset() }
+                .disabled(projectPresetName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Save the current video appearance and audio settings for reuse.")
+        }
     }
 
     @ViewBuilder
@@ -445,6 +458,8 @@ struct StudioTitleBar: View {
                 StudioIconNavButton(title: "Keyboard Shortcuts", symbolName: "questionmark") {
                     workspace.send(.shortcutsHelpToggled)
                 }
+
+                projectPresetsMenu
 
                 Menu {
                     Button("16:9 Widescreen (YouTube, Desktop)") {
@@ -516,6 +531,57 @@ struct StudioTitleBar: View {
                 }
             }
         }
+    }
+
+    private var projectPresetsMenu: some View {
+        Menu {
+            if savedProjectPresets.isEmpty {
+                Text("No saved presets")
+            } else {
+                ForEach(savedProjectPresets) { preset in
+                    Menu(preset.name) {
+                        Button("Apply") { applyProjectPreset(preset) }
+                        Button("Delete Preset", role: .destructive) {
+                            projectPresetStore.delete(id: preset.id)
+                            savedProjectPresets = projectPresetStore.load()
+                        }
+                    }
+                }
+            }
+            Divider()
+            Button("Save Current Settings…") {
+                projectPresetName = ""
+                isSavingProjectPreset = true
+            }
+        } label: {
+            Label("Project Presets", systemImage: "square.stack.3d.up")
+                .font(.system(size: 11.5, weight: .semibold))
+                .foregroundStyle(Theme.fg)
+                .padding(.horizontal, 8)
+                .frame(height: 28)
+                .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .help("Save or apply project appearance and audio presets")
+    }
+
+    private func saveProjectPreset() {
+        let name = projectPresetName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return }
+        projectPresetStore.save(ProjectPreset(
+            name: name,
+            video: workspace.video.state.video,
+            audio: workspace.timeline.snapshot.audio
+        ))
+        savedProjectPresets = projectPresetStore.load()
+    }
+
+    private func applyProjectPreset(_ preset: ProjectPreset) {
+        workspace.video.send(.videoStateChanged(preset.video))
+        var snapshot = workspace.timeline.snapshot
+        snapshot.audio = preset.audio
+        workspace.timeline.applySnapshot(snapshot)
     }
 
     private var canUndo: Bool {

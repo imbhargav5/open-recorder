@@ -1620,6 +1620,66 @@ final class VideoRuntimeStateMachineTests: XCTestCase {
         XCTAssertEqual(state.currentTime, 12)
     }
 
+    func testPlaybackObserverIgnoresStaleTimesWhileScrubbingOrSeekingAcrossCut() {
+        XCTAssertNil(VideoPlaybackObserverGate.acceptedTime(
+            observedTime: 9.5,
+            isPlaying: true,
+            isScrubbing: true,
+            pendingSeekTarget: nil,
+            framesPerSecond: 30
+        ))
+        XCTAssertNil(VideoPlaybackObserverGate.acceptedTime(
+            observedTime: 4.9,
+            isPlaying: true,
+            isScrubbing: false,
+            pendingSeekTarget: 75,
+            framesPerSecond: 30
+        ))
+        XCTAssertEqual(VideoPlaybackObserverGate.acceptedTime(
+            observedTime: 75.02,
+            isPlaying: true,
+            isScrubbing: false,
+            pendingSeekTarget: 75,
+            framesPerSecond: 30
+        ), 75)
+        XCTAssertNil(VideoPlaybackObserverGate.acceptedTime(
+            observedTime: 4.9,
+            isPlaying: false,
+            isScrubbing: false,
+            pendingSeekTarget: nil,
+            framesPerSecond: 30
+        ))
+    }
+
+    func testPlayStartsAtFirstKeptFrameWhenTimelineBeginsWithTrimmedFootage() {
+        var state = VideoPlaybackState()
+        let url = URL(fileURLWithPath: "/tmp/trimmed-start.mov")
+        _ = state.applying(.load(url))
+        state.duration = 333.4
+        state.timelineEdits = TimelineEditSnapshot(
+            trimRegions: [TimelineTrimRegion(span: TimelineSpan(start: 0, end: 75))]
+        )
+
+        XCTAssertEqual(state.applying(.playToggled), [.seek(75), .play(rate: 1)])
+        XCTAssertEqual(state.currentTime, 75)
+        XCTAssertTrue(state.isPlaying)
+    }
+
+    func testReplayFromEndStartsAtFirstKeptFrameWhenTimelineBeginsWithTrimmedFootage() {
+        var state = VideoPlaybackState()
+        let url = URL(fileURLWithPath: "/tmp/trimmed-replay.mov")
+        _ = state.applying(.load(url))
+        state.duration = 333.4
+        state.currentTime = 333.4
+        state.timelineEdits = TimelineEditSnapshot(
+            trimRegions: [TimelineTrimRegion(span: TimelineSpan(start: 0, end: 75))]
+        )
+
+        XCTAssertEqual(state.applying(.playToggled), [.seek(75), .play(rate: 1)])
+        XCTAssertEqual(state.currentTime, 75)
+        XCTAssertTrue(state.isPlaying)
+    }
+
     func testCropReducerHandlesKeyboardAspectAndConfirm() {
         var state = VideoCropState(
             draftSelection: VideoCropSelection().withPixelRect(CGRect(x: 100, y: 100, width: 800, height: 600), in: CGSize(width: 1920, height: 1080)),

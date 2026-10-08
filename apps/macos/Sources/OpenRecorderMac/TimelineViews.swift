@@ -36,6 +36,13 @@ struct TimelinePanel: View {
     @State private var sourceFramesPerSecond = TimelineSourceFrameRate.fallback
     @FocusState private var isTimelineFocused: Bool
 
+    private var editPlan: TimelineExportEditPlan {
+        TimelineExportEditPlan.build(duration: playback.duration, edits: edits.snapshot)
+    }
+    private func outputTime(_ sourceTime: Double) -> Double {
+        editPlan.timelineTime(forSourceTime: sourceTime)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             timelineToolbar
@@ -58,6 +65,7 @@ struct TimelinePanel: View {
                     edits: edits,
                     hasRecordedCamera: hasRecordedCamera,
                     defaultCameraSettings: defaultCameraSettings,
+                    sourceFramesPerSecond: sourceFramesPerSecond,
                     viewport: $timelineViewport
                 )
                     .padding(.horizontal, TimelineMetrics.panelPadding)
@@ -86,12 +94,15 @@ struct TimelinePanel: View {
             deleteTimelineSelection()
         }
         .onAppear {
-            syncTimelineViewportDuration(playback.duration)
+            syncTimelineViewportDuration(editPlan.outputDuration)
             ensureCameraLayer()
         }
         .onChange(of: playback.duration) { _, newDuration in
-            syncTimelineViewportDuration(newDuration)
+            syncTimelineViewportDuration(editPlan.outputDuration)
             ensureCameraLayer()
+        }
+        .onChange(of: editPlan) { _, plan in
+            syncTimelineViewportDuration(plan.outputDuration)
         }
         .onChange(of: hasRecordedCamera) { _, _ in
             ensureCameraLayer()
@@ -104,7 +115,7 @@ struct TimelinePanel: View {
         }
         .onChange(of: playback.isPlaying) { _, isPlaying in
             guard isPlaying else { return }
-            timelineViewport = timelineViewport.following(time: playback.currentTime)
+            timelineViewport = timelineViewport.following(time: outputTime(playback.currentTime))
         }
         .onChange(of: edits.state.hasSelection) { _, hasSelection in
             guard hasSelection else { return }
@@ -115,7 +126,7 @@ struct TimelinePanel: View {
     private var timelineToolbar: some View {
         ZStack {
             HStack(spacing: 8) {
-                TimelineTimeDisplay(currentTime: playback.currentTime, duration: playback.duration)
+                TimelineTimeDisplay(currentTime: outputTime(playback.currentTime), duration: editPlan.outputDuration)
 
                 if hasRecordedCamera {
                     Menu {
@@ -164,8 +175,8 @@ struct TimelinePanel: View {
 
                 TimelineZoomSlider(
                     viewport: $timelineViewport,
-                    duration: playback.duration,
-                    currentTime: playback.currentTime,
+                    duration: editPlan.outputDuration,
+                    currentTime: outputTime(playback.currentTime),
                     isDragging: $isDraggingTimelineZoom
                 )
             }
@@ -181,6 +192,7 @@ struct TimelinePanel: View {
             let loadedFrameRate = await TimelineSourceFrameRate.load(from: videoURL)
             guard !Task.isCancelled else { return }
             sourceFramesPerSecond = loadedFrameRate
+            playback.sourceFramesPerSecond = loadedFrameRate
         }
     }
 
@@ -188,11 +200,12 @@ struct TimelinePanel: View {
         timelineViewport = TimelineViewport.reconciled(
             duration: duration,
             previous: timelineViewport,
-            currentTime: playback.currentTime
+            currentTime: outputTime(playback.currentTime)
         )
     }
 
-    private func updateTimelineViewport(for currentTime: Double) {
+    private func updateTimelineViewport(for sourceTime: Double) {
+        let currentTime = outputTime(sourceTime)
         if playback.isPlaying {
             timelineViewport = timelineViewport.following(time: currentTime)
         } else if !timelineViewport.contains(currentTime) {
@@ -216,20 +229,29 @@ struct TimelineTrackContent: View {
     var edits: TimelineEditDriver
     var hasRecordedCamera: Bool
     var defaultCameraSettings: FacecamSettings?
+    var sourceFramesPerSecond: Double
     @Binding var viewport: TimelineViewport
     @State private var timelineSize = CGSize.zero
     @State private var hoverTime: Double?
 
+    private var sourceViewport: TimelineViewport {
+        var result = viewport
+        result.editPlan = TimelineExportEditPlan.build(duration: playback.duration, edits: edits.snapshot)
+        return result
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            TimelineRuler(viewport: viewport, onSeek: playback.seek(to:))
+            TimelineRuler(viewport: viewport, onSeek: { time in
+                playback.seek(to: sourceViewport.editPlan?.sourceTime(forOutputTime: time) ?? time)
+            }, onScrubbingChanged: playback.setScrubbing)
                 .rectangularHitTarget()
-            TimelineClipRow(videoURL: videoURL, duration: playback.duration, currentTime: playback.currentTime, viewport: viewport, splitTimes: edits.clipSplitTimes, trimRegions: edits.trimRegions, clipSpeeds: edits.clipSpeeds, selectedClipIndex: edits.selectedClipIndex, seek: playback.seek(to:), edits: edits)
-            TimelineLayerRow(kind: .zoom, duration: playback.duration, viewport: viewport, regions: edits.zoomRegions.map(TimelineRegionRenderData.zoom), selectedID: edits.selectedKind == .zoom ? edits.selectedID : nil, edits: edits)
+            TimelineClipRow(videoURL: videoURL, duration: playback.duration, currentTime: playback.currentTime, viewport: sourceViewport, splitTimes: edits.clipSplitTimes, trimRegions: edits.trimRegions, clipSpeeds: edits.clipSpeeds, selectedClipIndex: edits.selectedClipIndex, seek: playback.seek(to:), onScrubbingChanged: playback.setScrubbing, edits: edits)
+            TimelineLayerRow(kind: .zoom, duration: playback.duration, viewport: sourceViewport, regions: edits.zoomRegions.map(TimelineRegionRenderData.zoom), selectedID: edits.selectedKind == .zoom ? edits.selectedID : nil, edits: edits)
             TimelineCameraLayerRow(
                 duration: playback.duration,
                 currentTime: playback.currentTime,
-                viewport: viewport,
+                viewport: sourceViewport,
                 hasRecordedCamera: hasRecordedCamera,
                 fallbackSettings: defaultCameraSettings,
                 cameraClips: edits.resolvedCameraClips(duration: playback.duration, fallback: defaultCameraSettings),
@@ -239,25 +261,36 @@ struct TimelineTrackContent: View {
         }
         .overlay(alignment: .topLeading) {
             ZStack(alignment: .topLeading) {
-                TimelinePlayhead(viewport: viewport, currentTime: playback.currentTime, onSeek: playback.seek(to:))
+                TimelinePlayhead(viewport: sourceViewport, currentTime: playback.currentTime, onSeek: playback.seek(to:), onScrubbingChanged: playback.setScrubbing)
                 if let hoverTime {
-                    TimelineHoverIndicator(viewport: viewport, time: hoverTime)
+                    TimelineHoverIndicator(
+                        viewport: sourceViewport,
+                        time: hoverTime,
+                        framesPerSecond: sourceFramesPerSecond
+                    )
                 }
             }
         }
-        .coordinateSpace(name: "TimelineTrackCoordinateSpace")
         .readSize { timelineSize = $0 }
         .rectangularHitTarget()
+        .coordinateSpace(name: "TimelineTrackCoordinateSpace")
         .onContinuousHover(coordinateSpace: .local) { phase in
             switch phase {
             case .active(let location):
-                hoverTime = TimelineHoverPreview.time(
+                let pointedTime = TimelineHoverPreview.time(
                     videoIsAvailable: videoURL != nil,
                     playbackIsActive: playback.isPlaying,
                     x: location.x,
-                    viewport: viewport,
+                    viewport: sourceViewport,
                     width: timelineSize.width
                 )
+                hoverTime = pointedTime.map {
+                    TimelineFrameStepper.frameAlignedTime(
+                        $0,
+                        framesPerSecond: sourceFramesPerSecond,
+                        duration: playback.duration
+                    )
+                }
             case .ended:
                 hoverTime = nil
             }
@@ -502,6 +535,7 @@ private struct TimelineZoomSlider: View {
 struct TimelineViewport: Equatable {
     static let minimumVisibleDuration = 2.0
 
+    var editPlan: TimelineExportEditPlan?
     var duration: Double
     var visibleStart: Double
     var visibleDuration: Double
@@ -582,23 +616,28 @@ struct TimelineViewport: Equatable {
     }
 
     func contains(_ time: Double) -> Bool {
-        time.isFinite && time >= visibleStart - 0.001 && time <= visibleEnd + 0.001
+        let time = editPlan?.timelineTime(forSourceTime: time) ?? time
+        return time.isFinite && time >= visibleStart - 0.001 && time <= visibleEnd + 0.001
     }
 
     func intersects(_ span: TimelineSpan) -> Bool {
-        span.end > visibleStart + 0.001 && span.start < visibleEnd - 0.001
+        let start = editPlan?.timelineTime(forSourceTime: span.start) ?? span.start
+        let end = editPlan?.timelineTime(forSourceTime: span.end) ?? span.end
+        return end - start > 0.001 && end > visibleStart + 0.001 && start < visibleEnd - 0.001
     }
 
     func time(forX x: CGFloat, width: CGFloat) -> Double? {
         guard visibleDuration > 0, width.isFinite, width > 0, x.isFinite else { return nil }
         let clampedX = min(max(x, 0), width)
         let time = visibleStart + Double(clampedX / width) * visibleDuration
-        return Self.clamp(time, lower: 0, upper: duration)
+        let clamped = Self.clamp(time, lower: 0, upper: duration)
+        return editPlan?.sourceTime(forOutputTime: clamped) ?? clamped
     }
 
     func x(for time: Double, width: CGFloat, clamped: Bool = false) -> CGFloat? {
         guard visibleDuration > 0, width.isFinite, width > 0, time.isFinite else { return nil }
-        let rawFraction = (time - visibleStart) / visibleDuration
+        let mappedTime = editPlan?.timelineTime(forSourceTime: time) ?? time
+        let rawFraction = (mappedTime - visibleStart) / visibleDuration
         let fraction = clamped ? Self.clamp(rawFraction, lower: 0, upper: 1) : rawFraction
         return width * CGFloat(fraction)
     }
@@ -644,6 +683,7 @@ struct TimelineViewport: Equatable {
 struct TimelineRuler: View {
     var viewport: TimelineViewport
     var onSeek: ((Double) -> Void)? = nil
+    var onScrubbingChanged: ((Bool) -> Void)? = nil
 
     var body: some View {
         GeometryReader { proxy in
@@ -672,12 +712,14 @@ struct TimelineRuler: View {
             }
             .contentShape(Rectangle())
             .gesture(
-                DragGesture(minimumDistance: 0, coordinateSpace: .named("TimelineTrackCoordinateSpace"))
+                DragGesture(minimumDistance: 0, coordinateSpace: .local)
                     .onChanged { value in
+                        onScrubbingChanged?(true)
                         if let time = viewport.time(forX: value.location.x, width: proxy.size.width) {
                             onSeek?(time)
                         }
                     }
+                    .onEnded { _ in onScrubbingChanged?(false) }
             )
         }
         .frame(height: TimelineMetrics.rulerHeight)
@@ -696,17 +738,19 @@ struct TimelinePlayhead: View {
     var viewport: TimelineViewport
     var currentTime: Double
     var onSeek: ((Double) -> Void)? = nil
+    var onScrubbingChanged: ((Bool) -> Void)? = nil
 
     @State private var isDragging = false
 
     var body: some View {
         GeometryReader { proxy in
             let x = viewport.x(for: currentTime, width: proxy.size.width, clamped: true) ?? 0
-            ZStack(alignment: .top) {
+            ZStack(alignment: .topLeading) {
                 // Playhead line
                 Rectangle()
                     .fill(Color.white)
                     .frame(width: 1.5, height: proxy.size.height)
+                    .offset(x: x - 0.75)
 
                 // White Playhead Pin Knob with generous touch target
                 ZStack {
@@ -723,21 +767,22 @@ struct TimelinePlayhead: View {
                 }
                 .frame(width: 28, height: 28)
                 .contentShape(Rectangle())
-                .offset(y: -5)
-            }
-            .offset(x: x - 0.75)
-            .gesture(
-                DragGesture(minimumDistance: 0, coordinateSpace: .named("TimelineTrackCoordinateSpace"))
-                    .onChanged { value in
-                        isDragging = true
-                        if let time = viewport.time(forX: value.location.x, width: proxy.size.width) {
-                            onSeek?(time)
+                .position(x: x, y: 9)
+                .gesture(
+                    DragGesture(minimumDistance: 0, coordinateSpace: .named("TimelineTrackCoordinateSpace"))
+                        .onChanged { value in
+                            onScrubbingChanged?(true)
+                            isDragging = true
+                            if let time = viewport.time(forX: value.location.x, width: proxy.size.width) {
+                                onSeek?(time)
+                            }
                         }
-                    }
-                    .onEnded { _ in
-                        isDragging = false
-                    }
-            )
+                        .onEnded { _ in
+                            onScrubbingChanged?(false)
+                            isDragging = false
+                        }
+                )
+            }
         }
     }
 }
@@ -745,6 +790,7 @@ struct TimelinePlayhead: View {
 struct TimelineHoverIndicator: View {
     var viewport: TimelineViewport
     var time: Double
+    var framesPerSecond: Double = TimelineSourceFrameRate.fallback
 
     var body: some View {
         GeometryReader { proxy in
@@ -756,7 +802,7 @@ struct TimelineHoverIndicator: View {
                     .frame(width: 1, height: proxy.size.height)
                     .offset(x: x - 0.5)
 
-                Text(formatPlaybackTime(time))
+                Text("\(formatPlaybackTime(time)) · f\(frameWithinSecond)")
                     .font(.system(size: 9, weight: .semibold, design: .monospaced))
                     .foregroundStyle(Theme.fg.opacity(0.92))
                     .padding(.horizontal, 5)
@@ -767,6 +813,12 @@ struct TimelineHoverIndicator: View {
         }
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+    }
+
+    private var frameWithinSecond: Int {
+        let fps = TimelineSourceFrameRate.normalized(framesPerSecond)
+        let frame = Int(floor(max(0, time) * fps + 0.001))
+        return frame % max(1, Int(fps.rounded()))
     }
 }
 
@@ -828,6 +880,17 @@ enum TimelineSourceFrameRate {
 }
 
 enum TimelineFrameStepper {
+    static func frameAlignedTime(
+        _ seconds: Double,
+        framesPerSecond: Double,
+        duration: Double
+    ) -> Double {
+        let safeSeconds = seconds.isFinite ? max(0, seconds) : 0
+        let fps = TimelineSourceFrameRate.normalized(framesPerSecond)
+        let aligned = floor(safeSeconds * fps) / fps
+        return duration.isFinite && duration > 0 ? min(aligned, duration) : aligned
+    }
+
     static func targetTime(
         currentTime: Double,
         frameCount: Int,
@@ -900,8 +963,11 @@ struct TimelineClipRow: View {
     var clipSpeeds: [Int: Double]
     var selectedClipIndex: Int?
     var seek: (Double) -> Void
+    var onScrubbingChanged: ((Bool) -> Void)? = nil
     var edits: TimelineEditDriver
     @State private var waveformSamples: [Double]?
+
+    @State private var clipResize: (index: Int, edge: TimelineCameraResizeEdge, time: Double, secondsPerPoint: Double, original: TimelineEditSnapshot)?
 
     var body: some View {
         GeometryReader { proxy in
@@ -923,9 +989,11 @@ struct TimelineClipRow: View {
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { value in
+                        onScrubbingChanged?(true)
                         seek(to: value.location.x, width: proxy.size.width)
                     }
                     .onEnded { value in
+                        onScrubbingChanged?(false)
                         selectClip(at: value.location.x, width: proxy.size.width)
                     }
             )
@@ -936,7 +1004,19 @@ struct TimelineClipRow: View {
     }
 
     private func clipSegments(width: CGFloat) -> some View {
-        let segments = TimelineClipSegment.segments(duration: duration, splitTimes: splitTimes, clipSpeeds: clipSpeeds)
+        let original = clipResize?.original ?? edits.snapshot
+        let segments = original.clipSegments(duration: duration)
+            .filter { segment in
+                !original.trimRegions.contains { $0.span.start <= segment.start + 0.001 && $0.span.end >= segment.end - 0.001 }
+            }
+            .map { segment -> TimelineClipSegment in
+                guard let drag = clipResize, segment.index == drag.index,
+                      var resized = edits.selectedClip(duration: duration) else { return segment }
+                // Keep the gesture's view identity stable when a new trim boundary
+                // changes the clip's source index during the drag.
+                resized.index = segment.index
+                return resized
+            }
             .filter { viewport.intersects($0.span) }
         return ZStack(alignment: .leading) {
             ForEach(segments) { segment in
@@ -960,9 +1040,36 @@ struct TimelineClipRow: View {
                         .disabled(isDeleted(segment) || !edits.canDeleteRecordingClip(index: segment.index, duration: duration))
                     }
                     .frame(width: segmentWidth, height: TimelineMetrics.clipHeight)
+                    .overlay(alignment: .leading) { clipEdge(segment, edge: .leading, width: width) }
+                    .overlay(alignment: .trailing) { clipEdge(segment, edge: .trailing, width: width) }
                     .position(x: startX + (endX - startX) / 2, y: TimelineMetrics.clipHeight / 2)
             }
         }
+    }
+
+    private func clipEdge(_ segment: TimelineClipSegment, edge: TimelineCameraResizeEdge, width: CGFloat) -> some View {
+        TimelineResizeHandle(usesResizeCursor: true)
+            .frame(width: 12, height: TimelineMetrics.clipHeight - 14)
+            .contentShape(Rectangle())
+            .highPriorityGesture(DragGesture(minimumDistance: 2, coordinateSpace: .global)
+                .onChanged { value in
+                    if clipResize == nil {
+                        edits.beginUndoTransaction()
+                        clipResize = (segment.index, edge, edge == .leading ? segment.start : segment.end,
+                                      width > 0 ? viewport.visibleDuration / Double(width) * segment.speed : 0,
+                                      edits.snapshot)
+                    }
+                    guard let drag = clipResize else { return }
+                    edits.send(.resizeRecordingClip(index: drag.index, edge: drag.edge,
+                        time: drag.time + Double(value.translation.width) * drag.secondsPerPoint,
+                        duration: duration, original: drag.original))
+                }
+                .onEnded { _ in
+                    edits.endUndoTransaction()
+                    clipResize = nil
+                })
+            .help("Drag to trim or restore hidden footage")
+            .accessibilityLabel(edge == .leading ? "Clip start" : "Clip end")
     }
 
     private func clipBody(segment: TimelineClipSegment, width: CGFloat, isSelected: Bool, isDeleted: Bool) -> some View {
@@ -1341,7 +1448,7 @@ struct TimelineLayerRow: View {
                         .allowsHitTesting(false)
                 }
                 ForEach(regions.filter { viewport.intersects($0.span) }) { region in
-                    TimelineRegionItem(kind: kind, region: region, duration: duration, viewport: viewport, width: proxy.size.width, isSelected: region.id == selectedID, edits: edits)
+                    TimelineRegionItem(kind: kind, region: region, duration: duration, viewport: viewport, width: proxy.size.width, isSelected: kind == .zoom ? edits.selectedZoomIDs.contains(region.id) : region.id == selectedID, edits: edits)
                 }
             }
             .rectangularHitTarget()
@@ -1530,12 +1637,12 @@ private struct TimelineCameraClipItem: View {
         .accessibilityAddTraits(isSelected ? .isSelected : [])
         .frame(width: itemWidth, height: TimelineMetrics.regionItemHeight)
         .overlay(alignment: .leading) {
-            if (isSelected || isHovering), clip.span.start >= viewport.visibleStart - 0.001 {
+            if (isSelected || isHovering), (viewport.editPlan?.timelineTime(forSourceTime: clip.span.start) ?? clip.span.start) >= viewport.visibleStart - 0.001 {
                 resizeHandle(edge: .leading, hitWidth: min(18, itemWidth / 2))
             }
         }
         .overlay(alignment: .trailing) {
-            if (isSelected || isHovering), clip.span.end <= viewport.visibleEnd + 0.001 {
+            if (isSelected || isHovering), (viewport.editPlan?.timelineTime(forSourceTime: clip.span.end) ?? clip.span.end) <= viewport.visibleEnd + 0.001 {
                 resizeHandle(edge: .trailing, hitWidth: min(18, itemWidth / 2))
             }
         }
@@ -1740,13 +1847,21 @@ struct TimelineRegionItem: View {
         let itemWidth = max(1, x(for: region.span.end) - startX)
 
         Button {
-            edits.select(kind, id: region.id)
+            if kind == .zoom {
+                edits.selectZoom(region.id, toggle: NSEvent.modifierFlags.contains(.command),
+                                 range: NSEvent.modifierFlags.contains(.shift))
+            } else {
+                edits.select(kind, id: region.id)
+            }
         } label: {
             regionBody(width: itemWidth)
         }
         .buttonStyle(.plain)
         .frame(width: itemWidth, height: TimelineMetrics.regionItemHeight)
-        .simultaneousGesture(TapGesture(count: 2).onEnded { performPrimaryEdit() })
+        .simultaneousGesture(TapGesture(count: 2).onEnded {
+            guard NSEvent.modifierFlags.intersection([.command, .shift]).isEmpty else { return }
+            performPrimaryEdit()
+        })
         .gesture(dragGesture(operation: .move))
         // Handles are siblings of the movable button, so resizing cannot also move it.
         .overlay(alignment: .leading) {
@@ -1829,11 +1944,11 @@ struct TimelineRegionItem: View {
     }
 
     private var showsLeadingHandle: Bool {
-        region.span.start >= viewport.visibleStart - 0.001 || drag?.operation == .leading
+        (viewport.editPlan?.timelineTime(forSourceTime: region.span.start) ?? region.span.start) >= viewport.visibleStart - 0.001 || drag?.operation == .leading
     }
 
     private var showsTrailingHandle: Bool {
-        region.span.end <= viewport.visibleEnd + 0.001 || drag?.operation == .trailing
+        (viewport.editPlan?.timelineTime(forSourceTime: region.span.end) ?? region.span.end) <= viewport.visibleEnd + 0.001 || drag?.operation == .trailing
     }
 
     private func resizeHandle(operation: TimelineRegionDrag.Operation) -> some View {
@@ -1892,6 +2007,6 @@ struct TimelineRegionItem: View {
     }
 
     private var regionAccessibilityHint: String {
-        kind == .zoom ? "Selects this timeline region. Press twice to increase zoom depth." : "Selects this timeline region."
+        kind == .zoom ? "Command-click to toggle selection. Shift-click to select a range. Press Delete to remove selected zooms. Press twice to increase zoom depth." : "Selects this timeline region."
     }
 }

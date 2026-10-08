@@ -37,6 +37,10 @@ final class NativeScreenRecorder: NSObject {
     private var stream: SCStream?
     private var recordingOutput: SCRecordingOutput?
     private var recordingDelegate: RecordingOutputDelegate?
+    private var startClock: ScreenCaptureStartClock?
+    private var audioTracks: [ScreenCaptureAudioTrack] = []
+    private var captureURL: URL?
+    private var mediaStartedAt: Date?
 
     func start(
         source: CaptureSource,
@@ -69,14 +73,46 @@ final class NativeScreenRecorder: NSObject {
             delegate: nil
         )
 
+        let startClock = ScreenCaptureStartClock()
+        try stream.addStreamOutput(startClock, type: .screen, sampleHandlerQueue: startClock.sampleQueue)
+        self.startClock = startClock
         try stream.addRecordingOutput(recordingOutput)
+
+        // SCRecordingOutput combines audio internally. Preserve each SCK source
+        // independently using its native format, then replace that combined audio.
+        if options.includeMicrophone {
+            let directory = outputURL.deletingLastPathComponent().appendingPathComponent("Audio Sources")
+            for type in options.includeSystemAudio ? [SCStreamOutputType.microphone, .audio] : [.microphone] {
+                let track = try ScreenCaptureAudioTrack(directory: directory,
+                    name: outputURL.deletingPathExtension().lastPathComponent.trimmingCharacters(in: CharacterSet(charactersIn: ".")) + (type == .microphone ? "-microphone" : "-system"), outputType: type)
+                try stream.addStreamOutput(track, type: type, sampleHandlerQueue: track.sampleQueue)
+                audioTracks.append(track)
+            }
+        }
+        captureURL = outputURL
+
 
         self.stream = stream
         self.recordingOutput = recordingOutput
         self.recordingDelegate = recordingDelegate
 
-        try await startCapture(stream)
-        return try await recordingDelegate.waitForStart()
+        do {
+            try await startCapture(stream)
+            let notifiedAt = try await recordingDelegate.waitForStart()
+            let startedAt = try await startClock.startDate(fallback: notifiedAt)
+            mediaStartedAt = startedAt
+            for track in audioTracks { try await track.waitForFirstSamples() }
+            return startedAt
+        } catch {
+            try? await stopCapture(stream)
+            self.stream = nil
+            self.recordingOutput = nil
+            self.recordingDelegate = nil
+            self.startClock = nil
+            for track in audioTracks { await track.finish() }
+            audioTracks = []
+            throw error
+        }
     }
 
     static func makeStreamConfiguration(
@@ -92,8 +128,8 @@ final class NativeScreenRecorder: NSObject {
         configuration.queueDepth = 8
         // Record without cursor capture here; playback and export reapply the saved cursor preference after capture.
         configuration.showsCursor = false
-        // Standardize audio capture to dual-channel stereo at 48kHz when active;
-        // disable audio streams when neither system audio nor microphone is requested to guard against silent tracks.
+        // These format settings apply to system audio. ScreenCaptureKit delivers
+        // microphone samples in the selected device's native format.
         configuration.capturesAudio = options.includeSystemAudio
         configuration.sampleRate = 48_000
         configuration.channelCount = 2
@@ -119,12 +155,29 @@ final class NativeScreenRecorder: NSObject {
             return
         }
 
-        try await stopCapture(stream)
+        defer {
+            self.stream = nil
+            recordingOutput = nil
+            recordingDelegate = nil
+            startClock = nil
+            audioTracks = []
+            captureURL = nil
+            mediaStartedAt = nil
+        }
+        do {
+            try await stopCapture(stream)
+        } catch {
+            for track in audioTracks { await track.finish() }
+            throw error
+        }
+        for track in audioTracks { await track.finish() }
         try await recordingDelegate?.waitForFinish()
+        if !audioTracks.isEmpty, let captureURL, let mediaStartedAt {
+            var sources: [ScreenCaptureAudioTrack.Result] = []
+            for track in audioTracks { sources.append(try await track.result()) }
+            try await ScreenCaptureAudioMuxer.replaceAudio(in: captureURL, sources: sources, videoStartedAt: mediaStartedAt)
+        }
 
-        self.stream = nil
-        self.recordingOutput = nil
-        self.recordingDelegate = nil
     }
 
     private func shareableContent() async throws -> SCShareableContent {

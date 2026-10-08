@@ -55,6 +55,10 @@ struct TimelineSelectionSidebar: View {
             clipControls(clip)
         } else if let cameraClip = edits.selectedCameraClip(duration: playback.duration, fallback: defaultCameraSettings) {
             cameraControls(cameraClip)
+        } else if edits.selectedZoomIDs.count > 1 {
+            Text("Command-click to add or remove zooms. Shift-click to select a range. Press Delete to remove the selected zooms.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
         } else if let kind = edits.selectedKind, let id = edits.selectedID {
             regionControls(kind: kind, id: id)
         } else {
@@ -281,6 +285,7 @@ struct TimelineSelectionSidebar: View {
     }
 
     private var selectionTitle: String {
+        if edits.selectedZoomIDs.count > 1 { return "\(edits.selectedZoomIDs.count) Zooms Selected" }
         if let clip = edits.selectedClip(duration: playback.duration) {
             return "Selected Clip \(clip.index + 1)"
         }
@@ -294,6 +299,7 @@ struct TimelineSelectionSidebar: View {
     }
 
     private var selectionSubtitle: String {
+        if edits.selectedZoomIDs.count > 1 { return "Delete removes all selected zooms" }
         if let clip = edits.selectedClip(duration: playback.duration) {
             return "\(formatPlaybackTime(clip.start)) - \(formatPlaybackTime(clip.end)) @ \(TimelineClipSpeed.label(clip.speed))"
         }

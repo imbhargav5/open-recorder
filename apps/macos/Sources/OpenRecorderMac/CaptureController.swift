@@ -386,6 +386,12 @@ final class CaptureController: ObservableObject {
         }
 
         if let nativeRecorder {
+            defer {
+                self.nativeRecorder = nil
+                activeRecordingURL = nil
+                activeStagedRecordingURL = nil
+                isRecording = false
+            }
             try await nativeRecorder.stop()
             self.nativeRecorder = nil
             try finalizeStagedRecording()
