@@ -77,6 +77,48 @@ struct VideoAppearancePreferences: Codable, Equatable {
     }
 }
 
+struct ProjectPreset: Codable, Equatable, Identifiable {
+    var id: UUID = UUID()
+    var name: String
+    var video: ProjectVideoEditorState
+    var audio: AudioProcessingSettings
+}
+
+@MainActor
+struct ProjectPresetStore {
+    static let defaultsKey = "editor.projectPresets.v1"
+    private let defaults: UserDefaults
+
+    init(defaults: UserDefaults = .standard) { self.defaults = defaults }
+
+    static func ephemeral() -> ProjectPresetStore {
+        let suiteName = "OpenRecorder.ProjectPresets.\(UUID().uuidString)"
+        return ProjectPresetStore(defaults: UserDefaults(suiteName: suiteName)!)
+    }
+
+    func load() -> [ProjectPreset] {
+        guard let data = defaults.data(forKey: Self.defaultsKey),
+              let presets = try? JSONDecoder().decode([ProjectPreset].self, from: data) else { return [] }
+        return presets
+    }
+
+    func save(_ preset: ProjectPreset) {
+        var presets = load()
+        presets.removeAll { $0.id == preset.id || $0.name.localizedCaseInsensitiveCompare(preset.name) == .orderedSame }
+        presets.append(preset)
+        persist(presets)
+    }
+
+    func delete(id: UUID) {
+        persist(load().filter { $0.id != id })
+    }
+
+    private func persist(_ presets: [ProjectPreset]) {
+        guard let data = try? JSONEncoder().encode(presets) else { return }
+        defaults.set(data, forKey: Self.defaultsKey)
+    }
+}
+
 @MainActor
 struct EditorAppearancePreferencesStore {
     static let screenshotDefaultsKey = "editor.appearance.screenshot.v1"
