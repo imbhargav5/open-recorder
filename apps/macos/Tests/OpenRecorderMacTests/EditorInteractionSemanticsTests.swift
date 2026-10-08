@@ -201,6 +201,19 @@ final class TimelineHoverPreviewTests: XCTestCase {
 }
 
 final class TimelineFrameStepperTests: XCTestCase {
+    func testTimelineSeeksSnapAtOrBeforePointerToAvoidJumpingAhead() {
+        XCTAssertEqual(
+            TimelineFrameStepper.frameAlignedTime(1.016, framesPerSecond: 30, duration: 10),
+            1,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            TimelineFrameStepper.frameAlignedTime(9.999, framesPerSecond: 30, duration: 10),
+            9 + 29.0 / 30.0,
+            accuracy: 0.000_001
+        )
+    }
+
     func testUsesSourceFrameRate() {
         XCTAssertEqual(
             TimelineFrameStepper.targetTime(
@@ -271,10 +284,11 @@ final class PreviewPlaybackSpeedSelectionTests: XCTestCase {
 }
 
 final class InspectorAvailabilityTests: XCTestCase {
-    func testHidesInertAudioTabWithoutRemovingCompatibilityCase() {
-        XCTAssertFalse(InspectorTab.availableCases.contains(.audio))
-        XCTAssertEqual(InspectorTab.availableCases, [.appearance, .scene, .cursor, .camera, .captions])
+    func testAudioTabIsAvailableAndNoLongerStubbed() {
+        XCTAssertTrue(InspectorTab.availableCases.contains(.audio))
+        XCTAssertEqual(InspectorTab.availableCases, [.appearance, .scene, .cursor, .camera, .audio, .captions])
         XCTAssertFalse(InspectorTab.captions.isStubbed)
+        XCTAssertFalse(InspectorTab.audio.isStubbed)
         XCTAssertTrue(InspectorTab.allCases.contains(.audio))
     }
 }

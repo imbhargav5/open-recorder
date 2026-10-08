@@ -52,6 +52,23 @@ final class EditorAppearancePreferencesTests: XCTestCase {
         XCTAssertEqual(store.loadVideo(), .default)
     }
 
+    func testProjectPresetsPersistVideoAndAudioAndCanBeDeleted() {
+        let store = ProjectPresetStore.ephemeral()
+        var video = ProjectVideoEditorState.default
+        video.canvasAspect = .vertical
+        video.padding = 42
+        var audio = AudioProcessingSettings.voice
+        audio.routing = .left
+        audio.syncOffsetMs = 125
+        let preset = ProjectPreset(name: "Voice Shorts", video: video, audio: audio)
+
+        store.save(preset)
+
+        XCTAssertEqual(store.load(), [preset])
+        store.delete(id: preset.id)
+        XCTAssertTrue(store.load().isEmpty)
+    }
+
     func testMissingCustomBackgroundFallsBackWithoutResettingOtherScreenshotPreferences() throws {
         let store = makeStore()
         let directory = FileManager.default.temporaryDirectory
