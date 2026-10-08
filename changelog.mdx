@@ -3,6 +3,41 @@ title: "Open Recorder changelog: releases, features, and fixes"
 description: "Release notes for Open Recorder on macOS. Track new screen recording features, capture improvements, and bug fixes in each version update."
 ---
 
+<Update label="October 8, 2026" description="Capture shortcuts and screenshot handoff" tags={["macOS"]}>
+## New features
+
+### Choose what happens after you take a screenshot
+
+Choose **Settings → General → Capture → After taking a screenshot** to control the handoff after a capture:
+
+- **Open editor** opens the screenshot editor, as before.
+- **Copy to clipboard** copies the raw capture so you can paste it right away.
+- **Save to screenshots folder** saves the capture without opening the editor or changing the clipboard.
+
+Screenshots are saved locally in every mode. A brief HUD message confirms Copy or Save. Choose **Edit Last Screenshot** from the menu bar or the HUD context menu to open the most recent quick capture in the editor.
+
+### Adjust the selected area before capture
+
+Turn on **Adjust selected area before capture** to move or resize your selection, then press <kbd>Return</kbd> to capture. Leave it off to keep capturing as soon as you release the pointer.
+
+### Faster capture shortcuts
+
+- Current display and current window screenshot shortcuts capture directly without opening a chooser.
+- Area recording opens recording setup after you draw the area, so you can review inputs before you press **Record**.
+- <kbd>⌥</kbd> <kbd>⇧</kbd> <kbd>R</kbd> opens the recorder when no recording is in progress.
+- Capture-target shortcuts no longer stop an active recording. Use <kbd>⌥</kbd> <kbd>⇧</kbd> <kbd>R</kbd>, the HUD's **Stop** button, or the menu-bar icon to finish.
+
+### Shortcut registration status
+
+Each global shortcut in **Settings → Shortcuts** now shows **Active**, **Off**, or **Unavailable**. If another app owns a key, quit that app and choose **Retry unavailable shortcuts**, or assign a different combination.
+
+### Screenshot editor export changes
+
+<kbd>⌘</kbd> <kbd>S</kbd> now saves the composed PNG next to the original without changing the clipboard. <kbd>⌘</kbd> <kbd>C</kbd> copies the PNG and keeps the editor open. Click **Copy & Close** to copy and close in one step.
+
+See [Keyboard shortcuts](/reference/keyboard-shortcuts) for the full list of shortcuts and settings.
+</Update>
+
 <Update label="September 19, 2026" description="v0.2.56" tags={["macOS"]}>
 ## New features
 
