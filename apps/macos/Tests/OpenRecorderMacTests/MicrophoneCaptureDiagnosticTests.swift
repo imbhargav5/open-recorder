@@ -14,7 +14,10 @@ final class MicrophoneCaptureDiagnosticTests: XCTestCase {
         let frameCount = 4_800
         var samples = [Int16](repeating: 0, count: frameCount * 2)
         for frame in 0..<frameCount {
-            samples[frame * 2] = Int16(sin(Double(frame) * 2 * .pi * 440 / 48_000) * 8_000)
+            let framePosition = Double(frame)
+            let radiansPerSample = 2.0 * Double.pi * 440.0 / 48_000.0
+            let sample = sin(framePosition * radiansPerSample) * 8_000.0
+            samples[frame * 2] = Int16(sample)
             // A silent second Scarlett input must remain silent.
         }
         var block: CMBlockBuffer?
