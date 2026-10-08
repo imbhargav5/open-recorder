@@ -173,6 +173,21 @@ final class FacecamRecorder: NSObject, AVCaptureFileOutputRecordingDelegate {
         }
     }
 
+    @available(macOS 15.2, *)
+    nonisolated func fileOutput(
+        _ output: AVCaptureFileOutput,
+        didStartRecordingTo fileURL: URL,
+        startPTS: CMTime,
+        from connections: [AVCaptureConnection]
+    ) {
+        Task { @MainActor in
+            let origin = self.session?.synchronizationClock.flatMap {
+                CaptureMediaClock.date(for: startPTS, clock: $0)
+            }
+            self.finishStartRecording(mediaStart: origin)
+        }
+    }
+
     nonisolated func fileOutput(
         _ output: AVCaptureFileOutput,
         didFinishRecordingTo outputFileURL: URL,
@@ -184,8 +199,8 @@ final class FacecamRecorder: NSObject, AVCaptureFileOutputRecordingDelegate {
         }
     }
 
-    private func finishStartRecording() {
-        let start = Date()
+    private func finishStartRecording(mediaStart: Date? = nil) {
+        let start = mediaStart ?? Date()
         startedAt = start
         startContinuation?.resume(returning: start)
         startContinuation = nil

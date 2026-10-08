@@ -17,6 +17,66 @@ final class TimelineZoomDeletionTests: XCTestCase {
     }
 
     @MainActor
+    func testMultiSelectionDeletesTogetherAndUndoRestoresSelection() {
+        let edits = TimelineEditDriver()
+        let original = fixture()
+        edits.applySnapshot(original)
+        edits.selectZoom(original.zoomRegions[0].id)
+        edits.selectZoom(original.zoomRegions[1].id, toggle: true)
+        let selected = Set(original.zoomRegions.map(\.id))
+        XCTAssertEqual(edits.selectedZoomIDs, selected)
+        XCTAssertFalse(edits.canUndo)
+        edits.deleteSelection(duration: 10)
+        var expected = original
+        expected.zoomRegions = []
+        XCTAssertEqual(edits.snapshot, expected)
+        XCTAssertFalse(edits.hasSelection)
+        edits.undo()
+        XCTAssertEqual(edits.snapshot, original)
+        XCTAssertEqual(edits.selectedZoomIDs, selected)
+        XCTAssertFalse(edits.canUndo)
+        edits.redo()
+        XCTAssertEqual(edits.snapshot, expected)
+    }
+
+    @MainActor
+    func testToggleAndPlainSelectionAndSwitchingTracks() {
+        let edits = TimelineEditDriver()
+        let original = fixture()
+        let first = original.zoomRegions[0].id
+        let second = original.zoomRegions[1].id
+        edits.applySnapshot(original)
+        edits.selectZoom(first)
+        edits.selectZoom(second, toggle: true)
+        edits.selectZoom(first, toggle: true)
+        XCTAssertEqual(edits.selectedZoomIDs, [second])
+        XCTAssertEqual(edits.selectedID, second)
+        edits.selectZoom(first)
+        XCTAssertEqual(edits.selectedZoomIDs, [first])
+        edits.selectZoom(first, toggle: true)
+        XCTAssertFalse(edits.hasSelection)
+        edits.selectZoom(first)
+        edits.selectClip(index: 0)
+        XCTAssertTrue(edits.selectedZoomIDs.isEmpty)
+    }
+
+    @MainActor
+    func testShiftSelectsChronologicalRangeAndPreservesUnselectedZooms() {
+        let edits = TimelineEditDriver()
+        var original = fixture()
+        original.zoomRegions.append(TimelineZoomRegion(span: TimelineSpan(start: 6, end: 7), mode: .manual))
+        original.zoomRegions.append(TimelineZoomRegion(span: TimelineSpan(start: 9, end: 10), mode: .manual))
+        edits.applySnapshot(original)
+        edits.selectZoom(original.zoomRegions[2].id)
+        edits.selectZoom(original.zoomRegions[0].id, range: true)
+        XCTAssertEqual(edits.selectedZoomIDs, Set(original.zoomRegions.prefix(3).map(\.id)))
+        edits.deleteSelection(duration: 10)
+        XCTAssertEqual(edits.zoomRegions, [original.zoomRegions[3]])
+        XCTAssertEqual(edits.snapshot.trimRegions, original.trimRegions)
+        XCTAssertEqual(edits.snapshot.annotationRegions, original.annotationRegions)
+    }
+
+    @MainActor
     func testDeleteAllZoomsIsOneUndoableEditAndPreservesOtherContent() throws {
         let edits = TimelineEditDriver()
         let original = fixture()

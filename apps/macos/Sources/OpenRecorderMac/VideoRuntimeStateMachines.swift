@@ -9,6 +9,21 @@ enum VideoPlaybackSpeeds {
     static let defaultSpeed = values[0]
 }
 
+enum VideoPlaybackObserverGate {
+    static func acceptedTime(
+        observedTime: Double,
+        isPlaying: Bool,
+        isScrubbing: Bool,
+        pendingSeekTarget: Double?,
+        framesPerSecond: Double
+    ) -> Double? {
+        guard isPlaying, !isScrubbing, observedTime.isFinite else { return nil }
+        guard let target = pendingSeekTarget else { return observedTime }
+        let fps = TimelineSourceFrameRate.normalized(framesPerSecond)
+        return abs(observedTime - target) <= max(0.05, 1.5 / fps) ? target : nil
+    }
+}
+
 struct VideoPlaybackState: Equatable {
     var currentURL: URL?
     var currentTime = 0.0
@@ -86,9 +101,19 @@ extension VideoPlaybackState {
                 return [.pause]
             }
             var effects: [VideoPlaybackEffect] = []
-            if duration > 0, currentTime >= duration {
-                currentTime = 0
-                effects.append(.seek(0))
+            if duration > 0 {
+                let plan = TimelineExportEditPlan.build(duration: duration, edits: timelineEdits)
+                let outputTime: Double
+                if currentTime >= duration {
+                    outputTime = 0
+                } else {
+                    outputTime = plan.timelineTime(forSourceTime: currentTime)
+                }
+                if let playableTime = plan.sourceTime(forOutputTime: outputTime),
+                   abs(playableTime - currentTime) > 0.001 {
+                    currentTime = playableTime
+                    effects.append(.seek(playableTime))
+                }
             }
             isPlaying = true
             effects.append(.play(rate: effectivePlaybackRate()))
@@ -149,8 +174,16 @@ final class VideoPlaybackDriver {
     var state = VideoPlaybackState()
     var player: AVPlayer?
 
+    var audioStatus = ""
+    var audioIsProcessing = false
+    var sourceFramesPerSecond = TimelineSourceFrameRate.fallback
+    private(set) var isScrubbing = false
+    @ObservationIgnored private var audioTask: Task<Void, Never>?
+    @ObservationIgnored private var audioSyncTask: Task<Void, Never>?
     @ObservationIgnored private var timeObserver: Any?
     @ObservationIgnored private var endObserver: NSObjectProtocol?
+    @ObservationIgnored private var playbackSeekID = 0
+    @ObservationIgnored private var pendingSeekTarget: Double?
 
     var currentTime: Double {
         get { state.currentTime }
@@ -206,11 +239,98 @@ final class VideoPlaybackDriver {
     }
 
     func setTimelineEdits(_ edits: TimelineEditSnapshot) {
+        let changed = state.timelineEdits.audio != edits.audio
+        let syncChanged = state.timelineEdits.audio.syncOffset != edits.audio.syncOffset
         send(.timelineEditsChanged(edits))
+        if syncChanged { refreshAudioSynchronization() }
+        else if changed { refreshAudio() }
+    }
+
+    private func refreshAudioSynchronization() {
+        audioSyncTask?.cancel()
+        audioTask?.cancel()
+        guard let url = state.currentURL, let player else { return }
+        let offset = state.timelineEdits.audio.syncOffset
+        audioIsProcessing = true
+        audioSyncTask = Task { [weak self, weak player] in
+            do {
+                try await Task.sleep(for: .milliseconds(150))
+                let asset = try await ProjectAudioProcessor.synchronizedAsset(from: AVURLAsset(url: url), offsetMs: offset)
+                try Task.checkCancellation()
+                guard let self, let player, self.player === player else { return }
+                let time = player.currentTime()
+                player.pause()
+                let item = AVPlayerItem(asset: asset)
+                player.replaceCurrentItem(with: item)
+                if let endObserver = self.endObserver { NotificationCenter.default.removeObserver(endObserver) }
+                self.observeEnd(of: item)
+                await player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
+                guard !Task.isCancelled, self.player === player else { return }
+                self.player = player
+                self.refreshAudio()
+                if self.state.isPlaying { player.rate = Float(self.effectivePlaybackRate()) }
+            } catch is CancellationError {
+            } catch {
+                guard !Task.isCancelled else { return }
+                self?.audioStatus = error.localizedDescription
+                self?.audioIsProcessing = false
+            }
+        }
+    }
+
+    private func refreshAudio() {
+        audioTask?.cancel()
+        guard let item = player?.currentItem else { return }
+        let settings = state.timelineEdits.audio
+        if !settings.isActive {
+            item.audioMix = nil
+            audioStatus = "Original audio"
+            audioIsProcessing = false
+            return
+        }
+        audioIsProcessing = true
+        audioTask = Task { [weak self, weak item] in
+            do {
+                try await Task.sleep(for: .milliseconds(200))
+                guard let item else { return }
+                var gain = 0.0
+                var status = "Audio controls applied"
+                if settings.normalize {
+                    let analysis = try await ProjectAudioProcessor.analyze(asset: item.asset, settings: settings)
+                    gain = analysis.normalizationGain(target: settings.targetLUFS)
+                    if let lufs = analysis.lufs {
+                        let output = lufs + gain
+                        status = String(format: "%.1f LUFS → %.1f LUFS%@", lufs, output,
+                                        output < settings.targetLUFS - 0.2 ? " · peak limited" : "")
+                    } else { status = "Not enough audible audio to measure loudness" }
+                }
+                let mix = try await ProjectAudioProcessor.mix(for: item.asset, settings: settings, normalizationGain: gain)
+                try Task.checkCancellation()
+                guard self?.player?.currentItem === item else { return }
+                item.audioMix = mix
+                self?.audioStatus = status
+                self?.audioIsProcessing = false
+            } catch is CancellationError {
+            } catch {
+                guard !Task.isCancelled else { return }
+                self?.audioStatus = error.localizedDescription
+                self?.audioIsProcessing = false
+            }
+        }
     }
 
     func seek(to seconds: Double) {
-        send(.seekRequested(seconds))
+        send(.seekRequested(TimelineFrameStepper.frameAlignedTime(
+            seconds,
+            framesPerSecond: sourceFramesPerSecond,
+            duration: state.duration
+        )))
+    }
+
+    func setScrubbing(_ scrubbing: Bool) {
+        guard isScrubbing != scrubbing else { return }
+        isScrubbing = scrubbing
+        if scrubbing, state.isPlaying { send(.paused) }
     }
 
     func send(_ event: VideoPlaybackEvent) {
@@ -225,15 +345,37 @@ final class VideoPlaybackDriver {
             case .clearPlayer:
                 teardownPlayer()
             case .play(let rate):
-                player?.rate = Float(max(0.05, rate))
+                setPlaybackRate(rate)
             case .pause:
                 player?.pause()
             case .seek(let seconds):
-                player?.seek(
+                guard let player else { continue }
+                playbackSeekID += 1
+                let seekID = playbackSeekID
+                pendingSeekTarget = seconds
+                player.seek(
                     to: CMTime(seconds: seconds, preferredTimescale: 600),
                     toleranceBefore: .zero,
                     toleranceAfter: .zero
-                )
+                ) { [weak self, weak player] finished in
+                    Task { @MainActor [weak self, weak player] in
+                        guard let self, let player,
+                              self.player === player,
+                              self.playbackSeekID == seekID else { return }
+                        guard finished else {
+                            self.pendingSeekTarget = nil
+                            return
+                        }
+                        if self.state.isPlaying {
+                            self.setPlaybackRate(self.effectivePlaybackRate())
+                        }
+                        Task { @MainActor [weak self] in
+                            try? await Task.sleep(for: .milliseconds(180))
+                            guard let self, self.playbackSeekID == seekID else { return }
+                            self.pendingSeekTarget = nil
+                        }
+                    }
+                }
             case .loadMetadata(let url):
                 Task { [weak self] in
                     await self?.loadMetadata(for: url)
@@ -242,12 +384,25 @@ final class VideoPlaybackDriver {
         }
     }
 
+    private func setPlaybackRate(_ rate: Double) {
+        guard let player else { return }
+        let nextRate = Float(max(0.05, rate))
+        guard abs(player.rate - nextRate) > 0.001 else { return }
+        player.rate = nextRate
+    }
+
     private func loadPlayer(_ url: URL) {
         let item = AVPlayerItem(url: url)
         let player = AVPlayer(playerItem: item)
         self.player = player
+        if state.timelineEdits.audio.syncOffset != 0 { refreshAudioSynchronization() }
+        else { refreshAudio() }
         attachTimeObserver(to: player)
 
+        observeEnd(of: item)
+    }
+
+    private func observeEnd(of item: AVPlayerItem) {
         endObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime,
             object: item,
@@ -286,7 +441,16 @@ final class VideoPlaybackDriver {
             let seconds = time.seconds
             Task { @MainActor in
                 guard let self else { return }
-                self.send(.currentTimeChanged(seconds))
+                if let acceptedTime = VideoPlaybackObserverGate.acceptedTime(
+                    observedTime: seconds,
+                    isPlaying: self.state.isPlaying,
+                    isScrubbing: self.isScrubbing,
+                    pendingSeekTarget: self.pendingSeekTarget,
+                    framesPerSecond: self.sourceFramesPerSecond
+                ) {
+                    if self.pendingSeekTarget != nil { self.pendingSeekTarget = nil }
+                    self.send(.currentTimeChanged(acceptedTime))
+                }
 
                 let itemDuration = self.player?.currentItem?.duration.seconds ?? 0
                 if itemDuration.isFinite, itemDuration > 0, self.state.duration == 0, let url = self.state.currentURL {
@@ -297,6 +461,14 @@ final class VideoPlaybackDriver {
     }
 
     private func teardownPlayer() {
+        playbackSeekID += 1
+        pendingSeekTarget = nil
+        isScrubbing = false
+        audioSyncTask?.cancel()
+        audioSyncTask = nil
+        audioTask?.cancel()
+        audioTask = nil
+        audioIsProcessing = false
         if let timeObserver, let player {
             player.removeTimeObserver(timeObserver)
         }

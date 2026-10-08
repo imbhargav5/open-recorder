@@ -357,13 +357,10 @@ struct SettingsInspector: View {
                     .padding(.vertical, 8)
             }
         case .audio:
-            InspectorGroup(title: "Preview", symbolName: "speaker.wave.2", showsTopDivider: false) {
-                InspectorSwitch(title: "Mute Preview", isOn: .constant(false), isInteractive: false)
-                InspectorSlider(title: "Volume", valueText: "100%", value: .constant(1), range: 0...1, step: 0.01, defaultValue: 1, leadingSymbolName: "speaker.slash", trailingSymbolName: "speaker.wave.2")
+            if let captionEdits, let captionPlayback {
+                AudioInspector(edits: captionEdits, playback: captionPlayback)
             }
-            if let sourceName = recordingSession?.sourceName {
-                SessionAssetRow(title: "Source", path: sourceName)
-            }
+
         }
     }
 
@@ -514,8 +511,8 @@ enum InspectorTab: String, CaseIterable, Identifiable {
     case settings
     case audio
 
-    static let availableCases: [InspectorTab] = [.appearance, .scene, .cursor, .camera, .captions]
-    static let railCases: [InspectorTab] = [.appearance, .scene, .cursor, .camera, .captions, .settings]
+    static let availableCases: [InspectorTab] = [.appearance, .scene, .cursor, .camera, .audio, .captions]
+    static let railCases: [InspectorTab] = [.appearance, .scene, .cursor, .camera, .audio, .captions, .settings]
 
     var id: String { rawValue }
 
@@ -557,8 +554,8 @@ enum InspectorTab: String, CaseIterable, Identifiable {
 
     var isStubbed: Bool {
         switch self {
-        case .appearance, .scene, .cursor, .camera, .captions: false
-        case .settings, .audio: true
+        case .appearance, .scene, .cursor, .camera, .captions, .audio: false
+        case .settings: true
         }
     }
 

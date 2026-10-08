@@ -288,6 +288,7 @@ struct TimelineEditSnapshot: Codable, Equatable, Hashable {
     var clipSplitTimes: [Double] = []
     var clipSpeeds: [Int: Double] = [:]
     var cameraClips: [TimelineCameraClip] = []
+    var audio = AudioProcessingSettings.default
     var captions: CaptionTrack?
 
     static let empty = TimelineEditSnapshot()
@@ -316,6 +317,7 @@ struct TimelineEditSnapshot: Codable, Equatable, Hashable {
         case clipSpeeds
         case cameraClips
         case captions
+        case audio
     }
 
     init(from decoder: Decoder) throws {
@@ -326,11 +328,12 @@ struct TimelineEditSnapshot: Codable, Equatable, Hashable {
         clipSplitTimes = try container.decodeIfPresent([Double].self, forKey: .clipSplitTimes) ?? []
         clipSpeeds = try container.decodeIfPresent([Int: Double].self, forKey: .clipSpeeds) ?? [:]
         cameraClips = try container.decodeIfPresent([TimelineCameraClip].self, forKey: .cameraClips) ?? []
+        audio = try container.decodeIfPresent(AudioProcessingSettings.self, forKey: .audio) ?? .default
         captions = try container.decodeIfPresent(CaptionTrack.self, forKey: .captions)
     }
 
     var hasEdits: Bool {
-        captions != nil || !zoomRegions.isEmpty || !trimRegions.isEmpty || !annotationRegions.isEmpty || !clipSplitTimes.isEmpty || hasClipSpeedEdits || !cameraClips.isEmpty
+        audio.isActive || captions != nil || !zoomRegions.isEmpty || !trimRegions.isEmpty || !annotationRegions.isEmpty || !clipSplitTimes.isEmpty || hasClipSpeedEdits || !cameraClips.isEmpty
     }
 
     var hasClipSpeedEdits: Bool {
@@ -599,6 +602,7 @@ enum TimelineZoomFocusResolver {
 
 struct TimelineEditState: Equatable {
     var snapshot = TimelineEditSnapshot.empty
+    var selectedZoomIDs: Set<TimelineRegionID> = []
     var selectedKind: TimelineRegionKind?
     var selectedID: TimelineRegionID?
     var selectedClipIndex: Int?
@@ -617,6 +621,7 @@ enum TimelineCameraResizeEdge { case leading, trailing }
 enum TimelineEditEvent: Equatable {
     case applySnapshot(TimelineEditSnapshot)
     case replaceCaptions(CaptionTrack?)
+    case updateAudio(AudioProcessingSettings)
     case reset
     case add(TimelineRegionKind, currentTime: Double, duration: Double)
     case regenerateAutoZoomsRequested(videoURL: URL?, duration: Double, preset: TimelineZoomAnimationPreset)
@@ -625,6 +630,7 @@ enum TimelineEditEvent: Equatable {
     case ensureCameraClips(duration: Double, fallback: FacecamSettings?)
     case splitCameraClip(currentTime: Double, duration: Double, fallback: FacecamSettings?)
     case deleteRecordingClip(index: Int, duration: Double)
+    case resizeRecordingClip(index: Int, edge: TimelineCameraResizeEdge, time: Double, duration: Double, original: TimelineEditSnapshot)
     case setCameraLayout(CameraLayout, currentTime: Double, duration: Double, fallback: FacecamSettings?)
     case selectCameraClip(TimelineRegionID)
     case updateCameraClipSettings(id: TimelineRegionID, settings: FacecamSettings)
@@ -633,6 +639,7 @@ enum TimelineEditEvent: Equatable {
     case mergeCameraClip(id: TimelineRegionID, direction: TimelineCameraMergeDirection)
     case deleteCameraClip(id: TimelineRegionID, duration: Double, fallback: FacecamSettings?)
     case select(TimelineRegionKind?, TimelineRegionID?)
+    case selectZoom(TimelineRegionID, toggle: Bool, range: Bool)
     case selectClip(index: Int)
     case clearSelection
     case deleteAllZooms
@@ -666,6 +673,10 @@ extension TimelineEditState {
             self.snapshot = snapshot
             clearSelection()
             statusMessage = Self.empty.statusMessage
+            return []
+
+        case .updateAudio(let settings):
+            snapshot.audio = settings
             return []
 
         case .reset:
@@ -737,8 +748,16 @@ extension TimelineEditState {
             deleteCameraClip(id: id, duration: duration, fallback: fallback)
             return []
 
+        case .resizeRecordingClip(let index, let edge, let time, let duration, let original):
+            resizeRecordingClip(index: index, edge: edge, time: time, duration: duration, original: original)
+            return []
+
         case .select(let kind, let id):
             select(kind, id: id)
+            return []
+
+        case .selectZoom(let id, let toggle, let range):
+            selectZoom(id, toggle: toggle, range: range)
             return []
 
         case .selectClip(let index):
@@ -1010,7 +1029,30 @@ extension TimelineEditState {
         statusMessage = "Changed camera layout to \(layout.title) at \(formatPlaybackTime(clip.span.start))."
     }
 
+    private mutating func selectZoom(_ id: TimelineRegionID, toggle: Bool, range: Bool) {
+        let ordered = snapshot.zoomRegions.sorted { $0.span.start < $1.span.start }.map(\.id)
+        guard let target = ordered.firstIndex(of: id) else { return }
+        if range, selectedKind == .zoom, let anchorID = selectedID,
+           let anchor = ordered.firstIndex(of: anchorID) {
+            selectedZoomIDs.formUnion(ordered[min(anchor, target)...max(anchor, target)])
+        } else if toggle, selectedKind == .zoom {
+            if !selectedZoomIDs.insert(id).inserted { selectedZoomIDs.remove(id) }
+        } else {
+            select(.zoom, id: id)
+            return
+        }
+        selectedClipIndex = nil
+        selectedCameraClipID = nil
+        if selectedZoomIDs.isEmpty {
+            clearSelection()
+        } else {
+            selectedKind = .zoom
+            selectedID = selectedZoomIDs.contains(id) ? id : ordered.first { selectedZoomIDs.contains($0) }
+        }
+    }
+
     private mutating func select(_ kind: TimelineRegionKind?, id: TimelineRegionID?) {
+        selectedZoomIDs = kind == .zoom ? Set(id.map { [$0] } ?? []) : []
         selectedClipIndex = nil
         selectedCameraClipID = nil
         guard let kind, let id else {
@@ -1023,6 +1065,7 @@ extension TimelineEditState {
     }
 
     private mutating func selectClip(index: Int) {
+        selectedZoomIDs.removeAll()
         selectedKind = nil
         selectedID = nil
         selectedCameraClipID = nil
@@ -1030,6 +1073,7 @@ extension TimelineEditState {
     }
 
     private mutating func selectCameraClip(id: TimelineRegionID) {
+        selectedZoomIDs.removeAll()
         selectedKind = nil
         selectedID = nil
         selectedClipIndex = nil
@@ -1037,6 +1081,7 @@ extension TimelineEditState {
     }
 
     private mutating func clearSelection() {
+        selectedZoomIDs.removeAll()
         selectedKind = nil
         selectedID = nil
         selectedClipIndex = nil
@@ -1065,12 +1110,13 @@ extension TimelineEditState {
 
         guard let selectedKind, let selectedID else { return }
         switch selectedKind {
-        case .zoom: snapshot.zoomRegions.removeAll { $0.id == selectedID }
+        case .zoom: snapshot.zoomRegions.removeAll { selectedZoomIDs.contains($0.id) || $0.id == selectedID }
         case .trim: snapshot.trimRegions.removeAll { $0.id == selectedID }
         case .annotation: snapshot.annotationRegions.removeAll { $0.id == selectedID }
         }
+        let count = selectedZoomIDs.count
         clearSelection()
-        statusMessage = "Deleted \(selectedKind.title.lowercased())."
+        statusMessage = selectedKind == .zoom && count > 1 ? "Deleted \(count) zooms." : "Deleted \(selectedKind.title.lowercased())."
     }
 
     private mutating func deleteSelectedClip(index selectedClipIndex: Int, duration: Double?) {
@@ -1116,6 +1162,58 @@ extension TimelineEditState {
         snapshot = candidate
         clearSelection()
         statusMessage = "Deleted clip \(segment.index + 1)."
+    }
+
+    private mutating func resizeRecordingClip(index: Int, edge: TimelineCameraResizeEdge, time: Double,
+                                              duration: Double, original: TimelineEditSnapshot) {
+        guard time.isFinite, duration.isFinite, duration > 0 else { return }
+        let segments = original.clipSegments(duration: duration)
+        guard segments.indices.contains(index) else { return }
+        let clip = segments[index]
+        guard !isClipOmitted(clip, trimRegions: original.trimRegions) else { return }
+        let cuts = mergedTrimRegions(original.trimRegions, duration: duration)
+        let lower = cuts.first { abs($0.span.end - clip.start) < 0.001 }?.span.start ?? clip.start
+        let upper = cuts.first { abs($0.span.start - clip.end) < 0.001 }?.span.end ?? clip.end
+        let minimum = min(0.05, clip.span.duration / 2)
+        let desired = TimelineSpan(
+            start: edge == .leading ? min(max(time, lower), clip.end - minimum) : clip.start,
+            end: edge == .trailing ? max(min(time, upper), clip.start + minimum) : clip.end
+        )
+        var next = original
+        // Keep source media intact. Restoring an edge subtracts from the deletion
+        // mask; shortening it adds a mask over only the removed source frames.
+        next.trimRegions = cuts.flatMap { cut -> [TimelineTrimRegion] in
+            guard cut.span.end > desired.start, cut.span.start < desired.end else { return [cut] }
+            var pieces: [TimelineTrimRegion] = []
+            if cut.span.start < desired.start {
+                pieces.append(TimelineTrimRegion(span: TimelineSpan(start: cut.span.start, end: desired.start)))
+            }
+            if cut.span.end > desired.end {
+                pieces.append(TimelineTrimRegion(span: TimelineSpan(start: desired.end, end: cut.span.end)))
+            }
+            return pieces
+        }
+        if desired.start > clip.start {
+            next.trimRegions.append(TimelineTrimRegion(span: TimelineSpan(start: clip.start, end: desired.start)))
+        }
+        if desired.end < clip.end {
+            next.trimRegions.append(TimelineTrimRegion(span: TimelineSpan(start: desired.end, end: clip.end)))
+        }
+        next.trimRegions = mergedTrimRegions(next.trimRegions, duration: duration)
+        next.clipSplitTimes = Set((original.clipSplitTimes + [desired.start, desired.end])
+            .filter { $0 > 0.001 && $0 < duration - 0.001 && !($0 > desired.start + 0.001 && $0 < desired.end - 0.001) }).sorted()
+        next.clipSpeeds = [:]
+        let resized = next.clipSegments(duration: duration)
+        for segment in resized {
+            let midpoint = (segment.start + segment.end) / 2
+            let speed = midpoint >= desired.start && midpoint < desired.end ? clip.speed :
+                (segments.first { midpoint >= $0.start && midpoint < $0.end }?.speed ?? 1)
+            if speed != 1 { next.clipSpeeds[segment.index] = speed }
+        }
+        snapshot = next
+        if let selected = resized.first(where: { abs($0.start - desired.start) < 0.001 }) {
+            selectClip(index: selected.index)
+        }
     }
 
     private func recordingClipDeletionCandidate(index selectedClipIndex: Int, duration: Double) -> (segment: TimelineClipSegment, snapshot: TimelineEditSnapshot)? {
@@ -1385,7 +1483,8 @@ extension TimelineEditState {
         let sorted = regions
             .map { region in
                 var copy = region
-                copy.span = copy.span.normalized(duration: duration)
+                copy.span = TimelineSpan(start: min(duration, max(0, copy.span.start)),
+                                         end: min(duration, max(0, copy.span.end)))
                 return copy
             }
             .filter { $0.span.duration > 0.001 }
@@ -1401,7 +1500,7 @@ extension TimelineEditState {
                 last.span = TimelineSpan(
                     start: min(last.span.start, region.span.start),
                     end: max(last.span.end, region.span.end)
-                ).normalized(duration: duration)
+                )
                 result.append(last)
             } else {
                 result.append(last)
@@ -1494,6 +1593,12 @@ final class TimelineEditDriver {
     var cameraClips: [TimelineCameraClip] {
         get { state.snapshot.cameraClips }
         set { state.snapshot.cameraClips = newValue }
+    }
+
+    var selectedZoomIDs: Set<TimelineRegionID> { state.selectedZoomIDs }
+
+    func selectZoom(_ id: TimelineRegionID, toggle: Bool = false, range: Bool = false) {
+        send(.selectZoom(id, toggle: toggle, range: range), recordsUndo: false)
     }
 
     var selectedKind: TimelineRegionKind? {
@@ -1805,6 +1910,12 @@ struct TimelineExportEditPlan: Equatable {
         }
 
         return TimelineExportEditPlan(segments: segments, outputDuration: outputCursor)
+    }
+
+    /// Collapse deleted source intervals onto their cut boundary in the editor.
+    func timelineTime(forSourceTime time: Double) -> Double {
+        if let mapped = outputTime(forSourceTime: time) { return mapped }
+        return segments.first(where: { $0.sourceStart > time })?.outputStart ?? outputDuration
     }
 
     func outputTime(forSourceTime sourceTime: Double) -> Double? {

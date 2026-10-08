@@ -508,6 +508,7 @@ enum VideoExportRenderer {
         var duration: Double
         var outputSize: CGSize
         var frameDuration: CMTime
+        var audioMix: AVAudioMix?
     }
 
     static func export(
@@ -545,7 +546,8 @@ enum VideoExportRenderer {
         options: VideoExportOptions,
         edits: TimelineEditSnapshot
     ) async throws -> RenderContext {
-        let asset = AVURLAsset(url: sourceURL)
+        let asset = try await ProjectAudioProcessor.synchronizedAsset(
+            from: AVURLAsset(url: sourceURL), offsetMs: edits.audio.syncOffset)
         let tracks = try await asset.loadTracks(withMediaType: .video)
         guard let videoTrack = tracks.first else {
             throw VideoExportRendererError.missingVideoTrack
@@ -593,12 +595,20 @@ enum VideoExportRenderer {
             facecamFallbackSettings: options.facecamFallbackSettings
         )
 
+        var audioGain = 0.0
+        if edits.audio.normalize {
+            let analysis = try await ProjectAudioProcessor.analyze(asset: exportAsset.asset, settings: edits.audio)
+            audioGain = analysis.normalizationGain(target: edits.audio.targetLUFS)
+        }
+        let audioMix = try await ProjectAudioProcessor.mix(for: exportAsset.asset, settings: edits.audio,
+                                                         normalizationGain: audioGain)
         return RenderContext(
             asset: exportAsset.asset,
             videoComposition: videoComposition,
             duration: duration,
             outputSize: outputSize,
-            frameDuration: frameDuration
+            frameDuration: frameDuration,
+            audioMix: audioMix
         )
     }
 
@@ -622,6 +632,7 @@ enum VideoExportRenderer {
             duration: CMTime(seconds: context.duration, preferredTimescale: 600)
         )
         exportSession.videoComposition = context.videoComposition
+        exportSession.audioMix = context.audioMix
 
         if Task.isCancelled {
             throw VideoExportRendererError.exportCancelled
