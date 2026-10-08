@@ -3,6 +3,34 @@ title: "Open Recorder changelog: releases, features, and fixes"
 description: "Release notes for Open Recorder on macOS. Track new screen recording features, capture improvements, and bug fixes in each version update."
 ---
 
+<Update label="October 8, 2026" description="Quick capture" tags={["macOS"]}>
+## New features
+
+### Current window shortcuts
+
+Press <kbd>⌥</kbd> <kbd>⇧</kbd> <kbd>7</kbd> to screenshot the active app's frontmost window, or <kbd>⌥</kbd> <kbd>⇧</kbd> <kbd>8</kbd> to open recording setup for it. If no window can be captured, the **Windows** chooser opens instead. See [Keyboard shortcuts](/reference/keyboard-shortcuts).
+
+### Choose what happens after a screenshot
+
+Pick **Open editor**, **Copy to clipboard**, or **Save to screenshots folder** in **Settings → General → Capture → After taking a screenshot**. Screenshots are always saved locally. A brief HUD confirmation includes an **Edit** button, and **Edit Last Screenshot** in the menu bar reopens the most recent quick capture.
+
+### Adjust area before capture
+
+Turn on **Adjust selected area before capture** to move or resize a selection before confirming. Use the arrow keys to nudge it by one pixel, or hold Shift to move ten. Press Return to capture, or choose **Redraw** to start over. See [Capture sources](/recording/capture-sources#area-capture).
+
+## Updates
+
+- Current display shortcuts now target the display under your pointer. Screenshots capture immediately, without opening the chooser.
+- Display, window, and area recording shortcuts open the HUD so you can review inputs before pressing Record.
+- Capture shortcuts no longer stop an active recording. Stop from the HUD, the menu-bar icon, or <kbd>⌥</kbd> <kbd>⇧</kbd> <kbd>R</kbd>. See [Screen recording](/recording/screen-recording#stop-a-recording).
+- Shortcut settings show whether each shortcut is **Active**, **Off**, or **Unavailable**. Choose **Retry unavailable shortcuts** after quitting an app that uses the same keys.
+- In the screenshot editor, <kbd>⌘</kbd> <kbd>S</kbd> saves without changing the clipboard, and <kbd>⌘</kbd> <kbd>C</kbd> copies while keeping the editor open.
+
+## Bug fixes
+
+- Fixed an issue that could interfere with closing editor windows.
+</Update>
+
 <Update label="September 19, 2026" description="v0.2.56" tags={["macOS"]}>
 ## New features
 
