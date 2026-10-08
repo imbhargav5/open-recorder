@@ -5,6 +5,8 @@ struct RecordingPreferences: Equatable {
     var autoZoomAnimationPreset: TimelineZoomAnimationPreset
     var autoZoomMaximumDepth: Double = 2
     var shortcuts: ShortcutPreferences = .defaultPreferences
+    var screenshotAfterCapture: ScreenshotAfterCapture = .edit
+    var adjustsAreaBeforeCapture = false
     /// Play a synthesised click sound on every mouse button press during recording.
     var mouseClickSoundsEnabled: Bool
     /// Play a soft tap sound on every key-down event during recording.
@@ -57,9 +59,19 @@ struct RecordingPreferencesStore {
             mouseClickSoundsEnabled: defaults.object(forKey: Self.mouseClickSoundsKey) as? Bool ?? false,
             keyboardSoundsEnabled: defaults.object(forKey: Self.keyboardSoundsKey) as? Bool ?? false
         )
+        preferences.screenshotAfterCapture = ScreenshotAfterCapture(rawValue: defaults.string(forKey: "capture.screenshotAfterCapture") ?? "") ?? .edit
+        preferences.adjustsAreaBeforeCapture = defaults.bool(forKey: "capture.adjustsAreaBeforeCapture")
         preferences.autoZoomMaximumDepth = AutoZoomGenerator.maximumDepth(
             defaults.object(forKey: "recording.autoZoomMaximumDepth") as? Double ?? 2)
         return preferences
+    }
+
+    func setScreenshotAfterCapture(_ behavior: ScreenshotAfterCapture) {
+        defaults.set(behavior.rawValue, forKey: "capture.screenshotAfterCapture")
+    }
+
+    func setAdjustsAreaBeforeCapture(_ value: Bool) {
+        defaults.set(value, forKey: "capture.adjustsAreaBeforeCapture")
     }
 
     func setAutoZoomMaximumDepth(_ value: Double) {
@@ -88,4 +100,3 @@ struct RecordingPreferencesStore {
         defaults.set(value, forKey: Self.keyboardSoundsKey)
     }
 }
-

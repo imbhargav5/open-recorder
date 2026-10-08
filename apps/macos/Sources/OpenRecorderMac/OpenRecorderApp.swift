@@ -92,6 +92,10 @@ final class OpenRecorderAppDelegate: NSObject, NSApplicationDelegate {
         return .terminateLater
     }
 
+    func applicationWillTerminate(_ notification: Notification) {
+        hotKeyController.detach()
+    }
+
     private func flushPendingFileURLs() {
         guard let model else { return }
         let urls = pendingFileURLs
@@ -513,7 +517,9 @@ final class OpenRecorderStatusItemController: NSObject {
         if isDirectStopState {
             button.image = OpenRecorderMenuBarIcon.image
             button.contentTintColor = .systemRed
-            button.toolTip = "Stop Recording (⌘R)"
+            let shortcut = model?.shortcutPreferences.item(for: .toggleRecording)
+            let hint = shortcut.flatMap { $0.isEnabled ? " (\($0.keyCombination.displayString))" : nil } ?? ""
+            button.toolTip = "Stop Recording\(hint)"
             button.setAccessibilityLabel("Stop Recording")
         } else {
             button.image = OpenRecorderMenuBarIcon.image
@@ -554,6 +560,23 @@ final class OpenRecorderStatusItemController: NSObject {
 
         menu.addItem(.separator())
 
+        for action in CaptureShortcutAction.allCases {
+            let item = NSMenuItem(title: action.title, action: #selector(captureShortcutSelected(_:)), keyEquivalent: "")
+            item.representedObject = action.rawValue
+            item.target = self
+            if let shortcut = model?.shortcutPreferences.item(for: action), shortcut.isEnabled {
+                item.title += "   \(shortcut.keyCombination.displayString)"
+            }
+            item.isEnabled = action == .toggleRecording || (model?.canStartNewCapture ?? false)
+            menu.addItem(item)
+        }
+        if model?.hasQuickScreenshot == true {
+            let item = NSMenuItem(title: "Edit Last Screenshot", action: #selector(editLastScreenshot), keyEquivalent: "")
+            item.target = self
+            menu.addItem(item)
+        }
+        menu.addItem(.separator())
+
         let hudTitle = model?.isHUDVisible == true ? "Hide Recorder" : "Show Recorder"
         let hudItem = NSMenuItem(title: hudTitle, action: #selector(toggleRecorderHUD), keyEquivalent: "")
         hudItem.target = self
@@ -592,6 +615,21 @@ final class OpenRecorderStatusItemController: NSObject {
         menu.addItem(quitItem)
 
         return menu
+    }
+
+    @objc private func editLastScreenshot() { model?.editLastQuickScreenshot() }
+
+    @objc private func captureShortcutSelected(_ sender: NSMenuItem) {
+        guard let rawValue = sender.representedObject as? String, let action = CaptureShortcutAction(rawValue: rawValue) else { return }
+        switch action {
+        case .deviceScreenshot: model?.triggerDeviceScreenshot()
+        case .dragScreenshot: model?.triggerDragScreenshot()
+        case .deviceScreenRecord: model?.triggerDeviceScreenRecord()
+        case .dragScreenRecord: model?.triggerDragScreenRecord()
+        case .windowScreenshot: model?.triggerWindowScreenshot()
+        case .windowScreenRecord: model?.triggerWindowScreenRecord()
+        case .toggleRecording: model?.toggleRecordingShortcut()
+        }
     }
 
     @objc private func stopRecording() {
@@ -660,18 +698,28 @@ enum GlobalRecordingHotKeyRegistrationPolicy {
         shortcutRecorderIsActive: Bool
     ) -> Bool {
         guard item.isEnabled, !shortcutRecorderIsActive else { return false }
-        guard action == .toggleRecording else { return true }
-        return captureState.shouldRegisterRecordingHotKey(runtimeIsRecording: runtimeIsRecording)
+        return true
     }
 }
 
 @MainActor
-private final class GlobalRecordingHotKeyController {
+final class GlobalRecordingHotKeyController {
+    var registerHotKey: (KeyCombination, EventHotKeyID) -> (OSStatus, EventHotKeyRef?) = { combination, hotKeyID in
+        var ref: EventHotKeyRef?
+        let status = RegisterEventHotKey(combination.keyCode, combination.carbonModifiers, hotKeyID, GetApplicationEventTarget(), 0, &ref)
+        return (status, ref)
+    }
     private weak var model: AppModel?
     private var hotKeyRefs: [UInt32: EventHotKeyRef] = [:]
     private var registeredCombinations: [UInt32: KeyCombination] = [:]
     private var eventHandlerRef: EventHandlerRef?
     private var cancellables: Set<AnyCancellable> = []
+
+    func detach() {
+        unregisterAll()
+        cancellables.removeAll()
+        model = nil
+    }
 
     func attach(model: AppModel) {
         if self.model === model {
@@ -736,6 +784,11 @@ private final class GlobalRecordingHotKeyController {
             }
             .store(in: &cancellables)
 
+        model.$shortcutRegistrationRetryGeneration.dropFirst().sink { [weak self, weak model] _ in
+            guard let model else { return }
+            self?.syncRegistration(captureState: model.captureState, runtimeIsRecording: model.capture.isRecording, shortcuts: model.shortcutPreferences, shortcutRecorderIsActive: model.isShortcutRecorderActive)
+        }.store(in: &cancellables)
+
         syncRegistration(
             captureState: model.captureState,
             runtimeIsRecording: model.capture.isRecording,
@@ -750,16 +803,24 @@ private final class GlobalRecordingHotKeyController {
         shortcuts: ShortcutPreferences,
         shortcutRecorderIsActive: Bool
     ) {
-        guard installEventHandlerIfNeeded() else { return }
+        guard installEventHandlerIfNeeded() else {
+            model?.syncShortcutRegistrationStates(Dictionary(uniqueKeysWithValues: CaptureShortcutAction.allCases.map {
+                ($0, shortcuts.item(for: $0).isEnabled ? .unavailable : .disabled)
+            }))
+            return
+        }
 
         let actionMap: [(UInt32, CaptureShortcutAction)] = [
             (1, .toggleRecording),
             (2, .deviceScreenshot),
             (3, .dragScreenshot),
             (4, .deviceScreenRecord),
-            (5, .dragScreenRecord)
+            (5, .dragScreenRecord),
+            (6, .windowScreenshot),
+            (7, .windowScreenRecord)
         ]
 
+        var states: [CaptureShortcutAction: CaptureShortcutRegistrationState] = [:]
         for (id, action) in actionMap {
             let item = shortcuts.item(for: action)
             if GlobalRecordingHotKeyRegistrationPolicy.shouldRegister(
@@ -769,35 +830,31 @@ private final class GlobalRecordingHotKeyController {
                 runtimeIsRecording: runtimeIsRecording,
                 shortcutRecorderIsActive: shortcutRecorderIsActive
             ) {
-                registerIfNeeded(id: id, combination: item.keyCombination)
+                states[action] = registerIfNeeded(id: id, combination: item.keyCombination) ? .active : .unavailable
             } else {
                 unregister(id: id)
+                states[action] = item.isEnabled ? .suspended : .disabled
             }
         }
+        model?.syncShortcutRegistrationStates(states)
     }
 
-    private func registerIfNeeded(id: UInt32, combination: KeyCombination) {
+    private func registerIfNeeded(id: UInt32, combination: KeyCombination) -> Bool {
         if let existing = registeredCombinations[id], existing == combination, hotKeyRefs[id] != nil {
-            return
+            return true
         }
 
         unregister(id: id)
 
-        var ref: EventHotKeyRef?
         let hotKeyID = EventHotKeyID(signature: fourCharCode("ORhk"), id: id)
-        let status = RegisterEventHotKey(
-            combination.keyCode,
-            combination.carbonModifiers,
-            hotKeyID,
-            GetApplicationEventTarget(),
-            0,
-            &ref
-        )
+        let (status, ref) = registerHotKey(combination, hotKeyID)
 
         if status == noErr, let ref {
             hotKeyRefs[id] = ref
             registeredCombinations[id] = combination
+            return true
         }
+        return false
     }
 
     private func unregister(id: UInt32) {
@@ -864,6 +921,10 @@ private final class GlobalRecordingHotKeyController {
             model.triggerDeviceScreenRecord()
         case 5:
             model.triggerDragScreenRecord()
+        case 6:
+            model.triggerWindowScreenshot()
+        case 7:
+            model.triggerWindowScreenRecord()
         default:
             break
         }

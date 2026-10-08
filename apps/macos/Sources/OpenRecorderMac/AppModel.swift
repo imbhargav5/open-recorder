@@ -231,6 +231,12 @@ final class AppModel: ObservableObject {
     @Published private(set) var activeRecordingStartDate: Date? = nil
     @Published private(set) var shortcutPreferences: ShortcutPreferences = .defaultPreferences
     @Published private(set) var isShortcutRecorderActive = false
+    @Published private(set) var shortcutRegistrationRetryGeneration = 0
+    private var quickTargetTask: Task<Void, Never>?
+    private var quickTargetGeneration = 0
+    private var lastQuickScreenshotSession: EditorSession?
+    private let copyCapturedScreenshot: @MainActor (URL) throws -> Void
+    private let quickCaptureTargetContext: @MainActor () -> QuickCaptureTargetContext
     @Published private(set) var isDragRecordingPending = false
     private var shortcutRecorderActivationCount = 0
     private var displayFlashWindows: [NSWindow] = []
@@ -285,6 +291,8 @@ final class AppModel: ObservableObject {
         areaSelectionPresenter: AreaSelectionPresenting = AreaSelectionOverlayController(),
         captureUIHideDelayNanoseconds: UInt64 = 180_000_000,
         screenshotCapture: (@MainActor (CaptureSource, URL) throws -> Void)? = nil,
+        copyCapturedScreenshot: (@MainActor (URL) throws -> Void)? = nil,
+        quickCaptureTargetContext: @escaping @MainActor () -> QuickCaptureTargetContext = QuickCaptureTargetContext.current,
         startRecordingCapture: (@MainActor (CaptureSource, URL, RecordingCaptureOptions) async throws -> Date)? = nil,
         stopRecording: (@MainActor () async throws -> URL)? = nil,
         prepareCameraPermission: (@MainActor () async -> Bool)? = nil,
@@ -317,6 +325,12 @@ final class AppModel: ObservableObject {
         self.captureUIHideDelayNanoseconds = captureUIHideDelayNanoseconds
         self.capture = capture
         self.countdownOverlayController = RecordingCountdownOverlayController()
+        self.quickCaptureTargetContext = quickCaptureTargetContext
+        self.copyCapturedScreenshot = copyCapturedScreenshot ?? { url in
+            guard let image = NSImage(contentsOf: url) else { throw CocoaError(.fileReadCorruptFile) }
+            NSPasteboard.general.clearContents()
+            guard NSPasteboard.general.writeObjects([image]) else { throw CocoaError(.fileWriteUnknown) }
+        }
         self.screenshotCapture = screenshotCapture ?? { source, outputURL in
             try capture.takeScreenshot(source: source, outputURL: outputURL)
         }
@@ -564,6 +578,9 @@ final class AppModel: ObservableObject {
             persistAutoZoomAnimationPreset: { [weak self] preset in
                 self?.recordingPreferences.setAutoZoomAnimationPreset(preset)
             },
+            persistScreenshotAfterCapture: { [weak self] value in self?.recordingPreferences.setScreenshotAfterCapture(value) },
+            persistAdjustsAreaBeforeCapture: { [weak self] value in self?.recordingPreferences.setAdjustsAreaBeforeCapture(value) },
+            retryShortcutRegistration: { [weak self] in self?.shortcutRegistrationRetryGeneration += 1 },
             persistShortcuts: { [weak self] shortcuts in
                 self?.recordingPreferences.setShortcuts(shortcuts)
                 self?.shortcutPreferences = shortcuts
@@ -593,6 +610,7 @@ final class AppModel: ObservableObject {
         appShell.settings.send(.autoZoomMaximumDepthSynced(preferences.autoZoomMaximumDepth))
         appShell.settings.send(.autoZoomAnimationPresetSynced(preferences.autoZoomAnimationPreset))
         appShell.settings.send(.shortcutsSynced(preferences.shortcuts))
+        appShell.settings.send(.capturePreferencesSynced(preferences.screenshotAfterCapture, preferences.adjustsAreaBeforeCapture))
         refreshOnboardingPermissionStates()
         syncAppShellMirror()
         dispatch(.restoreSetup(
@@ -969,11 +987,11 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func refreshSources(requestScreenRecordingPermission: Bool = false) async {
+    func refreshSources(requestScreenRecordingPermission: Bool = false, restoresSelection: Bool = true) async {
         sourceRefreshGeneration += 1
         let generation = sourceRefreshGeneration
         await capture.reloadSources(requestScreenRecordingPermission: requestScreenRecordingPermission)
-        guard !Task.isCancelled, generation == sourceRefreshGeneration else { return }
+        guard !Task.isCancelled, generation == sourceRefreshGeneration, restoresSelection else { return }
 
         if let selectedSource {
             let resolved = resolveSelection(previous: selectedSource, in: capture.sources)
@@ -1118,12 +1136,14 @@ final class AppModel: ObservableObject {
 
     func setCaptureMode(_ mode: CaptureMode) {
         guard !rejectActionWhileTerminationIsPending() else { return }
+        invalidateQuickTargetSelection()
         dispatch(.setCaptureMode(mode))
         storedCaptureSetup.mode = mode
         saveCaptureSetupPreferences()
     }
 
     func selectSource(_ source: CaptureSource) {
+        invalidateQuickTargetSelection()
         let shouldCaptureImmediately = captureMode == .screenshot
         dispatch(.selectSource(source))
         persistCaptureSetup(source: source)
@@ -1162,6 +1182,7 @@ final class AppModel: ObservableObject {
     }
 
     func requestSourceSelector(kind: CaptureSourceKind? = nil) {
+        invalidateQuickTargetSelection()
         dispatch(.requestSourceSelector(kind))
     }
 
@@ -1226,6 +1247,7 @@ final class AppModel: ObservableObject {
 
     func requestInteractiveAreaSelection() {
         guard !rejectActionWhileTerminationIsPending() else { return }
+        invalidateQuickTargetSelection()
         if captureMode == .screenshot,
            !ensureScreenRecordingPermissionForCapture() {
             showHUD()
@@ -1236,6 +1258,7 @@ final class AppModel: ObservableObject {
     }
 
     private func presentInteractiveAreaSelection() {
+        areaSelectionPresenter.adjustsSelectionBeforeCapture = recordingPreferences.load().adjustsAreaBeforeCapture
         areaSelectionPresenter.present(
             mode: captureMode,
             onSelect: { [weak self] area in
@@ -1281,6 +1304,7 @@ final class AppModel: ObservableObject {
     func cancelCapture() {
         areaSelectionPresenter.dismiss()
         isDragRecordingPending = false
+        invalidateQuickTargetSelection()
         capturePreflightGeneration += 1
         capturePreflightTask?.cancel()
         capturePreflightTask = nil
@@ -1293,58 +1317,86 @@ final class AppModel: ObservableObject {
     }
 
     @MainActor
-    func triggerDeviceScreenshot() {
-        guard !rejectActionWhileTerminationIsPending() else { return }
-        guard !capture.isRecording else {
-            statusMessage = "Finish or cancel current capture first."
-            focusActiveCaptureWindow()
-            return
-        }
-        guard ensureScreenRecordingPermissionForCapture() else { return }
+    func triggerDeviceScreenshot() { prepareQuickCapture(mode: .screenshot, kind: .display) }
 
-        dispatch(.beginCapture(.screenshot, runtimeIsRecording: false))
-        requestSourceSelector(kind: .display)
-    }
+    @MainActor
+    func triggerWindowScreenshot() { prepareQuickCapture(mode: .screenshot, kind: .window) }
+
+    @MainActor
+    func triggerDeviceScreenRecord() { prepareQuickCapture(mode: .recording, kind: .display) }
+
+    @MainActor
+    func triggerWindowScreenRecord() { prepareQuickCapture(mode: .recording, kind: .window) }
 
     @MainActor
     func triggerDragScreenshot() {
-        guard !rejectActionWhileTerminationIsPending() else { return }
-        guard !capture.isRecording else {
-            statusMessage = "Finish or cancel current capture first."
-            focusActiveCaptureWindow()
-            return
-        }
-        guard ensureScreenRecordingPermissionForCapture() else { return }
-
+        guard canBeginShortcutCapture() else { return }
+        cancelCapture()
         dispatch(.beginCapture(.screenshot, runtimeIsRecording: false))
         requestInteractiveAreaSelection()
-    }
-
-    @MainActor
-    func triggerDeviceScreenRecord() {
-        guard !rejectActionWhileTerminationIsPending() else { return }
-        if capture.isRecording || recordingPhase != .idle {
-            stopRecording()
-            return
-        }
-        guard ensureScreenRecordingPermissionForCapture() else { return }
-
-        dispatch(.beginCapture(.recording, runtimeIsRecording: false))
-        requestSourceSelector(kind: .display)
     }
 
     @MainActor
     func triggerDragScreenRecord() {
-        guard !rejectActionWhileTerminationIsPending() else { return }
-        if capture.isRecording || recordingPhase != .idle {
-            stopRecording()
+        guard canBeginShortcutCapture() else { return }
+        cancelCapture()
+        dispatch(.beginCapture(.recording, runtimeIsRecording: false))
+        // Every recording target goes through setup, so inputs can be reviewed before Record.
+        isDragRecordingPending = false
+        requestInteractiveAreaSelection()
+    }
+
+    private func canBeginShortcutCapture() -> Bool {
+        guard !rejectActionWhileTerminationIsPending() else { return false }
+        guard !capture.isRecording, recordingPhase == .idle else {
+            statusMessage = "A recording is in progress. Use the Stop shortcut to finish it."
+            return false
+        }
+        return ensureScreenRecordingPermissionForCapture()
+    }
+
+    private func prepareQuickCapture(mode: CaptureMode, kind: CaptureSourceKind) {
+        // Preserve the invoking app/display before permissions or setup can activate our UI.
+        let context = quickCaptureTargetContext()
+        guard canBeginShortcutCapture() else { return }
+        cancelCapture()
+        dispatch(.beginCapture(mode, runtimeIsRecording: false))
+        let generation = quickTargetGeneration
+        if capture.sourceCatalogState == .loaded, let target = context.target(in: capture.sources, kind: kind) {
+            selectSource(target)
             return
         }
-        guard ensureScreenRecordingPermissionForCapture() else { return }
+        statusMessage = "Finding capture target…"
+        quickTargetTask = Task { [weak self] in
+            guard let self else { return }
+            await refreshSources(requestScreenRecordingPermission: false, restoresSelection: false)
+            guard !Task.isCancelled, generation == quickTargetGeneration,
+                  recordingPhase == .idle, !isTerminationPending else { return }
+            if let target = context.target(in: capture.sources, kind: kind) {
+                selectSource(target)
+            } else {
+                requestSourceSelector(kind: kind)
+                statusMessage = "Choose a \(kind == .window ? "window" : "display") to capture."
+            }
+            quickTargetTask = nil
+        }
+    }
 
-        dispatch(.beginCapture(.recording, runtimeIsRecording: false))
-        isDragRecordingPending = true
-        requestInteractiveAreaSelection()
+    func syncShortcutRegistrationStates(_ states: [CaptureShortcutAction: CaptureShortcutRegistrationState]) {
+        appShell.settings.send(.shortcutRegistrationStatesSynced(states))
+    }
+
+    private func invalidateQuickTargetSelection() {
+        quickTargetGeneration += 1
+        quickTargetTask?.cancel()
+        quickTargetTask = nil
+    }
+
+    var hasQuickScreenshot: Bool { lastQuickScreenshotSession != nil }
+
+    func editLastQuickScreenshot() {
+        guard let session = lastQuickScreenshotSession, canStartNewCapture else { return }
+        showEditor(for: session)
     }
 
     func updateShortcutPreferences(_ shortcuts: ShortcutPreferences) {
@@ -1436,7 +1488,12 @@ final class AppModel: ObservableObject {
         guard !rejectActionWhileTerminationIsPending() else { return }
         switch captureState.phase {
         case .setup(.recording):
-            startRecording()
+            if captureState.source == nil {
+                showHUD()
+                statusMessage = "Choose a capture source, then press Record."
+            } else {
+                startRecording()
+            }
         case .ready(.recording, _):
             startRecording()
         case .countingDownRecording:
@@ -1457,7 +1514,10 @@ final class AppModel: ObservableObject {
              .ready,
              .areaSelecting,
              .capturingScreenshot:
-            return
+            guard recordingPhase == .idle else { return }
+            cancelCapture()
+            beginCapture(.recording)
+            showHUD()
         }
     }
 
@@ -1804,6 +1864,7 @@ final class AppModel: ObservableObject {
     }
 
     private func runScreenshotCapture(source selectedSource: CaptureSource) async {
+        let afterCapture = recordingPreferences.load().screenshotAfterCapture
         do {
             if captureUIHideDelayNanoseconds > 0 {
                 try await Task.sleep(nanoseconds: captureUIHideDelayNanoseconds)
@@ -1844,16 +1905,30 @@ final class AppModel: ObservableObject {
             }
             currentScreenshotURL = outputURL
             currentVideoURL = nil
-            showEditor(for: EditorSession(
-                kind: .screenshot,
-                url: outputURL,
-                title: registration.summary?.title,
-                projectPath: registration.summary?.path,
-                screenshotEditorState: initialScreenshotState
-            ))
+            let session = EditorSession(
+                kind: .screenshot, url: outputURL, title: registration.summary?.title,
+                projectPath: registration.summary?.path, screenshotEditorState: initialScreenshotState
+            )
+            if afterCapture == .edit {
+                lastQuickScreenshotSession = nil
+                showEditor(for: session)
+            } else {
+                lastQuickScreenshotSession = session
+                if afterCapture == .copy { try copyCapturedScreenshot(outputURL) }
+                dispatch(.screenshotSucceeded)
+                statusMessage = afterCapture == .copy ? "Screenshot copied" : "Screenshot saved"
+                showHUD()
+                let message = statusMessage
+                let generation = quickTargetGeneration
+                Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(2))
+                    guard let self, generation == quickTargetGeneration, statusMessage == message, recordingPhase == .idle else { return }
+                    hideHUD()
+                }
+            }
             if case .failed(let message) = registration {
                 statusMessage = "Captured \(outputURL.lastPathComponent), but the editable project could not be created: \(message)"
-            } else {
+            } else if afterCapture == .edit {
                 statusMessage = "Captured \(outputURL.lastPathComponent)"
             }
             if registration.needsScreenshotIndexRetry {
