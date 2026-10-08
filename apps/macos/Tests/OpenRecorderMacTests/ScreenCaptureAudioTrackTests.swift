@@ -60,9 +60,12 @@ final class ScreenCaptureAudioTrackTests: XCTestCase {
             layoutSize: 0, layout: nil, magicCookieSize: 0, magicCookie: nil, extensions: nil,
             formatDescriptionOut: &rawDescription), noErr)
         let description = try XCTUnwrap(rawDescription)
+        let angularFrequency = 2.0 * Double.pi * 440.0 / 48_000.0
         var bytes = [Int32](repeating: 0, count: frames * 2)
         for frame in 0..<frames {
-            let quantized = Int32(sin(Double(frame) * 2 * .pi * 440 / 48_000) * 0.2 * 8_388_607)
+            let waveform = sin(Double(frame) * angularFrequency)
+            let sample = waveform * 0.2
+            let quantized = Int32(sample * 8_388_607.0)
             bytes[frame * 2] = quantized << 8
         }
         var rawBlock: CMBlockBuffer?
@@ -93,7 +96,8 @@ final class ScreenCaptureAudioTrackTests: XCTestCase {
         try file.read(into: decoded)
         let channels = try XCTUnwrap(decoded.floatChannelData)
         for frame in 0..<Int(decoded.frameLength) {
-            let expected = Float(sin(Double(frame) * 2 * .pi * 440 / 48_000) * 0.2)
+            let expectedSample = sin(Double(frame) * angularFrequency) * 0.2
+            let expected = Float(expectedSample)
             XCTAssertEqual(channels[0][frame], expected, accuracy: 0.0002)
             XCTAssertEqual(channels[1][frame], 0, accuracy: 0.00001)
         }
@@ -103,9 +107,15 @@ final class ScreenCaptureAudioTrackTests: XCTestCase {
         let pcm = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(frameCount)))
         pcm.frameLength = AVAudioFrameCount(frameCount)
         let buffers = UnsafeMutableAudioBufferListPointer(pcm.mutableAudioBufferList)
+        let angularFrequency = 2.0 * Double.pi * 440.0 / format.sampleRate
         for frame in 0..<frameCount {
             for channel in 0..<Int(format.channelCount) {
-                let tone = channel == 0 ? sin(Double(frame) * 2 * .pi * 440 / format.sampleRate) * 0.2 : 0
+                let tone: Double
+                if channel == 0 {
+                    tone = sin(Double(frame) * angularFrequency) * 0.2
+                } else {
+                    tone = 0
+                }
                 let target = format.isInterleaved ? 0 : channel
                 let index = format.isInterleaved ? frame * Int(format.channelCount) + channel : frame
                 let data = try XCTUnwrap(buffers[target].mData)
