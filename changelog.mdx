@@ -3,6 +3,38 @@ title: "Open Recorder changelog: releases, features, and fixes"
 description: "Release notes for Open Recorder on macOS. Track new screen recording features, capture improvements, and bug fixes in each version update."
 ---
 
+<Update label="October 9, 2026" description="Audio controls" tags={["macOS"]}>
+## New features
+
+### Audio inspector
+
+The video editor has a new **Audio** tab. Changes apply to both preview and export.
+
+- **Voice preset** applies a starting point for spoken audio. **Reset** restores the defaults.
+- **Channels** sends a single microphone input to both speakers, or mixes both inputs to mono.
+- **Normalize loudness** targets a level between −24 and −9 LUFS while keeping a −1 dB peak ceiling. Use **Gain** for manual adjustment.
+- **Audio Sync** shifts audio up to ±2 seconds. Move left if audio is late, right if it's early.
+- **Tone** adds **Punch**, **Bass**, **Presence**, **Treble**, and **Reduce low rumble**.
+
+### Project presets
+
+Save your current video appearance and audio settings as a named preset from the **Project Presets** menu. Apply or delete saved presets from the same menu. See [Backgrounds](/editing/backgrounds#reusing-your-appearance-settings).
+
+## Updates
+
+- Select multiple zooms on the timeline. Command-click to add or remove a zoom, Shift-click to select a range, then press Delete to remove them all in one undoable step. See [Zoom effects](/editing/zoom-effects#delete-zoom-regions).
+- Drag a clip edge to trim it or restore footage you cut earlier.
+- Removed sections collapse on the timeline, so clips sit next to each other.
+- The timeline clock now shows the frame number within the current second.
+
+## Bug fixes
+
+- Fixed microphone audio from some interfaces, including 24-bit devices, being distorted or dropping frames in longer recordings.
+- Improved audio and video sync in recordings.
+- Playback now starts at the first kept frame when the start of a recording is trimmed.
+- Scrubbing across cuts no longer jumps ahead of the pointer.
+</Update>
+
 <Update label="October 8, 2026" description="Quick capture" tags={["macOS"]}>
 ## New features
 
