@@ -26,6 +26,7 @@ struct SettingsInspector: View {
     @Binding var cursorStyleID: CursorStyleID
     var cameraSettings: Binding<FacecamSettings?>? = nil
     var onCameraLayoutEditingChanged: (Bool) -> Void = { _ in }
+    var browserMockup: Binding<BrowserMockupSettings>? = nil
     var recordingSession: RecordingSession?
     var captionController: CaptionController? = nil
     var captionEdits: TimelineEditDriver? = nil
@@ -223,6 +224,24 @@ struct SettingsInspector: View {
                     insetAdvancedControls
                 }
             }
+            if let browserMockup {
+                InspectorGroup(title: "Browser Mockup", symbolName: "globe") {
+                    Toggle("Show browser frame", isOn: browserBinding(\.enabled))
+                    Group {
+                        TextField("https://your-product.com", text: browserBinding(\.url))
+                            .textFieldStyle(.roundedBorder)
+                        Picker("Style", selection: browserBinding(\.style)) {
+                            ForEach(BrowserMockupStyle.allCases) { Text($0.title).tag($0) }
+                        }.pickerStyle(.segmented).labelsHidden()
+                        Picker("Address alignment", selection: browserBinding(\.addressAlignment)) {
+                            ForEach(BrowserAddressAlignment.allCases) { Text($0.title).tag($0) }
+                        }.pickerStyle(.segmented).labelsHidden()
+                        InspectorSlider(title: "Frame Padding", valueText: "\(Int(browserMockup.wrappedValue.outerPadding.rounded()))px", value: browserBinding(\.outerPadding), range: 0...32, step: 1, defaultValue: 0)
+                    }
+                    .disabled(!browserMockup.wrappedValue.enabled)
+                    .opacity(browserMockup.wrappedValue.enabled ? 1 : 0.42)
+                }
+            }
         case .cursor:
             InspectorGroup(
                 title: "Cursor",
@@ -343,6 +362,14 @@ struct SettingsInspector: View {
             }
 
         }
+    }
+
+    private func browserBinding<Value>(_ keyPath: WritableKeyPath<BrowserMockupSettings, Value>) -> Binding<Value> {
+        Binding(get: { browserMockup?.wrappedValue[keyPath: keyPath] ?? BrowserMockupSettings.default[keyPath: keyPath] }, set: { value in
+            guard var settings = browserMockup?.wrappedValue else { return }
+            settings[keyPath: keyPath] = value
+            browserMockup?.wrappedValue = settings
+        })
     }
 
     private var resolvedCameraSettingsBinding: Binding<FacecamSettings> {

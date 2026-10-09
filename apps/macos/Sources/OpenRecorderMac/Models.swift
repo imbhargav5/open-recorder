@@ -296,6 +296,7 @@ struct ProjectVideoEditorState: Codable, Equatable, Hashable {
     var cropSelection: VideoCropSelection
     var cursorOverlay: CursorOverlaySettings
     var facecamSettings: FacecamSettings?
+    var browserMockup: BrowserMockupSettings
 
     static let `default` = ProjectVideoEditorState()
 
@@ -311,7 +312,8 @@ struct ProjectVideoEditorState: Codable, Equatable, Hashable {
         insetBalance: VideoInsetBalance = .centered,
         cropSelection: VideoCropSelection = .fullFrame,
         cursorOverlay: CursorOverlaySettings = .default,
-        facecamSettings: FacecamSettings? = nil
+        facecamSettings: FacecamSettings? = nil,
+        browserMockup: BrowserMockupSettings = .default
     ) {
         self.background = background
         self.padding = padding
@@ -325,6 +327,7 @@ struct ProjectVideoEditorState: Codable, Equatable, Hashable {
         self.cropSelection = cropSelection
         self.cursorOverlay = cursorOverlay.clamped
         self.facecamSettings = facecamSettings
+        self.browserMockup = browserMockup.clamped
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -341,6 +344,7 @@ struct ProjectVideoEditorState: Codable, Equatable, Hashable {
         case cropSelection
         case cursorOverlay
         case facecamSettings
+        case browserMockup
     }
 
     init(from decoder: Decoder) throws {
@@ -360,7 +364,34 @@ struct ProjectVideoEditorState: Codable, Equatable, Hashable {
         cropSelection = try container.decodeIfPresent(VideoCropSelection.self, forKey: .cropSelection) ?? defaults.cropSelection
         cursorOverlay = (try container.decodeIfPresent(CursorOverlaySettings.self, forKey: .cursorOverlay) ?? defaults.cursorOverlay).clamped
         facecamSettings = try container.decodeIfPresent(FacecamSettings.self, forKey: .facecamSettings)
+        browserMockup = (try container.decodeIfPresent(BrowserMockupSettings.self, forKey: .browserMockup) ?? defaults.browserMockup).clamped
     }
+}
+
+struct BrowserMockupSettings: Codable, Equatable, Hashable {
+    var enabled: Bool
+    var url: String
+    var style: BrowserMockupStyle
+    var addressAlignment: BrowserAddressAlignment
+    var outerPadding: Double
+
+    static let `default` = BrowserMockupSettings(enabled: false, url: "", style: .safari, addressAlignment: .leading, outerPadding: 0)
+
+    var clamped: BrowserMockupSettings {
+        BrowserMockupSettings(enabled: enabled, url: String(url.prefix(300)).trimmingCharacters(in: .whitespacesAndNewlines), style: style, addressAlignment: addressAlignment, outerPadding: min(max(outerPadding, 0), 32))
+    }
+}
+
+enum BrowserMockupStyle: String, Codable, CaseIterable, Identifiable {
+    case safari, chrome, minimal
+    var id: String { rawValue }
+    var title: String { rawValue.capitalized }
+}
+
+enum BrowserAddressAlignment: String, Codable, CaseIterable, Identifiable {
+    case leading, center
+    var id: String { rawValue }
+    var title: String { rawValue.capitalized }
 }
 
 enum EditorMediaKind: String, Codable, Hashable, Sendable {
