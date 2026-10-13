@@ -1,0 +1,64 @@
+---
+title: "Adjust recording audio"
+description: "Route microphone channels, normalize loudness, fix audio sync, and shape tone from the Audio inspector in the video editor."
+---
+
+The **Audio** inspector in the video editor processes your recording's combined audio. Use it to fix a microphone that only plays in one speaker, even out loudness, line up audio that drifts from the video, and make voices clearer.
+
+Every change applies to both the preview and the exported video. Slider changes are part of the editor's undo and redo history.
+
+To open it, open a recording in the video editor and select **Audio** in the inspector.
+
+## Voice
+
+| Control | Effect |
+| --- | --- |
+| **Voice preset** | Applies a starting point for spoken audio: **Normalize loudness** on at −14 LUFS, **Punch** 35, **Presence** +2 dB, **Treble** +1 dB, and **Reduce low rumble** on. Your current **Channels** and **Audio Sync** settings are kept. |
+| **Reset** | Restores every audio setting to its default, including **Channels** and **Audio Sync**. |
+| **Channels** | Chooses how input channels reach the left and right speakers. |
+
+**Channels** options:
+
+| Option | Result |
+| --- | --- |
+| **Original stereo** | Plays the audio as recorded. This is the default. |
+| **Input 1 → Mono** | Sends input 1 to both speakers. |
+| **Input 2 → Mono** | Sends input 2 to both speakers. |
+| **Mix both → Mono** | Averages both inputs and sends the result to both speakers. |
+
+If your microphone is plugged into one input of a two-channel audio interface, you only hear it in one speaker. Choose the input it's connected to so you hear it in both speakers.
+
+## Loudness
+
+| Control | Range | Effect |
+| --- | --- | --- |
+| **Normalize loudness** | On or off | Measures the recording's integrated loudness and adjusts the level to reach the **Target**. |
+| **Target** | −24 to −9 LUFS | The loudness to normalize to. Shown only when **Normalize loudness** is on. Defaults to −14 LUFS. |
+| **Gain** | −24 to +24 dB | Manual level adjustment, applied on top of normalization. |
+
+Start with −14 LUFS and adjust from there. Open Recorder reduces gain when needed to keep samples under a −1 dB peak ceiling. This is a sample peak ceiling, not a true-peak limiter.
+
+While Open Recorder measures the recording, the inspector shows **Measuring audio…**. When measurement finishes, it shows the current audio status.
+
+## Audio Sync
+
+Use **Offset** to shift the audio relative to the video by up to ±2 seconds, in 10 ms steps.
+
+- If audio is late, move the slider left (negative).
+- If audio is early, move the slider right (positive).
+
+Click **Reset Sync** to return the offset to 0 ms.
+
+## Tone
+
+| Control | Range | Effect |
+| --- | --- | --- |
+| **Punch** | 0 to 100 | Compresses louder peaks and lifts the overall level so speech sounds denser and more even. |
+| **Bass** | −12 to +12 dB | Boosts or cuts low frequencies around 120 Hz. |
+| **Presence** | −12 to +12 dB | Boosts or cuts upper mids around 3 kHz, where speech clarity sits. |
+| **Treble** | −12 to +12 dB | Boosts or cuts high frequencies around 9 kHz. |
+| **Reduce low rumble** | On or off | Filters out low-frequency noise below about 80 Hz, such as desk bumps or air conditioning hum. |
+
+## Save audio settings in a preset
+
+Audio settings are saved with the project. To reuse them across projects, save them along with your video appearance as a named preset from the **Project Presets** menu. See [Backgrounds](/editing/backgrounds#reusing-your-appearance-settings).
