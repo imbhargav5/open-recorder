@@ -89,14 +89,14 @@ final class CaptionTests: XCTestCase {
         }
     }
 
-    @MainActor func testSetupRequiresAudioModelAndLocalOllama() async throws {
+    @MainActor func testSetupRequiresSpeechModelButNotOllamaCleanup() async throws {
         let defaults = UserDefaults(suiteName: "caption-test-\(UUID())")!
         defaults.set("missing-saved-model", forKey: "captions.ollamaModel")
         let controller = CaptionController(ollama: FakeCaptionOllama(), defaults: defaults, environment: .fixture)
         controller.attach(URL(fileURLWithPath: "/test.mov"))
         try await settle(controller)
         XCTAssertEqual(controller.selectedModel, "missing-saved-model")
-        XCTAssertFalse(controller.canGenerate)
+        XCTAssertTrue(controller.canGenerate)
         controller.selectedModel = "llama3:latest"
         XCTAssertTrue(controller.canGenerate)
         controller.close()

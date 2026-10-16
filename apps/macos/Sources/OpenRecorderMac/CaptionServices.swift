@@ -126,9 +126,16 @@ struct LocalCaptionSpeechService: CaptionTranscribing {
         if FileManager.default.isExecutableFile(atPath: bundled.path) { return bundled }
         guard Bundle.main.bundleURL.pathExtension != "app" else { return nil }
         // SwiftPM development runs use the explicitly built helper beside the checkout.
-        let development = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        // Keep the cache outside `.build`, which SwiftPM may remove on a clean build.
+        let sourceDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let development = sourceDirectory
+            .appendingPathComponent("../../.caption-helper/build/bin/whisper-cli").standardizedFileURL
+        if FileManager.default.isExecutableFile(atPath: development.path) { return development }
+
+        // Support helpers created by older checkout layouts during an upgrade.
+        let legacyDevelopment = sourceDirectory
             .appendingPathComponent("../../.build/caption-helper/bin/whisper-cli").standardizedFileURL
-        return FileManager.default.isExecutableFile(atPath: development.path) ? development : nil
+        return FileManager.default.isExecutableFile(atPath: legacyDevelopment.path) ? legacyDevelopment : nil
     }
 
     static func modelReady(at url: URL = modelFile) async -> Bool {

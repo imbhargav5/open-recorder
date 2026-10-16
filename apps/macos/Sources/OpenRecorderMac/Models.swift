@@ -531,6 +531,8 @@ struct FacecamSettings: Codable, Hashable {
     var layoutPadding: Double? = nil
     var layoutGap: Double? = nil
     var cameraOnLeft: Bool? = nil
+    /// Used only by a vertical split. Optional for backwards-compatible projects.
+    var cameraAbove: Bool? = nil
     var centerFace: Bool? = nil
     var screenFit: String? = nil
     var matchCameraCorners: Bool? = nil
@@ -546,7 +548,11 @@ struct FacecamSettings: Codable, Hashable {
     var resolvedLayoutTransition: CameraLayoutTransition { (layoutTransition ?? .init()).clamped }
 
     var keepsFaceCentered: Bool { resolvedLayout != .overlay && (centerFace ?? true) }
-    var resolvedScreenFit: CameraScreenFit { CameraScreenFit(rawValue: screenFit ?? "") ?? .fit }
+    /// A stacked split fills its full-width screen panel by default, so the
+    /// screen and camera never look like mismatched-width cards on a phone.
+    var resolvedScreenFit: CameraScreenFit {
+        CameraScreenFit(rawValue: screenFit ?? "") ?? (resolvedLayout.isVerticalSplit ? .cover : .fit)
+    }
     var resolvedMatchCameraCorners: Bool { matchCameraCorners ?? true }
     var resolvedScreenCornerRadius: Double {
         CameraLayoutGeometry.clamp(resolvedMatchCameraCorners ? cornerRadius : screenCornerRadius, to: 0...100, fallback: 24)
@@ -554,11 +560,12 @@ struct FacecamSettings: Codable, Hashable {
 
     var resolvedLayout: CameraLayout { CameraLayout(rawValue: layout ?? "") ?? .overlay }
     var resolvedCameraWidth: Double {
-        CameraLayoutGeometry.clamp(cameraWidthPercent, to: 10...70, fallback: resolvedLayout == .split ? 50 : 20)
+        CameraLayoutGeometry.clamp(cameraWidthPercent, to: 10...70, fallback: resolvedLayout == .split ? 50 : (resolvedLayout == .verticalSplit ? 30 : 20))
     }
     var resolvedLayoutPadding: Double { CameraLayoutGeometry.clamp(layoutPadding, to: 0...20, fallback: 4) }
     var resolvedLayoutGap: Double { CameraLayoutGeometry.clamp(layoutGap, to: 0...12, fallback: 3) }
     var resolvedCameraOnLeft: Bool { cameraOnLeft ?? (resolvedLayout == .split) }
+    var resolvedCameraAbove: Bool { cameraAbove ?? true }
 
     var clamped: FacecamSettings {
         FacecamSettings(
@@ -577,6 +584,7 @@ struct FacecamSettings: Codable, Hashable {
             layoutPadding: layoutPadding.map { _ in resolvedLayoutPadding },
             layoutGap: layoutGap.map { _ in resolvedLayoutGap },
             cameraOnLeft: cameraOnLeft,
+            cameraAbove: cameraAbove,
             centerFace: centerFace,
             screenFit: screenFit,
             matchCameraCorners: matchCameraCorners,

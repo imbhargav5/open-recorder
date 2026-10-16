@@ -51,6 +51,22 @@ enum MockupStyle: String, Codable, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+enum BrowserURLAlignment: String, Codable, CaseIterable, Identifiable {
+    case left = "Left", center = "Center"
+    var id: String { rawValue }
+}
+
+enum BrowserToolbarStyle: String, Codable, CaseIterable, Identifiable {
+    case standard = "Standard", compact = "Compact"
+    var id: String { rawValue }
+    var heightFraction: CGFloat {
+        switch self {
+        case .standard: 0.085
+        case .compact: 0.055
+        }
+    }
+}
+
 enum SceneEasing: String, Codable, CaseIterable, Identifiable {
     case linear = "Linear", easeIn = "Ease In", easeOut = "Ease Out", easeInOut = "Ease In Out"
     var id: String { rawValue }
@@ -111,11 +127,22 @@ struct SceneSettings: Codable, Equatable, Hashable {
     var motion = SceneMotion()
     var imageDuration = 3.0
     var cameraFollowsScene: Bool? = nil
+    var browserURL: String = "https://example.com"
+    var browserURLAlignment: BrowserURLAlignment = .left
+    var browserToolbarStyle: BrowserToolbarStyle = .standard
+    var browserShowTrafficLights: Bool = true
+    var browserShowNavButtons: Bool = true
+    var browserShowLock: Bool = true
+    var magnifierLens: MagnifierLensConfig? = nil
+    var sensitiveData: SensitiveDataConfig? = nil
+
+    var resolvedMagnifierLens: MagnifierLensConfig { (magnifierLens ?? .default).clamped }
+    var resolvedSensitiveData: SensitiveDataConfig { (sensitiveData ?? .default).clamped }
 
     var resolvedCameraFollowsScene: Bool { cameraFollowsScene ?? true }
 
     static let identity = SceneSettings()
-    var isActive: Bool { !pose.isIdentity || mockup != .none || edgeHighlight || motion.enabled }
+    var isActive: Bool { !pose.isIdentity || mockup != .none || edgeHighlight || motion.enabled || resolvedSensitiveData.enabled || resolvedMagnifierLens.enabled }
     func pose(at time: Double) -> ScenePose { motion.enabled ? motion.pose(at: time) : pose.clamped }
     func clamped(to duration: Double) -> Self {
         var next = self

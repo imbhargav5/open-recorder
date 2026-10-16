@@ -103,7 +103,7 @@ struct CaptionInspector: View {
                 Text("Speech helper missing. Reinstall Open Recorder to enable generation.")
                     .font(.footnote).foregroundStyle(.secondary)
             }
-            Label("Ollama: \(controller.ollamaStatus)", systemImage: controller.models.isEmpty ? "circle" : "checkmark.circle.fill")
+            Label("Ollama cleanup (optional): \(controller.ollamaStatus)", systemImage: controller.models.isEmpty ? "circle" : "checkmark.circle.fill")
             Picker("Text model", selection: $controller.selectedModel) {
                 if !controller.models.contains(controller.selectedModel) {
                     Text(controller.selectedModel.isEmpty ? "Select a model" : "\(controller.selectedModel) (missing)").tag(controller.selectedModel)
@@ -120,31 +120,101 @@ struct CaptionInspector: View {
                 if controller.isChecking { ProgressView().controlSize(.small) }
             }
             if controller.models.isEmpty {
-                Text("Install and open Ollama, then download a text model in Ollama. Open Recorder uses only models stored locally.")
+                Text("Captions can generate now with the local Whisper model. Install Ollama only if you want an additional local wording and punctuation cleanup pass.")
                     .font(.footnote).foregroundStyle(.secondary)
             }
         }.font(.footnote)
     }
 
     private func styleControls(_ track: CaptionTrack) -> some View {
-        InspectorGroup(title: "Style", symbolName: "textformat") {
-            Toggle("Show captions", isOn: styleBinding(\.isVisible, fallback: true))
+        InspectorGroup(title: "Caption style", symbolName: "textformat") {
             HStack {
-                Text("Font size")
-                Slider(value: styleBinding(\.fontSize, fallback: 36), in: 20...64, step: 1)
-                Text("\(Int(track.style.fontSize))").monospacedDigit()
+                Toggle("Visible", isOn: styleBinding(\.isVisible, fallback: true))
+                Spacer()
+                Menu {
+                ForEach(CaptionStylePreset.allCases) { preset in
+                    Button(preset.rawValue) {
+                        guard var t = self.track else { return }
+                        var applied = preset.style
+                        applied.isVisible = t.style.isVisible
+                        applied.position = t.style.position
+                        t.style = applied
+                        t.isEdited = true
+                        apply(t)
+                    }
+                }
+                } label: {
+                    Label("Preset", systemImage: "slider.horizontal.3")
+                }
+                .menuStyle(.borderedButton)
             }
-            ColorPicker("Text color", selection: colorBinding(\.textHex), supportsOpacity: false)
-            ColorPicker("Background", selection: colorBinding(\.backgroundHex), supportsOpacity: false)
-            HStack {
-                Text("Opacity")
-                Slider(value: styleBinding(\.backgroundOpacity, fallback: 0.65), in: 0...1)
+            InspectorSlider(title: "Font size", valueText: "\(Int(track.style.fontSize)) pt",
+                            value: styleBinding(\.fontSize, fallback: 36), range: 20...64, step: 1, defaultValue: 36)
+            inspectorPicker("Font", selection: styleBinding(\.fontFamily, fallback: "Helvetica-Bold")) {
+                Text("Helvetica Bold").tag("Helvetica-Bold")
+                Text("Helvetica").tag("Helvetica")
+                Text("SF Pro Bold").tag("SFProDisplay-Bold")
+                Text("SF Pro").tag("SFProDisplay-Regular")
+                Text("Menlo").tag("Menlo-Bold")
+                Text("Georgia Bold").tag("Georgia-Bold")
+                Text("Avenir Heavy").tag("Avenir-Heavy")
             }
-            Picker("Position", selection: styleBinding(\.position, fallback: .bottom)) {
+            colorRow("Text color", selection: colorBinding(\.textHex))
+            colorRow("Background", selection: colorBinding(\.backgroundHex))
+            InspectorSlider(title: "Background opacity", valueText: "\(Int(track.style.backgroundOpacity * 100))%",
+                            value: styleBinding(\.backgroundOpacity, fallback: 0.65), range: 0...1, step: 0.01, defaultValue: 0.65)
+            InspectorSlider(title: "Outline", valueText: String(format: "%.1f pt", track.style.outlineWidth),
+                            value: styleBinding(\.outlineWidth, fallback: 0), range: 0...8, step: 0.5, defaultValue: 0)
+            if track.style.outlineWidth > 0 {
+                colorRow("Outline color", selection: colorBinding(\.outlineHex))
+            }
+            inspectorPicker("Position", selection: styleBinding(\.position, fallback: .bottom)) {
                 Text("Top").tag(CaptionStyle.Position.top)
                 Text("Bottom").tag(CaptionStyle.Position.bottom)
             }
+            inspectorPicker("Transition", selection: styleBinding(\.transition, fallback: .fade)) {
+                ForEach(CaptionStyle.TransitionKind.allCases) { Text($0.title).tag($0) }
+            }
+            if track.style.transition != .cut {
+                InspectorSlider(title: "Transition speed", valueText: String(format: "%.2f s", track.style.transitionSpeed),
+                                value: styleBinding(\.transitionSpeed, fallback: 0.25), range: 0.05...1.0, step: 0.05, defaultValue: 0.25)
+            }
         }.disabled(controller.isBusy)
+    }
+
+    private func inspectorPicker<Content: View>(_ title: String, selection: Binding<String>, @ViewBuilder content: () -> Content) -> some View {
+        HStack {
+            Text(title).foregroundStyle(Theme.fgMuted)
+            Spacer()
+            Picker(title, selection: selection, content: content)
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .frame(maxWidth: 174, alignment: .trailing)
+        }
+    }
+
+    private func inspectorPicker<Content: View>(_ title: String, selection: Binding<CaptionStyle.Position>, @ViewBuilder content: () -> Content) -> some View {
+        HStack {
+            Text(title).foregroundStyle(Theme.fgMuted)
+            Spacer()
+            Picker(title, selection: selection, content: content).labelsHidden().pickerStyle(.menu)
+        }
+    }
+
+    private func inspectorPicker<Content: View>(_ title: String, selection: Binding<CaptionStyle.TransitionKind>, @ViewBuilder content: () -> Content) -> some View {
+        HStack {
+            Text(title).foregroundStyle(Theme.fgMuted)
+            Spacer()
+            Picker(title, selection: selection, content: content).labelsHidden().pickerStyle(.menu)
+        }
+    }
+
+    private func colorRow(_ title: String, selection: Binding<Color>) -> some View {
+        HStack {
+            Text(title).foregroundStyle(Theme.fgMuted)
+            Spacer()
+            ColorPicker(title, selection: selection, supportsOpacity: false).labelsHidden()
+        }
     }
 
     private func styleBinding<T>(_ path: WritableKeyPath<CaptionStyle, T>, fallback: T) -> Binding<T> {
@@ -252,5 +322,8 @@ private struct CaptionEditorRow: View {
         replacement.text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         validation = nil
         if replacement != segment { save(replacement) }
+        // Applying an edit should make its result immediately inspectable instead
+        // of leaving the preview parked at an unrelated playhead position.
+        seek()
     }
 }

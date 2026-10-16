@@ -1623,6 +1623,12 @@ final class AppModel: ObservableObject {
                 }
             }
 
+            // The floating camera preview is useful while setting up a capture,
+            // but it must be gone before the display stream starts. Some capture
+            // paths cannot exclude an app-owned floating window, which would put
+            // this preview into the screen video in addition to the real facecam
+            // track and produce two cameras in the finished recording.
+            requestWindow(.closeCameraBubble)
             try await runRecordingCountdown(selectedSource)
             guard !Task.isCancelled else { return }
 
@@ -1678,7 +1684,6 @@ final class AppModel: ObservableObject {
             if options.includeCamera {
                 let initialSettings = resolveFacecamSettingsForRecording(source: selectedSource)
                 cameraRecordingEvents.append(CameraRecordingEvent(timestamp: 0.0, settings: initialSettings))
-                requestWindow(.showCameraBubble)
             }
 
             currentVideoURL = outputURL

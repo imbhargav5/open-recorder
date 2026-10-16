@@ -1,6 +1,6 @@
 # Local captions
 
-Open a video, select **Captions** in the editor inspector, and expand **Local AI setup**. Download the multilingual base speech model (148 MB), open Ollama, and choose an installed local text model. Generation requires both services. Audio and transcript processing stay on the Mac; there is no cloud fallback. The model download is the only network transfer to a model host and begins only after clicking Download.
+Open a video, select **Captions** in the editor inspector, and expand **Local AI setup**. Download the multilingual base speech model (148 MB). This is all that is required to generate editable local captions. Optionally install Ollama and choose an installed local text model for an extra punctuation/capitalization cleanup pass. Audio and transcript processing stay on the Mac; there is no cloud fallback. The speech-model download begins only after clicking Download.
 
 Choose a language or Auto detect, then Generate captions. The app prepares the source audio, transcribes with whisper.cpp, and asks Ollama to adjust punctuation/capitalization. It rejects rewritten words, changed caption IDs, and malformed responses. If cleanup fails, Retry cleanup reuses the transcript. Existing captions are replaced only on success; edited tracks require confirmation. Cancel, project close, and source changes invalidate pending results.
 
@@ -12,7 +12,9 @@ Style controls apply to every caption: visibility, font size (relative to a 1080
 
 Install CMake and the repository's existing Swift/Rust prerequisites. `zsh scripts/build-caption-helper.zsh` builds whisper.cpp v1.8.3 at pinned commit `2eeeba56e9edd762b4b38467bab96c2517163158`. `CMAKE_COMMAND` can name an alternate CMake executable. Packaging calls this script and bundles/signs `Contents/MacOS/whisper-cli`, including its license. The helper links only system frameworks/libraries; Metal is embedded. Release/nightly architecture checks and universal binary assembly include the helper. No model is included in the app or fetched during packaging.
 
-SwiftPM development runs resolve the helper from `apps/macos/.build/caption-helper/bin/whisper-cli`. Model installation uses the current app variant's Application Support directory (`Open Recorder/CaptionModels` or `OpenRecorderNightly/CaptionModels`) and verifies SHA-256 before atomically publishing the file. The model is shared across editor windows of that variant. Ollama discovery uses loopback only and filters cloud aliases and non-completion models. A saved model selection is never silently replaced if removed.
+For a complete local development setup, run `make setup-local-ai`. It installs and starts Ollama through Homebrew when necessary, builds the helper, pulls `llama3.2:3b`, and downloads the verified Whisper base model. Set `OPEN_RECORDER_OLLAMA_MODEL` to use a different local Ollama model. The voice enhancer is built into the app and needs no additional model or service.
+
+SwiftPM development runs resolve the helper from `apps/macos/.caption-helper/build/bin/whisper-cli`, outside the SwiftPM build directory so it survives a clean build. Model installation uses the current app variant's Application Support directory (`Open Recorder/CaptionModels` or `OpenRecorderNightly/CaptionModels`) and verifies SHA-256 before atomically publishing the file. The model is shared across editor windows of that variant. Ollama discovery uses loopback only and filters cloud aliases and non-completion models. A saved model selection is never silently replaced if removed.
 
 ## Verification
 

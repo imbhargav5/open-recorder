@@ -446,15 +446,11 @@ final class AppWindowActions {
     }
 
     private func hideAppWindowsForCapture() {
-        // NativeScreenRecorder already excludes this app's own process from the
-        // ScreenCaptureKit filter (excludingApplications:), so the app's windows never
-        // appear in the recorded output regardless of on-screen visibility — no need to
-        // hide anything at the OS level (hideApp) for that. dismissCaptureWindows()
-        // leaves "hud" alone, which matters here: this fires on both
-        // .recordingStarting and .recordingStarted, so it must not take down the
-        // recording HUD (Stop button, timer) the user needs for the rest of the
-        // recording.
-        dismissCaptureWindows()
+        // A live camera bubble must never leave the editor visible over the
+        // countdown or recording. Camera capture continues in the background;
+        // reopen editing only after the recording is stopped.
+        dismissCaptureWindows(alwaysDismissCameraBubble: true)
+        hideApp()
     }
 }
 
