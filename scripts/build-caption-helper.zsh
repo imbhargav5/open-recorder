@@ -4,14 +4,18 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 whisper_revision=2eeeba56e9edd762b4b38467bab96c2517163158 # whisper.cpp v1.8.3
 caption_arch="${CAPTION_HELPER_ARCH:-$(uname -m)}"
-source_dir="$repo_root/apps/macos/.build/whisper-source"
-build_dir="${CAPTION_HELPER_BUILD_DIR:-$repo_root/apps/macos/.build/caption-helper}"
+# SwiftPM is allowed to clean apps/macos/.build during `swift build`. Keep the
+# independently cached Whisper checkout and build outside it, otherwise every
+# app package has to clone and rebuild the helper from scratch.
+caption_cache_dir="$repo_root/apps/macos/.caption-helper"
+source_dir="${CAPTION_HELPER_SOURCE_DIR:-$caption_cache_dir/whisper-source}"
+build_dir="${CAPTION_HELPER_BUILD_DIR:-$caption_cache_dir/build}"
 cmake_command="${CMAKE_COMMAND:-cmake}"
 if ! command -v "$cmake_command" >/dev/null 2>&1; then
     print -u2 -- 'CMake is required to build captions. Install CMake, then retry packaging.'
     exit 1
 fi
-mkdir -p "$repo_root/apps/macos/.build"
+mkdir -p "$caption_cache_dir"
 if [[ ! -d "$source_dir/.git" ]]; then
     git clone --no-checkout https://github.com/ggml-org/whisper.cpp.git "$source_dir"
 fi

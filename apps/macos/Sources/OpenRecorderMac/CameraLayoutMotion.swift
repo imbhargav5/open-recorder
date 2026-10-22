@@ -42,7 +42,7 @@ struct CameraLayoutPresentation: Equatable, Sendable {
                     cameraRadius: min(radius, min(camera.width, camera.height) / 2),
                     borderWidth: CGFloat(settings.borderWidth) * scale,
                     screenOpacity: settings.enabled && settings.resolvedLayout == .cameraOnly ? 0 : 1,
-                    cameraOpacity: settings.enabled ? 1 : 0,
+                    cameraOpacity: settings.enabled && !settings.resolvedLayout.hidesCamera ? 1 : 0,
                     faceCentering: settings.keepsFaceCentered ? 1 : 0,
                     overlayAmount: isOverlay ? 1 : 0,
                     overlayZoomShrink: isOverlay ? CGFloat(settings.resolvedZoomShrinkPercent / 100) : 0)

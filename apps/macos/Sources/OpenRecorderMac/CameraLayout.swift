@@ -3,20 +3,27 @@ import Foundation
 
 enum CameraLayout: String, CaseIterable, Identifiable {
     case overlay
+    case screenOnly = "screen-only"
     case cameraOnly = "camera-only"
     case split
+    /// A stacked, full-width split intended for portrait canvases.
+    case verticalSplit = "vertical-split"
     case sideBySide = "side-by-side"
 
     var id: String { rawValue }
     var title: String {
         switch self {
         case .overlay: "Overlay"
+        case .screenOnly: "Screen only"
         case .cameraOnly: "Camera only"
         case .split: "Split screen"
+        case .verticalSplit: "Stacked split"
         case .sideBySide: "Screen + small camera"
         }
     }
-    var hasScreenPanel: Bool { self == .split || self == .sideBySide }
+    var hasScreenPanel: Bool { self == .split || self == .verticalSplit || self == .sideBySide }
+    var isVerticalSplit: Bool { self == .verticalSplit }
+    var hidesCamera: Bool { self == .screenOnly }
 }
 
 enum CameraScreenFit: String, CaseIterable, Identifiable {
@@ -56,6 +63,13 @@ struct CameraLayoutGeometry {
     }
 
     static func frames(in canvas: CGSize, screenAspectRatio: CGFloat, settings: FacecamSettings) -> Self {
+        if settings.resolvedLayout == .screenOnly,
+           canvas.width.isFinite, canvas.height.isFinite, canvas.width > 0, canvas.height > 0 {
+            let base = min(canvas.width, canvas.height)
+            let padding = base * settings.resolvedLayoutPadding / 100
+            let content = CGRect(origin: .zero, size: canvas).insetBy(dx: padding, dy: padding)
+            return Self(screen: content, camera: .zero)
+        }
         guard canvas.width.isFinite, canvas.height.isFinite, canvas.width > 0, canvas.height > 0,
               settings.enabled, settings.resolvedLayout != .overlay else {
             return Self(screen: .zero, camera: .zero)
@@ -66,17 +80,27 @@ struct CameraLayoutGeometry {
         if settings.resolvedLayout == .cameraOnly {
             return Self(screen: .zero, camera: content)
         }
-        let gap = min(base * settings.resolvedLayoutGap / 100, content.width * 0.4)
-        let width = (content.width - gap) * settings.resolvedCameraWidth / 100
-        let cameraX = settings.resolvedCameraOnLeft ? content.minX : content.maxX - width
-        let screenX = settings.resolvedCameraOnLeft ? content.minX + width + gap : content.minX
-        let screenSlot = CGRect(x: screenX, y: content.minY, width: content.width - gap - width, height: content.height)
+        let isVertical = settings.resolvedLayout.isVerticalSplit
+        let gap = min(base * settings.resolvedLayoutGap / 100, (isVertical ? content.height : content.width) * 0.4)
+        let share = (isVertical ? content.height : content.width - gap) * settings.resolvedCameraWidth / 100
+        let cameraFrame: CGRect
+        let screenSlot: CGRect
+        if isVertical {
+            let cameraY = settings.resolvedCameraAbove ? content.minY : content.maxY - share
+            let screenY = settings.resolvedCameraAbove ? content.minY + share + gap : content.minY
+            cameraFrame = CGRect(x: content.minX, y: cameraY, width: content.width, height: share)
+            screenSlot = CGRect(x: content.minX, y: screenY, width: content.width, height: content.height - share - gap)
+        } else {
+            let cameraX = settings.resolvedCameraOnLeft ? content.minX : content.maxX - share
+            let screenX = settings.resolvedCameraOnLeft ? content.minX + share + gap : content.minX
+            let cameraHeight = settings.resolvedLayout == .split ? content.height : min(share, content.height)
+            cameraFrame = CGRect(x: cameraX, y: content.midY - cameraHeight / 2, width: share, height: cameraHeight)
+            screenSlot = CGRect(x: screenX, y: content.minY, width: content.width - gap - share, height: content.height)
+        }
         let fitted = PreviewStageLayout.fittedSize(forAspectRatio: screenAspectRatio, in: screenSlot.size)
         let fittedScreen = CGRect(x: screenSlot.midX - fitted.width / 2, y: screenSlot.midY - fitted.height / 2,
                             width: fitted.width, height: fitted.height)
-        // Split uses a full-height portrait panel; the smaller camera is a centered square.
-        let height = settings.resolvedLayout == .split ? content.height : min(width, content.height)
-        return Self(screen: settings.resolvedScreenFit == .cover ? screenSlot : fittedScreen, camera: CGRect(x: cameraX, y: content.midY - height / 2, width: width, height: height))
+        return Self(screen: settings.resolvedScreenFit == .cover ? screenSlot : fittedScreen, camera: cameraFrame)
     }
 
     /// Center-crop within the user's existing crop, preserving source coordinates for cursor and zoom tracking.

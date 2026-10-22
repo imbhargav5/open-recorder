@@ -17,28 +17,37 @@ struct CameraLayoutControls: View {
                     .help("Maximum reduction from the camera’s normal size during a screen zoom. 0% keeps its size; the default is 15%.")
             }
             if layoutBinding.wrappedValue.hasScreenPanel {
-                CameraSidePicker(selection: sideBinding, layout: settings.resolvedLayout)
+                CameraSidePicker(selection: settings.resolvedLayout.isVerticalSplit ? aboveBinding : sideBinding,
+                                 layout: settings.resolvedLayout)
                 CameraScreenFitPicker(selection: screenFitBinding)
-                InspectorSwitch(title: "Match camera corners", isOn: matchCornersBinding)
+                CameraBinaryPicker(title: "Corners", selection: matchCornersBinding,
+                                   firstTitle: "Match camera", firstSymbol: "rectangle.on.rectangle",
+                                   secondTitle: "Set separately", secondSymbol: "rectangle.dashed")
                 if !settings.resolvedMatchCameraCorners {
                     InspectorSlider(title: "Screen Radius", valueText: "\(Int(settings.resolvedScreenCornerRadius))px",
                         value: screenRadiusBinding, range: 0...100, step: 1, onEditingChanged: onEditingChanged)
                 }
-                InspectorSlider(title: "Camera Width", valueText: "\(Int(widthBinding.wrappedValue))%",
+                InspectorSlider(title: settings.resolvedLayout.isVerticalSplit ? "Camera Height" : "Camera Width", valueText: "\(Int(widthBinding.wrappedValue))%",
                     value: widthBinding, range: 10...70, step: 1, onEditingChanged: onEditingChanged)
                 InspectorSlider(title: "Gap", valueText: "\(Int(gapBinding.wrappedValue))%",
                     value: gapBinding, range: 0...12, step: 1, onEditingChanged: onEditingChanged)
             }
             if layoutBinding.wrappedValue != .overlay {
-                InspectorSwitch(title: "Keep face centered", isOn: Binding(
-                    get: { settings.keepsFaceCentered }, set: { settings.centerFace = $0 }))
+                if !layoutBinding.wrappedValue.hidesCamera {
+                    CameraBinaryPicker(title: "Face framing", selection: Binding(
+                        get: { settings.keepsFaceCentered }, set: { settings.centerFace = $0 }),
+                        firstTitle: "Keep centered", firstSymbol: "viewfinder",
+                        secondTitle: "Manual", secondSymbol: "hand.draw")
+                }
                 InspectorSlider(title: "Padding", valueText: "\(Int(paddingBinding.wrappedValue))%",
                     value: paddingBinding, range: 0...20, step: 1, onEditingChanged: onEditingChanged)
-                Text(layoutBinding.wrappedValue == .cameraOnly
-                    ? "Camera fills the canvas. Screen audio is kept."
-                    : (settings.resolvedScreenFit == .cover
-                        ? "Cover fills the screen panel, cropping the edges."
-                        : "Fit keeps the full screen visible at its original aspect ratio."))
+                Text(layoutBinding.wrappedValue == .screenOnly
+                    ? "Screen fills the canvas. Camera is hidden."
+                    : (layoutBinding.wrappedValue == .cameraOnly
+                        ? "Camera fills the canvas. Screen audio is kept."
+                        : (settings.resolvedScreenFit == .cover
+                            ? "Cover fills the screen panel, cropping the edges."
+                            : "Fit keeps the full screen visible at its original aspect ratio.")))
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
             }
@@ -65,6 +74,9 @@ struct CameraLayoutControls: View {
     private var sideBinding: Binding<Bool> {
         Binding(get: { settings.resolvedCameraOnLeft }, set: { settings.cameraOnLeft = $0 })
     }
+    private var aboveBinding: Binding<Bool> {
+        Binding(get: { settings.resolvedCameraAbove }, set: { settings.cameraAbove = $0 })
+    }
     private func value(_ keyPath: WritableKeyPath<FacecamSettings, Double?>,
                        resolved: KeyPath<FacecamSettings, Double>) -> Binding<Double> {
         Binding(get: { settings[keyPath: resolved] }, set: { settings[keyPath: keyPath] = $0 })
@@ -82,9 +94,11 @@ struct CameraCornerControls: View {
 
     var body: some View {
         if settings.resolvedLayout == .overlay {
-            InspectorSwitch(title: "Circle camera", isOn: Binding(
+            CameraBinaryPicker(title: "Camera shape", selection: Binding(
                 get: { settings.isCircle },
-                set: { settings.shape = $0 ? "circle" : "square" }))
+                set: { settings.shape = $0 ? "circle" : "square" }),
+                firstTitle: "Circle", firstSymbol: "circle",
+                secondTitle: "Rounded", secondSymbol: "rectangle.roundedtop")
         }
         InspectorSlider(title: "Camera radius", valueText: settings.isCircle ? "Circle" : "\(Int(settings.clamped.cornerRadius))px",
             value: Binding(get: { settings.clamped.cornerRadius }, set: {
@@ -94,10 +108,12 @@ struct CameraCornerControls: View {
                 settings.cornerRadius = $0
             }), range: 0...100, step: 1, onEditingChanged: onEditingChanged)
         if settings.resolvedLayout == .overlay {
-            InspectorSwitch(title: "Use frame corners", isOn: Binding(
+            CameraBinaryPicker(title: "Screen corners", selection: Binding(
                 get: { settings.overlayScreenCornerRadius == nil },
-                set: { settings.overlayScreenCornerRadius = $0 ? nil : 24 }))
-                .help("Turn off to give this segment its own screen corner radius.")
+                set: { settings.overlayScreenCornerRadius = $0 ? nil : 24 }),
+                firstTitle: "Match frame", firstSymbol: "rectangle.on.rectangle",
+                secondTitle: "Set separately", secondSymbol: "rectangle.dashed")
+                .help("Choose Set separately to give this segment its own screen corner radius.")
             if settings.overlayScreenCornerRadius != nil {
                 InspectorSlider(title: "Screen radius", valueText: "\(Int(settings.overlayScreenCornerRadius ?? 24))px",
                     value: Binding(get: { settings.overlayScreenCornerRadius ?? 24 },
@@ -173,13 +189,16 @@ private struct CameraSidePicker: View {
                 .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(.secondary)
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(minimum: 0), spacing: 6), count: 2), spacing: 6) {
-                ForEach([true, false], id: \.self) { left in
-                    CameraOptionTile(title: left ? "Left" : "Right", help: left ? "Camera on the left" : "Camera on the right",
-                                     isSelected: selection == left) {
-                        selection = left
+                ForEach([true, false], id: \.self) { first in
+                    let vertical = layout.isVerticalSplit
+                    CameraOptionTile(title: first ? (vertical ? "Above" : "Left") : (vertical ? "Below" : "Right"),
+                                     help: first ? (vertical ? "Camera above the screen" : "Camera on the left") : (vertical ? "Camera below the screen" : "Camera on the right"),
+                                     isSelected: selection == first) {
+                        selection = first
                     } thumbnail: {
                         CameraLayoutThumbnail(layout: layout)
-                            .scaleEffect(x: left == (layout == .split) ? 1 : -1, y: 1)
+                            .scaleEffect(x: vertical ? 1 : (first == (layout == .split) ? 1 : -1),
+                                         y: vertical && !first ? -1 : 1)
                     }
                 }
             }
@@ -229,6 +248,39 @@ private struct CameraScreenFitPicker: View {
     }
 }
 
+/// The same illustrated-card pattern used for layout choices, for settings
+/// that have two meaningful visual outcomes.
+private struct CameraBinaryPicker: View {
+    var title: String
+    @Binding var selection: Bool
+    var firstTitle: String
+    var firstSymbol: String
+    var secondTitle: String
+    var secondSymbol: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(.secondary)
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(minimum: 0), spacing: 6), count: 2), spacing: 6) {
+                choice(title: firstTitle, symbol: firstSymbol, isSelected: selection) { selection = true }
+                choice(title: secondTitle, symbol: secondSymbol, isSelected: !selection) { selection = false }
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(title)
+    }
+
+    private func choice(title: String, symbol: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
+        CameraOptionTile(title: title, help: title, isSelected: isSelected, action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 23, weight: .medium))
+                .foregroundStyle(Color.primary.opacity(0.72))
+        }
+    }
+}
+
 private struct CameraLayoutThumbnail: View {
     var layout: CameraLayout
 
@@ -240,12 +292,19 @@ private struct CameraLayoutThumbnail: View {
                     .overlay(alignment: .bottomTrailing) {
                         panel(width: 16, height: 16, camera: true).padding(2)
                     }
+            case .screenOnly:
+                panel(width: 48, height: 28, camera: false)
             case .cameraOnly:
                 panel(width: 48, height: 28, camera: true)
             case .split:
                 HStack(spacing: 4) {
                     panel(width: 22, height: 28, camera: true)
                     panel(width: 22, height: 28, camera: false)
+                }
+            case .verticalSplit:
+                VStack(spacing: 4) {
+                    panel(width: 48, height: 12, camera: true)
+                    panel(width: 48, height: 12, camera: false)
                 }
             case .sideBySide:
                 HStack(spacing: 4) {
