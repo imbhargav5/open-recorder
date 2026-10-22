@@ -11,18 +11,17 @@ final class TeleprompterOverlayController {
 
     var isVisible: Bool { window?.isVisible == true }
 
-    func show(script: String, for source: CaptureSource) {
-        let trimmed = script.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
+    func show(script: NSAttributedString, for source: CaptureSource) {
+        guard !script.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
 
         if let state {
-            state.script = trimmed
+            state.script = script
             state.resume()
             window?.orderFrontRegardless()
             return
         }
 
-        let state = TeleprompterState(script: trimmed)
+        let state = TeleprompterState(script: script)
         let frame = Self.frame(for: source)
         let panel = TeleprompterOverlayPanel(
             contentRect: frame,
@@ -47,7 +46,40 @@ final class TeleprompterOverlayController {
         panel.orderFrontRegardless()
     }
 
-    func toggle(script: String, for source: CaptureSource) {
+    /// Used by the editor voiceover workflow, where there is no capture source
+    /// but the reader still needs a prompt above the playback window.
+    func show(script: NSAttributedString) {
+        guard !script.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        if let state {
+            state.script = script
+            state.resume()
+            window?.orderFrontRegardless()
+            return
+        }
+
+        let screen = NSScreen.main ?? NSScreen.screens.first
+        let target = screen?.visibleFrame ?? .zero
+        let width = min(max(target.width * 0.52, 420), 760)
+        let height = min(max(target.height * 0.38, 300), 540)
+        let frame = CGRect(x: target.midX - width / 2, y: target.maxY - height - 58, width: width, height: height)
+        let state = TeleprompterState(script: script)
+        let panel = TeleprompterOverlayPanel(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        panel.isReleasedWhenClosed = false
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = true
+        panel.hidesOnDeactivate = false
+        panel.isFloatingPanel = true
+        panel.level = .floating
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+        panel.sharingType = .none
+        panel.contentView = NSHostingView(rootView: TeleprompterOverlay(state: state, onClose: { [weak self] in self?.hide() }))
+        self.window = panel
+        self.state = state
+        panel.orderFrontRegardless()
+    }
+
+    func toggle(script: NSAttributedString, for source: CaptureSource) {
         if isVisible { hide() } else { show(script: script, for: source) }
     }
 
@@ -82,14 +114,14 @@ private final class TeleprompterOverlayPanel: NSPanel {
 
 @MainActor
 private final class TeleprompterState: ObservableObject {
-    @Published var script: String
+    @Published var script: NSAttributedString
     @Published var isPaused = false
     @Published var speed: Double = 28
 
     private var accumulatedTime: TimeInterval = 0
     private var resumedAt = Date()
 
-    init(script: String) { self.script = script }
+    init(script: NSAttributedString) { self.script = script }
 
     func elapsed(at date: Date) -> TimeInterval {
         accumulatedTime + (isPaused ? 0 : date.timeIntervalSince(resumedAt))
@@ -126,7 +158,7 @@ private struct TeleprompterOverlay: View {
             GeometryReader { proxy in
                 TimelineView(.periodic(from: .now, by: 1.0 / 30.0)) { context in
                     let offset = max(0, state.elapsed(at: context.date) * state.speed - proxy.size.height * 0.28)
-                    Text(state.script)
+                    Text(AttributedString(state.script))
                         .font(.system(size: 30, weight: .semibold, design: .rounded))
                         .multilineTextAlignment(.center)
                         .foregroundStyle(.white)

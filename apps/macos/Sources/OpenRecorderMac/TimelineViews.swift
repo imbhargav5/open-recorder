@@ -252,7 +252,7 @@ struct TimelineTrackContent: View {
             }, onScrubbingChanged: playback.setScrubbing)
                 .rectangularHitTarget()
             TimelineClipRow(videoURL: videoURL, duration: playback.duration, currentTime: playback.currentTime, viewport: sourceViewport, splitTimes: edits.clipSplitTimes, trimRegions: edits.trimRegions, clipSpeeds: edits.clipSpeeds, selectedClipIndex: edits.selectedClipIndex, seek: playback.seek(to:), onScrubbingChanged: playback.setScrubbing, edits: edits)
-            TimelineVoiceoverRow(voiceover: edits.snapshot.voiceover, duration: playback.duration, viewport: sourceViewport, seek: playback.seek(to:))
+            TimelineVoiceoverRow(voiceover: edits.snapshot.voiceover, duration: playback.duration, viewport: sourceViewport, seek: playback.seek(to:), edits: edits)
             TimelineLayerRow(kind: .zoom, duration: playback.duration, viewport: sourceViewport, regions: edits.zoomRegions.map(TimelineRegionRenderData.zoom), selectedID: edits.selectedKind == .zoom ? edits.selectedID : nil, edits: edits)
             TimelineLayerRow(kind: .blur, duration: playback.duration, viewport: sourceViewport, regions: edits.snapshot.blurRegions.map(TimelineRegionRenderData.blur), selectedID: edits.selectedKind == .blur ? edits.selectedID : nil, edits: edits)
             TimelineCameraLayerRow(
@@ -315,6 +315,8 @@ private struct TimelineVoiceoverRow: View {
     var duration: Double
     var viewport: TimelineViewport
     var seek: (Double) -> Void
+    var edits: TimelineEditDriver
+    @State private var dragStart: Double?
 
     var body: some View {
         GeometryReader { proxy in
@@ -342,6 +344,27 @@ private struct TimelineVoiceoverRow: View {
                     .offset(x: leading)
                     .padding(.vertical, 8)
                     .onTapGesture { seek(start) }
+                    .gesture(
+                        DragGesture(minimumDistance: 2, coordinateSpace: .local)
+                            .onChanged { value in
+                                if dragStart == nil {
+                                    dragStart = voiceover.startTime
+                                    edits.beginUndoTransaction()
+                                }
+                                guard let dragStart else { return }
+                                let secondsPerPoint = viewport.visibleDuration / max(1, Double(proxy.size.width))
+                                let maximumStart = max(0, duration - max(0, voiceover.duration))
+                                var moved = voiceover
+                                moved.startTime = min(max(0, dragStart + Double(value.translation.width) * secondsPerPoint), maximumStart)
+                                edits.send(.replaceVoiceover(moved))
+                            }
+                            .onEnded { _ in
+                                if dragStart != nil { edits.endUndoTransaction() }
+                                dragStart = nil
+                            }
+                    )
+                    .help("Drag to move the voiceover in time")
+                    .accessibilityLabel("Voiceover timeline clip")
                 } else {
                     Text("Generate a voiceover from the Audio panel")
                         .font(.system(size: 11, weight: .medium))

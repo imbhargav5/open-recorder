@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct AudioInspector: View {
+    var voiceGenerator: VoiceGeneratorController
     var edits: TimelineEditDriver
     var playback: VideoPlaybackDriver
     private var settings: AudioProcessingSettings { edits.snapshot.audio }
@@ -20,40 +21,60 @@ struct AudioInspector: View {
         })
     }
     var body: some View {
-        InspectorGroup(title: "Voice Enhance", symbolName: "waveform.badge.plus", showsTopDivider: false) {
-            Button(enhanceSettings.enabled ? "Voice Enhance: On" : "Enhance voice") {
-                var next = enhanceSettings
-                next.enabled.toggle()
-                if next.enabled && next == .default { next = .podcastReady }
-                edits.send(.updateAIEnhance(next))
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(enhanceSettings.enabled ? .green : .accentColor)
-            .frame(maxWidth: .infinity)
-            if enhanceSettings.enabled {
-                enhanceControl("Intensity", key: \.intensity, range: 0...1)
-            }
-            Text("Local processing: noise reduction between words, rumble removal, vocal presence, de-essing, compression, and peak protection. Replay after changing it to compare.")
-                .font(.caption).foregroundStyle(.secondary)
+        VoiceGeneratorInspector(controller: voiceGenerator, edits: edits, playback: playback)
+        DisclosureGroup {
+            audioControls.padding(.top, 8)
+        } label: {
+            Label("Audio cleanup & mix", systemImage: "slider.horizontal.3")
+                .font(.subheadline.weight(.semibold))
         }
-        InspectorGroup(title: "Voice", symbolName: "waveform") {
-            HStack {
-                Button("Voice preset") {
-                    var preset = AudioProcessingSettings.voice
-                    preset.routing = settings.routing
-                    preset.syncOffsetMs = settings.syncOffsetMs
-                    edits.send(.updateAudio(preset))
+        .padding(.top, 2)
+    }
+
+    private var audioControls: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            InspectorGroup(title: "Voice Enhance", symbolName: "waveform.badge.plus", showsTopDivider: false) {
+                Button(enhanceSettings.enabled ? "Voice Enhance: On" : "Enhance voice") {
+                    var next = enhanceSettings
+                    next.enabled.toggle()
+                    if next.enabled && next == .default { next = .podcastReady }
+                    edits.send(.updateAIEnhance(next))
                 }
-                Button("Reset") { edits.send(.updateAudio(.default)) }
-            }
-            Picker("Channels", selection: binding(\.routing)) {
-                ForEach(AudioProcessingSettings.Routing.allCases) { routing in
-                    Text(routing.title).tag(routing)
+                .buttonStyle(.borderedProminent)
+                .tint(enhanceSettings.enabled ? .green : .accentColor)
+                .frame(maxWidth: .infinity)
+                if enhanceSettings.enabled {
+                    enhanceControl("Intensity", key: \.intensity, range: 0...1)
                 }
+                Text("Local processing: noise reduction between words, rumble removal, vocal presence, de-essing, compression, and peak protection. Replay after changing it to compare.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
-            Text("Choose the connected input to hear a single microphone in both speakers.")
-                .font(.caption).foregroundStyle(.secondary)
+            InspectorGroup(title: "Voice", symbolName: "waveform") {
+                HStack {
+                    Button("Voice preset") {
+                        var preset = AudioProcessingSettings.voice
+                        preset.routing = settings.routing
+                        preset.syncOffsetMs = settings.syncOffsetMs
+                        edits.send(.updateAudio(preset))
+                    }
+                    Button("Reset") { edits.send(.updateAudio(.default)) }
+                }
+                Picker("Channels", selection: binding(\.routing)) {
+                    ForEach(AudioProcessingSettings.Routing.allCases) { routing in
+                        Text(routing.title).tag(routing)
+                    }
+                }
+                Text("Choose the connected input to hear a single microphone in both speakers.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            DisclosureGroup("Loudness, sync & tone") {
+                advancedControls.padding(.top, 8)
+            }
         }
+    }
+
+    private var advancedControls: some View {
+        VStack(alignment: .leading, spacing: 14) {
         InspectorGroup(title: "Loudness", symbolName: "speaker.wave.2") {
             Toggle("Normalize loudness", isOn: binding(\.normalize))
             if settings.normalize {
@@ -95,7 +116,7 @@ struct AudioInspector: View {
             Text("Applies to preview and export. Changes affect the recording’s combined audio.")
                 .font(.caption).foregroundStyle(.secondary)
         }
-        VoiceGeneratorInspector(edits: edits, playback: playback)
+        }
     }
     private func control(_ title: String, key: WritableKeyPath<AudioProcessingSettings, Double>,
                          range: ClosedRange<Double>, suffix: String, scale: Double = 1) -> some View {

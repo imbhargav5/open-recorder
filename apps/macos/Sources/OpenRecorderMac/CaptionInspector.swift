@@ -11,9 +11,12 @@ struct CaptionInspector: View {
     private var track: CaptionTrack? { edits.snapshot.captions }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(spacing: 7) {
-                Text("Captions").font(.headline)
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .center, spacing: 8) {
+                Image(systemName: "captions.bubble.fill")
+                    .foregroundStyle(.blue)
+                    .font(.system(size: 16, weight: .semibold))
+                Text("Captions").font(.title3.weight(.semibold))
                 Text("ALPHA")
                     .font(.system(size: 9, weight: .semibold))
                     .tracking(0.7)
@@ -22,19 +25,64 @@ struct CaptionInspector: View {
                     .padding(.vertical, 2)
                     .background(Theme.fgMuted.opacity(0.10), in: Capsule())
                     .accessibilityLabel("Alpha")
-            }
-            DisclosureGroup("Local AI setup", isExpanded: $setupExpanded) {
-                setup.padding(.top, 10)
-            }
-            Text("Processed on this Mac").font(.footnote).foregroundStyle(.secondary)
-            Picker("Language", selection: $controller.language) {
-                Text("Auto detect").tag("auto")
-                ForEach([("en", "English"), ("hi", "Hindi"), ("te", "Telugu"), ("es", "Spanish"), ("fr", "French"), ("de", "German"), ("ja", "Japanese"), ("zh", "Chinese"), ("pt", "Portuguese"), ("ko", "Korean"), ("ar", "Arabic")], id: \.0) { code, name in
-                    Text(name).tag(code)
+                Spacer()
+                if track != nil {
+                    Label("Ready", systemImage: "checkmark.circle.fill")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.green)
                 }
-            }.disabled(controller.isBusy)
+            }
+
+            Text("Create editable subtitles locally, then refine their style and timing.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 7) {
+                    Image(systemName: "lock.fill").font(.caption)
+                    Text("Processed privately on this Mac")
+                        .font(.caption.weight(.medium))
+                    Spacer()
+                    Button(setupExpanded ? "Hide setup" : "Setup") { setupExpanded.toggle() }
+                        .buttonStyle(.plain)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.blue)
+                }
+                CaptionReadinessRow(title: "Speech model", detail: controller.speechReady ? "Ready" : "Download needed", isReady: controller.speechReady)
+                CaptionReadinessRow(title: "Cleanup", detail: controller.models.isEmpty ? "Optional" : "Connected", isReady: !controller.models.isEmpty, optional: true)
+                if setupExpanded {
+                    Divider().overlay(Theme.border.opacity(0.65))
+                    setup
+                }
+            }
+            .padding(11)
+            .background(Theme.fg.opacity(0.045), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay { RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(Theme.border.opacity(0.72), lineWidth: 1) }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Spoken language").font(.caption.weight(.medium)).foregroundStyle(Theme.fgMuted)
+                Picker("Spoken language", selection: $controller.language) {
+                    Text("Auto detect").tag("auto")
+                    ForEach([("en", "English"), ("hi", "Hindi"), ("te", "Telugu"), ("es", "Spanish"), ("fr", "French"), ("de", "German"), ("ja", "Japanese"), ("zh", "Chinese"), ("pt", "Portuguese"), ("ko", "Korean"), ("ar", "Arabic")], id: \.0) { code, name in
+                        Text(name).tag(code)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .disabled(controller.isBusy)
             if controller.hasAudio == false {
-                Label("This recording has no audio.", systemImage: "speaker.slash").font(.footnote)
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "speaker.slash.fill").foregroundStyle(.orange)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("No audio track").font(.caption.weight(.semibold))
+                        Text("Captions need spoken audio in the recording.").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                .padding(10)
+                .background(.orange.opacity(0.10), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
             if controller.isBusy {
                 HStack {
@@ -94,7 +142,6 @@ struct CaptionInspector: View {
 
     private var setup: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label("Speech model: \(controller.speechReady ? "Ready" : "Download needed")", systemImage: controller.speechReady ? "checkmark.circle.fill" : "arrow.down.circle")
             if !controller.speechReady {
                 Button("Download speech model (148 MB)") { controller.downloadSpeechModel() }
                     .disabled(controller.isBusy)
@@ -103,7 +150,7 @@ struct CaptionInspector: View {
                 Text("Speech helper missing. Reinstall Open Recorder to enable generation.")
                     .font(.footnote).foregroundStyle(.secondary)
             }
-            Label("Ollama cleanup (optional): \(controller.ollamaStatus)", systemImage: controller.models.isEmpty ? "circle" : "checkmark.circle.fill")
+            Text("Optional local cleanup").font(.caption.weight(.semibold))
             Picker("Text model", selection: $controller.selectedModel) {
                 if !controller.models.contains(controller.selectedModel) {
                     Text(controller.selectedModel.isEmpty ? "Select a model" : "\(controller.selectedModel) (missing)").tag(controller.selectedModel)
@@ -256,6 +303,23 @@ struct CaptionInspector: View {
         track.segments.removeAll { $0.id == id }
         track.isEdited = true
         apply(track)
+    }
+}
+
+private struct CaptionReadinessRow: View {
+    var title: String
+    var detail: String
+    var isReady: Bool
+    var optional = false
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Image(systemName: isReady ? "checkmark.circle.fill" : (optional ? "circle" : "arrow.down.circle.fill"))
+                .foregroundStyle(isReady ? .green : (optional ? Color.secondary : .orange))
+            Text(title).font(.caption)
+            Spacer()
+            Text(detail).font(.caption).foregroundStyle(.secondary)
+        }
     }
 }
 

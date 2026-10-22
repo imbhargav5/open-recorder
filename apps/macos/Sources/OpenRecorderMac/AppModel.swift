@@ -229,7 +229,9 @@ final class AppModel: ObservableObject {
     @Published private(set) var isCapturePreflightRunning = false
     @Published private(set) var isTerminationPending = false
     @Published private(set) var activeRecordingStartDate: Date? = nil
-    @Published var teleprompterScript = ""
+    /// Kept as an attributed string so emphasis added in the script editor is
+    /// carried through to the private teleprompter overlay.
+    @Published var teleprompterScript = NSAttributedString(string: "")
     @Published private(set) var shortcutPreferences: ShortcutPreferences = .defaultPreferences
     @Published private(set) var isShortcutRecorderActive = false
     @Published private(set) var shortcutRegistrationRetryGeneration = 0

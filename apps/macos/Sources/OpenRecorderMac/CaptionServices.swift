@@ -121,6 +121,12 @@ struct LocalCaptionSpeechService: CaptionTranscribing {
             .appendingPathComponent("CaptionModels", isDirectory: true)
     }
     static var modelFile: URL { directory.appendingPathComponent("ggml-base.bin") }
+
+    /// Larger Whisper checkpoint used for voice-sample transcripts. Voice cloning
+    /// conditions on this text, so accuracy matters more than speed there.
+    static let accurateModelSHA256 = "1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b"
+    static let accurateModelURL = URL(string: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin")!
+    static var accurateModelFile: URL { directory.appendingPathComponent("ggml-small.bin") }
     static var helper: URL? {
         let bundled = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/whisper-cli")
         if FileManager.default.isExecutableFile(atPath: bundled.path) { return bundled }
@@ -138,33 +144,46 @@ struct LocalCaptionSpeechService: CaptionTranscribing {
         return FileManager.default.isExecutableFile(atPath: legacyDevelopment.path) ? legacyDevelopment : nil
     }
 
-    static func modelReady(at url: URL = modelFile) async -> Bool {
-        await Task.detached(priority: .utility) { (try? validateModel(url)) == true }.value
+    static func modelReady(at url: URL = modelFile, sha256: String = modelSHA256) async -> Bool {
+        await Task.detached(priority: .utility) { (try? validateModel(url, sha256: sha256)) == true }.value
     }
 
-    private static func validateModel(_ url: URL) throws -> Bool {
+    static func accurateModelReady() async -> Bool {
+        await modelReady(at: accurateModelFile, sha256: accurateModelSHA256)
+    }
+
+    static func downloadAccurateModel(progress: @escaping @Sendable (Double) -> Void = { _ in }) async throws {
+        try await downloadModel(from: accurateModelURL, to: accurateModelFile, sha256: accurateModelSHA256, progress: progress)
+    }
+
+    private static func validateModel(_ url: URL, sha256 expected: String = modelSHA256) throws -> Bool {
         let handle = try FileHandle(forReadingFrom: url)
         defer { try? handle.close() }
         var hash = SHA256()
         while let chunk = try handle.read(upToCount: 1_048_576), !chunk.isEmpty {
             hash.update(data: chunk)
         }
-        return hash.finalize().map { String(format: "%02x", $0) }.joined() == modelSHA256
+        return hash.finalize().map { String(format: "%02x", $0) }.joined() == expected
     }
 
     static func downloadModel(progress: @escaping @Sendable (Double) -> Void = { _ in }) async throws {
+        try await downloadModel(from: modelURL, to: modelFile, sha256: modelSHA256, progress: progress)
+    }
+
+    private static func downloadModel(from source: URL, to destinationFile: URL, sha256: String,
+                                      progress: @escaping @Sendable (Double) -> Void) async throws {
         let delegate = CaptionDownloadProgress(progress)
-        let (temporary, response) = try await URLSession.shared.download(from: modelURL, delegate: delegate)
+        let (temporary, response) = try await URLSession.shared.download(from: source, delegate: delegate)
         defer { try? FileManager.default.removeItem(at: temporary) }
         guard let response = response as? HTTPURLResponse, response.statusCode == 200,
-              try validateModel(temporary) else {
+              try validateModel(temporary, sha256: sha256) else {
             throw CaptionFailure.message("Speech model download failed verification. Please retry.")
         }
         try Task.checkCancellation()
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         // Atomic publication prevents concurrent windows from observing a partial model.
         let bytes = try Data(contentsOf: temporary, options: .mappedIfSafe)
-        try bytes.write(to: modelFile, options: .atomic)
+        try bytes.write(to: destinationFile, options: .atomic)
     }
 
     static func prepareAudio(video: URL, destination: URL) async throws {

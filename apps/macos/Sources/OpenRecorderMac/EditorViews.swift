@@ -125,6 +125,7 @@ struct VideoEditorStudioView: View {
     var editorSessionID: UUID?
     var workspace: EditorWorkspaceDriver
     @State private var playback = VideoPlaybackController()
+    @State private var voiceGenerator = VoiceGeneratorController()
     @State private var includeCaptions = true
     var editor: VideoEditorDriver
     var timelineEdits: TimelineEditDriver
@@ -346,7 +347,8 @@ struct VideoEditorStudioView: View {
             cursorSmoothing: editor.binding(\.cursorOverlay.smoothing), cursorStyleID: editor.binding(\.cursorOverlay.styleID),
             cameraSettings: inspectorCameraSettingsBinding, onCameraLayoutEditingChanged: cameraLayoutUndoTransaction,
             recordingSession: recordingSession,
-            captionController: workspace.captions, captionEdits: timelineEdits, captionPlayback: playback,
+            captionController: workspace.captions, voiceGenerator: voiceGenerator,
+            captionEdits: timelineEdits, captionPlayback: playback,
             sceneEdits: timelineEdits, sceneCurrentTime: playback.currentTime,
             activeTab: $activeInspector, scene: editor.binding(\.scene), canvasAspect: editor.previewAspectPresetBinding,
             sceneEndpoint: $sceneEndpoint, showsSelection: $showsTimelineSelection,

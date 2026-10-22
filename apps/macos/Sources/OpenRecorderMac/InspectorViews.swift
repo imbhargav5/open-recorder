@@ -28,6 +28,7 @@ struct SettingsInspector: View {
     var onCameraLayoutEditingChanged: (Bool) -> Void = { _ in }
     var recordingSession: RecordingSession?
     var captionController: CaptionController? = nil
+    var voiceGenerator: VoiceGeneratorController
     var captionEdits: TimelineEditDriver? = nil
     var captionPlayback: VideoPlaybackController? = nil
     var sceneEdits: TimelineEditDriver? = nil
@@ -347,7 +348,7 @@ struct SettingsInspector: View {
             }
         case .audio:
             if let captionEdits, let captionPlayback {
-                AudioInspector(edits: captionEdits, playback: captionPlayback)
+                AudioInspector(voiceGenerator: voiceGenerator, edits: captionEdits, playback: captionPlayback)
             }
 
         }

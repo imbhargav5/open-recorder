@@ -117,7 +117,7 @@ struct CaptureHUD: View {
             }
             .help(recordingShortcutHelpTitle)
 
-            if !model.teleprompterScript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if !model.teleprompterScript.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 HUDPrimaryIconButton(
                     title: "Show or hide teleprompter",
                     symbolName: "text.quote",
@@ -248,7 +248,7 @@ struct CaptureHUD: View {
     private var teleprompterToggle: some View {
         HUDToggle(
             symbolName: "text.quote",
-            isActive: !model.teleprompterScript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            isActive: !model.teleprompterScript.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
             title: "Teleprompter script",
             isDisabled: !options.state.canChangeOptions
         ) { isTeleprompterEditorPresented = true }
@@ -545,7 +545,7 @@ struct CaptureHUD: View {
 }
 
 private struct TeleprompterScriptEditor: View {
-    @Binding var script: String
+    @Binding var script: NSAttributedString
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -556,20 +556,99 @@ private struct TeleprompterScriptEditor: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            TextEditor(text: $script)
-                .font(.system(size: 14))
+            TeleprompterRichTextEditor(text: $script)
                 .frame(width: 350, height: 220)
                 .overlay { RoundedRectangle(cornerRadius: 7).stroke(Theme.borderSubtle) }
                 .accessibilityLabel("Teleprompter script")
-            HStack {
-                Text("\(script.count) characters").font(.caption).foregroundStyle(.secondary)
+            HStack(spacing: 6) {
+                Text("Select text to format it:").font(.caption).foregroundStyle(.secondary)
+                RichTextFormatButton(title: "B", action: Selector(("toggleBoldface:")))
+                    .fontWeight(.bold)
+                    .accessibilityLabel("Bold")
+                RichTextFormatButton(title: "I", action: Selector(("toggleItalics:")))
+                    .italic()
+                    .accessibilityLabel("Italic")
+                RichTextFormatButton(title: "U", action: Selector(("toggleUnderline:")))
+                    .underline()
+                    .accessibilityLabel("Underline")
                 Spacer()
-                Button("Clear", role: .destructive) { script = "" }
+            }
+            HStack {
+                Text("\(script.string.count) characters").font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                Button("Clear", role: .destructive) { script = NSAttributedString(string: "") }
                 Button("Done") { dismiss() }
                     .buttonStyle(.borderedProminent)
             }
         }
         .padding(14)
+    }
+}
+
+struct RichTextFormatButton: View {
+    let title: String
+    let action: Selector
+
+    var body: some View {
+        Button(title) {
+            NSApp.sendAction(action, to: nil, from: nil)
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+    }
+}
+
+/// NSTextView supplies native rich-text editing, including paste with formatting
+/// and the standard Format menu, while this binding keeps the overlay in sync.
+struct TeleprompterRichTextEditor: NSViewRepresentable {
+    @Binding var text: NSAttributedString
+
+    func makeCoordinator() -> Coordinator { Coordinator(text: $text) }
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let textView = NSTextView()
+        textView.isRichText = true
+        textView.allowsUndo = true
+        textView.isAutomaticQuoteSubstitutionEnabled = false
+        textView.isAutomaticDashSubstitutionEnabled = false
+        textView.font = .systemFont(ofSize: 14)
+        textView.textColor = .labelColor
+        textView.backgroundColor = .clear
+        textView.drawsBackground = false
+        textView.textContainerInset = NSSize(width: 7, height: 7)
+        textView.isHorizontallyResizable = false
+        textView.autoresizingMask = [.width]
+        textView.textContainer?.widthTracksTextView = true
+        textView.delegate = context.coordinator
+        textView.textStorage?.setAttributedString(text)
+
+        let scrollView = NSScrollView()
+        scrollView.borderType = .noBorder
+        scrollView.hasVerticalScroller = true
+        scrollView.drawsBackground = false
+        scrollView.documentView = textView
+        return scrollView
+    }
+
+    func updateNSView(_ scrollView: NSScrollView, context: Context) {
+        guard !context.coordinator.isEditing,
+              let textView = scrollView.documentView as? NSTextView,
+              !textView.attributedString().isEqual(to: text) else { return }
+        textView.textStorage?.setAttributedString(text)
+    }
+
+    final class Coordinator: NSObject, NSTextViewDelegate {
+        @Binding var text: NSAttributedString
+        var isEditing = false
+
+        init(text: Binding<NSAttributedString>) { _text = text }
+
+        func textDidChange(_ notification: Notification) {
+            guard let textView = notification.object as? NSTextView else { return }
+            isEditing = true
+            text = textView.attributedString()
+            isEditing = false
+        }
     }
 }
 
