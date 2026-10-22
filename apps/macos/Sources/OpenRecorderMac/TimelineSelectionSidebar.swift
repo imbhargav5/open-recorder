@@ -151,7 +151,7 @@ struct TimelineSelectionSidebar: View {
         }
 
         InspectorGroup(title: "Visibility", symbolName: "eye") {
-            InspectorSwitch(title: "Visible", isOn: cameraEnabledBinding(id: clip.id))
+            TimelineVisibilityPicker(isVisible: cameraEnabledBinding(id: clip.id))
         }
 
         InspectorGroup(title: "Layout", symbolName: "rectangle.split.2x1") {
@@ -265,6 +265,20 @@ struct TimelineSelectionSidebar: View {
             } else {
                 unavailableSelection
             }
+        case .blur:
+            if let blur = edits.snapshot.blurRegions.first(where: { $0.id == id }) {
+                InspectorGroup(title: "Blur", symbolName: "eye.slash.fill") {
+                    Text("Drag the orange clip in the timeline to move it, or drag either edge to change when the blur appears.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    InspectorSlider(title: "Strength", valueText: "\(Int(blur.blurRadius))",
+                        value: blurStrengthBinding(id: id), range: 5...60, step: 1,
+                        onEditingChanged: handleUndoTransaction)
+                }
+            } else {
+                unavailableSelection
+            }
         case .trim:
             unavailableSelection
         case .annotation:
@@ -334,6 +348,8 @@ struct TimelineSelectionSidebar: View {
         switch edits.selectedKind {
         case .zoom:
             return "plus.magnifyingglass"
+        case .blur:
+            return "eye.slash.fill"
         case .trim:
             return "scissors"
         case .annotation:
@@ -347,11 +363,25 @@ struct TimelineSelectionSidebar: View {
         switch kind {
         case .zoom:
             edits.zoomRegions.first { $0.id == id }?.span
+        case .blur:
+            edits.snapshot.blurRegions.first { $0.id == id }?.span
         case .trim:
             edits.trimRegions.first { $0.id == id }?.span
         case .annotation:
             edits.annotationRegions.first { $0.id == id }?.span
         }
+    }
+
+    private func blurStrengthBinding(id: TimelineRegionID) -> Binding<Double> {
+        Binding(
+            get: { edits.snapshot.blurRegions.first(where: { $0.id == id })?.blurRadius ?? 25 },
+            set: { value in
+                var regions = edits.snapshot.blurRegions
+                guard let index = regions.firstIndex(where: { $0.id == id }) else { return }
+                regions[index].blurRadius = value
+                edits.send(.updateBlurRegions(regions))
+            }
+        )
     }
 
     private func zoomDepthBinding(id: TimelineRegionID) -> Binding<Double> {
@@ -449,6 +479,46 @@ struct TimelineSelectionSidebar: View {
 
     private func focusValueText(_ value: Double) -> String {
         "\(Int((value * 100).rounded()))%"
+    }
+}
+
+private struct TimelineVisibilityPicker: View {
+    @Binding var isVisible: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Camera visibility")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(.secondary)
+            HStack(spacing: 6) {
+                choice(title: "Show camera", symbol: "eye.fill", isSelected: isVisible) { isVisible = true }
+                choice(title: "Hide camera", symbol: "eye.slash.fill", isSelected: !isVisible) { isVisible = false }
+            }
+        }
+    }
+
+    private func choice(title: String, symbol: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
+        StudioButton(hitTarget: .rounded(Theme.radiusMd), help: title, action: action) {
+            VStack(spacing: 5) {
+                Image(systemName: symbol)
+                    .font(.system(size: 21, weight: .medium))
+                Text(title)
+                    .font(.system(size: 10, weight: .semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 58)
+            .foregroundStyle(isSelected ? Color.white : Color.primary.opacity(0.86))
+            .background(isSelected ? Color.white.opacity(0.18) : Theme.overlay,
+                        in: RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous)
+                    .stroke(isSelected ? Color.white.opacity(0.85) : Theme.overlay)
+            }
+        }
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 

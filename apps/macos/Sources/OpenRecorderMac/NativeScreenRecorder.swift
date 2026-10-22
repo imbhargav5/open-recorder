@@ -37,6 +37,8 @@ final class NativeScreenRecorder: NSObject {
     private var stream: SCStream?
     private var recordingOutput: SCRecordingOutput?
     private var recordingDelegate: RecordingOutputDelegate?
+    private var fallbackVideoTrack: ScreenCaptureVideoTrack?
+    private var fallbackVideoURL: URL?
     private var startClock: ScreenCaptureStartClock?
     private var audioTracks: [ScreenCaptureAudioTrack] = []
     private var captureURL: URL?
@@ -61,21 +63,21 @@ final class NativeScreenRecorder: NSObject {
         outputConfiguration.outputURL = outputURL
         outputConfiguration.outputFileType = .mp4
         outputConfiguration.videoCodecType = .h264
-
         let recordingDelegate = RecordingOutputDelegate()
-        let recordingOutput = SCRecordingOutput(
-            configuration: outputConfiguration,
-            delegate: recordingDelegate
-        )
+        let recordingOutput = SCRecordingOutput(configuration: outputConfiguration, delegate: recordingDelegate)
         let stream = SCStream(
             filter: filterAndSize.filter,
             configuration: configuration,
             delegate: nil
         )
 
-        let startClock = ScreenCaptureStartClock()
-        try stream.addStreamOutput(startClock, type: .screen, sampleHandlerQueue: startClock.sampleQueue)
-        self.startClock = startClock
+        let fallbackURL = outputURL.deletingLastPathComponent().appendingPathComponent(".screen-fallback-\(UUID().uuidString).mp4")
+        let fallbackVideoTrack = ScreenCaptureVideoTrack(url: fallbackURL)
+        // SCRecordingOutput is not an SCStream output; this parallel writer is
+        // safe and lets us recover when Apple's recorder finalizes too early.
+        try stream.addStreamOutput(fallbackVideoTrack, type: .screen, sampleHandlerQueue: fallbackVideoTrack.sampleQueue)
+        self.fallbackVideoTrack = fallbackVideoTrack
+        self.fallbackVideoURL = fallbackURL
         try stream.addRecordingOutput(recordingOutput)
 
         // SCRecordingOutput combines audio internally. Preserve each SCK source
@@ -99,7 +101,8 @@ final class NativeScreenRecorder: NSObject {
         do {
             try await startCapture(stream)
             let notifiedAt = try await recordingDelegate.waitForStart()
-            let startedAt = try await startClock.startDate(fallback: notifiedAt)
+            try await fallbackVideoTrack.waitForFirstFrame()
+            let startedAt = notifiedAt
             mediaStartedAt = startedAt
             for track in audioTracks { try await track.waitForFirstSamples() }
             return startedAt
@@ -108,6 +111,8 @@ final class NativeScreenRecorder: NSObject {
             self.stream = nil
             self.recordingOutput = nil
             self.recordingDelegate = nil
+            self.fallbackVideoTrack = nil
+            self.fallbackVideoURL = nil
             self.startClock = nil
             for track in audioTracks { await track.finish() }
             audioTracks = []
@@ -159,6 +164,8 @@ final class NativeScreenRecorder: NSObject {
             self.stream = nil
             recordingOutput = nil
             recordingDelegate = nil
+            fallbackVideoTrack = nil
+            fallbackVideoURL = nil
             startClock = nil
             audioTracks = []
             captureURL = nil
@@ -167,11 +174,27 @@ final class NativeScreenRecorder: NSObject {
         do {
             try await stopCapture(stream)
         } catch {
-            for track in audioTracks { await track.finish() }
-            throw error
+            // ScreenCaptureKit can stop a stream itself (for example after an
+            // interruption) and deliver recordingOutputDidFinishRecording before
+            // the user presses Stop. Asking it to stop that same stream again
+            // produces SCStreamErrorDomain -3808, even though the MP4 is complete.
+            // Treat that terminal state as a normal stop so the completed file can
+            // be finalized instead of surfacing a misleading HUD failure.
+            guard Self.isAlreadyStoppedStreamError(error) || recordingDelegate?.hasFinished == true else {
+                for track in audioTracks { await track.finish() }
+                throw error
+            }
         }
         for track in audioTracks { await track.finish() }
         try await recordingDelegate?.waitForFinish()
+        try await fallbackVideoTrack?.finish()
+        if let captureURL, let fallbackVideoURL {
+            let nativeDuration = try await AVURLAsset(url: captureURL).load(.duration).seconds
+            let fallbackDuration = try await AVURLAsset(url: fallbackVideoURL).load(.duration).seconds
+            if fallbackDuration > nativeDuration + 0.5 {
+                _ = try FileManager.default.replaceItemAt(captureURL, withItemAt: fallbackVideoURL)
+            } else { try? FileManager.default.removeItem(at: fallbackVideoURL) }
+        }
         if !audioTracks.isEmpty, let captureURL, let mediaStartedAt {
             var sources: [ScreenCaptureAudioTrack.Result] = []
             for track in audioTracks { sources.append(try await track.result()) }
@@ -371,6 +394,11 @@ final class NativeScreenRecorder: NSObject {
             }
         }
     }
+
+    static func isAlreadyStoppedStreamError(_ error: Error) -> Bool {
+        let error = error as NSError
+        return error.domain == "SCStreamErrorDomain" && error.code == -3808
+    }
 }
 
 @available(macOS 15.0, *)
@@ -380,6 +408,10 @@ private final class RecordingOutputDelegate: NSObject, SCRecordingOutputDelegate
     private var startedAt: Date?
     private var didFinish = false
     private var failure: Error?
+
+    var hasFinished: Bool {
+        didFinish
+    }
 
     func waitForStart() async throws -> Date {
         if let failure {

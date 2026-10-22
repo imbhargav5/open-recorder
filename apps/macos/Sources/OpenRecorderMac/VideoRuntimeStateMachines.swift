@@ -239,10 +239,11 @@ final class VideoPlaybackDriver {
     }
 
     func setTimelineEdits(_ edits: TimelineEditSnapshot) {
-        let changed = state.timelineEdits.audio != edits.audio
+        let changed = state.timelineEdits.audio != edits.audio || state.timelineEdits.aiEnhance != edits.aiEnhance
         let syncChanged = state.timelineEdits.audio.syncOffset != edits.audio.syncOffset
+        let voiceoverChanged = state.timelineEdits.voiceover != edits.voiceover
         send(.timelineEditsChanged(edits))
-        if syncChanged { refreshAudioSynchronization() }
+        if syncChanged || voiceoverChanged { refreshAudioSynchronization() }
         else if changed { refreshAudio() }
     }
 
@@ -255,7 +256,9 @@ final class VideoPlaybackDriver {
         audioSyncTask = Task { [weak self, weak player] in
             do {
                 try await Task.sleep(for: .milliseconds(150))
-                let asset = try await ProjectAudioProcessor.synchronizedAsset(from: AVURLAsset(url: url), offsetMs: offset)
+                let synchronizedAsset = try await ProjectAudioProcessor.synchronizedAsset(from: AVURLAsset(url: url), offsetMs: offset)
+                let asset = try await ProjectAudioProcessor.addingVoiceover(
+                    to: synchronizedAsset, voiceover: self?.state.timelineEdits.voiceover)
                 try Task.checkCancellation()
                 guard let self, let player, self.player === player else { return }
                 let time = player.currentTime()
@@ -282,7 +285,8 @@ final class VideoPlaybackDriver {
         audioTask?.cancel()
         guard let item = player?.currentItem else { return }
         let settings = state.timelineEdits.audio
-        if !settings.isActive {
+        let aiEnhance = state.timelineEdits.aiEnhance
+        if !settings.isActive && !aiEnhance.enabled {
             item.audioMix = nil
             audioStatus = "Original audio"
             audioIsProcessing = false
@@ -304,11 +308,12 @@ final class VideoPlaybackDriver {
                                         output < settings.targetLUFS - 0.2 ? " · peak limited" : "")
                     } else { status = "Not enough audible audio to measure loudness" }
                 }
-                let mix = try await ProjectAudioProcessor.mix(for: item.asset, settings: settings, normalizationGain: gain)
+                let mix = try await ProjectAudioProcessor.mix(for: item.asset, settings: settings,
+                                                              aiEnhance: aiEnhance, normalizationGain: gain)
                 try Task.checkCancellation()
                 guard self?.player?.currentItem === item else { return }
                 item.audioMix = mix
-                self?.audioStatus = status
+                self?.audioStatus = aiEnhance.enabled ? "AI Enhance · \(status)" : status
                 self?.audioIsProcessing = false
             } catch is CancellationError {
             } catch {

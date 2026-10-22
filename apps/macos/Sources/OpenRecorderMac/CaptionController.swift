@@ -47,7 +47,10 @@ final class CaptionController {
     }
 
     var isBusy: Bool { phase != .idle }
-    var canGenerate: Bool { !isBusy && !isChecking && speechReady && helperReady && hasAudio == true && models.contains(selectedModel) }
+    // Whisper transcription is fully local and does not depend on Ollama. A text
+    // model is an optional cleanup pass, not a prerequisite for generating usable
+    // captions.
+    var canGenerate: Bool { !isBusy && !isChecking && speechReady && helperReady && hasAudio == true }
     var canRetryCleanup: Bool { !isBusy && pendingTranscript != nil && models.contains(selectedModel) }
 
     func attach(_ url: URL?) {
@@ -174,6 +177,13 @@ final class CaptionController {
                     pendingTranscript = transcript
                 }
                 guard let pendingTranscript else { return }
+                guard models.contains(selected) else {
+                    guard isCurrent() else { throw CaptionFailure.message("Captions changed while generation was running. Generate again to replace the current track.") }
+                    apply(CaptionTrack(segments: pendingTranscript, style: existing?.style ?? CaptionStyle(), language: language, model: "local-whisper"))
+                    self.pendingTranscript = nil
+                    phase = .idle
+                    return
+                }
                 progress = nil
                 phase = .cleaning
                 let cleaned = try await ollama.clean(pendingTranscript, model: selected)

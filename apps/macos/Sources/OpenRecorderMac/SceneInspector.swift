@@ -10,6 +10,8 @@ struct SceneInspector: View {
     var duration: Double
     var isImage = false
     var hasCamera = false
+    var edits: TimelineEditDriver? = nil
+    var currentTime: Double = 0
     var seek: (Double) -> Void = { _ in }
     var onEditingChanged: (Bool) -> Void = { _ in }
     @State private var advanced = false
@@ -51,9 +53,11 @@ struct SceneInspector: View {
             }
             if hasCamera {
                 InspectorGroup(title: "Camera", symbolName: "camera.fill") {
-                    InspectorSwitch(title: "Camera follows scene", isOn: Binding(
+                    SceneBooleanTabs(title: "Camera follows scene", isOn: Binding(
                         get: { settings.resolvedCameraFollowsScene },
-                        set: { settings.cameraFollowsScene = $0 }))
+                        set: { settings.cameraFollowsScene = $0 }),
+                                     enabledTitle: "Follow scene", enabledSymbol: "camera.metering.center.weighted",
+                                     disabledTitle: "Stay fixed", disabledSymbol: "camera")
                     Text(settings.resolvedCameraFollowsScene
                          ? "Screen and camera rotate, tilt, scale and move together."
                          : "The camera stays upright and keeps its layout position while the screen moves.")
@@ -82,6 +86,9 @@ struct SceneInspector: View {
             }
             InspectorGroup(title: "Mockup", symbolName: "macwindow", onReset: {
                 settings.mockup = .none; settings.edgeHighlight = false; settings.darkMockup = true
+                settings.browserURL = "https://example.com"; settings.browserURLAlignment = .left
+                settings.browserToolbarStyle = .standard; settings.browserShowTrafficLights = true
+                settings.browserShowNavButtons = true; settings.browserShowLock = true
             }) {
                 Picker("Frame", selection: $settings.mockup) {
                     ForEach(MockupStyle.allCases) { Text($0.rawValue).tag($0) }
@@ -91,18 +98,61 @@ struct SceneInspector: View {
                         Text("Light").tag(false); Text("Dark").tag(true)
                     }.pickerStyle(.segmented)
                 }
-                Toggle("Edge highlight", isOn: $settings.edgeHighlight).toggleStyle(.switch).controlSize(.small)
+                if settings.mockup == .browser {
+                    BrowserURLField(url: $settings.browserURL)
+                    BrowserToolbarGrid(settings: $settings)
+                }
+                SceneBooleanTabs(title: "Edge highlight", isOn: $settings.edgeHighlight,
+                                 enabledTitle: "Highlight", enabledSymbol: "rectangle.inset.filled",
+                                 disabledTitle: "Plain", disabledSymbol: "rectangle")
+            }
+            MagnifierLensInspector(settings: $settings, onEditingChanged: onEditingChanged)
+            InspectorGroup(title: "Privacy", symbolName: "eye.slash", onReset: {
+                settings.sensitiveData = nil
+                edits?.send(.updateBlurRegions([]))
+            }) {
+                SceneBooleanTabs(title: "Blur regions", isOn: Binding(
+                    get: { settings.resolvedSensitiveData.enabled },
+                    set: { var cfg = settings.resolvedSensitiveData; cfg.enabled = $0; settings.sensitiveData = cfg }
+                ), enabledTitle: "Blur", enabledSymbol: "eye.slash.fill",
+                   disabledTitle: "Clear", disabledSymbol: "eye")
+                if settings.resolvedSensitiveData.enabled {
+                    Text("Drag over the preview to add a timed blur at the playhead. Each blur is independent, with its own strength and duration.")
+                        .font(.system(size: 10)).foregroundStyle(Theme.fgMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let edits {
+                        let blurRegions = edits.snapshot.blurRegions
+                        if !blurRegions.isEmpty {
+                            VStack(alignment: .leading, spacing: 6) {
+                                ForEach(Array(blurRegions.enumerated()), id: \.element.id) { index, blur in
+                                    blurRegionEditor(blur, index: index, edits: edits)
+                                }
+                            }
+                        }
+                        if blurRegions.isEmpty {
+                            Text("No blur regions yet. Drag on the preview to add one at the current time.")
+                                .font(.system(size: 10)).foregroundStyle(Theme.fgMuted)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Button("Clear all blur regions") {
+                            edits.send(.updateBlurRegions([]))
+                        }
+                        .disabled(blurRegions.isEmpty)
+                        .controlSize(.small)
+                    }
+                }
             }
             InspectorGroup(title: "Motion", symbolName: "play.rectangle", onReset: {
                 settings.motion = SceneMotion().clamped(to: duration); seek(0)
             }) {
-                Toggle("Animate", isOn: Binding(get: { settings.motion.enabled }, set: { enabled in
+                SceneBooleanTabs(title: "Animate", isOn: Binding(get: { settings.motion.enabled }, set: { enabled in
                     var next = settings
                     next.motion.enabled = enabled
                     next.motion = next.motion.clamped(to: duration)
                     settings = next
                     if enabled { endpoint = .start; seek(next.motion.startTime) }
-                })).toggleStyle(.switch).controlSize(.small)
+                }), enabledTitle: "Animate", enabledSymbol: "play.rectangle.fill",
+                   disabledTitle: "Still", disabledSymbol: "pause.rectangle")
                 if settings.motion.enabled {
                     Menu("Motion preset") {
                         ForEach(SceneMotionPreset.allCases) { preset in
@@ -133,6 +183,128 @@ struct SceneInspector: View {
         .foregroundStyle(Theme.fg)
     }
 
+}
+
+/// A dedicated Lens page keeps the effect discoverable instead of burying it
+/// beneath Scene transform and mockup controls.
+struct MagnifierLensInspector: View {
+    @Binding var settings: SceneSettings
+    var onEditingChanged: (Bool) -> Void = { _ in }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 7) {
+                Text("Lens").font(.headline)
+                Text("Beta")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(Theme.fgMuted)
+                    .padding(.horizontal, 6).padding(.vertical, 3)
+                    .background(Theme.overlay, in: Capsule())
+                Spacer()
+                Button("Reset Lens") { settings.magnifierLens = nil }
+                    .font(.system(size: 10)).buttonStyle(.plain)
+            }
+            .padding(.bottom, 8)
+            Text("A circular liquid-glass lens magnifies the content at your cursor. Motion blur responds to cursor velocity in preview and export.")
+                .font(.system(size: 11)).foregroundStyle(Theme.fgMuted)
+                .fixedSize(horizontal: false, vertical: true)
+
+            InspectorGroup(title: "Liquid Glass Lens", symbolName: "magnifyingglass", showsTopDivider: false) {
+                SceneBooleanTabs(title: "Lens mode", isOn: Binding(
+                    get: { settings.resolvedMagnifierLens.enabled },
+                    set: { var cfg = settings.resolvedMagnifierLens; cfg.enabled = $0; settings.magnifierLens = cfg }
+                ), enabledTitle: "Cursor lens", enabledSymbol: "magnifyingglass",
+                   disabledTitle: "Off", disabledSymbol: "circle.slash")
+                if settings.resolvedMagnifierLens.enabled {
+                    magnifierSlider("Radius", keyPath: \.radius, range: 40...400, step: 5, suffix: "px")
+                    magnifierSlider("Magnification", keyPath: \.magnification, range: 1.2...5, step: 0.1, suffix: "×")
+                    magnifierSlider("Glass edge blur", keyPath: \.glassBlurEdge, range: 0...30, step: 1, suffix: "px")
+                    magnifierSlider("Glass highlight", keyPath: \.glassOpacity, range: 0...0.5, step: 0.01, suffix: "")
+                    magnifierSlider("Border", keyPath: \.borderWidth, range: 0...10, step: 0.5, suffix: "px")
+                    magnifierSlider("Optics motion blur", keyPath: \.motionBlurAmount, range: 0...30, step: 1, suffix: "")
+                    SceneBooleanTabs(title: "Tracking", isOn: Binding(
+                        get: { settings.resolvedMagnifierLens.followsCursor },
+                        set: { var cfg = settings.resolvedMagnifierLens; cfg.followsCursor = $0; settings.magnifierLens = cfg }
+                    ), enabledTitle: "Follow cursor", enabledSymbol: "cursorarrow.motionlines",
+                       disabledTitle: "Fixed", disabledSymbol: "pin.fill")
+                }
+            }
+        }
+        .controlSize(.small)
+        .foregroundStyle(Theme.fg)
+    }
+
+    private func magnifierSlider(_ title: String, keyPath: WritableKeyPath<MagnifierLensConfig, Double>, range: ClosedRange<Double>, step: Double, suffix: String) -> some View {
+        let value = settings.resolvedMagnifierLens[keyPath: keyPath]
+        return InspectorSlider(title: title, valueText: String(format: step >= 1 ? "%.0f%@" : "%.2f%@", value, suffix),
+            value: Binding(get: { value }, set: {
+                var cfg = settings.resolvedMagnifierLens; cfg[keyPath: keyPath] = $0; settings.magnifierLens = cfg
+            }), range: range, step: step, onEditingChanged: onEditingChanged)
+    }
+}
+
+extension SceneInspector {
+
+    private func blurRegionEditor(_ blur: TimelineBlurRegion, index: Int, edits: TimelineEditDriver) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 6) {
+                Image(systemName: "eye.slash.fill")
+                    .font(.system(size: 10, weight: .semibold))
+                Text("Blur \(index + 1)")
+                    .font(.system(size: 11, weight: .semibold))
+                Text("\(Int(blur.region.width * 100))×\(Int(blur.region.height * 100))%")
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(Theme.fgMuted)
+                Spacer()
+                Button {
+                    edits.send(.removeBlurRegion(id: blur.id))
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.system(size: 10))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Theme.fgMuted)
+                .help("Remove blur \(index + 1)")
+            }
+            InspectorSlider(title: "Strength", valueText: "\(Int(blur.blurRadius))",
+                value: blurValueBinding(blur.id, edits: edits, keyPath: \.blurRadius), range: 5...60, step: 1,
+                onEditingChanged: onEditingChanged)
+            InspectorSlider(title: "Start", valueText: String(format: "%.2fs", blur.span.start),
+                value: blurSpanBinding(blur.id, edits: edits, start: true), range: 0...max(0.05, duration), step: 0.05,
+                onEditingChanged: onEditingChanged)
+            InspectorSlider(title: "End", valueText: String(format: "%.2fs", blur.span.end),
+                value: blurSpanBinding(blur.id, edits: edits, start: false), range: 0...max(0.05, duration), step: 0.05,
+                onEditingChanged: onEditingChanged)
+        }
+        .padding(8)
+        .background(Theme.overlay, in: RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous))
+    }
+
+    private func blurValueBinding(_ id: TimelineRegionID, edits: TimelineEditDriver,
+                                  keyPath: WritableKeyPath<TimelineBlurRegion, Double>) -> Binding<Double> {
+        Binding(get: { edits.snapshot.blurRegions.first(where: { $0.id == id })?[keyPath: keyPath] ?? 25 }, set: { value in
+            var next = edits.snapshot.blurRegions
+            guard let index = next.firstIndex(where: { $0.id == id }) else { return }
+            next[index][keyPath: keyPath] = value
+            edits.send(.updateBlurRegions(next))
+        })
+    }
+
+    private func blurSpanBinding(_ id: TimelineRegionID, edits: TimelineEditDriver, start: Bool) -> Binding<Double> {
+        Binding(get: {
+            guard let region = edits.snapshot.blurRegions.first(where: { $0.id == id }) else { return 0 }
+            return start ? region.span.start : region.span.end
+        }, set: { value in
+            var next = edits.snapshot.blurRegions
+            guard let index = next.firstIndex(where: { $0.id == id }) else { return }
+            let other = start ? next[index].span.end : next[index].span.start
+            if start { next[index].span.start = min(value, max(0, other - 0.10)) }
+            else { next[index].span.end = max(value, min(duration, other + 0.10)) }
+            next[index].span = next[index].span.normalized(duration: duration)
+            edits.send(.updateBlurRegions(next))
+        })
+    }
+
     private func poseSlider(_ title: String, keyPath: WritableKeyPath<ScenePose, Double>, range: ClosedRange<Double>, step: Double, suffix: String = "") -> some View {
         InspectorSlider(title: title, valueText: String(format: step >= 1 ? "%.0f%@" : "%.2f%@", pose.wrappedValue[keyPath: keyPath], suffix),
             value: Binding(get: { pose.wrappedValue[keyPath: keyPath] }, set: { pose.wrappedValue[keyPath: keyPath] = $0 }),
@@ -148,6 +320,137 @@ struct SceneInspector: View {
         })
         return InspectorSlider(title: title, valueText: String(format: "%.2fs", binding.wrappedValue),
             value: binding, range: 0...max(0.05, duration), step: 0.05, onEditingChanged: onEditingChanged)
+    }
+}
+
+private struct BrowserToolbarGrid: View {
+    @Binding var settings: SceneSettings
+    private let columns = Array(repeating: GridItem(.flexible(minimum: 0), spacing: 6), count: 2)
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("URL position")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(Theme.fgMuted)
+                LazyVGrid(columns: columns, spacing: 6) {
+                    browserTile(title: "Left", symbol: "text.alignleft",
+                                isSelected: settings.browserURLAlignment == .left) {
+                        settings.browserURLAlignment = .left
+                    }
+                    browserTile(title: "Center", symbol: "text.aligncenter",
+                                isSelected: settings.browserURLAlignment == .center) {
+                        settings.browserURLAlignment = .center
+                    }
+                }
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Toolbar")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(Theme.fgMuted)
+                LazyVGrid(columns: columns, spacing: 6) {
+                    browserTile(title: "Standard", symbol: "rectangle.topthird.inset.filled",
+                                isSelected: settings.browserToolbarStyle == .standard) {
+                        settings.browserToolbarStyle = .standard
+                    }
+                    browserTile(title: "Compact", symbol: "rectangle.tophalf.inset.filled",
+                                isSelected: settings.browserToolbarStyle == .compact) {
+                        settings.browserToolbarStyle = .compact
+                    }
+                }
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Browser elements")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(Theme.fgMuted)
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(minimum: 0), spacing: 6), count: 3), spacing: 6) {
+                    browserTile(title: "Lights", symbol: "circle.lefthalf.filled",
+                                isSelected: settings.browserShowTrafficLights) {
+                        settings.browserShowTrafficLights.toggle()
+                    }
+                    browserTile(title: "Nav", symbol: "arrow.left.arrow.right",
+                                isSelected: settings.browserShowNavButtons) {
+                        settings.browserShowNavButtons.toggle()
+                    }
+                    browserTile(title: "Lock", symbol: "lock.fill",
+                                isSelected: settings.browserShowLock) {
+                        settings.browserShowLock.toggle()
+                    }
+                }
+            }
+        }
+    }
+
+    private func browserTile(title: String, symbol: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
+        StudioButton(hitTarget: .rounded(Theme.radiusMd), help: title, action: action) {
+            VStack(spacing: 4) {
+                Image(systemName: symbol)
+                    .font(.system(size: 16, weight: .semibold))
+                Text(title)
+                    .font(.system(size: 10, weight: .semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 50)
+            .foregroundStyle(isSelected ? Color.white : Color.primary.opacity(0.86))
+            .background(isSelected ? Color.white.opacity(0.18) : Theme.overlay,
+                        in: RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous)
+                    .stroke(isSelected ? Color.white.opacity(0.85) : Theme.overlay)
+            }
+        }
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+}
+
+/// A short binary segmented control makes optional effects read as an explicit
+/// choice, using the same control language as the scene's other tab choices.
+private struct SceneBooleanTabs: View {
+    var title: String
+    @Binding var isOn: Bool
+    var enabledTitle: String
+    var enabledSymbol: String
+    var disabledTitle: String
+    var disabledSymbol: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(Theme.fgMuted)
+            HStack(spacing: 6) {
+                choice(title: enabledTitle, symbol: enabledSymbol, isSelected: isOn) { isOn = true }
+                choice(title: disabledTitle, symbol: disabledSymbol, isSelected: !isOn) { isOn = false }
+            }
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    private func choice(title: String, symbol: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
+        StudioButton(hitTarget: .rounded(Theme.radiusMd), help: title, action: action) {
+            VStack(spacing: 4) {
+                Image(systemName: symbol)
+                    .font(.system(size: 16, weight: .semibold))
+                Text(title)
+                    .font(.system(size: 10, weight: .semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 50)
+            .foregroundStyle(isSelected ? Color.white : Color.primary.opacity(0.86))
+            .background(isSelected ? Color.white.opacity(0.18) : Theme.overlay,
+                        in: RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: Theme.radiusMd, style: .continuous)
+                    .stroke(isSelected ? Color.white.opacity(0.85) : Theme.overlay)
+            }
+        }
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 
@@ -207,6 +510,47 @@ struct SceneCanvasTools: View {
             Text("Drag to \(tool.rawValue.lowercased()) · ⇧ for precision")
                 .font(.system(size: 10)).foregroundStyle(Theme.fgMuted)
         }.padding(.vertical, 6)
+    }
+}
+
+private struct BrowserURLField: NSViewRepresentable {
+    @Binding var url: String
+
+    func makeNSView(context: Context) -> NSTextField {
+        let field = NSTextField()
+        field.stringValue = url
+        field.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+        field.bezelStyle = .roundedBezel
+        field.delegate = context.coordinator
+        field.placeholderString = "URL"
+        field.lineBreakMode = .byTruncatingTail
+        field.cell?.truncatesLastVisibleLine = true
+        return field
+    }
+
+    func updateNSView(_ field: NSTextField, context: Context) {
+        if !context.coordinator.isEditing {
+            field.stringValue = url
+        }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(url: $url) }
+
+    final class Coordinator: NSObject, NSTextFieldDelegate {
+        var url: Binding<String>
+        var isEditing = false
+        init(url: Binding<String>) { self.url = url }
+
+        func controlTextDidBeginEditing(_ obj: Notification) { isEditing = true }
+        func controlTextDidChange(_ obj: Notification) {
+            guard let field = obj.object as? NSTextField else { return }
+            url.wrappedValue = field.stringValue
+        }
+        func controlTextDidEndEditing(_ obj: Notification) {
+            guard let field = obj.object as? NSTextField else { return }
+            url.wrappedValue = field.stringValue
+            isEditing = false
+        }
     }
 }
 
