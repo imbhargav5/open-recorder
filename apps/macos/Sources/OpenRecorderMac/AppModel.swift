@@ -229,6 +229,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var isCapturePreflightRunning = false
     @Published private(set) var isTerminationPending = false
     @Published private(set) var activeRecordingStartDate: Date? = nil
+    @Published var teleprompterScript = ""
     @Published private(set) var shortcutPreferences: ShortcutPreferences = .defaultPreferences
     @Published private(set) var isShortcutRecorderActive = false
     @Published private(set) var shortcutRegistrationRetryGeneration = 0
@@ -241,6 +242,7 @@ final class AppModel: ObservableObject {
     private var shortcutRecorderActivationCount = 0
     private var displayFlashWindows: [NSWindow] = []
     private let countdownOverlayController: RecordingCountdownOverlayController
+    private let teleprompterOverlayController = TeleprompterOverlayController()
     private let captureUIHideDelayNanoseconds: UInt64
 
     let service: RustServiceClient
@@ -1623,6 +1625,12 @@ final class AppModel: ObservableObject {
                 }
             }
 
+            // The floating camera preview is useful while setting up a capture,
+            // but it must be gone before the display stream starts. Some capture
+            // paths cannot exclude an app-owned floating window, which would put
+            // this preview into the screen video in addition to the real facecam
+            // track and produce two cameras in the finished recording.
+            requestWindow(.closeCameraBubble)
             try await runRecordingCountdown(selectedSource)
             guard !Task.isCancelled else { return }
 
@@ -1678,7 +1686,6 @@ final class AppModel: ObservableObject {
             if options.includeCamera {
                 let initialSettings = resolveFacecamSettingsForRecording(source: selectedSource)
                 cameraRecordingEvents.append(CameraRecordingEvent(timestamp: 0.0, settings: initialSettings))
-                requestWindow(.showCameraBubble)
             }
 
             currentVideoURL = outputURL
@@ -1691,6 +1698,7 @@ final class AppModel: ObservableObject {
             }
             let facecamStatusMessage = statusMessage.hasPrefix("Recording without facecam") ? statusMessage : nil
             dispatch(.recordingStarted(selectedSource))
+            teleprompterOverlayController.show(script: teleprompterScript, for: selectedSource)
             if let facecamStatusMessage {
                 statusMessage = facecamStatusMessage
             }
@@ -1739,7 +1747,13 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func toggleTeleprompter() {
+        guard let source = captureState.source ?? selectedSource else { return }
+        teleprompterOverlayController.toggle(script: teleprompterScript, for: source)
+    }
+
     private func runRecordingStopFlow(source: CaptureSource?) async {
+        teleprompterOverlayController.dismiss()
         let performanceLog = Logger(subsystem: "dev.openrecorder.app", category: "RecordingLatency")
         let stopStart = ProcessInfo.processInfo.systemUptime
         let editorSessionAtStop = appShell.state.lastEditorSession?.id
@@ -1821,6 +1835,7 @@ final class AppModel: ObservableObject {
                 dispatch(.recordingStopped(message: "Recording stopped before a file was written."))
             }
         } catch {
+            teleprompterOverlayController.dismiss()
             CaptureAudioFeedback.shared.stopMonitoring()
             _ = cursorTelemetryRecorder.stop(videoURL: nil)
             if let source {

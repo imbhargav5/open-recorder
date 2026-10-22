@@ -22,6 +22,11 @@ enum TimelineMetrics {
         + clipHeight
         + layerHeight
         + layerHeight
+        + layerHeight
+        // Zoom and timed sensitive-data blur each get their own timeline lane.
+        // Reserve that lane here so the toolbar never gets clipped by the
+        // preview when blur regions are present.
+        + layerHeight
 }
 
 struct TimelinePanel: View {
@@ -247,7 +252,9 @@ struct TimelineTrackContent: View {
             }, onScrubbingChanged: playback.setScrubbing)
                 .rectangularHitTarget()
             TimelineClipRow(videoURL: videoURL, duration: playback.duration, currentTime: playback.currentTime, viewport: sourceViewport, splitTimes: edits.clipSplitTimes, trimRegions: edits.trimRegions, clipSpeeds: edits.clipSpeeds, selectedClipIndex: edits.selectedClipIndex, seek: playback.seek(to:), onScrubbingChanged: playback.setScrubbing, edits: edits)
+            TimelineVoiceoverRow(voiceover: edits.snapshot.voiceover, duration: playback.duration, viewport: sourceViewport, seek: playback.seek(to:))
             TimelineLayerRow(kind: .zoom, duration: playback.duration, viewport: sourceViewport, regions: edits.zoomRegions.map(TimelineRegionRenderData.zoom), selectedID: edits.selectedKind == .zoom ? edits.selectedID : nil, edits: edits)
+            TimelineLayerRow(kind: .blur, duration: playback.duration, viewport: sourceViewport, regions: edits.snapshot.blurRegions.map(TimelineRegionRenderData.blur), selectedID: edits.selectedKind == .blur ? edits.selectedID : nil, edits: edits)
             TimelineCameraLayerRow(
                 duration: playback.duration,
                 currentTime: playback.currentTime,
@@ -300,6 +307,52 @@ struct TimelineTrackContent: View {
                 hoverTime = nil
             }
         }
+    }
+}
+
+private struct TimelineVoiceoverRow: View {
+    var voiceover: TimelineVoiceover?
+    var duration: Double
+    var viewport: TimelineViewport
+    var seek: (Double) -> Void
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack(alignment: .leading) {
+                Rectangle().fill(Color(red: 0.095, green: 0.095, blue: 0.11))
+                if let voiceover, duration > 0 {
+                    let start = min(max(voiceover.startTime, 0), duration)
+                    let end = voiceover.duration > 0
+                        ? min(duration, start + voiceover.duration)
+                        : duration
+                    let span = TimelineSpan(start: start, end: end)
+                    let leading = viewport.x(for: span.start, width: proxy.size.width, clamped: true) ?? 0
+                    let trailing = viewport.x(for: span.end, width: proxy.size.width, clamped: true) ?? leading
+                    HStack(spacing: 7) {
+                        Image(systemName: "waveform").font(.system(size: 12, weight: .semibold))
+                        Text("Voiceover")
+                        if !voiceover.voiceName.isEmpty { Text(voiceover.voiceName).foregroundStyle(.white.opacity(0.65)) }
+                    }
+                    .font(.system(size: 11, weight: .semibold))
+                    .lineLimit(1)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 10)
+                    .frame(width: max(0, trailing - leading), height: 42, alignment: .leading)
+                    .background(Color.purple.opacity(0.72), in: RoundedRectangle(cornerRadius: 7))
+                    .offset(x: leading)
+                    .padding(.vertical, 8)
+                    .onTapGesture { seek(start) }
+                } else {
+                    Text("Generate a voiceover from the Audio panel")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Color.secondary.opacity(0.64))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
+            .clipped()
+        }
+        .frame(height: TimelineMetrics.layerHeight)
+        .overlay(alignment: .bottom) { Rectangle().fill(Theme.border).frame(height: 1) }
     }
 }
 
@@ -1418,6 +1471,15 @@ struct TimelineRegionRenderData: Identifiable {
             mode: zoom.mode
         )
     }
+
+    static func blur(_ blur: TimelineBlurRegion) -> TimelineRegionRenderData {
+        TimelineRegionRenderData(
+            id: blur.id,
+            span: blur.span,
+            label: "Blur \(Int(blur.blurRadius))",
+            mode: nil
+        )
+    }
 }
 
 struct TimelineLayerRow: View {
@@ -1462,6 +1524,8 @@ struct TimelineLayerRow: View {
         switch kind {
         case .zoom:
             "Click or press Z to add zoom"
+        case .blur:
+            "Draw on the preview to add blur"
         case .annotation:
             "Annotations are currently unavailable"
         case .trim:
@@ -1585,8 +1649,10 @@ private struct TimelineCameraClipItem: View {
     private var shapeSymbolName: String {
         guard clip.settings.clamped.enabled else { return "camera.slash.fill" }
         switch clip.settings.resolvedLayout {
+        case .screenOnly: return "rectangle.fill"
         case .cameraOnly: return "camera.fill"
         case .split: return "rectangle.split.2x1"
+        case .verticalSplit: return "rectangle.split.1x2"
         case .sideBySide: return "rectangle.inset.filled.trailing"
         case .overlay: break
         }
@@ -1708,17 +1774,24 @@ private struct TimelineCameraClipItem: View {
                     }
                 }
             } else if clip.settings.resolvedLayout.hasScreenPanel {
-                Menu("Camera Side for This Segment") {
-                    ForEach([true, false], id: \.self) { left in
+                let isVertical = clip.settings.resolvedLayout.isVerticalSplit
+                Menu(isVertical ? "Camera Position for This Segment" : "Camera Side for This Segment") {
+                    ForEach([true, false], id: \.self) { first in
                         Button {
                             var settings = clip.settings
-                            settings.cameraOnLeft = left
+                            if isVertical {
+                                settings.cameraAbove = first
+                            } else {
+                                settings.cameraOnLeft = first
+                            }
                             edits.updateCameraClipSettings(id: clip.id, settings: settings)
                         } label: {
-                            if clip.settings.resolvedCameraOnLeft == left {
-                                Label(left ? "Left" : "Right", systemImage: "checkmark")
+                            let selected = isVertical ? clip.settings.resolvedCameraAbove == first : clip.settings.resolvedCameraOnLeft == first
+                            let title = isVertical ? (first ? "Above" : "Below") : (first ? "Left" : "Right")
+                            if selected {
+                                Label(title, systemImage: "checkmark")
                             } else {
-                                Text(left ? "Left" : "Right")
+                                Text(title)
                             }
                         }
                     }
@@ -1994,7 +2067,7 @@ struct TimelineRegionItem: View {
     private func performPrimaryEdit() {
         switch kind {
         case .zoom: edits.deepenZoom(id: region.id)
-        case .trim, .annotation: break
+        case .blur, .trim, .annotation: break
         }
     }
 
@@ -2007,6 +2080,6 @@ struct TimelineRegionItem: View {
     }
 
     private var regionAccessibilityHint: String {
-        kind == .zoom ? "Command-click to toggle selection. Shift-click to select a range. Press Delete to remove selected zooms. Press twice to increase zoom depth." : "Selects this timeline region."
+        kind == .zoom ? "Command-click to toggle selection. Shift-click to select a range. Press Delete to remove selected zooms. Press twice to increase zoom depth." : "Selects this timeline region. Drag to move it or drag either handle to change its duration."
     }
 }

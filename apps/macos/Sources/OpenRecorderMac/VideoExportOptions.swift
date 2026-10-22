@@ -544,8 +544,10 @@ enum VideoExportRenderer {
         options: VideoExportOptions,
         edits: TimelineEditSnapshot
     ) async throws -> RenderContext {
-        let asset = try await ProjectAudioProcessor.synchronizedAsset(
+        let synchronizedAsset = try await ProjectAudioProcessor.synchronizedAsset(
             from: AVURLAsset(url: sourceURL), offsetMs: edits.audio.syncOffset)
+        let asset = try await ProjectAudioProcessor.addingVoiceover(
+            to: synchronizedAsset, voiceover: edits.voiceover)
         let tracks = try await asset.loadTracks(withMediaType: .video)
         guard let videoTrack = tracks.first else {
             throw VideoExportRendererError.missingVideoTrack
@@ -599,7 +601,7 @@ enum VideoExportRenderer {
             audioGain = analysis.normalizationGain(target: edits.audio.targetLUFS)
         }
         let audioMix = try await ProjectAudioProcessor.mix(for: exportAsset.asset, settings: edits.audio,
-                                                         normalizationGain: audioGain)
+                                                         aiEnhance: edits.aiEnhance, normalizationGain: audioGain)
         return RenderContext(
             asset: exportAsset.asset,
             videoComposition: videoComposition,

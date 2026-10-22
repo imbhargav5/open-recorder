@@ -347,6 +347,7 @@ struct VideoEditorStudioView: View {
             cameraSettings: inspectorCameraSettingsBinding, onCameraLayoutEditingChanged: cameraLayoutUndoTransaction,
             recordingSession: recordingSession,
             captionController: workspace.captions, captionEdits: timelineEdits, captionPlayback: playback,
+            sceneEdits: timelineEdits, sceneCurrentTime: playback.currentTime,
             activeTab: $activeInspector, scene: editor.binding(\.scene), canvasAspect: editor.previewAspectPresetBinding,
             sceneEndpoint: $sceneEndpoint, showsSelection: $showsTimelineSelection,
             selectionSidebar: TimelineSelectionSidebar(edits: timelineEdits, playback: playback, defaultCameraSettings: editor.state.currentFacecamSettings),

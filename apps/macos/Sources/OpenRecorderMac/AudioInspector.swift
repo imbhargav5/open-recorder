@@ -4,6 +4,7 @@ struct AudioInspector: View {
     var edits: TimelineEditDriver
     var playback: VideoPlaybackDriver
     private var settings: AudioProcessingSettings { edits.snapshot.audio }
+    private var enhanceSettings: AIAudioEnhanceSettings { edits.snapshot.aiEnhance }
     private func binding<T>(_ key: WritableKeyPath<AudioProcessingSettings, T>) -> Binding<T> {
         Binding(get: { settings[keyPath: key] }, set: { value in
             var next = settings
@@ -11,8 +12,31 @@ struct AudioInspector: View {
             edits.send(.updateAudio(next))
         })
     }
+    private func enhanceBinding<T>(_ key: WritableKeyPath<AIAudioEnhanceSettings, T>) -> Binding<T> {
+        Binding(get: { enhanceSettings[keyPath: key] }, set: { value in
+            var next = enhanceSettings
+            next[keyPath: key] = value
+            edits.send(.updateAIEnhance(next))
+        })
+    }
     var body: some View {
-        InspectorGroup(title: "Voice", symbolName: "waveform", showsTopDivider: false) {
+        InspectorGroup(title: "Voice Enhance", symbolName: "waveform.badge.plus", showsTopDivider: false) {
+            Button(enhanceSettings.enabled ? "Voice Enhance: On" : "Enhance voice") {
+                var next = enhanceSettings
+                next.enabled.toggle()
+                if next.enabled && next == .default { next = .podcastReady }
+                edits.send(.updateAIEnhance(next))
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(enhanceSettings.enabled ? .green : .accentColor)
+            .frame(maxWidth: .infinity)
+            if enhanceSettings.enabled {
+                enhanceControl("Intensity", key: \.intensity, range: 0...1)
+            }
+            Text("Local processing: noise reduction between words, rumble removal, vocal presence, de-essing, compression, and peak protection. Replay after changing it to compare.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+        InspectorGroup(title: "Voice", symbolName: "waveform") {
             HStack {
                 Button("Voice preset") {
                     var preset = AudioProcessingSettings.voice
@@ -71,6 +95,7 @@ struct AudioInspector: View {
             Text("Applies to preview and export. Changes affect the recording’s combined audio.")
                 .font(.caption).foregroundStyle(.secondary)
         }
+        VoiceGeneratorInspector(edits: edits, playback: playback)
     }
     private func control(_ title: String, key: WritableKeyPath<AudioProcessingSettings, Double>,
                          range: ClosedRange<Double>, suffix: String, scale: Double = 1) -> some View {
@@ -81,6 +106,19 @@ struct AudioInspector: View {
                 Text(String(format: "%.0f", settings[keyPath: key] * scale) + suffix).monospacedDigit()
             }.font(.caption)
             Slider(value: binding(key), in: range, onEditingChanged: { editing in
+                if editing { edits.beginUndoTransaction() } else { edits.endUndoTransaction() }
+            }).accessibilityLabel(title)
+        }
+    }
+    private func enhanceControl(_ title: String, key: WritableKeyPath<AIAudioEnhanceSettings, Double>,
+                                range: ClosedRange<Double>) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(title)
+                Spacer()
+                Text("\(Int(enhanceSettings[keyPath: key] * 100))%").monospacedDigit()
+            }.font(.caption)
+            Slider(value: enhanceBinding(key), in: range, onEditingChanged: { editing in
                 if editing { edits.beginUndoTransaction() } else { edits.endUndoTransaction() }
             }).accessibilityLabel(title)
         }

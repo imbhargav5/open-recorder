@@ -8,6 +8,7 @@ struct CaptureHUD: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.openWindow) private var openWindow
     var options: CaptureOptionsDriver
+    @State private var isTeleprompterEditorPresented = false
 
     private var isRecordingActive: Bool {
         model.capture.isRecording || model.recordingPhase == .recording
@@ -115,6 +116,14 @@ struct CaptureHUD: View {
                 model.stopRecording()
             }
             .help(recordingShortcutHelpTitle)
+
+            if !model.teleprompterScript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                HUDPrimaryIconButton(
+                    title: "Show or hide teleprompter",
+                    symbolName: "text.quote",
+                    isDestructive: false
+                ) { model.toggleTeleprompter() }
+            }
         }
     }
 
@@ -233,6 +242,19 @@ struct CaptureHUD: View {
         systemAudioToggle
         microphoneToggle
         cameraToggle
+        teleprompterToggle
+    }
+
+    private var teleprompterToggle: some View {
+        HUDToggle(
+            symbolName: "text.quote",
+            isActive: !model.teleprompterScript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            title: "Teleprompter script",
+            isDisabled: !options.state.canChangeOptions
+        ) { isTeleprompterEditorPresented = true }
+        .popover(isPresented: $isTeleprompterEditorPresented, arrowEdge: .bottom) {
+            TeleprompterScriptEditor(script: $model.teleprompterScript)
+        }
     }
 
     private var systemAudioToggle: some View {
@@ -519,6 +541,35 @@ struct CaptureHUD: View {
     private func openCameraSelector() {
         model.requestCameraSelection()
         openWindow(id: "camera-selector")
+    }
+}
+
+private struct TeleprompterScriptEditor: View {
+    @Binding var script: String
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Teleprompter")
+                .font(.headline)
+            Text("This stays visible only to you while recording; it is excluded from the captured video.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            TextEditor(text: $script)
+                .font(.system(size: 14))
+                .frame(width: 350, height: 220)
+                .overlay { RoundedRectangle(cornerRadius: 7).stroke(Theme.borderSubtle) }
+                .accessibilityLabel("Teleprompter script")
+            HStack {
+                Text("\(script.count) characters").font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                Button("Clear", role: .destructive) { script = "" }
+                Button("Done") { dismiss() }
+                    .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(14)
     }
 }
 

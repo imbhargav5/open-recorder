@@ -425,6 +425,11 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
             if let cursor = makeCursorLayer(for: instruction, compositionTime: compositionTime, contentRect: contentRect) {
                 media = cursor.composited(over: media)
             }
+            media = applyMagnifierLens(to: media, instruction: instruction, compositionTime: compositionTime,
+                                       contentRect: contentRect, canvas: renderSize)
+            let sourceTimeForBlur = instruction.editPlan.sourceTime(forOutputTime: compositionTime) ?? compositionTime
+            media = SensitiveDataBlur.applyTimelineBlur(to: media, blurRegions: instruction.edits.blurRegions, at: sourceTimeForBlur)
+            media = SensitiveDataBlur.applyBlur(to: media, config: instruction.scene.resolvedSensitiveData, contentSize: renderSize)
             media = applyZoomTransform(to: media, renderRect: renderRect, instruction: instruction,
                                        compositionTime: compositionTime, placedRect: placedRect).cropped(to: placedRect)
             var surface = media
@@ -498,6 +503,11 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
         if let cursor = makeCursorLayer(for: instruction, compositionTime: compositionTime, contentRect: contentRect) {
             composed = cursor.composited(over: composed)
         }
+        composed = applyMagnifierLens(to: composed, instruction: instruction, compositionTime: compositionTime,
+                                      contentRect: contentRect, canvas: renderSize)
+        let sourceTimeForBlur = instruction.editPlan.sourceTime(forOutputTime: compositionTime) ?? compositionTime
+        composed = SensitiveDataBlur.applyTimelineBlur(to: composed, blurRegions: instruction.edits.blurRegions, at: sourceTimeForBlur)
+        composed = SensitiveDataBlur.applyBlur(to: composed, config: instruction.scene.resolvedSensitiveData, contentSize: renderSize)
 
         composed = compositeAnnotations(over: composed, instruction: instruction, compositionTime: compositionTime)
 
@@ -632,6 +642,8 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
                     time: compositionTime, radius: radius, shadow: instruction.styling.shadowIntensity,
                     referenceFrame: bounds)
             }
+            screen = applyMagnifierLens(to: screen, instruction: instruction, compositionTime: compositionTime,
+                                        contentRect: screen.extent, canvas: canvas)
             screen = screen.applyingFilter("CIColorMatrix", parameters: [
                 "inputAVector": CIVector(x: 0, y: 0, z: 0, w: presentation.screenOpacity)])
             screen = applyCameraTransitionEffects(screen, presentation: presentation, canvas: canvas)
@@ -1133,5 +1145,45 @@ final class VideoBackgroundCompositor: NSObject, AVVideoCompositing, @unchecked 
         filter.setValue(CIVector(x: 0, y: 0, z: 1, w: 0), forKey: "inputBVector")
         filter.setValue(CIVector(x: 0, y: 0, z: 0, w: CGFloat(alpha)), forKey: "inputAVector")
         return filter.outputImage ?? image
+    }
+
+    private var lastCursorPoint: CGPoint?
+    private var lastCursorTime: Double = -1
+
+    private func applyMagnifierLens(to image: CIImage, instruction: VideoBackgroundCompositionInstruction,
+                                     compositionTime: Double, contentRect: CGRect, canvas: CGSize) -> CIImage {
+        let config = instruction.scene.resolvedMagnifierLens
+        guard config.enabled else { return image }
+
+        let sourceTime = instruction.editPlan.sourceTime(forOutputTime: compositionTime) ?? compositionTime
+
+        var focusX: CGFloat = 0.5
+        var focusY: CGFloat = 0.5
+        var velocity = CGPoint.zero
+
+        if config.followsCursor, let track = instruction.cursorTrack, !track.samples.isEmpty,
+           let point = track.point(at: sourceTime, settings: instruction.cursorSettings) {
+            let outputPoint = cursorOutputPoint(
+                telemetryPoint: point, outputTime: compositionTime,
+                contentRect: contentRect, cropRect: instruction.cropRect,
+                sourceSize: instruction.normalizedSize, instruction: instruction, track: track)
+            focusX = outputPoint.x / max(1, canvas.width)
+            focusY = outputPoint.y / max(1, canvas.height)
+
+            if let prev = lastCursorPoint, lastCursorTime >= 0 {
+                let dt = compositionTime - lastCursorTime
+                if dt > 0.001 {
+                    velocity = CGPoint(
+                        x: (focusX - prev.x) / dt * canvas.width,
+                        y: (focusY - prev.y) / dt * canvas.height
+                    )
+                }
+            }
+            lastCursorPoint = CGPoint(x: focusX, y: focusY)
+            lastCursorTime = compositionTime
+        }
+
+        return MagnifierLensRenderer.render(source: image, focusX: focusX, focusY: focusY,
+                                             canvas: canvas, config: config, velocity: velocity)
     }
 }

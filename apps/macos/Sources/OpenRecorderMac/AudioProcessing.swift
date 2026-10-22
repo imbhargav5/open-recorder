@@ -105,20 +105,29 @@ final class VoiceAudioDSP {
 
 private final class AudioTapStorage {
     let settings: AudioProcessingSettings
+    let aiEnhance: AIAudioEnhanceSettings
     let normalizationGain: Double
     var dsp: VoiceAudioDSP?
+    var aiDSP: AIAudioDSP?
     var format = AudioStreamBasicDescription()
-    init(_ settings: AudioProcessingSettings, gain: Double) { self.settings = settings; normalizationGain = gain }
+    init(_ settings: AudioProcessingSettings, aiEnhance: AIAudioEnhanceSettings, gain: Double) {
+        self.settings = settings
+        self.aiEnhance = aiEnhance.clamped
+        normalizationGain = gain
+    }
 }
 
 enum ProjectAudioProcessor {
-    static func mix(for asset: AVAsset, settings: AudioProcessingSettings, normalizationGain: Double = 0, isolation: isolated (any Actor)? = #isolation) async throws -> AVAudioMix? {
-        guard settings.isActive else { return nil }
+    static func mix(for asset: AVAsset, settings: AudioProcessingSettings,
+                    aiEnhance: AIAudioEnhanceSettings = .default,
+                    normalizationGain: Double = 0,
+                    isolation: isolated (any Actor)? = #isolation) async throws -> AVAudioMix? {
+        guard settings.isActive || aiEnhance.enabled else { return nil }
         let tracks = try await asset.loadTracks(withMediaType: .audio)
         let mix = AVMutableAudioMix()
         mix.inputParameters = try tracks.map { track in
             let parameters = AVMutableAudioMixInputParameters(track: track)
-            let storage = Unmanaged.passRetained(AudioTapStorage(settings, gain: normalizationGain))
+            let storage = Unmanaged.passRetained(AudioTapStorage(settings, aiEnhance: aiEnhance, gain: normalizationGain))
             var callbacks = MTAudioProcessingTapCallbacks(version: kMTAudioProcessingTapCallbacksVersion_0,
                 clientInfo: storage.toOpaque(), init: { _, info, out in out.pointee = info },
                 finalize: { tap in Unmanaged<AudioTapStorage>.fromOpaque(MTAudioProcessingTapGetStorage(tap)).release() },
@@ -127,6 +136,9 @@ enum ProjectAudioProcessor {
                     state.format = format.pointee
                     state.dsp = VoiceAudioDSP(settings: state.settings, sampleRate: format.pointee.mSampleRate,
                                               normalizationGain: state.normalizationGain)
+                    state.aiDSP = state.aiEnhance.enabled
+                        ? AIAudioDSP(settings: state.aiEnhance, sampleRate: format.pointee.mSampleRate)
+                        : nil
                 }, unprepare: { _ in }, process: { tap, frames, _, list, count, flags in
                     guard MTAudioProcessingTapGetSourceAudio(tap, frames, list, flags, nil, count) == noErr else {
                         count.pointee = 0; return
@@ -146,7 +158,8 @@ enum ProjectAudioProcessor {
                         let offset = interleaved ? frame * channels : frame
                         let l = left[offset]
                         let r = channels == 1 ? l : (interleaved ? left[offset+1] : right![frame])
-                        let result = dsp.process(l, r)
+                        let voiced = dsp.process(l, r)
+                        let result = state.aiDSP?.process(voiced.0, voiced.1) ?? voiced
                         left[offset] = result.0
                         if channels == 2 {
                             if interleaved { left[offset+1] = result.1 } else { right![frame] = result.1 }
@@ -250,6 +263,38 @@ extension ProjectAudioProcessor {
 
 
 extension ProjectAudioProcessor {
+    /// Adds the generated narration as a second audio track. AVFoundation mixes
+    /// composition audio tracks during export, preserving the screen recording's
+    /// original audio beneath the voiceover.
+    static func addingVoiceover(to asset: AVAsset, voiceover: TimelineVoiceover?,
+                                isolation: isolated (any Actor)? = #isolation) async throws -> AVAsset {
+        guard let voiceover,
+              voiceover.startTime.isFinite,
+              FileManager.default.fileExists(atPath: voiceover.path) else { return asset }
+        let narrationAsset = AVURLAsset(url: URL(fileURLWithPath: voiceover.path))
+        guard let narrationTrack = try await narrationAsset.loadTracks(withMediaType: .audio).first else { return asset }
+
+        let composition = AVMutableComposition()
+        for mediaType in [AVMediaType.video, .audio] {
+            for sourceTrack in try await asset.loadTracks(withMediaType: mediaType) {
+                guard let destination = composition.addMutableTrack(withMediaType: mediaType, preferredTrackID: kCMPersistentTrackID_Invalid) else { continue }
+                let range = try await sourceTrack.load(.timeRange)
+                if range.duration > .zero { try destination.insertTimeRange(range, of: sourceTrack, at: range.start) }
+                if mediaType == .video { destination.preferredTransform = try await sourceTrack.load(.preferredTransform) }
+            }
+        }
+        guard let narrationDestination = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) else { return asset }
+        let narrationRange = try await narrationTrack.load(.timeRange)
+        let sourceDuration = try await asset.load(.duration)
+        let insertionTime = CMTime(seconds: max(0, voiceover.startTime), preferredTimescale: 48_000)
+        let available = CMTimeMaximum(.zero, sourceDuration - insertionTime)
+        let duration = CMTimeMinimum(narrationRange.duration, available)
+        if duration > .zero {
+            try narrationDestination.insertTimeRange(CMTimeRange(start: narrationRange.start, duration: duration), of: narrationTrack, at: insertionTime)
+        }
+        return composition
+    }
+
     /// Apply a timestamp shift to audio while retaining the original video clock.
     /// Positive shifts delay audio; negative shifts advance it and trim only audio
     /// that would precede time zero. Source audio's existing start delay is retained.
