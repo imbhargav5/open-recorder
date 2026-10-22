@@ -73,6 +73,33 @@ final class CaptionTests: XCTestCase {
         XCTAssertNil(track.active(at: 4), "End time is exclusive")
     }
 
+    func testBuiltInCaptionPresetsProduceValidDistinctStyles() {
+        XCTAssertGreaterThanOrEqual(CaptionStylePreset.allCases.count, 15)
+        let styles = CaptionStylePreset.allCases.map(\.style)
+        XCTAssertEqual(Set(styles).count, styles.count)
+        for style in styles {
+            XCTAssertTrue(style.fontSize.isFinite)
+            XCTAssertGreaterThan(style.fontSize, 0)
+            XCTAssertTrue((0...1).contains(style.backgroundOpacity))
+            XCTAssertTrue((0...8).contains(style.outlineWidth))
+        }
+        XCTAssertEqual(CaptionStylePreset.social.style.backgroundOpacity, 0)
+        XCTAssertGreaterThan(CaptionStylePreset.social.style.outlineWidth, 0)
+        XCTAssertEqual(CaptionStylePreset.creator.style.textHex, "#FFE600")
+        XCTAssertGreaterThan(CaptionStylePreset.shorts.style.outlineWidth, 0)
+        XCTAssertEqual(CaptionStylePreset.tutorial.style.backgroundHex, "#D9F99D")
+    }
+
+    func testVoiceoverDurationRoundTripsAndOldProjectsRemainReadable() throws {
+        let voiceover = TimelineVoiceover(path: "/tmp/voice.wav", startTime: 12.5, voiceName: "Vivian", duration: 8.25)
+        XCTAssertEqual(try JSONDecoder().decode(TimelineVoiceover.self, from: JSONEncoder().encode(voiceover)), voiceover)
+
+        let oldProject = Data(#"{"path":"/tmp/voice.wav","startTime":2,"voiceName":"Vivian"}"#.utf8)
+        let decoded = try JSONDecoder().decode(TimelineVoiceover.self, from: oldProject)
+        XCTAssertEqual(decoded.duration, 0)
+        XCTAssertEqual(decoded.startTime, 2)
+    }
+
     func testRendererFitsTwoLinesAndScalesAcrossCanvases() throws {
         let texts = ["Hello, world!", "తెలుగు captions 日本語字幕 مرحبا بالعالم", String(repeating: "Long caption words ", count: 15)]
         for text in texts {
@@ -89,14 +116,14 @@ final class CaptionTests: XCTestCase {
         }
     }
 
-    @MainActor func testSetupRequiresAudioModelAndLocalOllama() async throws {
+    @MainActor func testSetupRequiresSpeechModelButNotOllamaCleanup() async throws {
         let defaults = UserDefaults(suiteName: "caption-test-\(UUID())")!
         defaults.set("missing-saved-model", forKey: "captions.ollamaModel")
         let controller = CaptionController(ollama: FakeCaptionOllama(), defaults: defaults, environment: .fixture)
         controller.attach(URL(fileURLWithPath: "/test.mov"))
         try await settle(controller)
         XCTAssertEqual(controller.selectedModel, "missing-saved-model")
-        XCTAssertFalse(controller.canGenerate)
+        XCTAssertTrue(controller.canGenerate)
         controller.selectedModel = "llama3:latest"
         XCTAssertTrue(controller.canGenerate)
         controller.close()

@@ -38,6 +38,7 @@ apps/desktop/src-tauri/target/
 apps/desktop/src-tauri/binaries/
 apps/desktop/src-tauri/gen/
 apps/macos/.build/
+apps/macos/.caption-helper/
 apps/rust-service/target/
 
 # Turbo

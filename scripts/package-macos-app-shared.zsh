@@ -111,14 +111,15 @@ for required_path in "$swift_binary" "$service_binary" "$swift_resource_bundle";
 done
 
 zsh "$repo_root/scripts/build-caption-helper.zsh"
+caption_helper_build_dir="${CAPTION_HELPER_BUILD_DIR:-$repo_root/apps/macos/.caption-helper/build}"
 
 rm -rf "$bundle_dir"
 mkdir -p "$macos_dir" "$resources_dir"
 
 cp "$swift_binary" "$macos_dir/OpenRecorderMac"
 cp "$service_binary" "$macos_dir/open-recorder-service"
-cp "$repo_root/apps/macos/.build/caption-helper/bin/whisper-cli" "$macos_dir/whisper-cli"
-cp "$repo_root/apps/macos/.build/caption-helper/whisper-LICENSE" "$resources_dir/whisper-LICENSE"
+cp "$caption_helper_build_dir/bin/whisper-cli" "$macos_dir/whisper-cli"
+cp "$caption_helper_build_dir/whisper-LICENSE" "$resources_dir/whisper-LICENSE"
 cp "$info_plist" "$contents_dir/Info.plist"
 cp -R "$swift_resource_bundle" "$resources_dir/"
 

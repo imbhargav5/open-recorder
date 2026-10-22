@@ -1,4 +1,4 @@
-.PHONY: setup build-macos dev-macos package-macos package-macos-dev install-macos install-macos-dev run-macos run-macos-dev reset-macos-permissions reset-macos-dev-permissions test-macos clean-macos
+.PHONY: setup setup-local-ai setup-qwen-tts build-captions build-macos dev-macos package-macos package-macos-dev install-macos install-macos-dev run-macos run-macos-dev reset-macos-permissions reset-macos-dev-permissions test-macos clean-macos
 
 RUST_SERVICE := $(CURDIR)/apps/rust-service/target/debug/open-recorder-service
 
@@ -6,6 +6,17 @@ setup:
 	pnpm install --frozen-lockfile
 	pnpm --dir apps/landing install --frozen-lockfile
 	cargo fetch --locked --manifest-path apps/rust-service/Cargo.toml
+
+# Installs/starts Ollama (if Homebrew is available), builds the local Whisper
+# helper, and pulls a compact local caption-cleanup model.
+setup-local-ai:
+	zsh scripts/setup-local-ai.zsh
+
+setup-qwen-tts:
+	zsh scripts/setup-qwen-tts.zsh
+
+build-captions:
+	zsh scripts/build-caption-helper.zsh
 
 build-macos:
 	cd apps/rust-service && CARGO_INCREMENTAL=0 cargo build

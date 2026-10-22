@@ -40,6 +40,7 @@ enum TimelineZoomDepth {
 
 enum TimelineRegionKind: String, CaseIterable, Identifiable {
     case zoom
+    case blur
     case trim
     case annotation
 
@@ -48,6 +49,7 @@ enum TimelineRegionKind: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .zoom: "Zoom"
+        case .blur: "Blur"
         case .trim: "Trim"
         case .annotation: "Annotation"
         }
@@ -56,6 +58,7 @@ enum TimelineRegionKind: String, CaseIterable, Identifiable {
     var accent: Color {
         switch self {
         case .zoom: .blue
+        case .blur: .orange
         case .trim: .red
         case .annotation: .purple
         }
@@ -289,7 +292,10 @@ struct TimelineEditSnapshot: Codable, Equatable, Hashable {
     var clipSpeeds: [Int: Double] = [:]
     var cameraClips: [TimelineCameraClip] = []
     var audio = AudioProcessingSettings.default
+    var aiEnhance = AIAudioEnhanceSettings.default
+    var voiceover: TimelineVoiceover?
     var captions: CaptionTrack?
+    var blurRegions: [TimelineBlurRegion] = []
 
     static let empty = TimelineEditSnapshot()
 
@@ -318,6 +324,9 @@ struct TimelineEditSnapshot: Codable, Equatable, Hashable {
         case cameraClips
         case captions
         case audio
+        case aiEnhance
+        case voiceover
+        case blurRegions
     }
 
     init(from decoder: Decoder) throws {
@@ -329,11 +338,14 @@ struct TimelineEditSnapshot: Codable, Equatable, Hashable {
         clipSpeeds = try container.decodeIfPresent([Int: Double].self, forKey: .clipSpeeds) ?? [:]
         cameraClips = try container.decodeIfPresent([TimelineCameraClip].self, forKey: .cameraClips) ?? []
         audio = try container.decodeIfPresent(AudioProcessingSettings.self, forKey: .audio) ?? .default
+        aiEnhance = try container.decodeIfPresent(AIAudioEnhanceSettings.self, forKey: .aiEnhance) ?? .default
+        voiceover = try container.decodeIfPresent(TimelineVoiceover.self, forKey: .voiceover)
         captions = try container.decodeIfPresent(CaptionTrack.self, forKey: .captions)
+        blurRegions = try container.decodeIfPresent([TimelineBlurRegion].self, forKey: .blurRegions) ?? []
     }
 
     var hasEdits: Bool {
-        audio.isActive || captions != nil || !zoomRegions.isEmpty || !trimRegions.isEmpty || !annotationRegions.isEmpty || !clipSplitTimes.isEmpty || hasClipSpeedEdits || !cameraClips.isEmpty
+        audio.isActive || aiEnhance.enabled || voiceover != nil || captions != nil || !zoomRegions.isEmpty || !trimRegions.isEmpty || !annotationRegions.isEmpty || !clipSplitTimes.isEmpty || hasClipSpeedEdits || !cameraClips.isEmpty || !blurRegions.isEmpty
     }
 
     var hasClipSpeedEdits: Bool {
@@ -426,6 +438,35 @@ struct TimelineEditSnapshot: Codable, Equatable, Hashable {
 
         let settings = clip.settings.clamped
         return settings.enabled ? settings : nil
+    }
+}
+
+/// A generated narration clip stored with the editable project state. It is mixed
+/// with the screen recording at export rather than exposed as a Finder download.
+struct TimelineVoiceover: Codable, Equatable, Hashable, Sendable {
+    var path: String
+    var startTime: Double = 0
+    var voiceName: String = ""
+    /// Cached when the file is generated so the timeline can show its true span
+    /// without repeatedly opening the audio asset while SwiftUI is rendering.
+    /// Older projects decode this as zero and retain their existing behaviour.
+    var duration: Double = 0
+
+    private enum CodingKeys: String, CodingKey { case path, startTime, voiceName, duration }
+
+    init(path: String, startTime: Double = 0, voiceName: String = "", duration: Double = 0) {
+        self.path = path
+        self.startTime = startTime
+        self.voiceName = voiceName
+        self.duration = duration
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        path = try values.decode(String.self, forKey: .path)
+        startTime = try values.decodeIfPresent(Double.self, forKey: .startTime) ?? 0
+        voiceName = try values.decodeIfPresent(String.self, forKey: .voiceName) ?? ""
+        duration = try values.decodeIfPresent(Double.self, forKey: .duration) ?? 0
     }
 }
 
@@ -622,6 +663,8 @@ enum TimelineEditEvent: Equatable {
     case applySnapshot(TimelineEditSnapshot)
     case replaceCaptions(CaptionTrack?)
     case updateAudio(AudioProcessingSettings)
+    case updateAIEnhance(AIAudioEnhanceSettings)
+    case replaceVoiceover(TimelineVoiceover?)
     case reset
     case add(TimelineRegionKind, currentTime: Double, duration: Double)
     case regenerateAutoZoomsRequested(videoURL: URL?, duration: Double, preset: TimelineZoomAnimationPreset)
@@ -656,6 +699,9 @@ enum TimelineEditEvent: Equatable {
     case applyZoomTransition(TimelineZoomTransition, ids: [TimelineRegionID])
     case updateAnnotationText(id: TimelineRegionID, text: String)
     case removeClipSplit(splitTime: Double, duration: Double)
+    case addBlurRegion(TimelineBlurRegion)
+    case removeBlurRegion(id: TimelineRegionID)
+    case updateBlurRegions([TimelineBlurRegion])
 }
 
 enum TimelineEditEffect: Equatable {
@@ -677,6 +723,14 @@ extension TimelineEditState {
 
         case .updateAudio(let settings):
             snapshot.audio = settings
+            return []
+
+        case .updateAIEnhance(let settings):
+            snapshot.aiEnhance = settings
+            return []
+
+        case .replaceVoiceover(let voiceover):
+            snapshot.voiceover = voiceover
             return []
 
         case .reset:
@@ -830,6 +884,18 @@ extension TimelineEditState {
         case .removeClipSplit(let splitTime, let duration):
             removeClipSplit(at: splitTime, duration: duration)
             return []
+
+        case .addBlurRegion(let region):
+            snapshot.blurRegions.append(region)
+            return []
+
+        case .removeBlurRegion(let id):
+            snapshot.blurRegions.removeAll { $0.id == id }
+            return []
+
+        case .updateBlurRegions(let regions):
+            snapshot.blurRegions = regions
+            return []
         }
     }
 
@@ -886,6 +952,10 @@ extension TimelineEditState {
             let region = TimelineZoomRegion(span: span, mode: .manual)
             snapshot.zoomRegions.append(region)
             select(.zoom, id: region.id)
+        case .blur:
+            statusMessage = "Draw on the preview to add a blur region."
+            select(nil, id: nil)
+            return
         case .trim:
             statusMessage = "Use clip splitting instead of trim sections."
             select(nil, id: nil)
@@ -1111,6 +1181,7 @@ extension TimelineEditState {
         guard let selectedKind, let selectedID else { return }
         switch selectedKind {
         case .zoom: snapshot.zoomRegions.removeAll { selectedZoomIDs.contains($0.id) || $0.id == selectedID }
+        case .blur: snapshot.blurRegions.removeAll { $0.id == selectedID }
         case .trim: snapshot.trimRegions.removeAll { $0.id == selectedID }
         case .annotation: snapshot.annotationRegions.removeAll { $0.id == selectedID }
         }
@@ -1244,6 +1315,8 @@ extension TimelineEditState {
                 $0.span = normalized
                 $0.isUserEdited = true
             }
+        case .blur:
+            mutate(&snapshot.blurRegions, id: id) { $0.span = normalized }
         case .trim:
             mutate(&snapshot.trimRegions, id: id) { $0.span = normalized }
         case .annotation:
