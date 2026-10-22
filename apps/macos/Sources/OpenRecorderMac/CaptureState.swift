@@ -770,6 +770,10 @@ struct CaptureState: Hashable {
             statusMessage = "Recording starts in 3..."
             effects.append(.dismissScreenSelection)
             effects.append(.dismissCaptureWindows)
+            // Hide restored editor windows before the full-screen countdown is
+            // presented. Otherwise a camera-enabled recording keeps the app
+            // visible and makes it appear as though recording returned to edit.
+            effects.append(.hideAppWindowsForCapture)
             effects.append(.runRecordingStart(source, outputURL))
 
         case .recordingFilePreparationFailed(_, let message):

@@ -12,6 +12,7 @@ enum CaptureControllerError: LocalizedError {
     case commandFailed(String)
     case screenRecordingPermissionRequired
     case screenRecordingPermissionUnavailableAfterRequest
+    case sourceRefreshTimedOut
 
     var errorDescription: String? {
         switch self {
@@ -27,7 +28,32 @@ enum CaptureControllerError: LocalizedError {
             "Screen Recording permission is required. Enable Open Recorder in System Settings, then quit and reopen the app."
         case .screenRecordingPermissionUnavailableAfterRequest:
             "Screen Recording permission is still unavailable. If Open Recorder is already enabled in System Settings, quit and reopen the app."
+        case .sourceRefreshTimedOut:
+            "Timed out while checking capture sources. Please try again."
         }
+    }
+}
+
+/// ScreenCaptureKit can occasionally fail to invoke its source-list callback,
+/// especially while the system privacy service is changing state. Keep the
+/// continuation single-resume safe and turn that condition into a recoverable
+/// source refresh error rather than leaving the capture HUD indefinitely busy.
+private final class ShareableContentRequest: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<SCShareableContent, Error>?
+
+    func install(_ continuation: CheckedContinuation<SCShareableContent, Error>) {
+        lock.lock()
+        self.continuation = continuation
+        lock.unlock()
+    }
+
+    func resolve(_ result: sending Result<SCShareableContent, Error>) {
+        lock.lock()
+        let continuation = self.continuation
+        self.continuation = nil
+        lock.unlock()
+        continuation?.resume(with: result)
     }
 }
 
@@ -578,18 +604,23 @@ final class CaptureController: ObservableObject {
     }
 
     private func shareableContent() async throws -> SCShareableContent {
-        try await withCheckedThrowingContinuation { continuation in
+        let request = ShareableContentRequest()
+        return try await withCheckedThrowingContinuation { continuation in
+            request.install(continuation)
             SCShareableContent.getExcludingDesktopWindows(
                 true,
                 onScreenWindowsOnly: true
             ) { content, error in
                 if let error {
-                    continuation.resume(throwing: error)
+                    request.resolve(.failure(error))
                 } else if let content {
-                    continuation.resume(returning: content)
+                    request.resolve(.success(content))
                 } else {
-                    continuation.resume(throwing: CaptureControllerError.unsupportedSource)
+                    request.resolve(.failure(CaptureControllerError.unsupportedSource))
                 }
+            }
+            DispatchQueue.global().asyncAfter(deadline: .now() + 8) {
+                request.resolve(.failure(CaptureControllerError.sourceRefreshTimedOut))
             }
         }
     }
