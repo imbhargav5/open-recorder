@@ -142,6 +142,10 @@ struct VideoPreviewPanel: View {
                         }
                         .modifier(SceneCanvasGesture(enabled: showsSceneTools, tool: sceneTool,
                             pose: scenePoseBinding(settings: $scene, endpoint: sceneEndpoint), onEditingChanged: onSceneEditingChanged))
+                        .modifier(BlurRegionDrawingOverlay(sensitiveData: Binding(
+                            get: { scene.resolvedSensitiveData },
+                            set: { scene.sensitiveData = $0 }
+                        ), edits: timelineEdits, currentTime: playback.currentTime, duration: playback.duration))
                     } overlay: {
                         recordingSessionBadges
                     }
@@ -380,7 +384,12 @@ struct VideoPreviewPanel: View {
             }
             .overlay {
                 if let captions = timelineEdits.snapshot.captions {
-                    CaptionPreviewOverlay(segment: captions.active(at: playback.currentTime), style: captions.style, size: proxy.size)
+                    CaptionPreviewOverlay(
+                        segment: captions.active(at: playback.currentTime),
+                        style: captions.style,
+                        size: proxy.size,
+                        currentTime: playback.currentTime
+                    )
                         .equatable()
                 }
             }

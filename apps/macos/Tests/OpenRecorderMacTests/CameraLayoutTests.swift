@@ -617,6 +617,22 @@ final class CameraLayoutTests: XCTestCase {
         }
     }
 
+    func testVerticalSplitUsesEqualWidthPanelsAndAdjustableHeight() {
+        for above in [true, false] {
+            var settings = camera(.verticalSplit)
+            settings.cameraWidthPercent = 25
+            settings.cameraAbove = above
+            let frames = CameraLayoutGeometry.frames(in: CGSize(width: 360, height: 640), screenAspectRatio: 16 / 9, settings: settings)
+
+            XCTAssertEqual(frames.camera.width, frames.screen.width, accuracy: 0.001)
+            XCTAssertEqual(frames.camera.height, (640 - 2 * 360 * 0.04) * 0.25, accuracy: 0.001)
+            XCTAssertFalse(frames.camera.intersects(frames.screen))
+            XCTAssertEqual(above ? frames.camera.minY : frames.screen.minY, 360 * 0.04, accuracy: 0.001)
+            XCTAssertEqual(above ? frames.screen.maxY : frames.camera.maxY, 640 - 360 * 0.04, accuracy: 0.001)
+            XCTAssertEqual(settings.resolvedScreenFit, .cover)
+        }
+    }
+
     func testCoverFillsHeightAndCropsWithinOriginalSelection() {
         for layout in [CameraLayout.split, .sideBySide] {
             for width in [10.0, 50, 70] {
