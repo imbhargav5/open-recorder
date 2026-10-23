@@ -88,6 +88,7 @@ struct VideoBackgroundStyling: Equatable {
     var shadowIntensity: Double
     var backgroundBlurRatio: Double
     var inset: VideoInsetStyling
+    var browserMockup: BrowserMockupSettings = .default
 
     static let none = VideoBackgroundStyling(
         background: .transparent,
@@ -95,7 +96,8 @@ struct VideoBackgroundStyling: Equatable {
         borderRadiusRatio: 0,
         shadowIntensity: 0,
         backgroundBlurRatio: 0,
-        inset: .none
+        inset: .none,
+        browserMockup: .default
     )
 
     var isPassthrough: Bool {

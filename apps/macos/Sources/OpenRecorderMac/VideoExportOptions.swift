@@ -355,7 +355,8 @@ struct VideoExportOptions: Equatable {
         inset: Double,
         insetColor: SerializableColor,
         insetOpacity: Double,
-        insetBalance: VideoInsetBalance
+        insetBalance: VideoInsetBalance,
+        browserMockup: BrowserMockupSettings = .default
     ) -> VideoExportOptions {
         var copy = self
         copy.styling = VideoBackgroundStyling(
@@ -369,7 +370,8 @@ struct VideoExportOptions: Equatable {
                 color: insetColor,
                 opacity: max(0, min(insetOpacity, 1)),
                 balance: insetBalance.clamped
-            )
+            ),
+            browserMockup: browserMockup.clamped
         )
         return copy
     }
