@@ -3,6 +3,46 @@ title: "Open Recorder changelog: releases, features, and fixes"
 description: "Release notes for Open Recorder on macOS. Track new screen recording features, capture improvements, and bug fixes in each version update."
 ---
 
+<Update label="October 23, 2026" description="Voiceover and privacy tools" tags={["macOS"]}>
+## New features
+
+### Voiceover
+
+Add narration after you record. Write a script in the **Audio** panel, then choose how to voice it:
+
+- **Record a voiceover** reads your script in a teleprompter while the video plays from the playhead. A new take replaces the previous one.
+- **Generate a voice** (Beta) uses a local AI model. Pick a built-in voice, or choose **My voice** to clone a 3–30 second sample. Built-in voices support a **Tone** setting such as Warm, Upbeat, Calm, or Serious.
+
+The voiceover appears as its own timeline clip that you can drag to retime.
+
+### Recording teleprompter
+
+Show a script above the recording preview while you capture. Only you can see it. It's excluded from the recorded video. Format text with bold, italic, and underline, and adjust scroll speed.
+
+### Edit by transcript
+
+After you [generate captions](/editing/captions), open **Transcript** and select words to cut them from the video. Deleted words become trim regions on the timeline.
+
+### Timed blur
+
+Hide sensitive information for part of a recording. Drag over the preview to add a blur at the playhead. Each blur has its own strength and start and end time, and appears as a clip you can move or resize on the timeline.
+
+### Liquid Glass lens (Beta)
+
+A circular lens magnifies the content under your cursor. Adjust radius, magnification, edge blur, border, and motion blur. Set it to follow the cursor or stay fixed.
+
+### Voice Enhance
+
+Turn on **Enhance voice** in the **Audio** panel to reduce background noise, remove rumble, add vocal presence, tame harsh "s" sounds, and smooth volume. Processing runs on your Mac.
+
+## Updates
+
+- New **Stacked split** camera layout places the camera above or below the screen. See [Camera layouts](/editing/camera-layouts).
+- [Captions](/editing/captions) now generate with only the local speech model. Ollama is optional and adds an extra punctuation cleanup pass.
+- Caption style presets: Standard, Minimal, Bold, Outline, Neon, Social, Creator, Cinema, News, Retro, Shorts, Podcast, Tutorial, Gaming, and Documentary. Presets keep your visibility and placement.
+- Browser frames now let you set URL position, toolbar size, and which browser elements to show.
+</Update>
+
 <Update label="October 9, 2026" description="Audio controls" tags={["macOS"]}>
 ## New features
 
