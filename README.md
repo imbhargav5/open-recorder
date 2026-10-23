@@ -191,7 +191,7 @@ Screen recording requires macOS Screen Recording permission for the app process.
 
 [View the current contributor graph.](https://github.com/imbhargav5/open-recorder/graphs/contributors)
 
-Thanks to everyone who has contributed to Open Recorder. The historical acknowledgements below use the [All Contributors emoji key](https://allcontributors.org/docs/en/emoji-key); the contributor graph above is the current record.
+Thanks to everyone who has contributed to Open Recorder. The historical acknowledgements below use the [All Contributors emoji key](https://allcontributors.org/docs/emoji-key); the contributor graph above is the current record.
 
 <details>
 <summary>View historical acknowledgements</summary>
