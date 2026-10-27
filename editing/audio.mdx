@@ -1,20 +1,91 @@
 ---
-title: "Adjust recording audio"
-description: "Route microphone channels, normalize loudness, fix audio sync, and shape tone from the Audio inspector in the video editor."
+title: "Add a voiceover and adjust recording audio"
+description: "Record or generate a voiceover, enhance your voice, route microphone channels, normalize loudness, fix audio sync, and shape tone from the Audio inspector."
 ---
 
-The **Audio** inspector in the video editor processes your recording's combined audio. Use it to fix a microphone that only plays in one speaker, even out loudness, line up audio that drifts from the video, and make voices clearer.
+The **Audio** inspector in the video editor has two parts:
+
+- **Voiceover** adds narration after you record, either by reading a script yourself or by generating a voice with a local AI model.
+- **Audio cleanup & mix** processes your recording's combined audio. Use it to reduce noise, fix a microphone that only plays in one speaker, even out loudness, line up audio that drifts from the video, and make voices clearer.
 
 Every change applies to both the preview and the exported video. Slider changes are part of the editor's undo and redo history.
 
 To open it, open a recording in the video editor and select **Audio** in the inspector.
 
-## Voice
+## Voiceover
+
+### Write the script
+
+Type your narration in the **Teleprompter** box at the top of the **Voiceover** section. Use the **Format** buttons to make text bold, italic, or underlined. The script is private. It is never included in the export.
+
+If you leave the script empty and the recording has [captions](/editing/captions), **Generate voice** reads the caption text instead.
+
+### Choose a voice
+
+The **Voice** row shows the current voice. Click **Change** to open **Choose a voice**, then pick a voice type:
+
+- **AI voices**: choose a built-in voice. The options are **Vivian · Bright**, **Serena · Warm**, **Ryan · US**, and **Aiden · US**.
+- **My voice**: clone your own voice from a short sample.
+  1. Click **Record** and speak naturally for 3 to 30 seconds in a quiet room, close to the microphone. You can also click **Choose WAV…** to use an existing recording.
+  2. Open Recorder transcribes the sample. Under **Check what was heard**, fix any misheard words, especially names. Only the sample transcript has to match. Your narration can say anything.
+  3. Click **Test my voice** to hear a preview, then **Play** to listen again.
+
+Click **Done** to close the sheet.
+
+### Adjust delivery
+
+Click **Adjust** next to **Delivery** to change how the voice speaks.
+
+| Control | Range | Effect |
+| --- | --- | --- |
+| **Tone** | Neutral, Warm, Upbeat, Energetic, Calm, Serious | Steers emotion for built-in voices. Not available for **My voice**, which follows your sample. |
+| **Speed** | 0.5× to 2.0× | Speaking rate. Defaults to 1.0×. |
+| **Pitch** | 0.5× to 2.0× | Voice pitch. Defaults to 1.0×. |
+
+### Generate or record the voiceover
+
+- Click **Generate voice** to create narration with the selected voice. Open Recorder places it on the timeline at the playhead.
+- Click **Record your own take instead** to read the script yourself. Playback and recording start together at the playhead, and the script appears in a teleprompter over the video. Click **Stop recording** when you're done.
+
+A recording has one voiceover. A new take or generated voice replaces the previous one.
+
+### Retime or remove the voiceover
+
+The voiceover appears as its own clip on the timeline. Drag it to retime it. The **Voiceover** section also shows the clip's start time and length:
+
+- **Start at playhead** moves the clip so it starts at the current playhead position.
+- **Remove** deletes the voiceover.
+
+### Set up the local voice server
+
+**Generate voice** needs a local voice server. The model runs on your Mac and is not bundled with the app. The **Voiceover** section shows **Voice server connected** or **Voice server offline**.
+
+To start the server from an Open Recorder source checkout, run:
+
+```bash
+make setup-qwen-tts
+```
+
+The server listens on port 8880. It requires Python 3.12 and SoX. Once it's running, click **Check** in the **Voiceover** section to reconnect.
+
+Recording your own take does not need the voice server.
+
+## Audio cleanup & mix
+
+Expand **Audio cleanup & mix** below the **Voiceover** section to reach the processing controls. Loudness, sync, and tone controls are inside the nested **Loudness, sync & tone** group.
+
+### Voice Enhance
+
+Click **Enhance voice** to turn on local voice processing. It reduces noise between words, removes rumble, adds vocal presence, tames harsh "s" sounds, compresses, and protects peaks. Processing runs on your Mac.
+
+When it's on, the button reads **Voice Enhance: On** and an **Intensity** slider (0 to 100%) appears. Replay the recording after changing it to compare. Click the button again to turn it off.
+
+### Voice
 
 | Control | Effect |
 | --- | --- |
 | **Voice preset** | Applies a starting point for spoken audio: **Normalize loudness** on at −14 LUFS, **Punch** 35, **Presence** +2 dB, **Treble** +1 dB, and **Reduce low rumble** on. Your current **Channels** and **Audio Sync** settings are kept. |
-| **Reset** | Restores every audio setting to its default, including **Channels** and **Audio Sync**. |
+| **Reset** | Restores the Voice, Loudness, Audio Sync, and Tone settings to their defaults, including **Channels**. Voice Enhance is not affected. |
 | **Channels** | Chooses how input channels reach the left and right speakers. |
 
 **Channels** options:
@@ -28,7 +99,7 @@ To open it, open a recording in the video editor and select **Audio** in the ins
 
 If your microphone is plugged into one input of a two-channel audio interface, you only hear it in one speaker. Choose the input it's connected to so you hear it in both speakers.
 
-## Loudness
+### Loudness
 
 | Control | Range | Effect |
 | --- | --- | --- |
@@ -40,7 +111,7 @@ Start with −14 LUFS and adjust from there. Open Recorder reduces gain when nee
 
 While Open Recorder measures the recording, the inspector shows **Measuring audio…**. When measurement finishes, it shows the current audio status.
 
-## Audio Sync
+### Audio Sync
 
 Use **Offset** to shift the audio relative to the video by up to ±2 seconds, in 10 ms steps.
 
@@ -49,7 +120,7 @@ Use **Offset** to shift the audio relative to the video by up to ±2 seconds, in
 
 Click **Reset Sync** to return the offset to 0 ms.
 
-## Tone
+### Tone
 
 | Control | Range | Effect |
 | --- | --- | --- |
