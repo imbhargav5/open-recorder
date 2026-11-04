@@ -284,6 +284,7 @@ struct ProjectEditorState: Codable, Equatable {
 struct ProjectVideoEditorState: Codable, Equatable, Hashable {
     var scene: SceneSettings = .identity
     var canvasAspect: VideoPreviewAspectPreset = .auto
+    var cropFraming: VideoCropFraming = .trimToFill
     var background: BackgroundStyle
     var padding: Double
     var borderRadius: Double
@@ -329,6 +330,7 @@ struct ProjectVideoEditorState: Codable, Equatable, Hashable {
 
     private enum CodingKeys: String, CodingKey {
         case scene, canvasAspect
+        case cropFraming
         case background
         case padding
         case borderRadius
@@ -348,6 +350,7 @@ struct ProjectVideoEditorState: Codable, Equatable, Hashable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         scene = try container.decodeIfPresent(SceneSettings.self, forKey: .scene) ?? .identity
         canvasAspect = try container.decodeIfPresent(VideoPreviewAspectPreset.self, forKey: .canvasAspect) ?? .auto
+        cropFraming = try container.decodeIfPresent(VideoCropFraming.self, forKey: .cropFraming) ?? .trimToFill
         background = try container.decodeIfPresent(BackgroundStyle.self, forKey: .background) ?? defaults.background
         padding = try container.decodeIfPresent(Double.self, forKey: .padding) ?? defaults.padding
         borderRadius = try container.decodeIfPresent(Double.self, forKey: .borderRadius) ?? defaults.borderRadius

@@ -38,6 +38,7 @@ struct SettingsInspector: View {
     @Binding var activeTab: InspectorTab
     @Binding var scene: SceneSettings
     @Binding var canvasAspect: VideoPreviewAspectPreset
+    @Binding var cropFraming: VideoCropFraming
     @Binding var sceneEndpoint: SceneEndpoint
     @Binding var showsSelection: Bool
     var selectionSidebar: TimelineSelectionSidebar? = nil
@@ -191,6 +192,11 @@ struct SettingsInspector: View {
             MagnifierLensInspector(settings: $scene, onEditingChanged: onSceneEditingChanged)
         case .appearance:
             CanvasAspectPicker(selection: $canvasAspect).padding(.bottom, 12)
+            Picker("Crop framing", selection: $cropFraming) {
+                ForEach(VideoCropFraming.allCases) { Text($0.title).tag($0) }
+            }
+            .controlSize(.small)
+            .padding(.bottom, 12)
             BackgroundPickerView(selection: $background, showsTopDivider: false)
             InspectorGroup(
                 title: "Frame",
