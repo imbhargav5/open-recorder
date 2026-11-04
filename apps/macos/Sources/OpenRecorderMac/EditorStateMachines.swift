@@ -53,6 +53,7 @@ struct VideoExportDraftState: Equatable {
             gifSize: gifSize,
             gifLoops: gifLoops,
             aspectPreset: baseOptions.aspectPreset,
+            cropFraming: baseOptions.cropFraming,
             styling: .none,
             cropSelection: baseOptions.cropSelection,
             customOutputSize: resolution == .custom ? baseOptions.customOutputSize : nil,
@@ -124,6 +125,7 @@ struct VideoEditorState: Equatable {
         )
         .withScene(video.scene)
         .withAspectPreset(previewAspectPreset)
+        .withCropFraming(video.cropFraming)
         .withCursorOverlay(cursorOverlaySettings, telemetryURL: cursorTelemetryURL)
     }
 
@@ -443,6 +445,10 @@ final class VideoEditorDriver {
             get: { self.state.previewAspectPreset },
             set: { self.send(.previewAspectChanged($0)) }
         )
+    }
+
+    var cropFramingBinding: Binding<VideoCropFraming> {
+        binding(\.cropFraming)
     }
 
     var exportResolutionBinding: Binding<VideoExportResolution> {

@@ -109,6 +109,7 @@ struct VideoPreviewPanel: View {
     var facecamSettings: FacecamSettings?
     var cameraTimelineFallback: FacecamSettings?
     @Binding var previewAspectPreset: VideoPreviewAspectPreset
+    @Binding var cropFraming: VideoCropFraming
     @Binding var scene: SceneSettings
     var sceneEndpoint: SceneEndpoint
     @Binding var sceneTool: SceneTool
@@ -396,7 +397,8 @@ struct VideoPreviewPanel: View {
     }
 
     private var displayCropSelection: VideoCropSelection {
-        cropSelection.centeredCrop(toAspectRatio: previewAspectRatio, in: playback.naturalVideoSize)
+        guard cropFraming == .trimToFill else { return cropSelection }
+        return cropSelection.centeredCrop(toAspectRatio: previewAspectRatio, in: playback.naturalVideoSize)
     }
 
     private var previewLetterboxFill: VideoPreviewLetterboxFill {
