@@ -269,6 +269,7 @@ struct VideoEditorStudioView: View {
                 facecamSettings: editor.state.currentFacecamSettings,
                 cameraTimelineFallback: editor.state.currentFacecamSettings,
                 previewAspectPreset: editor.previewAspectPresetBinding,
+                cropFraming: editor.cropFramingBinding,
                 scene: editor.binding(\.scene),
                 sceneEndpoint: sceneEndpoint,
                 sceneTool: $sceneTool,
@@ -351,6 +352,7 @@ struct VideoEditorStudioView: View {
             captionEdits: timelineEdits, captionPlayback: playback,
             sceneEdits: timelineEdits, sceneCurrentTime: playback.currentTime,
             activeTab: $activeInspector, scene: editor.binding(\.scene), canvasAspect: editor.previewAspectPresetBinding,
+            cropFraming: editor.cropFramingBinding,
             sceneEndpoint: $sceneEndpoint, showsSelection: $showsTimelineSelection,
             selectionSidebar: TimelineSelectionSidebar(edits: timelineEdits, playback: playback, defaultCameraSettings: editor.state.currentFacecamSettings),
             sceneDuration: sceneEditPlan.outputDuration, seekScene: seekScene, onSceneEditingChanged: sceneUndoTransaction
