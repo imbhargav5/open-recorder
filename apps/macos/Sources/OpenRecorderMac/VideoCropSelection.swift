@@ -1,6 +1,20 @@
 import CoreGraphics
 import Foundation
 
+enum VideoCropFraming: String, Codable, CaseIterable, Identifiable {
+    case trimToFill
+    case fitAndCenter
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .trimToFill: "Trim to fill"
+        case .fitAndCenter: "Fit and center"
+        }
+    }
+}
+
 enum VideoCropSizing: Equatable, Hashable, Codable {
     case preset(VideoExportResolution)
     case custom(width: Int, height: Int)

@@ -36,6 +36,7 @@ struct ScreenshotAppearancePreferences: Codable, Equatable {
 
 struct VideoAppearancePreferences: Codable, Equatable {
     var canvasAspect: VideoPreviewAspectPreset
+    var cropFraming: VideoCropFraming?
     var background: BackgroundStyle
     var padding: Double
     var borderRadius: Double
@@ -50,6 +51,7 @@ struct VideoAppearancePreferences: Codable, Equatable {
 
     init(state: ProjectVideoEditorState) {
         canvasAspect = state.canvasAspect
+        cropFraming = state.cropFraming
         background = state.background
         padding = state.padding
         borderRadius = state.borderRadius
@@ -64,6 +66,7 @@ struct VideoAppearancePreferences: Codable, Equatable {
     func applying(to state: ProjectVideoEditorState) -> ProjectVideoEditorState {
         var next = state
         next.canvasAspect = canvasAspect
+        next.cropFraming = cropFraming ?? .trimToFill
         next.background = background
         next.padding = padding
         next.borderRadius = borderRadius
