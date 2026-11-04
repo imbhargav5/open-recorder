@@ -560,7 +560,14 @@ enum VideoExportRenderer {
         let sourceDuration = exportSourceDuration(assetDuration: assetDuration, videoTrackTimeRange: videoTrackTimeRange)
         let frameDuration = try await options.frameRate.frameDuration(for: videoTrack)
         let normalizedSourceSize = normalizedSize(for: naturalSize, preferredTransform: preferredTransform)
-        let cropRect = normalizedCropRect(for: options.cropSelection, sourceSize: normalizedSourceSize)
+        let selectedCropRect = normalizedCropRect(for: options.cropSelection, sourceSize: normalizedSourceSize)
+        let selectedAspectRatio = options.aspectPreset.aspectRatio(forExportSourceSize: selectedCropRect.size)
+        let cropRect = VideoCropSelection(
+            normalizedRect: VideoCropSelection.normalizedRect(for: selectedCropRect, in: normalizedSourceSize),
+            sizing: options.cropSelection?.sizing ?? .preset(.source)
+        )
+        .centeredCrop(toAspectRatio: selectedAspectRatio, in: normalizedSourceSize)
+        .pixelRect(in: normalizedSourceSize)
         let outputSize = resolvedOutputSize(for: cropRect.size, options: options)
         let cursorTrack = options.cursorTelemetryURL
             .flatMap { try? CursorTelemetryPayload.load(from: $0) }
@@ -900,7 +907,10 @@ enum VideoExportRenderer {
     static func resolvedOutputSize(for sourceSize: CGSize, options: VideoExportOptions) -> CGSize {
         let resolution = effectiveResolution(for: options)
         if resolution == .custom, let customOutputSize = options.customOutputSize {
-            return evenSize(width: customOutputSize.width, height: customOutputSize.height)
+            if options.aspectPreset == .auto {
+                return evenSize(width: customOutputSize.width, height: customOutputSize.height)
+            }
+            return evenSize(width: max(abs(sourceSize.width), 2), height: max(abs(sourceSize.height), 2))
         }
 
         let sourceWidth = max(abs(sourceSize.width), 2)
