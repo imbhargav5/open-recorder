@@ -84,6 +84,26 @@ struct VideoCropSelection: Equatable, Hashable, Codable {
         return copy
     }
 
+    func centeredCrop(toAspectRatio aspectRatio: CGFloat, in sourceSize: CGSize) -> VideoCropSelection {
+        let crop = pixelRect(in: sourceSize)
+        guard aspectRatio.isFinite, aspectRatio > 0, crop.width > 0, crop.height > 0 else { return self }
+
+        let cropAspectRatio = crop.width / crop.height
+        let fittedSize: CGSize
+        if cropAspectRatio > aspectRatio {
+            fittedSize = CGSize(width: crop.height * aspectRatio, height: crop.height)
+        } else {
+            fittedSize = CGSize(width: crop.width, height: crop.width / aspectRatio)
+        }
+        let fittedRect = CGRect(
+            x: crop.midX - fittedSize.width / 2,
+            y: crop.midY - fittedSize.height / 2,
+            width: fittedSize.width,
+            height: fittedSize.height
+        )
+        return withPixelRect(Self.clampedPixelRect(fittedRect, in: Self.safeSourceSize(sourceSize)), in: sourceSize)
+    }
+
     func withSizing(_ sizing: VideoCropSizing) -> VideoCropSelection {
         var copy = self
         copy.sizing = sizing
