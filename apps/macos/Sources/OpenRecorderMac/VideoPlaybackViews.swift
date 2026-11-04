@@ -257,7 +257,7 @@ struct VideoPreviewPanel: View {
 
     private var cameraLayoutStage: some View {
         SceneVideoPreview(player: playback.player, sourceSize: playback.naturalVideoSize,
-            cropSelection: cropSelection, settings: scene, styling: sceneStyling,
+            cropSelection: displayCropSelection, settings: scene, styling: sceneStyling,
             edits: timelineEdits.snapshot, duration: playback.duration, cursorTrack: cursorTrack,
             cursorSettings: cursorSettings, cameraSettings: cameraTimelineFallback ?? facecamSettings,
             usesCameraLayout: true, facecamURL: facecamVideoURL, facecamOffsetMs: recordingSession?.facecamOffsetMs,
@@ -275,7 +275,7 @@ struct VideoPreviewPanel: View {
     private var sceneStage: some View {
         GeometryReader { proxy in
             SceneVideoPreview(player: playback.player, sourceSize: playback.naturalVideoSize,
-                cropSelection: cropSelection, settings: scene, styling: sceneStyling,
+                cropSelection: displayCropSelection, settings: scene, styling: sceneStyling,
                 edits: timelineEdits.snapshot, duration: playback.duration, cursorTrack: cursorTrack,
                 cursorSettings: cursorSettings, cameraSettings: activeFacecamSettings,
                 onPreviewStatus: { scenePreviewStatus = $0 })
@@ -285,14 +285,14 @@ struct VideoPreviewPanel: View {
                 .overlay(alignment: .topLeading) {
                     if let url = facecamVideoURL, let settings = activeFacecamSettings {
                         let effect = TimelineZoomCanvasTransform.previewEffect(edits: timelineEdits.snapshot, sourceTime: playback.currentTime, duration: playback.duration, cursorTrack: cursorTrack)
-                        let frame = PreviewStageLayout.recordingFrameRect(forAspectRatio: cropSelection.previewAspectRatio(in: playback.naturalVideoSize),
+                        let frame = PreviewStageLayout.recordingFrameRect(forAspectRatio: displayCropSelection.previewAspectRatio(in: playback.naturalVideoSize),
                             in: proxy.size, paddingValue: padding)
                         FacecamPlaybackOverlay(facecamURL: url, screenPlayback: playback,
                             offsetMs: recordingSession?.facecamOffsetMs, settings: settings)
                             .frame(width: proxy.size.width, height: proxy.size.height)
                             .transformEffect(settings.fixedDuringZoom == true ? .identity : PreviewStageLayout.previewFullStageZoomTransform(
                                 effect: effect, stageSize: proxy.size, recordingFrame: frame, sourceSize: playback.naturalVideoSize,
-                                cropSelection: cropSelection, inset: inset, insetBalance: insetBalance, cameraSettings: settings))
+                                cropSelection: displayCropSelection, inset: inset, insetBalance: insetBalance, cameraSettings: settings))
                     }
                 }
         }.clipped()
@@ -302,7 +302,7 @@ struct VideoPreviewPanel: View {
         GeometryReader { proxy in
             let hasAdaptiveCamera = timelineEdits.snapshot.hasAdaptiveCamera
             let recordingFrame = PreviewStageLayout.recordingFrameRect(
-                forAspectRatio: hasAdaptiveCamera ? cropSelection.previewAspectRatio(in: playback.naturalVideoSize) : previewAspectRatio,
+                forAspectRatio: hasAdaptiveCamera ? displayCropSelection.previewAspectRatio(in: playback.naturalVideoSize) : previewAspectRatio,
                 in: proxy.size,
                 paddingValue: padding
             )
@@ -313,7 +313,7 @@ struct VideoPreviewPanel: View {
                 stageSize: proxy.size,
                 recordingFrame: recordingFrame,
                 sourceSize: playback.naturalVideoSize,
-                cropSelection: cropSelection,
+                cropSelection: displayCropSelection,
                 inset: inset,
                 insetBalance: insetBalance,
                 cameraSettings: activeFacecamSettings
@@ -337,7 +337,7 @@ struct VideoPreviewPanel: View {
                         cursorTelemetryURL: cursorTelemetryURL,
                         cursorSettings: cursorSettings,
                         cursorTrack: cursorTrack,
-                        cropSelection: cropSelection,
+                        cropSelection: displayCropSelection,
                         sourceSize: playback.naturalVideoSize,
                         letterboxFill: previewLetterboxFill,
                         zoomAppliedByStage: zoomEffect?.usesViewportCenter == true
@@ -393,6 +393,10 @@ struct VideoPreviewPanel: View {
 
     private var previewAspectRatio: CGFloat {
         previewAspectPreset.aspectRatio(for: cropSelection, sourceSize: playback.naturalVideoSize)
+    }
+
+    private var displayCropSelection: VideoCropSelection {
+        cropSelection.centeredCrop(toAspectRatio: previewAspectRatio, in: playback.naturalVideoSize)
     }
 
     private var previewLetterboxFill: VideoPreviewLetterboxFill {
