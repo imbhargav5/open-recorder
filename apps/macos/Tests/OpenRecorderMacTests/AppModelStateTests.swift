@@ -2035,6 +2035,22 @@ final class AppModelStateTests: XCTestCase {
         XCTAssertEqual(model.hudState.presentation, .visible)
     }
 
+    func testOnboardingResumesSavedStepAndClearsItOnCompletion() {
+        let completion = OnboardingCompletionBox(false)
+        completion.savedStep = .extras
+        let model = AppModel(
+            screenRecordingPermission: makeScreenRecordingPermission(isGranted: true),
+            accessibilityPermission: makeAccessibilityPermission(isTrusted: false),
+            onboardingStore: completion.store
+        )
+
+        model.presentOnboardingIfNeeded()
+        XCTAssertEqual(model.appShell.onboarding.state.step, .extras)
+
+        XCTAssertTrue(model.completeOnboarding())
+        XCTAssertNil(completion.savedStep)
+    }
+
     func testOnboardingRefreshMarksScreenRecordingGrantedAfterPermissionChanges() {
         var isGranted = false
         let model = AppModel(
@@ -2483,10 +2499,14 @@ private final class OnboardingCompletionBox {
         self.value = value
     }
 
+    var savedStep: OnboardingStep?
+
     var store: OnboardingStateStore {
         OnboardingStateStore(
             isCompleted: { self.value },
-            setCompleted: { self.value = $0 }
+            setCompleted: { self.value = $0 },
+            savedStep: { self.savedStep },
+            setSavedStep: { self.savedStep = $0 }
         )
     }
 }
