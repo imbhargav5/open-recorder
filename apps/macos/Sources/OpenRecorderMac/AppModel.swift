@@ -550,17 +550,50 @@ final class AppModel: ObservableObject {
                     self.accessibilityPermission.currentState()
                 )
             },
+            currentMediaPermissions: { [weak self] in
+                guard let self else { return (.undetermined, .undetermined) }
+                return self.onboardingMediaPermissionStates()
+            },
             requestScreenPermission: { [weak self] in
                 self?.requestScreenRecordingPermission() ?? .promptAlreadyShown
             },
             requestAccessibilityPermission: { [weak self] in
                 self?.requestAccessibilityPermission() ?? .promptAlreadyShown
             },
+            requestMicrophonePermission: { completion in
+                Task { @MainActor in
+                    let granted = await AVCaptureDevice.requestAccess(for: .audio)
+                    completion(granted)
+                }
+            },
+            requestCameraPermission: { completion in
+                Task { @MainActor in
+                    let granted = await AVCaptureDevice.requestAccess(for: .video)
+                    completion(granted)
+                }
+            },
             openScreenRecordingSettings: { [weak self] in
                 self?.openPrivacySettings()
             },
             openAccessibilitySettings: { [weak self] in
                 self?.openAccessibilitySettings()
+            },
+            openMicrophoneSettings: { [weak self] in
+                self?.openMicrophoneSettings()
+            },
+            openCameraSettings: { [weak self] in
+                self?.openCameraSettings()
+            },
+            persistStep: { [weak self] step in
+                self?.onboardingStore.setSavedStep(step)
+            },
+            relaunchApp: { [weak self] in
+                self?.relaunchApplication()
+            },
+            startFirstRecording: { [weak self] in
+                Task { @MainActor [weak self] in
+                    self?.beginCapture(.recording)
+                }
             },
             completeOnboarding: { [weak self] in
                 self?.persistCompletedOnboarding() ?? false
@@ -860,6 +893,45 @@ final class AppModel: ObservableObject {
             screen: screenRecordingPermission.currentState(),
             accessibility: accessibilityPermission.currentState()
         ))
+        let media = onboardingMediaPermissionStates()
+        appShell.onboarding.send(.mediaPermissionsRefreshed(microphone: media.microphone, camera: media.camera))
+    }
+
+    private func onboardingMediaPermissionStates() -> (microphone: OnboardingMediaPermissionState, camera: OnboardingMediaPermissionState) {
+        (onboardingMediaPermissionState(for: .audio), onboardingMediaPermissionState(for: .video))
+    }
+
+    private func onboardingMediaPermissionState(for mediaType: AVMediaType) -> OnboardingMediaPermissionState {
+        switch AVCaptureDevice.authorizationStatus(for: mediaType) {
+        case .authorized:
+            .granted
+        case .notDetermined:
+            .undetermined
+        case .denied, .restricted:
+            .denied
+        @unknown default:
+            .denied
+        }
+    }
+
+    /// Starts a fresh copy of the app once this process has exited, then quits.
+    /// macOS often applies a new Screen Recording grant only to a new process.
+    func relaunchApplication() {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = [
+            "-c",
+            "while /bin/kill -0 \"$1\" 2>/dev/null; do /bin/sleep 0.2; done; /usr/bin/open \"$0\"",
+            Bundle.main.bundlePath,
+            String(ProcessInfo.processInfo.processIdentifier)
+        ]
+        do {
+            try process.run()
+        } catch {
+            statusMessage = "Couldn't relaunch Open Recorder. Quit and reopen it to finish setup."
+            return
+        }
+        NSApp.terminate(nil)
     }
 
     func presentOnboardingIfNeeded() {
@@ -871,6 +943,7 @@ final class AppModel: ObservableObject {
 
     func showOnboarding() {
         refreshOnboardingPermissionStates()
+        appShell.onboarding.send(.stepRestored(onboardingStore.savedStep() ?? .welcome))
         setCaptureStateMirror(captureState.withPresentation(.hidden))
         requestWindow(.showOnboarding)
     }
@@ -921,6 +994,7 @@ final class AppModel: ObservableObject {
 
     private func persistCompletedOnboarding() -> Bool {
         onboardingStore.setCompleted(true)
+        onboardingStore.setSavedStep(nil)
         statusMessage = "Ready"
         setCaptureStateMirror(captureState.withPresentation(.visible))
         requestWindow(.finishOnboarding)
