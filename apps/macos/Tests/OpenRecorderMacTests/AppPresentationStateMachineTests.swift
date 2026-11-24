@@ -1571,6 +1571,118 @@ final class OnboardingAndSettingsStateMachineTests: XCTestCase {
         XCTAssertEqual(state.applying(.continueRequested), [.completeOnboarding])
     }
 
+    func testOnboardingStepsRequireScreenRecordingBeforeExtras() {
+        var state = OnboardingMachineState(
+            screenRecordingPermissionState: .requestAvailable,
+            accessibilityPermissionState: .requestAvailable
+        )
+        XCTAssertEqual(state.step, .welcome)
+
+        XCTAssertEqual(state.applying(.stepAdvanceRequested), [.persistStep(.screenRecording), .refreshPermissions])
+        XCTAssertEqual(state.step, .screenRecording)
+        XCTAssertEqual(state.screenRecordingStage, .notRequested)
+
+        XCTAssertEqual(state.applying(.stepAdvanceRequested), [])
+        XCTAssertEqual(state.step, .screenRecording)
+
+        _ = state.applying(.permissionsRefreshed(screen: .granted, accessibility: .requestAvailable))
+        XCTAssertEqual(state.screenRecordingStage, .granted)
+        XCTAssertEqual(state.applying(.stepAdvanceRequested), [.persistStep(.extras), .refreshPermissions])
+        XCTAssertEqual(state.applying(.stepAdvanceRequested), [.persistStep(.ready), .refreshPermissions])
+        XCTAssertEqual(state.applying(.stepAdvanceRequested), [])
+        XCTAssertEqual(state.step, .ready)
+
+        XCTAssertEqual(state.applying(.stepBackRequested), [.persistStep(.extras)])
+        XCTAssertEqual(state.step, .extras)
+        XCTAssertEqual(state.applying(.firstRecordingRequested), [.completeOnboardingAndStartRecording])
+    }
+
+    func testOnboardingAsksForRelaunchAfterReturningFromSettingsWithoutGrant() {
+        var state = OnboardingMachineState(
+            screenRecordingPermissionState: .requestAlreadyShown,
+            accessibilityPermissionState: .requestAvailable,
+            step: .screenRecording
+        )
+        XCTAssertEqual(state.screenRecordingStage, .waitingForSettings)
+
+        XCTAssertEqual(state.applying(.appBecameActive), [.refreshPermissions])
+        XCTAssertEqual(state.screenRecordingStage, .waitingForSettings)
+
+        XCTAssertEqual(state.applying(.screenRecordingSettingsRequested), [.openScreenRecordingSettings])
+        XCTAssertEqual(state.applying(.appBecameActive), [.refreshPermissions])
+        XCTAssertEqual(state.screenRecordingStage, .needsRelaunch)
+
+        XCTAssertEqual(state.applying(.relaunchRequested), [.persistStep(.screenRecording), .relaunchApp])
+
+        _ = state.applying(.permissionsRefreshed(screen: .granted, accessibility: .requestAvailable))
+        XCTAssertFalse(state.screenRecordingNeedsRelaunch)
+        XCTAssertEqual(state.screenRecordingStage, .granted)
+    }
+
+    func testOnboardingRestoredStepNeverSkipsMissingScreenRecording() {
+        var state = OnboardingMachineState(
+            screenRecordingPermissionState: .requestAlreadyShown,
+            accessibilityPermissionState: .requestAvailable
+        )
+        XCTAssertEqual(state.applying(.stepRestored(.ready)), [])
+        XCTAssertEqual(state.step, .screenRecording)
+
+        _ = state.applying(.permissionsRefreshed(screen: .granted, accessibility: .granted))
+        XCTAssertEqual(state.applying(.stepRestored(.ready)), [])
+        XCTAssertEqual(state.step, .ready)
+    }
+
+    func testOnboardingMediaButtonsRequestOrOpenSettings() {
+        var state = OnboardingMachineState(
+            screenRecordingPermissionState: .granted,
+            accessibilityPermissionState: .requestAvailable
+        )
+
+        XCTAssertEqual(state.applying(.microphoneButtonTapped), [.requestMicrophonePermission])
+        XCTAssertEqual(state.applying(.microphonePermissionRequested(granted: true)), [])
+        XCTAssertEqual(state.microphonePermissionState, .granted)
+        XCTAssertEqual(state.applying(.microphoneButtonTapped), [])
+
+        XCTAssertEqual(state.applying(.cameraButtonTapped), [.requestCameraPermission])
+        XCTAssertEqual(state.applying(.cameraPermissionRequested(granted: false)), [])
+        XCTAssertEqual(state.applying(.cameraButtonTapped), [.openCameraSettings])
+
+        _ = state.applying(.mediaPermissionsRefreshed(microphone: .denied, camera: .granted))
+        XCTAssertEqual(state.applying(.microphoneButtonTapped), [.openMicrophoneSettings])
+        XCTAssertEqual(state.cameraPermissionState, .granted)
+    }
+
+    func testOnboardingDriverStartsFirstRecordingOnlyAfterCompletion() {
+        let driver = OnboardingDriver(
+            screenRecordingPermissionState: .granted,
+            accessibilityPermissionState: .requestAvailable
+        )
+        var completions = 0
+        var startedRecordings = 0
+        var persistedSteps: [OnboardingStep?] = []
+        driver.configure(
+            currentPermissions: { (.granted, .requestAvailable) },
+            requestScreenPermission: { .granted },
+            requestAccessibilityPermission: { .promptShownWithoutGrant },
+            openScreenRecordingSettings: {},
+            openAccessibilitySettings: {},
+            persistStep: { persistedSteps.append($0) },
+            startFirstRecording: { startedRecordings += 1 },
+            completeOnboarding: {
+                completions += 1
+                return true
+            }
+        )
+
+        driver.send(.stepAdvanceRequested)
+        XCTAssertEqual(driver.state.step, .screenRecording)
+        XCTAssertEqual(persistedSteps, [.screenRecording])
+
+        driver.send(.firstRecordingRequested)
+        XCTAssertEqual(completions, 1)
+        XCTAssertEqual(startedRecordings, 1)
+    }
+
     func testSettingsPreferenceAndFolderEffects() {
         var state = SettingsMachineState(createZoomsAutomatically: false)
 
