@@ -492,13 +492,67 @@ final class SourceSelectorDriver {
     }
 }
 
+enum OnboardingStep: String, CaseIterable, Equatable, Sendable {
+    case welcome
+    case screenRecording
+    case extras
+    case ready
+
+    var number: Int {
+        (Self.allCases.firstIndex(of: self) ?? 0) + 1
+    }
+
+    var next: OnboardingStep? {
+        let cases = Self.allCases
+        guard let index = cases.firstIndex(of: self), index + 1 < cases.count else { return nil }
+        return cases[index + 1]
+    }
+
+    var previous: OnboardingStep? {
+        let cases = Self.allCases
+        guard let index = cases.firstIndex(of: self), index > 0 else { return nil }
+        return cases[index - 1]
+    }
+}
+
+enum OnboardingMediaPermissionState: Equatable, Sendable {
+    case undetermined
+    case granted
+    case denied
+}
+
+enum OnboardingScreenRecordingStage: Equatable {
+    case notRequested
+    case waitingForSettings
+    case needsRelaunch
+    case granted
+}
+
 struct OnboardingMachineState: Equatable {
     var screenRecordingPermissionState: ScreenRecordingPermissionState
     var accessibilityPermissionState: AccessibilityPermissionState
     var statusMessage = ""
+    var step: OnboardingStep = .welcome
+    var microphonePermissionState: OnboardingMediaPermissionState = .undetermined
+    var cameraPermissionState: OnboardingMediaPermissionState = .undetermined
+    var hasSentUserToScreenRecordingSettings = false
+    var screenRecordingNeedsRelaunch = false
 
     var canContinue: Bool {
         screenRecordingPermissionState == .granted
+    }
+
+    var screenRecordingStage: OnboardingScreenRecordingStage {
+        if screenRecordingPermissionState == .granted {
+            return .granted
+        }
+        if screenRecordingNeedsRelaunch {
+            return .needsRelaunch
+        }
+        if hasSentUserToScreenRecordingSettings || screenRecordingPermissionState == .requestAlreadyShown {
+            return .waitingForSettings
+        }
+        return .notRequested
     }
 }
 
@@ -513,6 +567,17 @@ enum OnboardingEvent: Equatable {
     case accessibilityPermissionRequested(AccessibilityPermissionRequestOutcome)
     case continueRequested
     case completed
+    case stepAdvanceRequested
+    case stepBackRequested
+    case stepRestored(OnboardingStep)
+    case screenRecordingSettingsRequested
+    case relaunchRequested
+    case microphoneButtonTapped
+    case cameraButtonTapped
+    case mediaPermissionsRefreshed(microphone: OnboardingMediaPermissionState, camera: OnboardingMediaPermissionState)
+    case microphonePermissionRequested(granted: Bool)
+    case cameraPermissionRequested(granted: Bool)
+    case firstRecordingRequested
 }
 
 enum OnboardingEffect: Equatable {
@@ -522,12 +587,27 @@ enum OnboardingEffect: Equatable {
     case openScreenRecordingSettings
     case openAccessibilitySettings
     case completeOnboarding
+    case completeOnboardingAndStartRecording
+    case requestMicrophonePermission
+    case requestCameraPermission
+    case openMicrophoneSettings
+    case openCameraSettings
+    case persistStep(OnboardingStep?)
+    case relaunchApp
 }
 
 extension OnboardingMachineState {
     mutating func applying(_ event: OnboardingEvent) -> [OnboardingEffect] {
         switch event {
-        case .appeared, .appBecameActive, .timerTicked:
+        case .appeared, .timerTicked:
+            return [.refreshPermissions]
+
+        case .appBecameActive:
+            // Coming back from System Settings without the permission taking effect usually
+            // means macOS wants the process to restart before it applies Screen Recording.
+            if hasSentUserToScreenRecordingSettings && screenRecordingPermissionState != .granted {
+                screenRecordingNeedsRelaunch = true
+            }
             return [.refreshPermissions]
 
         case .screenPermissionButtonTapped:
@@ -539,6 +619,9 @@ extension OnboardingMachineState {
         case .permissionsRefreshed(let screen, let accessibility):
             screenRecordingPermissionState = screen
             accessibilityPermissionState = accessibility
+            if screen == .granted {
+                screenRecordingNeedsRelaunch = false
+            }
             if canContinue && statusMessage.localizedCaseInsensitiveContains("required") {
                 statusMessage = ""
             }
@@ -548,14 +631,17 @@ extension OnboardingMachineState {
             switch outcome {
             case .granted:
                 screenRecordingPermissionState = .granted
+                screenRecordingNeedsRelaunch = false
                 statusMessage = "Screen Recording is enabled."
                 return [.refreshPermissions]
             case .promptAlreadyShown:
                 screenRecordingPermissionState = .requestAlreadyShown
+                hasSentUserToScreenRecordingSettings = true
                 statusMessage = "Enable Screen Recording in System Settings, then quit and reopen Open Recorder if macOS asks."
                 return [.openScreenRecordingSettings, .refreshPermissions]
             case .promptShownWithoutGrant:
                 screenRecordingPermissionState = .requestAlreadyShown
+                hasSentUserToScreenRecordingSettings = true
                 statusMessage = "Enable Screen Recording in System Settings, then quit and reopen Open Recorder if macOS asks."
                 return [.refreshPermissions]
             }
@@ -584,8 +670,87 @@ extension OnboardingMachineState {
             statusMessage = ""
             return [.completeOnboarding]
 
+        case .firstRecordingRequested:
+            guard canContinue else {
+                statusMessage = "Screen Recording permission is required before continuing."
+                return []
+            }
+            statusMessage = ""
+            return [.completeOnboardingAndStartRecording]
+
         case .completed:
             statusMessage = ""
+            return []
+
+        case .stepAdvanceRequested:
+            if step == .screenRecording && !canContinue {
+                statusMessage = "Screen Recording permission is required before continuing."
+                return []
+            }
+            guard let next = step.next else {
+                return []
+            }
+            step = next
+            statusMessage = ""
+            return [.persistStep(next), .refreshPermissions]
+
+        case .stepBackRequested:
+            guard let previous = step.previous else {
+                return []
+            }
+            step = previous
+            statusMessage = ""
+            return [.persistStep(previous)]
+
+        case .stepRestored(let restored):
+            // Never resume past Screen Recording when the permission is missing.
+            if restored.number > OnboardingStep.screenRecording.number && !canContinue {
+                step = .screenRecording
+            } else {
+                step = restored
+            }
+            statusMessage = ""
+            return []
+
+        case .screenRecordingSettingsRequested:
+            hasSentUserToScreenRecordingSettings = true
+            screenRecordingNeedsRelaunch = false
+            return [.openScreenRecordingSettings]
+
+        case .relaunchRequested:
+            return [.persistStep(.screenRecording), .relaunchApp]
+
+        case .microphoneButtonTapped:
+            switch microphonePermissionState {
+            case .undetermined:
+                return [.requestMicrophonePermission]
+            case .denied:
+                return [.openMicrophoneSettings]
+            case .granted:
+                return []
+            }
+
+        case .cameraButtonTapped:
+            switch cameraPermissionState {
+            case .undetermined:
+                return [.requestCameraPermission]
+            case .denied:
+                return [.openCameraSettings]
+            case .granted:
+                return []
+            }
+
+        case .mediaPermissionsRefreshed(let microphone, let camera):
+            microphonePermissionState = microphone
+            cameraPermissionState = camera
+            return []
+
+        case .microphonePermissionRequested(let granted):
+            microphonePermissionState = granted ? .granted : .denied
+            return []
+
+        case .cameraPermissionRequested(let granted):
+            cameraPermissionState = granted ? .granted : .denied
             return []
         }
     }
@@ -597,10 +762,18 @@ final class OnboardingDriver {
     private(set) var state: OnboardingMachineState
 
     @ObservationIgnored private var currentPermissions: () -> (screen: ScreenRecordingPermissionState, accessibility: AccessibilityPermissionState)
+    @ObservationIgnored private var currentMediaPermissions: () -> (microphone: OnboardingMediaPermissionState, camera: OnboardingMediaPermissionState) = { (.undetermined, .undetermined) }
     @ObservationIgnored private var requestScreenPermission: () -> ScreenRecordingPermissionRequestOutcome
     @ObservationIgnored private var requestAccessibilityPermission: () -> AccessibilityPermissionRequestOutcome
+    @ObservationIgnored private var requestMicrophonePermission: (@escaping @MainActor @Sendable (Bool) -> Void) -> Void = { _ in }
+    @ObservationIgnored private var requestCameraPermission: (@escaping @MainActor @Sendable (Bool) -> Void) -> Void = { _ in }
     @ObservationIgnored private var openScreenRecordingSettings: () -> Void
     @ObservationIgnored private var openAccessibilitySettings: () -> Void
+    @ObservationIgnored private var openMicrophoneSettings: () -> Void = {}
+    @ObservationIgnored private var openCameraSettings: () -> Void = {}
+    @ObservationIgnored private var persistStep: (OnboardingStep?) -> Void = { _ in }
+    @ObservationIgnored private var relaunchApp: () -> Void = {}
+    @ObservationIgnored private var startFirstRecording: () -> Void = {}
     @ObservationIgnored private var completeOnboarding: () -> Bool
     @ObservationIgnored private var stateWillChange: () -> Void = {}
 
@@ -622,18 +795,34 @@ final class OnboardingDriver {
 
     func configure(
         currentPermissions: @escaping () -> (screen: ScreenRecordingPermissionState, accessibility: AccessibilityPermissionState),
+        currentMediaPermissions: @escaping () -> (microphone: OnboardingMediaPermissionState, camera: OnboardingMediaPermissionState) = { (.undetermined, .undetermined) },
         requestScreenPermission: @escaping () -> ScreenRecordingPermissionRequestOutcome,
         requestAccessibilityPermission: @escaping () -> AccessibilityPermissionRequestOutcome,
+        requestMicrophonePermission: @escaping (@escaping @MainActor @Sendable (Bool) -> Void) -> Void = { _ in },
+        requestCameraPermission: @escaping (@escaping @MainActor @Sendable (Bool) -> Void) -> Void = { _ in },
         openScreenRecordingSettings: @escaping () -> Void,
         openAccessibilitySettings: @escaping () -> Void,
+        openMicrophoneSettings: @escaping () -> Void = {},
+        openCameraSettings: @escaping () -> Void = {},
+        persistStep: @escaping (OnboardingStep?) -> Void = { _ in },
+        relaunchApp: @escaping () -> Void = {},
+        startFirstRecording: @escaping () -> Void = {},
         completeOnboarding: @escaping () -> Bool,
         stateWillChange: @escaping () -> Void = {}
     ) {
         self.currentPermissions = currentPermissions
+        self.currentMediaPermissions = currentMediaPermissions
         self.requestScreenPermission = requestScreenPermission
         self.requestAccessibilityPermission = requestAccessibilityPermission
+        self.requestMicrophonePermission = requestMicrophonePermission
+        self.requestCameraPermission = requestCameraPermission
         self.openScreenRecordingSettings = openScreenRecordingSettings
         self.openAccessibilitySettings = openAccessibilitySettings
+        self.openMicrophoneSettings = openMicrophoneSettings
+        self.openCameraSettings = openCameraSettings
+        self.persistStep = persistStep
+        self.relaunchApp = relaunchApp
+        self.startFirstRecording = startFirstRecording
         self.completeOnboarding = completeOnboarding
         self.stateWillChange = stateWillChange
     }
@@ -654,17 +843,40 @@ final class OnboardingDriver {
             case .refreshPermissions:
                 let permissions = currentPermissions()
                 send(.permissionsRefreshed(screen: permissions.screen, accessibility: permissions.accessibility))
+                let media = currentMediaPermissions()
+                send(.mediaPermissionsRefreshed(microphone: media.microphone, camera: media.camera))
             case .requestScreenPermission:
                 send(.screenPermissionRequested(requestScreenPermission()))
             case .requestAccessibilityPermission:
                 send(.accessibilityPermissionRequested(requestAccessibilityPermission()))
+            case .requestMicrophonePermission:
+                requestMicrophonePermission { [weak self] granted in
+                    self?.send(.microphonePermissionRequested(granted: granted))
+                }
+            case .requestCameraPermission:
+                requestCameraPermission { [weak self] granted in
+                    self?.send(.cameraPermissionRequested(granted: granted))
+                }
             case .openScreenRecordingSettings:
                 openScreenRecordingSettings()
             case .openAccessibilitySettings:
                 openAccessibilitySettings()
+            case .openMicrophoneSettings:
+                openMicrophoneSettings()
+            case .openCameraSettings:
+                openCameraSettings()
+            case .persistStep(let step):
+                persistStep(step)
+            case .relaunchApp:
+                relaunchApp()
             case .completeOnboarding:
                 if completeOnboarding() {
                     send(.completed)
+                }
+            case .completeOnboardingAndStartRecording:
+                if completeOnboarding() {
+                    send(.completed)
+                    startFirstRecording()
                 }
             }
         }
