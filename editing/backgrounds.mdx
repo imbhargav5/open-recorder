@@ -30,6 +30,17 @@ Open Recorder applies the file as the background right away and switches to the 
 
 Custom backgrounds are referenced from their original location on disk. They are not copied into the app. If you move or delete the file, the background can no longer load, so keep the file in place until you finish exporting.
 
+## Crop framing
+
+When you crop a video, the crop region rarely matches the canvas aspect ratio exactly. The **Crop framing** picker, just below the canvas aspect picker in the **Appearance** tab, controls how Open Recorder places the crop on the canvas:
+
+| Option | Behavior |
+| --- | --- |
+| **Trim to fill** | Default. Open Recorder trims the crop from the center so it fills the selected canvas aspect ratio. Edges of the crop outside that ratio are cut off. |
+| **Fit and center** | Open Recorder keeps the whole crop and centers it on the canvas, so no part of the crop is cut off. |
+
+Use **Trim to fill** when you want the content to fill the frame edge to edge. Use **Fit and center** when nothing inside your crop can be cut off. The editor preview and the exported video use the same framing.
+
 ## Preview and export behavior
 
 - Backgrounds scale to fill the stage. Files that do not match the stage aspect ratio are cropped, not letterboxed.
@@ -43,11 +54,11 @@ Open Recorder remembers the appearance you set in the editor and reuses it the n
 
 **What's remembered for screenshots:** canvas aspect, background style, padding, background roundness, background shadow, image roundness, and image shadow.
 
-**What's remembered for videos:** canvas aspect, background, padding, border radius, shadow, background blur, and inset amount, color, opacity, and balance.
+**What's remembered for videos:** canvas aspect, crop framing, background, padding, border radius, shadow, background blur, and inset amount, color, opacity, and balance. Appearance presets also include crop framing.
 
 Screenshot and video appearance are stored independently. Changing background or padding in the video editor does not affect what a new screenshot looks like, and vice versa.
 
-**What stays project-specific:** scene, crop, cursor, facecam, captions, and timeline settings are saved with each project and are not carried over to new captures.
+**What stays project-specific:** scene, crop region, cursor, facecam, captions, and timeline settings are saved with each project and are not carried over to new captures.
 
 Existing projects keep the appearance you saved with them. Reopening an older project uses that project's stored look, not the current defaults.
 
