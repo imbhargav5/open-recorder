@@ -16,6 +16,15 @@ description: "Record your screen, capture screenshots, and edit videos on macOS 
 </p>
 
 <p align="center">
+  <a href="https://run.uno/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=open-recorder">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://run.uno/badges/made-with-uno-card-dark.svg">
+      <img alt="Made with Uno" src="https://run.uno/badges/made-with-uno-card-light.svg" width="340">
+    </picture>
+  </a>
+</p>
+
+<p align="center">
   <img src="./open-recorder-ui.png" alt="Open Recorder Editor UI" width="100%">
 </p>
 
