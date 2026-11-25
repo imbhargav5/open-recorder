@@ -181,6 +181,7 @@ final class VideoPlaybackDriver {
     @ObservationIgnored private var audioTask: Task<Void, Never>?
     @ObservationIgnored private var audioSyncTask: Task<Void, Never>?
     @ObservationIgnored private var timeObserver: Any?
+    @ObservationIgnored private var trimBoundaryObserver: Any?
     @ObservationIgnored private var endObserver: NSObjectProtocol?
     @ObservationIgnored private var playbackSeekID = 0
     @ObservationIgnored private var pendingSeekTarget: Double?
@@ -243,8 +244,34 @@ final class VideoPlaybackDriver {
         let syncChanged = state.timelineEdits.audio.syncOffset != edits.audio.syncOffset
         let voiceoverChanged = state.timelineEdits.voiceover != edits.voiceover
         send(.timelineEditsChanged(edits))
+        refreshTrimBoundaryObserver()
         if syncChanged || voiceoverChanged { refreshAudioSynchronization() }
         else if changed { refreshAudio() }
+    }
+
+    private func refreshTrimBoundaryObserver() {
+        guard let player else { return }
+        if let trimBoundaryObserver {
+            player.removeTimeObserver(trimBoundaryObserver)
+            self.trimBoundaryObserver = nil
+        }
+
+        let trims = state.timelineEdits.trimRegions
+        guard !trims.isEmpty else { return }
+        let boundaries = trims.map { NSValue(time: CMTime(seconds: $0.span.start, preferredTimescale: 600)) }
+        trimBoundaryObserver = player.addBoundaryTimeObserver(forTimes: boundaries, queue: .main) { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self, self.state.isPlaying else { return }
+                let currentTime = self.player?.currentTime().seconds ?? .nan
+                let boundaryTolerance = max(0.02, 1.5 / TimelineSourceFrameRate.normalized(self.sourceFramesPerSecond))
+                guard currentTime.isFinite,
+                      let trim = self.state.timelineEdits.trimRegions.first(where: {
+                          currentTime >= $0.span.start - boundaryTolerance && currentTime < $0.span.end
+                      }) else { return }
+                // Move at the cut boundary before a frame from the deleted interval is presented.
+                self.send(.currentTimeChanged(trim.span.start))
+            }
+        }
     }
 
     private func refreshAudioSynchronization() {
@@ -400,6 +427,7 @@ final class VideoPlaybackDriver {
         let item = AVPlayerItem(url: url)
         let player = AVPlayer(playerItem: item)
         self.player = player
+        refreshTrimBoundaryObserver()
         if state.timelineEdits.audio.syncOffset != 0 { refreshAudioSynchronization() }
         else { refreshAudio() }
         attachTimeObserver(to: player)
@@ -478,6 +506,10 @@ final class VideoPlaybackDriver {
             player.removeTimeObserver(timeObserver)
         }
         timeObserver = nil
+        if let trimBoundaryObserver, let player {
+            player.removeTimeObserver(trimBoundaryObserver)
+        }
+        trimBoundaryObserver = nil
 
         if let endObserver {
             NotificationCenter.default.removeObserver(endObserver)
