@@ -1,6 +1,6 @@
 ---
 title: "Automatic zoom and zoom region editing"
-description: "Enable adaptive automatic zoom, limit magnification with the Maximum zoom slider, regenerate zooms without losing edits, and delete zooms in bulk."
+description: "Enable adaptive automatic zoom, limit magnification with the Maximum zoom slider, regenerate zooms without losing edits, and select or delete multiple zooms at once."
 ---
 
 Open Recorder adds zoom regions to the timeline that magnify part of the recording during playback and export. Zooms can be generated automatically from your recorded pointer activity, or added and adjusted manually in the editor.
@@ -62,5 +62,17 @@ When the camera layout is **Overlay**, the camera stays on screen during a zoom 
 ## Delete zoom regions
 
 Select a zoom region on the timeline to open it in the inspector. The **Delete** button removes the selected region.
+
+### Select multiple zoom regions
+
+To remove several zooms without clearing the whole timeline, select them together:
+
+- <kbd>⌘</kbd>-click a zoom region to add it to the selection, or to remove it if it is already selected.
+- <kbd>⇧</kbd>-click a zoom region to select every zoom between the last selected zoom and the one you click.
+- Click a zoom without a modifier key to select only that zoom.
+
+Press <kbd>Delete</kbd> to remove all selected zoom regions. Open Recorder applies the deletion as a single edit, so one undo restores every deleted zoom and reselects them. Unselected zooms, trims, and annotations are not affected.
+
+### Delete all zoom regions
 
 To clear every zoom region at once, click the dropdown arrow on the right side of the **Delete** button and choose **Delete All Zoom Levels**. The bulk deletion removes all zoom regions, manual and automatic, as a single edit. One undo restores all of them.
